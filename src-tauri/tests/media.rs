@@ -143,7 +143,7 @@ mod reader {
         );
         // Mono feeds both channels equally.
         let mid = &samples[20_000..20_010];
-	for pair in mid.as_chunks::<2>().0 {
+        for pair in mid.as_chunks::<2>().0 {
             assert!((pair[0] - pair[1]).abs() < 1e-6);
         }
     }
