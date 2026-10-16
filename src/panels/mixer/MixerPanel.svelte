@@ -1,0 +1,446 @@
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  Copyright (c) The GeekCast Radio Network, LLC.
+  This file is part of Altered Audio Editor.
+
+  Mixer: one strip per track (pan, mute, solo, arm, fader, level meter)
+  and the master strip. Every change is undoable; a fader drag is one
+  undo step.
+-->
+<script lang="ts">
+  import type { CommandRunner } from "../../stores/media-pool";
+  import type { SessionDoc, SessionStore, TrackDoc } from "../../stores/session";
+  import type { MeterLevel, TransportState, TransportStore } from "../../stores/transport";
+  import { editor } from "../../stores/editor";
+  import { dbToFader, faderToDb, formatDb, formatPan } from "./fader";
+
+  interface Props {
+    session: SessionStore;
+    transport: TransportStore;
+    runner: CommandRunner;
+    onError?: (e: unknown) => void;
+  }
+
+  const { session, transport, runner, onError = console.error }: Props = $props();
+
+  let doc = $state<SessionDoc | null>(null);
+  $effect(() =>
+    session.subscribe((d) => {
+      doc = d;
+    }),
+  );
+  let tp = $state<TransportState | null>(null);
+  $effect(() =>
+    transport.subscribe((t) => {
+      tp = t;
+    }),
+  );
+  let selected = $state<string | null>(null);
+  $effect(() =>
+    editor.subscribe((e) => {
+      selected = e.selectedTrack;
+    }),
+  );
+
+  const masterDb = $derived(doc?.master?.volume_db ?? 0);
+
+  function setTrack(t: TrackDoc, changes: Partial<Pick<TrackDoc, "volume_db" | "pan" | "muted" | "solo" | "record_armed">>, label: string) {
+    void session.edit(label, { op: "set_track", id: t.id, changes }, runner).catch(onError);
+  }
+
+  function setMaster(db: number) {
+    void session.edit("Master Volume", { op: "set_master_volume", volume_db: db }, runner).catch(onError);
+  }
+
+  /** Vertical drag on a fader track. Shift moves in fine steps. */
+  function dragFader(e: PointerEvent, current: number, apply: (db: number) => void) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    const rect = el.getBoundingClientRect();
+    const startY = e.clientY;
+    const startPos = dbToFader(current);
+    let last = current;
+    // Clicking the track (not the cap) jumps there; the cap drags from where it is.
+    const onCap = (e.target as HTMLElement).classList.contains("cap");
+    const posAt = (ev: PointerEvent) =>
+      onCap || ev.shiftKey
+        ? startPos - ((ev.clientY - startY) / rect.height) * (ev.shiftKey ? 0.2 : 1)
+        : 1 - (ev.clientY - rect.top) / rect.height;
+    const set = (ev: PointerEvent) => {
+      const db = faderToDb(posAt(ev));
+      if (db !== last) {
+        last = db;
+        apply(db);
+      }
+    };
+    if (!onCap) set(e);
+    const move = (ev: PointerEvent) => set(ev);
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+  }
+
+  function wheelFader(e: WheelEvent, current: number, apply: (db: number) => void) {
+    e.preventDefault();
+    const step = e.shiftKey ? 0.1 : 0.5;
+    const next = Math.min(12, Math.max(-60, Math.round((current + (e.deltaY < 0 ? step : -step)) * 10) / 10));
+    apply(next);
+  }
+
+  function dragPan(e: PointerEvent, t: TrackDoc) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const start = t.pan;
+    let last = start;
+    const move = (ev: PointerEvent) => {
+      const v = Math.min(100, Math.max(-100, Math.round(start + (ev.clientX - startX) * (ev.shiftKey ? 0.25 : 1))));
+      if (v !== last) {
+        last = v;
+        setTrack(t, { pan: v }, "Track Pan");
+      }
+    };
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+  }
+
+  /** Meters use the fader's scale, so the labels beside the master fader read true. */
+  const onScale = (v: number) => (v > 0 ? dbToFader(20 * Math.log10(v)) * 100 : 0);
+  const levelOf = (m: MeterLevel | undefined) => onScale(m?.level ?? 0);
+  const peakOf = (m: MeterLevel | undefined) => onScale(m?.peak ?? 0);
+  const SCALE = [12, 6, 0, -6, -12, -24, -48];
+</script>
+
+<section class="mixer" aria-label="Mixer">
+  <div class="strips">
+    {#each doc?.tracks ?? [] as t (t.id)}
+      {@const m = tp?.tracks[t.id]}
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <div class="strip" class:selected={selected === t.id} onclick={() => editor.selectTrack(t.id)}>
+        <div class="name" title={t.name}>{t.name}</div>
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class="pan"
+          title="Pan. Drag left or right, double-click to center."
+          onpointerdown={(e) => dragPan(e, t)}
+          ondblclick={() => setTrack(t, { pan: 0 }, "Track Pan")}
+        >
+          <div class="pan-line"></div>
+          <div class="pan-dot" style:left="{(t.pan + 100) / 2}%"></div>
+          <span>{formatPan(t.pan)}</span>
+        </div>
+        <div class="buttons">
+          <button type="button" class:on={t.muted} class="m" title="Mute" aria-pressed={t.muted} onclick={() => setTrack(t, { muted: !t.muted }, t.muted ? "Unmute Track" : "Mute Track")}>M</button>
+          <button type="button" class:on={t.solo} class="s" title="Solo" aria-pressed={t.solo} onclick={() => setTrack(t, { solo: !t.solo }, t.solo ? "Unsolo Track" : "Solo Track")}>S</button>
+          <button type="button" class:on={t.record_armed} class="r" title="Arm for recording (recording arrives in P4)" aria-pressed={t.record_armed} onclick={() => setTrack(t, { record_armed: !t.record_armed }, "Arm Track")}>R</button>
+        </div>
+        <div class="body">
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="fader"
+            role="slider"
+            tabindex="-1"
+            aria-label="{t.name} volume"
+            aria-valuemin={-60}
+            aria-valuemax={12}
+            aria-valuenow={t.volume_db}
+            title="Volume. Drag, or use the mouse wheel. Shift for fine steps. Double-click for 0 dB."
+            onpointerdown={(e) => dragFader(e, t.volume_db, (db) => setTrack(t, { volume_db: db }, "Track Volume"))}
+            onwheel={(e) => wheelFader(e, t.volume_db, (db) => setTrack(t, { volume_db: db }, "Track Volume"))}
+            ondblclick={() => setTrack(t, { volume_db: 0 }, "Track Volume")}
+          >
+            <div class="slot"></div>
+            <div class="unity" style:bottom="{dbToFader(0) * 100}%"></div>
+            <div class="cap" style:bottom="{dbToFader(t.volume_db) * 100}%"></div>
+          </div>
+          <div class="meter" aria-hidden="true">
+            {#each [0, 1] as const as ch (ch)}
+              <div class="mbar">
+                <div class="mcover" style:height="{100 - levelOf(m?.[ch])}%"></div>
+                {#if (m?.[ch].peak ?? 0) > 0}<div class="mpeak" style:bottom="{peakOf(m?.[ch])}%"></div>{/if}
+              </div>
+            {/each}
+          </div>
+        </div>
+        <div class="db">{formatDb(t.volume_db)}</div>
+      </div>
+    {/each}
+    {#if (doc?.tracks.length ?? 0) === 0}
+      <p class="empty">Tracks appear here once the session has some.</p>
+    {/if}
+  </div>
+
+  <div class="strip master">
+    <div class="name">Master</div>
+    <div class="body">
+      <div class="scale" aria-hidden="true">
+        {#each SCALE as s (s)}<span style:bottom="{dbToFader(s) * 100}%">{s > 0 ? `+${s}` : s}</span>{/each}
+      </div>
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="fader"
+        role="slider"
+        tabindex="-1"
+        aria-label="Master volume"
+        aria-valuemin={-60}
+        aria-valuemax={12}
+        aria-valuenow={masterDb}
+        title="Master volume. Drag, or use the mouse wheel. Double-click for 0 dB."
+        onpointerdown={(e) => dragFader(e, masterDb, setMaster)}
+        onwheel={(e) => wheelFader(e, masterDb, setMaster)}
+        ondblclick={() => setMaster(0)}
+      >
+        <div class="slot"></div>
+        <div class="unity" style:bottom="{dbToFader(0) * 100}%"></div>
+        <div class="cap" style:bottom="{dbToFader(masterDb) * 100}%"></div>
+      </div>
+      <div class="meter wide" aria-hidden="true">
+        {#each [0, 1] as const as ch (ch)}
+          <div class="mbar">
+            <div class="mcover" style:height="{100 - levelOf(tp?.master[ch])}%"></div>
+            {#if (tp?.master[ch].peak ?? 0) > 0}<div class="mpeak" style:bottom="{peakOf(tp?.master[ch])}%"></div>{/if}
+          </div>
+        {/each}
+      </div>
+    </div>
+    <div class="db">{formatDb(masterDb)}</div>
+  </div>
+</section>
+
+<style>
+  .mixer {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--surface-0);
+  }
+
+  .strips {
+    display: flex;
+    flex: 1;
+    gap: 2px;
+    min-width: 0;
+    padding: 4px;
+    overflow-x: auto;
+  }
+
+  .strip {
+    display: grid;
+    flex: none;
+    grid-template-rows: auto auto auto 1fr auto;
+    gap: 6px;
+    width: 78px;
+    padding: 6px 5px;
+    border: 1px solid var(--border);
+    background: var(--surface-1);
+    box-sizing: border-box;
+  }
+
+  .strip.selected {
+    border-color: var(--accent-dim);
+    background: var(--surface-2);
+  }
+
+  .strip.master {
+    width: 96px;
+    margin: 4px;
+    grid-template-rows: auto 1fr auto;
+  }
+
+  .name {
+    overflow: hidden;
+    font-size: var(--font-size-small);
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pan {
+    position: relative;
+    height: 22px;
+    cursor: ew-resize;
+  }
+
+  .pan-line {
+    position: absolute;
+    top: 6px;
+    left: 4px;
+    right: 4px;
+    height: 2px;
+    background: var(--surface-3);
+  }
+
+  .pan-dot {
+    position: absolute;
+    top: 3px;
+    width: 8px;
+    height: 8px;
+    margin-left: -4px;
+    border-radius: 50%;
+    background: var(--value);
+  }
+
+  .pan span {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-align: center;
+  }
+
+  .buttons {
+    display: flex;
+    gap: 2px;
+    justify-content: center;
+  }
+
+  .buttons button {
+    width: 20px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--surface-3);
+    color: var(--text-dim);
+    font: inherit;
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .buttons .m.on {
+    background: var(--accent-dim);
+    color: #fff;
+  }
+
+  .buttons .s.on {
+    background: var(--clip-5);
+    color: #111;
+  }
+
+  .buttons .r.on {
+    background: var(--danger);
+    color: #fff;
+  }
+
+  .body {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    min-height: 80px;
+  }
+
+  .fader {
+    position: relative;
+    width: 22px;
+    cursor: ns-resize;
+  }
+
+  .slot {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 10px;
+    width: 2px;
+    background: var(--surface-0);
+  }
+
+  .unity {
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    height: 1px;
+    background: var(--border-strong);
+  }
+
+  .cap {
+    position: absolute;
+    left: 0;
+    width: 22px;
+    height: 10px;
+    margin-bottom: -5px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: linear-gradient(var(--surface-3), var(--surface-2));
+    box-sizing: border-box;
+  }
+
+  .cap::after {
+    content: "";
+    position: absolute;
+    top: 4px;
+    left: 3px;
+    right: 3px;
+    height: 1px;
+    background: var(--text-dim);
+  }
+
+  .meter {
+    display: flex;
+    gap: 1px;
+  }
+
+  .mbar {
+    position: relative;
+    width: 5px;
+    overflow: hidden;
+    /* Green below -12 dB, yellow to 0 dB, red above (on the fader scale). */
+    background: linear-gradient(to top, #3d8f6a 0 53%, #c9b33f 53% 77%, #e5534b 77% 100%);
+  }
+
+  .meter.wide .mbar {
+    width: 8px;
+  }
+
+  .mcover {
+    position: absolute;
+    top: 0;
+    width: 100%;
+    background: var(--surface-0);
+  }
+
+  .mpeak {
+    position: absolute;
+    width: 100%;
+    height: 1px;
+    background: var(--text);
+  }
+
+  .db {
+    color: var(--value);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-align: center;
+  }
+
+  .scale {
+    position: relative;
+    width: 20px;
+  }
+
+  .scale span {
+    position: absolute;
+    right: 0;
+    transform: translateY(50%);
+    color: var(--text-faint);
+    font-size: 9px;
+  }
+
+  .empty {
+    margin: auto;
+    color: var(--text-faint);
+  }
+</style>

@@ -1,0 +1,10 @@
+# Keep text files LF in the repo so schemas and fixtures compare byte for byte.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.wav binary
+*.aiff binary
+*.mp3 binary
+*.flac binary
+*.m4a binary
+*.ogg binary

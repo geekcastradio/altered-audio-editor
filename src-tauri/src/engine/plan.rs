@@ -1,0 +1,557 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) The GeekCast Radio Network, LLC.
+// This file is part of Altered Audio Editor.
+
+//! Turns a session into what the playback engine needs: clip positions
+//! in output-device frames, and per-track gains.
+//!
+//! Gains change often (faders, mute, solo) and are applied by the audio
+//! thread from atomics, so they never need a rebuild. Anything that
+//! moves audio in time (clips, tracks, order) changes the `layout` and
+//! playback restarts from where it was.
+
+use std::path::PathBuf;
+
+use crate::session::model::{Clip, EnvelopeTarget, Fade, FadeShape, Id, Session};
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClipPlan {
+    pub id: Id,
+    pub path: PathBuf,
+    /// Timeline start, in output frames.
+    pub start: u64,
+    /// Length, in output frames.
+    pub len: u64,
+    /// Where in the source file the clip begins, in seconds.
+    pub source_start: f64,
+    /// Linear clip gain. 0 when the clip is muted.
+    pub gain: f32,
+    /// Fade lengths in output frames.
+    pub fade_in: u64,
+    pub fade_out: u64,
+    pub fade_in_shape: FadeShape,
+    pub fade_out_shape: FadeShape,
+    /// Volume envelope: (frame from the clip start, level in dB), sorted.
+    /// Empty means no envelope.
+    pub volume: Vec<(u64, f32)>,
+    /// Pan envelope: (frame from the clip start, -100 left to 100
+    /// right), sorted. Empty means centered.
+    pub pan: Vec<(u64, f32)>,
+    /// Loop Clip: the source region's length in output frames, or 0
+    /// when the clip plays its region once.
+    pub loop_len: u64,
+    /// Where in the region the clip starts, in output frames.
+    pub loop_phase: u64,
+}
+
+impl ClipPlan {
+    /// A plain clip: full level, no fades.
+    pub fn plain(id: Id, path: PathBuf, start: u64, len: u64, source_start: f64) -> Self {
+        Self {
+            id,
+            path,
+            start,
+            len,
+            source_start,
+            gain: 1.0,
+            fade_in: 0,
+            fade_out: 0,
+            fade_in_shape: FadeShape::Linear,
+            fade_out_shape: FadeShape::Linear,
+            volume: Vec::new(),
+            pan: Vec::new(),
+            loop_len: 0,
+            loop_phase: 0,
+        }
+    }
+
+    /// True when the gain is the same for every frame.
+    pub fn is_flat(&self) -> bool {
+        self.fade_in == 0
+            && self.fade_out == 0
+            && self.volume.is_empty()
+            && self.pan.is_empty()
+            && self.loop_len == 0
+    }
+
+    /// Looped clips: a short dip on both sides of each seam inside the
+    /// clip, so a region whose ends don't line up never clicks. The
+    /// clip's own edges are left to its fades.
+    fn seam_gain(&self, rel: u64) -> f32 {
+        if self.loop_len == 0 {
+            return 1.0;
+        }
+        let seam = (self.loop_len / 4).clamp(1, SEAM_FRAMES);
+        let p = (self.loop_phase + rel) % self.loop_len;
+        let to_next = self.loop_len - p;
+        // Frames since the last seam (only if that seam is inside the clip).
+        let after = if p < seam && rel >= p && rel > 0 {
+            Some(p)
+        } else {
+            None
+        };
+        // Frames until the next seam (only if it comes before the clip ends).
+        let before = if to_next <= seam && rel + to_next < self.len {
+            Some(to_next - 1)
+        } else {
+            None
+        };
+        match after.into_iter().chain(before).min() {
+            Some(d) => (d as f32 + 0.5) / seam as f32,
+            None => 1.0,
+        }
+    }
+
+    /// Envelope level at `rel` in dB: held before the first point and
+    /// after the last, straight lines in dB between points.
+    fn volume_db(&self, rel: u64) -> f32 {
+        interpolate(&self.volume, rel)
+    }
+
+    /// Left and right gain at `rel`: clip gain, volume envelope and
+    /// fades, then the pan envelope as a balance (centered is full level
+    /// on both sides, the same rule as track pan).
+    pub fn gains_at(&self, rel: u64) -> [f32; 2] {
+        let g = self.gain_at(rel);
+        if self.pan.is_empty() {
+            return [g, g];
+        }
+        let pan = (interpolate(&self.pan, rel) / 100.0).clamp(-1.0, 1.0);
+        let left = if pan > 0.0 { 1.0 - pan } else { 1.0 };
+        let right = if pan < 0.0 { 1.0 + pan } else { 1.0 };
+        [g * left, g * right]
+    }
+
+    /// Gain at `rel`, a frame offset from the clip's start.
+    pub fn gain_at(&self, rel: u64) -> f32 {
+        let mut g = self.gain;
+        if !self.volume.is_empty() {
+            let db = self.volume_db(rel);
+            // The bottom of the range is silence, not just quiet.
+            g *= if db <= VOLUME_FLOOR_DB {
+                0.0
+            } else {
+                10f32.powf(db / 20.0)
+            };
+        }
+        if rel < self.fade_in {
+            g *= fade_curve(self.fade_in_shape, rel as f32 / self.fade_in as f32);
+        }
+        g *= self.seam_gain(rel);
+        let left = self.len.saturating_sub(rel);
+        if left < self.fade_out {
+            g *= fade_curve(self.fade_out_shape, left as f32 / self.fade_out as f32);
+        }
+        g
+    }
+}
+
+/// Value of a sorted point list at `rel`: held before the first point
+/// and after the last, straight lines between points.
+fn interpolate(v: &[(u64, f32)], rel: u64) -> f32 {
+    let i = v.partition_point(|p| p.0 <= rel);
+    if i == 0 {
+        return v[0].1;
+    }
+    if i == v.len() {
+        return v[v.len() - 1].1;
+    }
+    let (a, b) = (v[i - 1], v[i]);
+    let t = (rel - a.0) as f32 / (b.0 - a.0).max(1) as f32;
+    a.1 + (b.1 - a.1) * t
+}
+
+/// Length of the dip on each side of a loop seam: 2.5 ms at 48 kHz.
+const SEAM_FRAMES: u64 = 120;
+
+/// Envelope level treated as silence.
+const VOLUME_FLOOR_DB: f32 = -59.9;
+
+/// A clip's envelope points for `target` in output frames, if it has one.
+fn envelope_points(
+    c: &Clip,
+    target: &EnvelopeTarget,
+    session_rate: u32,
+    out_rate: u32,
+) -> Vec<(u64, f32)> {
+    c.envelopes
+        .iter()
+        .find(|e| &e.target == target && e.enabled)
+        .map(|e| {
+            e.points
+                .iter()
+                .map(|p| (convert(p.position, session_rate, out_rate), p.value as f32))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Fade gain for `t` from 0 (silent) to 1 (full).
+pub fn fade_curve(shape: FadeShape, t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    match shape {
+        FadeShape::Linear => t,
+        // Rises fast, then eases in: sounds even to the ear on speech.
+        FadeShape::Logarithmic => 1.0 - (1.0 - t) * (1.0 - t),
+        // S-curve: gentle at both ends.
+        FadeShape::Cosine => 0.5 - 0.5 * (std::f32::consts::PI * t).cos(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrackPlan {
+    pub id: Id,
+    pub clips: Vec<ClipPlan>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Plan {
+    pub out_rate: u32,
+    pub session_rate: u32,
+    pub tracks: Vec<TrackPlan>,
+}
+
+fn convert(value: u64, from: u32, to: u32) -> u64 {
+    if from == to || from == 0 {
+        return value;
+    }
+    ((u128::from(value) * u128::from(to) + u128::from(from) / 2) / u128::from(from)) as u64
+}
+
+pub fn build(session: &Session, out_rate: u32) -> Plan {
+    let tracks = session
+        .tracks
+        .iter()
+        .map(|t| TrackPlan {
+            id: t.id,
+            clips: t
+                .clips
+                .iter()
+                .filter_map(|c| {
+                    let m = session.media_by_id(c.media_id)?;
+                    let src_rate = if m.sample_rate > 0 {
+                        m.sample_rate
+                    } else {
+                        session.sample_rate
+                    };
+                    let src_len = c.source_out.saturating_sub(c.source_in);
+                    if src_len == 0 {
+                        return None;
+                    }
+                    let region = convert(src_len, src_rate, out_rate);
+                    let (len, loop_len, loop_phase) = match c.looped {
+                        Some(l) if region > 0 => (
+                            convert(l.length, session.sample_rate, out_rate),
+                            region,
+                            convert(l.phase % src_len, src_rate, out_rate) % region,
+                        ),
+                        _ => (region, 0, 0),
+                    };
+                    if len == 0 {
+                        return None;
+                    }
+                    let fade = |l: u64| convert(l, session.sample_rate, out_rate).min(len);
+                    Some(ClipPlan {
+                        id: c.id,
+                        path: m.path.clone(),
+                        start: convert(c.start, session.sample_rate, out_rate),
+                        len,
+                        source_start: c.source_in as f64 / f64::from(src_rate),
+                        gain: if c.muted {
+                            0.0
+                        } else {
+                            10f64.powf(c.gain_db.clamp(-96.0, 24.0) / 20.0) as f32
+                        },
+                        fade_in: fade(c.fade_in.length),
+                        fade_out: fade(c.fade_out.length),
+                        fade_in_shape: c.fade_in.shape,
+                        fade_out_shape: c.fade_out.shape,
+                        volume: envelope_points(
+                            c,
+                            &EnvelopeTarget::Volume,
+                            session.sample_rate,
+                            out_rate,
+                        ),
+                        pan: envelope_points(
+                            c,
+                            &EnvelopeTarget::Pan,
+                            session.sample_rate,
+                            out_rate,
+                        ),
+                        loop_len,
+                        loop_phase,
+                    })
+                })
+                .collect(),
+        })
+        .collect();
+    Plan {
+        out_rate,
+        session_rate: session.sample_rate,
+        tracks,
+    }
+}
+
+/// Session sample to output frame and back.
+pub fn to_out(session_sample: u64, session_rate: u32, out_rate: u32) -> u64 {
+    convert(session_sample, session_rate, out_rate)
+}
+
+pub fn to_session(out_frame: u64, session_rate: u32, out_rate: u32) -> u64 {
+    convert(out_frame, out_rate, session_rate)
+}
+
+/// Left and right gain for each track, with mute, solo, volume and pan.
+///
+/// Pan is a balance control: centered plays both sides at full level,
+/// and panning turns the far side down. This keeps a centered voice at
+/// exactly the level the fader shows.
+pub fn gains(session: &Session) -> Vec<[f32; 2]> {
+    let any_solo = session.tracks.iter().any(|t| t.solo);
+    session
+        .tracks
+        .iter()
+        .map(|t| {
+            let audible = !t.muted && (!any_solo || t.solo);
+            if !audible {
+                return [0.0, 0.0];
+            }
+            let mut g = 10f64.powf(t.volume_db.clamp(-96.0, 24.0) / 20.0) as f32;
+            if t.polarity_inverted {
+                g = -g;
+            }
+            let pan = (t.pan.clamp(-100.0, 100.0) / 100.0) as f32;
+            let left = if pan > 0.0 { 1.0 - pan } else { 1.0 };
+            let right = if pan < 0.0 { 1.0 + pan } else { 1.0 };
+            [g * left, g * right]
+        })
+        .collect()
+}
+
+/// Master gain from the master track's volume.
+pub fn master_gain(session: &Session) -> f32 {
+    10f64.powf(session.master.volume_db.clamp(-96.0, 24.0) / 20.0) as f32
+}
+
+/// Everything that places audio in time. Playback restarts when it changes.
+/// Clip id, media id, start, source in, source out, then the clip's
+/// level shape: gain bits (0 when muted), fade in, fade out, and a hash
+/// of its envelopes and loop.
+pub type ClipKey = (Id, Id, u64, u64, u64, u64, Fade, Fade, u64);
+
+fn envelope_hash(c: &Clip) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut mix = |v: u64| {
+        h ^= v;
+        h = h.wrapping_mul(0x100_0000_01b3);
+    };
+    // The loop changes what plays where, so it is part of the shape too.
+    if let Some(l) = c.looped {
+        mix(0x4c4f_4f50);
+        mix(l.length);
+        mix(l.phase);
+    }
+    for e in &c.envelopes {
+        mix(match e.target {
+            EnvelopeTarget::Volume => 1,
+            EnvelopeTarget::Pan => 2,
+            EnvelopeTarget::EffectParam { .. } => 3,
+        });
+        mix(u64::from(e.enabled));
+        for p in &e.points {
+            mix(p.position);
+            mix(p.value.to_bits());
+        }
+    }
+    h
+}
+
+/// Per track: track id and its clips, in order.
+pub type Layout = Vec<(Id, Vec<ClipKey>)>;
+
+pub fn layout(session: &Session) -> Layout {
+    session
+        .tracks
+        .iter()
+        .map(|t| {
+            (
+                t.id,
+                t.clips
+                    .iter()
+                    .map(|c| {
+                        let gain = if c.muted {
+                            f64::NEG_INFINITY
+                        } else {
+                            c.gain_db
+                        };
+                        (
+                            c.id,
+                            c.media_id,
+                            c.start,
+                            c.source_in,
+                            c.source_out,
+                            gain.to_bits(),
+                            c.fade_in,
+                            c.fade_out,
+                            envelope_hash(c),
+                        )
+                    })
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::session::model::{new_id, ChannelLayout, MediaRef, Track};
+    use crate::session::ops::{apply, ClipSpec, Op};
+
+    fn session_with_clip(file_rate: u32) -> Session {
+        let mut s = Session::new("t", 48_000);
+        s.tracks.push(Track::new("A", ChannelLayout::Stereo));
+        let m = MediaRef {
+            id: new_id(),
+            path: "a.wav".into(),
+            relative_path: None,
+            sample_rate: file_rate,
+            channels: 2,
+            length: 441_000,
+        };
+        let mid = m.id;
+        s.media.push(m);
+        let tid = s.tracks[0].id;
+        apply(
+            &mut s,
+            &Op::AddClips {
+                track_id: tid,
+                clips: vec![ClipSpec {
+                    id: new_id(),
+                    name: "a".into(),
+                    media_id: mid,
+                    start: 48_000,
+                    source_in: 44_100,
+                    source_out: 88_200,
+                }],
+            },
+        )
+        .unwrap();
+        s
+    }
+
+    #[test]
+    fn places_clips_in_output_frames() {
+        let s = session_with_clip(44_100);
+        let p = build(&s, 44_100);
+        let c = &p.tracks[0].clips[0];
+        assert_eq!(c.start, 44_100, "one second in at 44.1 kHz output");
+        assert_eq!(c.len, 44_100);
+        assert!((c.source_start - 1.0).abs() < 1e-9);
+        assert_eq!(build(&s, 48_000).tracks[0].clips[0].len, 48_000);
+    }
+
+    #[test]
+    fn gains_follow_mute_solo_volume_and_pan() {
+        let mut s = Session::new("t", 48_000);
+        for name in ["A", "B", "C"] {
+            s.tracks.push(Track::new(name, ChannelLayout::Stereo));
+        }
+        s.tracks[0].volume_db = -6.0;
+        s.tracks[0].pan = 50.0;
+        s.tracks[2].muted = true;
+        let g = gains(&s);
+        assert!((g[0][0] - 0.5012 * 0.5).abs() < 1e-3);
+        assert!((g[0][1] - 0.5012).abs() < 1e-3);
+        assert_eq!(g[1], [1.0, 1.0]);
+        assert_eq!(g[2], [0.0, 0.0]);
+
+        s.tracks[1].solo = true;
+        let g = gains(&s);
+        assert_eq!(g[0], [0.0, 0.0]);
+        assert_eq!(g[1], [1.0, 1.0]);
+    }
+
+    #[test]
+    fn polarity_invert_flips_the_track_gain() {
+        let mut s = Session::new("t", 48_000);
+        s.tracks.push(Track::new("a", ChannelLayout::Mono));
+        s.tracks[0].polarity_inverted = true;
+        let g = gains(&s);
+        assert_eq!(g[0], [-1.0, -1.0]);
+    }
+
+    #[test]
+    fn layout_ignores_gain_changes() {
+        let mut s = session_with_clip(48_000);
+        let before = layout(&s);
+        s.tracks[0].volume_db = -10.0;
+        s.tracks[0].muted = true;
+        assert_eq!(layout(&s), before);
+        s.tracks[0].clips[0].start += 1;
+        assert_ne!(layout(&s), before);
+    }
+
+    #[test]
+    fn converts_positions_both_ways() {
+        assert_eq!(to_out(48_000, 48_000, 44_100), 44_100);
+        assert_eq!(to_session(44_100, 48_000, 44_100), 48_000);
+    }
+
+    #[test]
+    fn volume_envelope_interpolates_in_db() {
+        let mut c = ClipPlan::plain(new_id(), "a.wav".into(), 0, 1_000, 0.0);
+        c.volume = vec![(100, 0.0), (300, -20.0)];
+        assert!(
+            (c.gain_at(0) - 1.0).abs() < 1e-6,
+            "held before the first point"
+        );
+        assert!((c.gain_at(200) - 0.316).abs() < 0.01, "-10 dB halfway");
+        assert!(
+            (c.gain_at(900) - 0.1).abs() < 1e-3,
+            "held after the last point"
+        );
+        c.volume = vec![(0, -60.0)];
+        assert_eq!(c.gain_at(10), 0.0, "the floor is silence");
+        assert!(!c.is_flat());
+    }
+
+    #[test]
+    fn loop_seams_dip_but_clip_edges_do_not() {
+        let mut c = ClipPlan::plain(new_id(), "a.wav".into(), 0, 10_000, 0.0);
+        c.loop_len = 4_000;
+        assert!(!c.is_flat());
+        assert_eq!(c.gain_at(0), 1.0, "the clip's own start is untouched");
+        assert_eq!(c.gain_at(2_000), 1.0, "mid-region is full level");
+        assert!(c.gain_at(4_000) < 0.01, "right at the seam");
+        assert!(c.gain_at(3_999) < 0.01, "just before the seam");
+        assert!(
+            (c.gain_at(4_060) - 0.504).abs() < 0.01,
+            "halfway out of the dip"
+        );
+        assert_eq!(c.gain_at(4_200), 1.0);
+        assert_eq!(c.gain_at(9_999), 1.0, "the clip's own end is untouched");
+        c.loop_phase = 3_950;
+        assert!(
+            c.gain_at(50) < 0.01,
+            "a seam just inside the left edge still dips"
+        );
+    }
+
+    #[test]
+    fn pan_envelope_balances_left_and_right() {
+        let mut c = ClipPlan::plain(new_id(), "a.wav".into(), 0, 1_000, 0.0);
+        assert_eq!(c.gains_at(10), [1.0, 1.0]);
+        c.pan = vec![(0, -100.0), (1_000, 100.0)];
+        assert!(!c.is_flat());
+        assert_eq!(c.gains_at(0), [1.0, 0.0], "full left");
+        assert_eq!(c.gains_at(500), [1.0, 1.0], "centered halfway");
+        let [l, r] = c.gains_at(750);
+        assert!(
+            (l - 0.5).abs() < 1e-3 && (r - 1.0).abs() < 1e-6,
+            "half right turns left down"
+        );
+        c.gain = 0.5;
+        assert_eq!(c.gains_at(1_000), [0.0, 0.5], "clip gain still applies");
+    }
+}

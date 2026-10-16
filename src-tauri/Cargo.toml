@@ -1,0 +1,142 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) The GeekCast Radio Network, LLC.
+# This file is part of Altered Audio Editor.
+
+[package]
+name = "altered-audio-editor"
+version = "0.1.0"
+description = "Free, open-source multitrack audio editor for podcasters and voiceover."
+authors = ["The GeekCast Radio Network, LLC"]
+license = "GPL-3.0-or-later"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+
+[lib]
+# The _lib suffix avoids a name clash with the binary on Windows.
+name = "altered_audio_editor_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = { version = "1", features = ["uuid1", "chrono04"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+thiserror = "2"
+tauri-plugin-opener = "2"
+url = "2"
+pathdiff = "0.2"
+roxmltree = "0.21"
+tauri-plugin-dialog = "2"
+cpal = "0.18.2"
+rubato = "5.0.1"
+rtrb = "0.4"
+audioadapter-buffers = "5.2"
+symphonia = { version = "0.6.1", default-features = false, features = ["opt-simd", "wav", "aiff", "pcm", "adpcm", "mp3", "flac", "isomp4", "aac", "alac", "ogg", "vorbis", "id3v2"] }
+hound = "3.5"
+ebur128 = "0.1.10"
+realfft = "3"
+opus-decoder = "0.1.1"
+mp3lame-encoder = "0.2.5"
+flacenc = { version = "0.5.1", default-features = false }
+zip = { version = "9.0.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+
+[dev-dependencies]
+pretty_assertions = "1"
+tempfile = "3"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+# Dev builds: the audio crates (decoders, resampler, FFT, audio I/O)
+# are optimized and our own code lightly, so playback and mixdowns run
+# at usable speed while developing. Everything else stays at the
+# default so builds stay quick.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package.audioadapter]
+opt-level = 3
+
+[profile.dev.package.audioadapter-buffers]
+opt-level = 3
+
+[profile.dev.package.audioadapter-sample]
+opt-level = 3
+
+[profile.dev.package.cpal]
+opt-level = 3
+
+[profile.dev.package.extended]
+opt-level = 3
+
+[profile.dev.package.hound]
+opt-level = 3
+
+[profile.dev.package.primal-check]
+opt-level = 3
+
+[profile.dev.package.realfft]
+opt-level = 3
+
+[profile.dev.package.rubato]
+opt-level = 3
+
+[profile.dev.package.rustfft]
+opt-level = 3
+
+[profile.dev.package.strength_reduce]
+opt-level = 3
+
+[profile.dev.package.symphonia]
+opt-level = 3
+
+[profile.dev.package.symphonia-bundle-flac]
+opt-level = 3
+
+[profile.dev.package.symphonia-bundle-mp3]
+opt-level = 3
+
+[profile.dev.package.symphonia-codec-aac]
+opt-level = 3
+
+[profile.dev.package.symphonia-codec-adpcm]
+opt-level = 3
+
+[profile.dev.package.symphonia-codec-alac]
+opt-level = 3
+
+[profile.dev.package.symphonia-codec-pcm]
+opt-level = 3
+
+[profile.dev.package.symphonia-codec-vorbis]
+opt-level = 3
+
+[profile.dev.package.symphonia-common]
+opt-level = 3
+
+[profile.dev.package.symphonia-core]
+opt-level = 3
+
+[profile.dev.package.symphonia-format-isomp4]
+opt-level = 3
+
+[profile.dev.package.symphonia-format-ogg]
+opt-level = 3
+
+[profile.dev.package.symphonia-format-riff]
+opt-level = 3
+
+[profile.dev.package.symphonia-metadata]
+opt-level = 3
+
+[profile.dev.package.transpose]
+opt-level = 3
+
+[profile.dev.package.ebur128]
+opt-level = 3

@@ -1,0 +1,21 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+*.tmp
+*.log
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+
+# Real sessions used for local import tests. Never committed.
+/samples/
+
+# Private project notes (host profiles, personal presets). Never committed.
+CLAUDE.local.md
+
+# Private project history. Never committed.
+/private/
+
+SyncToy_*.dat

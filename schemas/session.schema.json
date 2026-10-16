@@ -1,0 +1,1091 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Session",
+  "description": "A multitrack session.",
+  "type": "object",
+  "properties": {
+    "bit_depth": {
+      "description": "Mixing bit depth: 16, 24, or 32 (float).",
+      "type": "integer",
+      "format": "uint16",
+      "maximum": 65535,
+      "minimum": 0
+    },
+    "buses": {
+      "description": "Bus tracks, top to bottom.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Bus"
+      }
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "format": {
+      "description": "Always `altaudio.session`.",
+      "type": "string",
+      "const": "altaudio.session"
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "libraries": {
+      "description": "Library folders attached to this session.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "markers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Marker"
+      }
+    },
+    "master": {
+      "$ref": "#/$defs/MasterTrack"
+    },
+    "media": {
+      "description": "Audio files used by clips in this session.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/MediaRef"
+      }
+    },
+    "metadata": {
+      "description": "Scaffolding (P6, P7): episode metadata for show sync and export.",
+      "$ref": "#/$defs/EpisodeMetadata"
+    },
+    "modes": {
+      "description": "Podcast mode and Voiceover mode toggles, saved per session.",
+      "$ref": "#/$defs/SessionModes"
+    },
+    "modified": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "name": {
+      "type": "string"
+    },
+    "sample_rate": {
+      "description": "Session sample rate in Hz, for example 48000.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "schema_version": {
+      "description": "Version of this file format.",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "template_id": {
+      "description": "Template this session was created from, if any.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "tracks": {
+      "description": "Audio tracks, top to bottom.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Track"
+      }
+    },
+    "view": {
+      "description": "Where the user left off in the editor.",
+      "$ref": "#/$defs/SessionView"
+    }
+  },
+  "required": [
+    "format",
+    "schema_version",
+    "id",
+    "name",
+    "sample_rate",
+    "bit_depth",
+    "created",
+    "modified",
+    "media",
+    "tracks",
+    "buses",
+    "master",
+    "markers",
+    "view",
+    "modes",
+    "libraries",
+    "metadata"
+  ],
+  "$defs": {
+    "Bus": {
+      "description": "A bus track. Tracks and other buses can output to it.",
+      "type": "object",
+      "properties": {
+        "channels": {
+          "$ref": "#/$defs/ChannelLayout"
+        },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "effects": {
+          "$ref": "#/$defs/EffectChain"
+        },
+        "envelopes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Envelope"
+          }
+        },
+        "height": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "muted": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "output": {
+          "$ref": "#/$defs/Output"
+        },
+        "pan": {
+          "type": "number",
+          "format": "double"
+        },
+        "sends": {
+          "description": "Scaffolding (P2).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Send"
+          }
+        },
+        "solo": {
+          "type": "boolean"
+        },
+        "volume_db": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "channels",
+        "height",
+        "volume_db",
+        "pan",
+        "muted",
+        "solo",
+        "output",
+        "sends",
+        "effects",
+        "envelopes"
+      ]
+    },
+    "ChannelLayout": {
+      "description": "Mono or stereo. More layouts can be added without a version bump.",
+      "type": "string",
+      "enum": [
+        "mono",
+        "stereo"
+      ]
+    },
+    "ChapterInfo": {
+      "description": "Scaffolding (P7): extra data for chapter markers.",
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Clip": {
+      "description": "A non-destructive reference to part of a media file, placed on a\ntrack.",
+      "type": "object",
+      "properties": {
+        "color": {
+          "description": "Clip color as `#rrggbb`. None uses the track color.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "effects": {
+          "description": "Clip Voice Chain.",
+          "$ref": "#/$defs/EffectChain"
+        },
+        "envelopes": {
+          "description": "Clip automation lanes.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Envelope"
+          }
+        },
+        "fade_in": {
+          "$ref": "#/$defs/Fade"
+        },
+        "fade_out": {
+          "$ref": "#/$defs/Fade"
+        },
+        "gain_db": {
+          "type": "number",
+          "format": "double"
+        },
+        "group": {
+          "description": "Clips with the same group id are selected and moved together.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "locked": {
+          "description": "Locked in time: the clip cannot be moved.",
+          "type": "boolean"
+        },
+        "looped": {
+          "description": "Loop Clip: the source region from `source_in` to `source_out`\nrepeats to fill the clip. None plays the region once.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ClipLoop"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "media_id": {
+          "description": "The media file this clip plays.",
+          "type": "string",
+          "format": "uuid"
+        },
+        "muted": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "source_in": {
+          "description": "First source sample played, at the source file's rate.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "source_out": {
+          "description": "Source sample after the last one played (exclusive).",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "start": {
+          "description": "Timeline position of the clip's left edge, in session samples.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "media_id",
+        "start",
+        "source_in",
+        "source_out",
+        "gain_db",
+        "muted",
+        "locked",
+        "fade_in",
+        "fade_out",
+        "envelopes",
+        "effects"
+      ]
+    },
+    "ClipLoop": {
+      "description": "How a looped clip repeats its source region.",
+      "type": "object",
+      "properties": {
+        "length": {
+          "description": "Length of the clip on the timeline, in session samples.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "phase": {
+          "description": "Where in the region the clip's left edge falls, in source\nsamples from `source_in`. Splits and left trims move it.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "length",
+        "phase"
+      ]
+    },
+    "EffectChain": {
+      "description": "A Voice Chain: an ordered list of effect slots on a clip, track,\nbus, or the master.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Chain power. Off bypasses every slot.",
+          "type": "boolean"
+        },
+        "input_gain_db": {
+          "type": "number",
+          "format": "double"
+        },
+        "mix": {
+          "description": "Dry/wet mix from 0.0 (dry) to 1.0 (wet).",
+          "type": "number",
+          "format": "double"
+        },
+        "output_gain_db": {
+          "type": "number",
+          "format": "double"
+        },
+        "slots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EffectSlot"
+          }
+        }
+      },
+      "required": [
+        "enabled",
+        "input_gain_db",
+        "output_gain_db",
+        "mix",
+        "slots"
+      ]
+    },
+    "EffectSlot": {
+      "description": "Scaffolding (P5): one effect in a Voice Chain.",
+      "type": "object",
+      "properties": {
+        "effect": {
+          "description": "Internal effect id, for example `altaudio.parametric_eq`.",
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "params": {
+          "description": "Parameter values by name.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "preset": {
+          "description": "Name of the preset last loaded, if any.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "effect",
+        "enabled",
+        "params"
+      ]
+    },
+    "Envelope": {
+      "description": "An automation lane.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "points": {
+          "description": "Points sorted by position.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/EnvelopePoint"
+          }
+        },
+        "target": {
+          "$ref": "#/$defs/EnvelopeTarget"
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "enabled",
+        "points"
+      ]
+    },
+    "EnvelopeCurve": {
+      "description": "How the value moves from one point to the next.",
+      "type": "string",
+      "enum": [
+        "linear",
+        "hold",
+        "spline"
+      ]
+    },
+    "EnvelopePoint": {
+      "description": "A single automation point.",
+      "type": "object",
+      "properties": {
+        "curve": {
+          "$ref": "#/$defs/EnvelopeCurve"
+        },
+        "position": {
+          "description": "Position in session samples. For clip envelopes this is relative\nto the clip's left edge.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "value": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "position",
+        "value",
+        "curve"
+      ]
+    },
+    "EnvelopeTarget": {
+      "description": "What an envelope automates.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "volume"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "pan"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "description": "Scaffolding (P5): a parameter of an effect in the owner's Voice Chain.",
+          "type": "object",
+          "properties": {
+            "param": {
+              "type": "string"
+            },
+            "slot_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": {
+              "type": "string",
+              "const": "effect_param"
+            }
+          },
+          "required": [
+            "type",
+            "slot_id",
+            "param"
+          ]
+        }
+      ]
+    },
+    "EpisodeMetadata": {
+      "description": "Scaffolding (P6, P7): episode metadata for show sync and export.",
+      "type": "object",
+      "properties": {
+        "artist": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artwork": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "episode_number": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "explicit": {
+          "type": "boolean"
+        },
+        "season_number": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "show": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "show_id": {
+          "description": "Scaffolding (P6): show id in Podcast Manager.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "explicit"
+      ]
+    },
+    "Fade": {
+      "description": "A clip fade. Length 0 means no fade.",
+      "type": "object",
+      "properties": {
+        "curve": {
+          "description": "Curve bend from -1.0 to 1.0. 0.0 is the neutral shape.",
+          "type": "number",
+          "format": "double"
+        },
+        "length": {
+          "description": "Length in session samples.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "shape": {
+          "$ref": "#/$defs/FadeShape"
+        }
+      },
+      "required": [
+        "length",
+        "shape",
+        "curve"
+      ]
+    },
+    "FadeShape": {
+      "description": "Shape of a fade curve.",
+      "type": "string",
+      "enum": [
+        "linear",
+        "logarithmic",
+        "cosine"
+      ]
+    },
+    "Marker": {
+      "description": "A point or range marker on the session timeline.",
+      "type": "object",
+      "properties": {
+        "chapter": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChapterInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "contracted_duration": {
+          "description": "Scaffolding (P5): contracted length of an ad slot, in session\nsamples.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "description": {
+          "type": "string"
+        },
+        "duration": {
+          "description": "Length in session samples. 0 is a point marker.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "kind": {
+          "$ref": "#/$defs/MarkerKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "position": {
+          "description": "Position in session samples.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "position",
+        "duration",
+        "description"
+      ]
+    },
+    "MarkerKind": {
+      "description": "Kind of marker.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "cue",
+            "subclip"
+          ]
+        },
+        {
+          "description": "Scaffolding (P7): a podcast chapter embedded on export.",
+          "type": "string",
+          "const": "chapter"
+        },
+        {
+          "description": "Scaffolding (P5): an ad slot. Carries a contracted duration so\nthe read can be timed.",
+          "type": "string",
+          "const": "ad_slot"
+        },
+        {
+          "description": "Scaffolding (P7): a region exported as a social media clip.",
+          "type": "string",
+          "const": "social_clip"
+        }
+      ]
+    },
+    "MasterTrack": {
+      "description": "The master track.",
+      "type": "object",
+      "properties": {
+        "channels": {
+          "$ref": "#/$defs/ChannelLayout"
+        },
+        "effects": {
+          "$ref": "#/$defs/EffectChain"
+        },
+        "envelopes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Envelope"
+          }
+        },
+        "height": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "volume_db": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "channels",
+        "height",
+        "volume_db",
+        "effects",
+        "envelopes"
+      ]
+    },
+    "MediaRef": {
+      "description": "A source audio file referenced by clips.",
+      "type": "object",
+      "properties": {
+        "channels": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "length": {
+          "description": "Length in samples at the file's own rate.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "path": {
+          "description": "Absolute path when the session was last saved.",
+          "type": "string"
+        },
+        "relative_path": {
+          "description": "Path relative to the session file. Tried first on load so a\nsession folder can move between drives or machines.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sample_rate": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "sample_rate",
+        "channels",
+        "length"
+      ]
+    },
+    "Output": {
+      "description": "Where a track or bus sends its output.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "master"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "bus_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": {
+              "type": "string",
+              "const": "bus"
+            }
+          },
+          "required": [
+            "type",
+            "bus_id"
+          ]
+        }
+      ]
+    },
+    "Send": {
+      "description": "Scaffolding (P2): an aux send to a bus.",
+      "type": "object",
+      "properties": {
+        "bus_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "level_db": {
+          "type": "number",
+          "format": "double"
+        },
+        "pan": {
+          "type": "number",
+          "format": "double"
+        },
+        "pre_fader": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "bus_id",
+        "level_db",
+        "pan",
+        "pre_fader",
+        "enabled"
+      ]
+    },
+    "SessionModes": {
+      "description": "Panel mode toggles, saved with the session.",
+      "type": "object",
+      "properties": {
+        "podcast": {
+          "description": "Shows the Chapters, Transcript, and Podcast Publish panels.",
+          "type": "boolean"
+        },
+        "voiceover": {
+          "description": "Shows the Script, Take Lanes, and Delivery Check panels.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "podcast",
+        "voiceover"
+      ]
+    },
+    "SessionView": {
+      "description": "Saved editor view state.",
+      "type": "object",
+      "properties": {
+        "playhead": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "samples_per_pixel": {
+          "description": "Zoom as session samples per screen pixel.",
+          "type": "number",
+          "format": "double"
+        },
+        "scroll": {
+          "description": "Left edge of the visible timeline, in session samples.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "scroll_y": {
+          "description": "Vertical scroll of the track area, in pixels.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "selection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "samples_per_pixel",
+        "scroll",
+        "scroll_y",
+        "playhead"
+      ]
+    },
+    "TimeRange": {
+      "description": "A span of the timeline.",
+      "type": "object",
+      "properties": {
+        "end": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "start": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ]
+    },
+    "Track": {
+      "description": "An audio track.",
+      "type": "object",
+      "properties": {
+        "channels": {
+          "$ref": "#/$defs/ChannelLayout"
+        },
+        "clips": {
+          "description": "Clips on this track. Order does not matter; position does.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Clip"
+          }
+        },
+        "collapsed": {
+          "description": "Folded down to its name row in the Editor. Left out of the file when off.",
+          "type": "boolean"
+        },
+        "color": {
+          "description": "Track color as `#rrggbb`. None uses the default.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "effects": {
+          "$ref": "#/$defs/EffectChain"
+        },
+        "envelopes": {
+          "description": "Track automation lanes.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Envelope"
+          }
+        },
+        "height": {
+          "description": "Track height in the Editor, in pixels.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "host_profile_id": {
+          "description": "Scaffolding (P5): id of the host profile applied to this track,\nfor example `host`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "input": {
+          "description": "Scaffolding (P4): hardware input name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "monitor_input": {
+          "description": "Scaffolding (P4): input monitoring on.",
+          "type": "boolean"
+        },
+        "muted": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "output": {
+          "$ref": "#/$defs/Output"
+        },
+        "pan": {
+          "type": "number",
+          "format": "double"
+        },
+        "polarity_inverted": {
+          "description": "Flips the track's polarity (multiplies it by -1). Left out of the\nfile when off.",
+          "type": "boolean"
+        },
+        "record_armed": {
+          "description": "Scaffolding (P4): armed for recording.",
+          "type": "boolean"
+        },
+        "role": {
+          "$ref": "#/$defs/TrackRole"
+        },
+        "sends": {
+          "description": "Scaffolding (P2).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Send"
+          }
+        },
+        "solo": {
+          "type": "boolean"
+        },
+        "volume_db": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "role",
+        "channels",
+        "height",
+        "volume_db",
+        "pan",
+        "muted",
+        "solo",
+        "record_armed",
+        "monitor_input",
+        "output",
+        "sends",
+        "effects",
+        "clips",
+        "envelopes"
+      ]
+    },
+    "TrackRole": {
+      "description": "What kind of voice a track carries.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "standard"
+          ]
+        },
+        {
+          "description": "Scaffolding (P5): remote guest. Gets a softer gate, heavier noise\nreduction, and a telephone-bandwidth EQ.",
+          "type": "string",
+          "const": "guest"
+        }
+      ]
+    }
+  }
+}

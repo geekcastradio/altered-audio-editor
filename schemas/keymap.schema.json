@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Keymap",
+  "description": "A set of shortcut bindings.",
+  "type": "object",
+  "properties": {
+    "bindings": {
+      "description": "Action id to its shortcuts, for example `\"edit.undo\": [\"Ctrl+Z\"]`.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "format": {
+      "description": "Always `altaudio.keymap`.",
+      "type": "string",
+      "const": "altaudio.keymap"
+    },
+    "schema_version": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "format",
+    "schema_version",
+    "bindings"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "format": "altaudio.preferences",
+  "schema_version": 1,
+  "values": {
+    "drive-manager.audio-only": true,
+    "drive-manager.folder": "C:\\Shows\\Raw"
+  }
+}

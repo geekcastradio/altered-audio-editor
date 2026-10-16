@@ -1,0 +1,17 @@
+{
+  "format": "altaudio.workspace",
+  "schema_version": 1,
+  "id": "default",
+  "name": "Default",
+  "built_in": true,
+  "layout": {
+    "activeGroup": null,
+    "grid": {
+      "root": {
+        "data": [],
+        "type": "branch"
+      }
+    },
+    "panels": {}
+  }
+}

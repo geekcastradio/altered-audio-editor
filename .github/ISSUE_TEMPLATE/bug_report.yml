@@ -1,0 +1,21 @@
+name: Bug report
+description: Something doesn't work right
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Version
+      description: From Help > About.
+  - type: input
+    attributes:
+      label: Windows version
+  - type: textarea
+    attributes:
+      label: Files or screenshots
+      description: Attach a screenshot, or describe the audio file (format, length) if it's file related.

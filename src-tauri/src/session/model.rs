@@ -1,0 +1,561 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) The GeekCast Radio Network, LLC.
+// This file is part of Altered Audio Editor.
+
+//! The multitrack session model, saved as `.altaudio`.
+//!
+//! Units:
+//! - Timeline positions and lengths are in samples at the session
+//!   sample rate.
+//! - Source offsets (`source_in`, `source_out`) are in samples at the
+//!   source file's own rate, so a 44.1 kHz file in a 48 kHz session
+//!   never loses precision.
+//! - Levels are in dB. Pan runs from -100 (left) to 100 (right).
+//!
+//! Fields marked "Scaffolding (Pn)" are stored and round-tripped now
+//! but have no behavior until that phase.
+
+use std::path::PathBuf;
+
+use chrono::{DateTime, Utc};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use super::document::Document;
+
+/// Stable identifier for anything that can be referenced.
+pub type Id = Uuid;
+
+/// Creates a new random identifier.
+pub fn new_id() -> Id {
+    Uuid::new_v4()
+}
+
+/// A multitrack session.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Session {
+    /// Always `altaudio.session`.
+    #[schemars(extend("const" = "altaudio.session"))]
+    pub format: String,
+    /// Version of this file format.
+    pub schema_version: u32,
+
+    pub id: Id,
+    pub name: String,
+    /// Session sample rate in Hz, for example 48000.
+    pub sample_rate: u32,
+    /// Mixing bit depth: 16, 24, or 32 (float).
+    pub bit_depth: u16,
+    pub created: DateTime<Utc>,
+    pub modified: DateTime<Utc>,
+
+    /// Audio files used by clips in this session.
+    pub media: Vec<MediaRef>,
+    /// Audio tracks, top to bottom.
+    pub tracks: Vec<Track>,
+    /// Bus tracks, top to bottom.
+    pub buses: Vec<Bus>,
+    pub master: MasterTrack,
+    pub markers: Vec<Marker>,
+
+    /// Where the user left off in the editor.
+    pub view: SessionView,
+    /// Podcast mode and Voiceover mode toggles, saved per session.
+    pub modes: SessionModes,
+
+    /// Library folders attached to this session.
+    pub libraries: Vec<PathBuf>,
+    /// Template this session was created from, if any.
+    pub template_id: Option<Id>,
+
+    /// Scaffolding (P6, P7): episode metadata for show sync and export.
+    pub metadata: EpisodeMetadata,
+}
+
+impl Document for Session {
+    const FORMAT: &'static str = "altaudio.session";
+    const CURRENT_VERSION: u32 = 1;
+    const SCHEMA_FILE: &'static str = "session.schema.json";
+}
+
+impl Session {
+    /// Creates an empty session at the given sample rate.
+    pub fn new(name: impl Into<String>, sample_rate: u32) -> Self {
+        let now = Utc::now();
+        Self {
+            format: Self::FORMAT.into(),
+            schema_version: Self::CURRENT_VERSION,
+            id: new_id(),
+            name: name.into(),
+            sample_rate,
+            bit_depth: 32,
+            created: now,
+            modified: now,
+            media: Vec::new(),
+            tracks: Vec::new(),
+            buses: Vec::new(),
+            master: MasterTrack::default(),
+            markers: Vec::new(),
+            view: SessionView::default(),
+            modes: SessionModes::default(),
+            libraries: Vec::new(),
+            template_id: None,
+            metadata: EpisodeMetadata::default(),
+        }
+    }
+
+    /// Looks up a media file by id.
+    pub fn media_by_id(&self, id: Id) -> Option<&MediaRef> {
+        self.media.iter().find(|m| m.id == id)
+    }
+}
+
+/// A source audio file referenced by clips.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct MediaRef {
+    pub id: Id,
+    /// Absolute path when the session was last saved.
+    pub path: PathBuf,
+    /// Path relative to the session file. Tried first on load so a
+    /// session folder can move between drives or machines.
+    pub relative_path: Option<PathBuf>,
+    pub sample_rate: u32,
+    pub channels: u16,
+    /// Length in samples at the file's own rate.
+    pub length: u64,
+}
+
+/// Mono or stereo. More layouts can be added without a version bump.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ChannelLayout {
+    Mono,
+    #[default]
+    Stereo,
+}
+
+/// Where a track or bus sends its output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Output {
+    #[default]
+    Master,
+    Bus {
+        bus_id: Id,
+    },
+}
+
+/// Scaffolding (P2): an aux send to a bus.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Send {
+    pub id: Id,
+    pub bus_id: Id,
+    pub level_db: f64,
+    pub pan: f64,
+    pub pre_fader: bool,
+    pub enabled: bool,
+}
+
+/// What kind of voice a track carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TrackRole {
+    #[default]
+    Standard,
+    /// Scaffolding (P5): remote guest. Gets a softer gate, heavier noise
+    /// reduction, and a telephone-bandwidth EQ.
+    Guest,
+}
+
+/// An audio track.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Track {
+    pub id: Id,
+    pub name: String,
+    pub role: TrackRole,
+    /// Scaffolding (P5): id of the host profile applied to this track,
+    /// for example `host`.
+    pub host_profile_id: Option<String>,
+    pub channels: ChannelLayout,
+    /// Track color as `#rrggbb`. None uses the default.
+    pub color: Option<String>,
+    /// Track height in the Editor, in pixels.
+    pub height: u32,
+    /// Folded down to its name row in the Editor. Left out of the file when off.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub collapsed: bool,
+
+    pub volume_db: f64,
+    pub pan: f64,
+    pub muted: bool,
+    pub solo: bool,
+    /// Flips the track's polarity (multiplies it by -1). Left out of the
+    /// file when off.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub polarity_inverted: bool,
+
+    /// Scaffolding (P4): armed for recording.
+    pub record_armed: bool,
+    /// Scaffolding (P4): input monitoring on.
+    pub monitor_input: bool,
+    /// Scaffolding (P4): hardware input name.
+    pub input: Option<String>,
+
+    pub output: Output,
+    /// Scaffolding (P2).
+    pub sends: Vec<Send>,
+    pub effects: EffectChain,
+    /// Clips on this track. Order does not matter; position does.
+    pub clips: Vec<Clip>,
+    /// Track automation lanes.
+    pub envelopes: Vec<Envelope>,
+}
+
+impl Track {
+    /// Creates an empty track with default settings.
+    pub fn new(name: impl Into<String>, channels: ChannelLayout) -> Self {
+        Self {
+            id: new_id(),
+            name: name.into(),
+            role: TrackRole::Standard,
+            host_profile_id: None,
+            channels,
+            color: None,
+            height: 96,
+            collapsed: false,
+            volume_db: 0.0,
+            pan: 0.0,
+            muted: false,
+            solo: false,
+            polarity_inverted: false,
+            record_armed: false,
+            monitor_input: false,
+            input: None,
+            output: Output::Master,
+            sends: Vec::new(),
+            effects: EffectChain::default(),
+            clips: Vec::new(),
+            envelopes: Vec::new(),
+        }
+    }
+}
+
+/// A bus track. Tracks and other buses can output to it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Bus {
+    pub id: Id,
+    pub name: String,
+    pub channels: ChannelLayout,
+    pub color: Option<String>,
+    pub height: u32,
+    pub volume_db: f64,
+    pub pan: f64,
+    pub muted: bool,
+    pub solo: bool,
+    pub output: Output,
+    /// Scaffolding (P2).
+    pub sends: Vec<Send>,
+    pub effects: EffectChain,
+    pub envelopes: Vec<Envelope>,
+}
+
+impl Bus {
+    /// Creates an empty bus routed to the master.
+    pub fn new(name: impl Into<String>, channels: ChannelLayout) -> Self {
+        Self {
+            id: new_id(),
+            name: name.into(),
+            channels,
+            color: None,
+            height: 72,
+            volume_db: 0.0,
+            pan: 0.0,
+            muted: false,
+            solo: false,
+            output: Output::Master,
+            sends: Vec::new(),
+            effects: EffectChain::default(),
+            envelopes: Vec::new(),
+        }
+    }
+}
+
+/// The master track.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct MasterTrack {
+    pub channels: ChannelLayout,
+    pub height: u32,
+    pub volume_db: f64,
+    pub effects: EffectChain,
+    pub envelopes: Vec<Envelope>,
+}
+
+impl Default for MasterTrack {
+    fn default() -> Self {
+        Self {
+            channels: ChannelLayout::Stereo,
+            height: 72,
+            volume_db: 0.0,
+            effects: EffectChain::default(),
+            envelopes: Vec::new(),
+        }
+    }
+}
+
+/// A non-destructive reference to part of a media file, placed on a
+/// track.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Clip {
+    pub id: Id,
+    pub name: String,
+    /// The media file this clip plays.
+    pub media_id: Id,
+    /// Timeline position of the clip's left edge, in session samples.
+    pub start: u64,
+    /// First source sample played, at the source file's rate.
+    pub source_in: u64,
+    /// Source sample after the last one played (exclusive).
+    pub source_out: u64,
+    pub gain_db: f64,
+    pub muted: bool,
+    /// Locked in time: the clip cannot be moved.
+    pub locked: bool,
+    /// Clip color as `#rrggbb`. None uses the track color.
+    pub color: Option<String>,
+    pub fade_in: Fade,
+    pub fade_out: Fade,
+    /// Clip automation lanes.
+    pub envelopes: Vec<Envelope>,
+    /// Clip Voice Chain.
+    pub effects: EffectChain,
+    /// Clips with the same group id are selected and moved together.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<Id>,
+    /// Loop Clip: the source region from `source_in` to `source_out`
+    /// repeats to fill the clip. None plays the region once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub looped: Option<ClipLoop>,
+}
+
+/// How a looped clip repeats its source region.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ClipLoop {
+    /// Length of the clip on the timeline, in session samples.
+    pub length: u64,
+    /// Where in the region the clip's left edge falls, in source
+    /// samples from `source_in`. Splits and left trims move it.
+    pub phase: u64,
+}
+
+impl Clip {
+    /// Length on the timeline in session samples, given the source rate.
+    pub fn timeline_length(&self, source_rate: u32, session_rate: u32) -> u64 {
+        if let Some(l) = self.looped {
+            return l.length;
+        }
+        let src = self.source_out.saturating_sub(self.source_in);
+        if source_rate == session_rate || source_rate == 0 {
+            return src;
+        }
+        ((u128::from(src) * u128::from(session_rate) + u128::from(source_rate) / 2)
+            / u128::from(source_rate)) as u64
+    }
+}
+
+/// Shape of a fade curve.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FadeShape {
+    #[default]
+    Linear,
+    Logarithmic,
+    Cosine,
+}
+
+/// A clip fade. Length 0 means no fade.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, JsonSchema)]
+pub struct Fade {
+    /// Length in session samples.
+    pub length: u64,
+    pub shape: FadeShape,
+    /// Curve bend from -1.0 to 1.0. 0.0 is the neutral shape.
+    pub curve: f64,
+}
+
+/// What an envelope automates.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum EnvelopeTarget {
+    Volume,
+    Pan,
+    /// Scaffolding (P5): a parameter of an effect in the owner's Voice Chain.
+    EffectParam {
+        slot_id: Id,
+        param: String,
+    },
+}
+
+/// How the value moves from one point to the next.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvelopeCurve {
+    #[default]
+    Linear,
+    Hold,
+    Spline,
+}
+
+/// A single automation point.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct EnvelopePoint {
+    /// Position in session samples. For clip envelopes this is relative
+    /// to the clip's left edge.
+    pub position: u64,
+    pub value: f64,
+    pub curve: EnvelopeCurve,
+}
+
+/// An automation lane.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Envelope {
+    pub id: Id,
+    pub target: EnvelopeTarget,
+    pub enabled: bool,
+    /// Points sorted by position.
+    pub points: Vec<EnvelopePoint>,
+}
+
+/// Kind of marker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MarkerKind {
+    #[default]
+    Cue,
+    Subclip,
+    /// Scaffolding (P7): a podcast chapter embedded on export.
+    Chapter,
+    /// Scaffolding (P5): an ad slot. Carries a contracted duration so
+    /// the read can be timed.
+    AdSlot,
+    /// Scaffolding (P7): a region exported as a social media clip.
+    SocialClip,
+}
+
+/// Scaffolding (P7): extra data for chapter markers.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+pub struct ChapterInfo {
+    pub url: Option<String>,
+    pub image: Option<PathBuf>,
+}
+
+/// A point or range marker on the session timeline.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Marker {
+    pub id: Id,
+    pub name: String,
+    pub kind: MarkerKind,
+    /// Position in session samples.
+    pub position: u64,
+    /// Length in session samples. 0 is a point marker.
+    pub duration: u64,
+    pub description: String,
+    pub chapter: Option<ChapterInfo>,
+    /// Scaffolding (P5): contracted length of an ad slot, in session
+    /// samples.
+    pub contracted_duration: Option<u64>,
+}
+
+/// A Voice Chain: an ordered list of effect slots on a clip, track,
+/// bus, or the master.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct EffectChain {
+    /// Chain power. Off bypasses every slot.
+    pub enabled: bool,
+    pub input_gain_db: f64,
+    pub output_gain_db: f64,
+    /// Dry/wet mix from 0.0 (dry) to 1.0 (wet).
+    pub mix: f64,
+    pub slots: Vec<EffectSlot>,
+}
+
+impl Default for EffectChain {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            input_gain_db: 0.0,
+            output_gain_db: 0.0,
+            mix: 1.0,
+            slots: Vec::new(),
+        }
+    }
+}
+
+/// Scaffolding (P5): one effect in a Voice Chain.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct EffectSlot {
+    pub id: Id,
+    /// Internal effect id, for example `altaudio.parametric_eq`.
+    pub effect: String,
+    pub enabled: bool,
+    /// Parameter values by name.
+    pub params: std::collections::BTreeMap<String, f64>,
+    /// Name of the preset last loaded, if any.
+    pub preset: Option<String>,
+}
+
+/// A span of the timeline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct TimeRange {
+    pub start: u64,
+    pub end: u64,
+}
+
+/// Saved editor view state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct SessionView {
+    /// Zoom as session samples per screen pixel.
+    pub samples_per_pixel: f64,
+    /// Left edge of the visible timeline, in session samples.
+    pub scroll: u64,
+    /// Vertical scroll of the track area, in pixels.
+    pub scroll_y: u32,
+    pub playhead: u64,
+    pub selection: Option<TimeRange>,
+}
+
+impl Default for SessionView {
+    fn default() -> Self {
+        Self {
+            samples_per_pixel: 1024.0,
+            scroll: 0,
+            scroll_y: 0,
+            playhead: 0,
+            selection: None,
+        }
+    }
+}
+
+/// Panel mode toggles, saved with the session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+pub struct SessionModes {
+    /// Shows the Chapters, Transcript, and Podcast Publish panels.
+    pub podcast: bool,
+    /// Shows the Script, Take Lanes, and Delivery Check panels.
+    pub voiceover: bool,
+}
+
+/// Scaffolding (P6, P7): episode metadata for show sync and export.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+pub struct EpisodeMetadata {
+    /// Scaffolding (P6): show id in Podcast Manager.
+    pub show_id: Option<String>,
+    pub title: Option<String>,
+    pub show: Option<String>,
+    pub episode_number: Option<u32>,
+    pub season_number: Option<u32>,
+    pub description: Option<String>,
+    pub artist: Option<String>,
+    pub artwork: Option<PathBuf>,
+    pub explicit: bool,
+}

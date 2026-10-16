@@ -1,0 +1,16 @@
+{
+  "format": "altaudio.host_profile",
+  "schema_version": 1,
+  "id": "host",
+  "name": "Host",
+  "person": "Pat",
+  "role": "standard",
+  "gate": {
+    "threshold_db": -14.0,
+    "attack_ms": 2.0,
+    "hold_ms": 50.0,
+    "release_ms": 200.0
+  },
+  "voice_chain_preset": "Podcast Voice",
+  "notes": "Primary host."
+}

@@ -1,0 +1,37 @@
+{
+  "format": "altaudio.library",
+  "schema_version": 1,
+  "id": "00000000-0000-0000-0000-0000000003e8",
+  "name": "Network promos",
+  "scope": "network",
+  "created": "2026-10-11T12:00:00Z",
+  "items": [
+    {
+      "id": "00000000-0000-0000-0000-00000000044c",
+      "name": "Guest promo",
+      "kind": "audio",
+      "file": "items/guest-promo.wav",
+      "copied": true,
+      "original_path": "C:/Users/host/Downloads/guest-promo.wav",
+      "sample_rate": 48000,
+      "channels": 2,
+      "length": 1440000,
+      "tags": [
+        "promo",
+        "guest"
+      ],
+      "notes": "Use before the second segment.",
+      "color": "#b8693f",
+      "added": "2026-10-11T12:00:00Z"
+    }
+  ],
+  "collections": [
+    {
+      "id": "00000000-0000-0000-0000-0000000004b0",
+      "name": "Guest promos",
+      "items": [
+        "00000000-0000-0000-0000-00000000044c"
+      ]
+    }
+  ]
+}

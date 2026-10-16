@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Preferences",
+  "type": "object",
+  "properties": {
+    "format": {
+      "description": "Always `altaudio.preferences`.",
+      "type": "string",
+      "const": "altaudio.preferences"
+    },
+    "schema_version": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "values": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "format",
+    "schema_version",
+    "values"
+  ]
+}

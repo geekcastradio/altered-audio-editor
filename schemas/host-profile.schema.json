@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HostProfile",
+  "description": "Voice processing settings for one host or guest type.",
+  "type": "object",
+  "properties": {
+    "format": {
+      "description": "Always `altaudio.host_profile`.",
+      "type": "string",
+      "const": "altaudio.host_profile"
+    },
+    "gate": {
+      "$ref": "#/$defs/GateSettings"
+    },
+    "id": {
+      "description": "Stable short id, for example `host` or `guest`.",
+      "type": "string"
+    },
+    "name": {
+      "description": "Display name, for example `Host`.",
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "person": {
+      "description": "Who this profile is for. None for generic profiles like Guest.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "role": {
+      "description": "Track role this profile is meant for.",
+      "$ref": "#/$defs/TrackRole"
+    },
+    "schema_version": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "voice_chain_preset": {
+      "description": "Name of the Voice Chain preset loaded on the track.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "format",
+    "schema_version",
+    "id",
+    "name",
+    "role",
+    "gate",
+    "notes"
+  ],
+  "$defs": {
+    "GateSettings": {
+      "description": "Breathing-removal gate settings for one voice.",
+      "type": "object",
+      "properties": {
+        "attack_ms": {
+          "type": "number",
+          "format": "double"
+        },
+        "hold_ms": {
+          "type": "number",
+          "format": "double"
+        },
+        "release_ms": {
+          "type": "number",
+          "format": "double"
+        },
+        "threshold_db": {
+          "description": "Open threshold in dB, for example -14.0.",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "threshold_db",
+        "attack_ms",
+        "hold_ms",
+        "release_ms"
+      ]
+    },
+    "TrackRole": {
+      "description": "What kind of voice a track carries.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "standard"
+          ]
+        },
+        {
+          "description": "Scaffolding (P5): remote guest. Gets a softer gate, heavier noise\nreduction, and a telephone-bandwidth EQ.",
+          "type": "string",
+          "const": "guest"
+        }
+      ]
+    }
+  }
+}

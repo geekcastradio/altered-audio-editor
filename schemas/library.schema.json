@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Library",
+  "description": "A library of reusable assets: promos, intros, outros, beds.",
+  "type": "object",
+  "properties": {
+    "collections": {
+      "description": "Named groups of items (shown as bins). An item can be in several.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Collection"
+      }
+    },
+    "color": {
+      "description": "Show color for the library's badge, as a palette token or `#rrggbb`.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "format": {
+      "description": "Always `altaudio.library`.",
+      "type": "string",
+      "const": "altaudio.library"
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/LibraryItem"
+      }
+    },
+    "name": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    },
+    "scope": {
+      "description": "Scaffolding (P7): show library or network-wide library.",
+      "$ref": "#/$defs/LibraryScope"
+    }
+  },
+  "required": [
+    "format",
+    "schema_version",
+    "id",
+    "name",
+    "scope",
+    "created",
+    "items",
+    "collections"
+  ],
+  "$defs": {
+    "Collection": {
+      "description": "A named group of library items.",
+      "type": "object",
+      "properties": {
+        "color": {
+          "description": "Bin color as a palette token or `#rrggbb`. None is neutral.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "items": {
+          "description": "Item ids, in display order.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "items"
+      ]
+    },
+    "LibraryItem": {
+      "description": "One asset in a library.",
+      "type": "object",
+      "properties": {
+        "added": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "channels": {
+          "type": "integer",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0
+        },
+        "color": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "copied": {
+          "description": "True when the file was copied into the library folder (the\ndefault). False when the item links to a file elsewhere.",
+          "type": "boolean"
+        },
+        "file": {
+          "description": "Path inside the library folder when copied in, or an absolute\npath when linked.",
+          "type": "string"
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "kind": {
+          "$ref": "#/$defs/LibraryItemKind"
+        },
+        "length": {
+          "description": "Length in samples at the file's own rate.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "name": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "original_path": {
+          "description": "Where the file came from before it was copied in.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sample_rate": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "file",
+        "copied",
+        "sample_rate",
+        "channels",
+        "length",
+        "tags",
+        "notes",
+        "added"
+      ]
+    },
+    "LibraryItemKind": {
+      "description": "What a library item holds. More kinds can be added without a\nversion bump.",
+      "type": "string",
+      "enum": [
+        "audio"
+      ]
+    },
+    "LibraryScope": {
+      "description": "Who a library serves.",
+      "oneOf": [
+        {
+          "description": "Assets for one show.",
+          "type": "string",
+          "const": "show"
+        },
+        {
+          "description": "Scaffolding (P7): shared across every show on the network, such\nas bumpers, promos, and legal reads.",
+          "type": "string",
+          "const": "network"
+        }
+      ]
+    }
+  }
+}

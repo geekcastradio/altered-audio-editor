@@ -1,0 +1,297 @@
+{
+  "format": "altaudio.session",
+  "schema_version": 1,
+  "id": "00000000-0000-0000-0000-000000000001",
+  "name": "Show 412",
+  "sample_rate": 48000,
+  "bit_depth": 32,
+  "created": "2026-10-11T12:00:00Z",
+  "modified": "2026-10-11T12:00:00Z",
+  "media": [
+    {
+      "id": "00000000-0000-0000-0000-000000000064",
+      "path": "C:/GCRN/Show/412/host.wav",
+      "relative_path": "host.wav",
+      "sample_rate": 44100,
+      "channels": 1,
+      "length": 158760000
+    }
+  ],
+  "tracks": [
+    {
+      "id": "00000000-0000-0000-0000-0000000000c8",
+      "name": "Host",
+      "role": "standard",
+      "host_profile_id": "host",
+      "channels": "mono",
+      "color": "#3f73b8",
+      "height": 120,
+      "volume_db": -2.0,
+      "pan": -15.0,
+      "muted": false,
+      "solo": true,
+      "record_armed": true,
+      "monitor_input": false,
+      "input": "Mic 1",
+      "output": {
+        "type": "bus",
+        "bus_id": "00000000-0000-0000-0000-000000000190"
+      },
+      "sends": [
+        {
+          "id": "00000000-0000-0000-0000-0000000002bc",
+          "bus_id": "00000000-0000-0000-0000-000000000190",
+          "level_db": -12.0,
+          "pan": 0.0,
+          "pre_fader": true,
+          "enabled": false
+        }
+      ],
+      "effects": {
+        "enabled": true,
+        "input_gain_db": -1.5,
+        "output_gain_db": 2.0,
+        "mix": 0.85,
+        "slots": [
+          {
+            "id": "00000000-0000-0000-0000-000000000384",
+            "effect": "altaudio.dynamics",
+            "enabled": false,
+            "params": {
+              "ratio": 4.0,
+              "threshold_db": -20.0
+            },
+            "preset": "Voice leveler"
+          }
+        ]
+      },
+      "clips": [
+        {
+          "id": "00000000-0000-0000-0000-00000000012c",
+          "name": "Cold open",
+          "media_id": "00000000-0000-0000-0000-000000000064",
+          "start": 48000,
+          "source_in": 44100,
+          "source_out": 441000,
+          "gain_db": -3.25,
+          "muted": false,
+          "locked": true,
+          "color": "#3d8f6a",
+          "fade_in": {
+            "length": 4800,
+            "shape": "cosine",
+            "curve": 0.25
+          },
+          "fade_out": {
+            "length": 9600,
+            "shape": "logarithmic",
+            "curve": -0.5
+          },
+          "envelopes": [
+            {
+              "id": "00000000-0000-0000-0000-000000000321",
+              "target": {
+                "type": "volume"
+              },
+              "enabled": true,
+              "points": [
+                {
+                  "position": 0,
+                  "value": -3.0,
+                  "curve": "linear"
+                }
+              ]
+            }
+          ],
+          "effects": {
+            "enabled": true,
+            "input_gain_db": 0.0,
+            "output_gain_db": 0.0,
+            "mix": 1.0,
+            "slots": []
+          }
+        }
+      ],
+      "envelopes": [
+        {
+          "id": "00000000-0000-0000-0000-000000000320",
+          "target": {
+            "type": "effect_param",
+            "slot_id": "00000000-0000-0000-0000-000000000384",
+            "param": "threshold_db"
+          },
+          "enabled": true,
+          "points": [
+            {
+              "position": 0,
+              "value": 0.0,
+              "curve": "linear"
+            },
+            {
+              "position": 48000,
+              "value": -6.5,
+              "curve": "spline"
+            },
+            {
+              "position": 96000,
+              "value": -6.5,
+              "curve": "hold"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000000c9",
+      "name": "Guest",
+      "role": "guest",
+      "host_profile_id": "guest",
+      "channels": "mono",
+      "color": "#3f73b8",
+      "height": 120,
+      "volume_db": -2.0,
+      "pan": -15.0,
+      "muted": false,
+      "solo": true,
+      "record_armed": true,
+      "monitor_input": false,
+      "input": "Mic 1",
+      "output": {
+        "type": "master"
+      },
+      "sends": [],
+      "effects": {
+        "enabled": true,
+        "input_gain_db": 0.0,
+        "output_gain_db": 0.0,
+        "mix": 1.0,
+        "slots": []
+      },
+      "clips": [],
+      "envelopes": []
+    }
+  ],
+  "buses": [
+    {
+      "id": "00000000-0000-0000-0000-000000000190",
+      "name": "Voices",
+      "channels": "stereo",
+      "color": null,
+      "height": 80,
+      "volume_db": 1.5,
+      "pan": 0.0,
+      "muted": true,
+      "solo": false,
+      "output": {
+        "type": "master"
+      },
+      "sends": [],
+      "effects": {
+        "enabled": true,
+        "input_gain_db": 0.0,
+        "output_gain_db": 0.0,
+        "mix": 1.0,
+        "slots": []
+      },
+      "envelopes": []
+    }
+  ],
+  "master": {
+    "channels": "stereo",
+    "height": 64,
+    "volume_db": -0.5,
+    "effects": {
+      "enabled": true,
+      "input_gain_db": -1.5,
+      "output_gain_db": 2.0,
+      "mix": 0.85,
+      "slots": [
+        {
+          "id": "00000000-0000-0000-0000-000000000384",
+          "effect": "altaudio.dynamics",
+          "enabled": false,
+          "params": {
+            "ratio": 4.0,
+            "threshold_db": -20.0
+          },
+          "preset": "Voice leveler"
+        }
+      ]
+    },
+    "envelopes": []
+  },
+  "markers": [
+    {
+      "id": "00000000-0000-0000-0000-0000000001f4",
+      "name": "Segment 2",
+      "kind": "chapter",
+      "position": 1440000,
+      "duration": 0,
+      "description": "News roundup",
+      "chapter": {
+        "url": "https://thegcrn.com",
+        "image": "art/segment2.png"
+      },
+      "contracted_duration": null
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000001f5",
+      "name": "Ad read",
+      "kind": "subclip",
+      "position": 2000000,
+      "duration": 1440000,
+      "description": "",
+      "chapter": null,
+      "contracted_duration": null
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000001f6",
+      "name": "Sponsor read",
+      "kind": "ad_slot",
+      "position": 3000000,
+      "duration": 2880000,
+      "description": "",
+      "chapter": null,
+      "contracted_duration": 2880000
+    },
+    {
+      "id": "00000000-0000-0000-0000-0000000001f7",
+      "name": "Best moment",
+      "kind": "social_clip",
+      "position": 4000000,
+      "duration": 1440000,
+      "description": "",
+      "chapter": null,
+      "contracted_duration": null
+    }
+  ],
+  "view": {
+    "samples_per_pixel": 512.5,
+    "scroll": 96000,
+    "scroll_y": 40,
+    "playhead": 123456,
+    "selection": {
+      "start": 48000,
+      "end": 96000
+    }
+  },
+  "modes": {
+    "podcast": true,
+    "voiceover": false
+  },
+  "libraries": [
+    "C:/GCRN/Libraries/Promos"
+  ],
+  "template_id": "00000000-0000-0000-0000-000000000002",
+  "metadata": {
+    "show_id": "show",
+    "title": "Episode 412",
+    "show": "Show",
+    "episode_number": 412,
+    "season_number": null,
+    "description": "This week on the show.",
+    "artist": "The GCRN",
+    "artwork": "art/412.png",
+    "explicit": false
+  }
+}

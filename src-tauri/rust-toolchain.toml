@@ -1,0 +1,4 @@
+# Use current stable Rust with the lint and format tools CI runs.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

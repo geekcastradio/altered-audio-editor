@@ -1,0 +1,122 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) The GeekCast Radio Network, LLC.
+// This file is part of Altered Audio Editor.
+
+/**
+ * The Waveform editor's document: one audio file, held by the core as a
+ * one-track session whose clips are the edit list. It has its own undo
+ * history and its own transport, so it never disturbs the multitrack
+ * session.
+ */
+
+import { editor } from "./editor";
+import { writable, type Readable } from "svelte/store";
+import { UndoStack } from "../commands";
+import { transportStatus, transportStop, waveApply, waveClose, waveNew, waveNewFromClips, waveOpen, wavePlay, waveSave, waveSetView, type WaveDocRaw } from "../app/core";
+import { SessionStore, type ClipDoc, type MediaRefDoc, type Op, type SessionDoc, type ViewDoc } from "./session";
+import { TransportStore } from "./transport";
+import type { SpectralShape } from "../panels/editor/spectrum";
+
+export interface WaveFile {
+  /** The file being edited. */
+  path: string;
+  /** Container, for example "WAV". Only WAV files save in place. */
+  format: string;
+  bitDepth: number | null;
+  /** Not saved anywhere yet: Save goes to Save As. */
+  untitled: boolean;
+}
+
+const fileState = writable<WaveFile | null>(null);
+let fileValue: WaveFile | null = null;
+fileState.subscribe((v) => (fileValue = v));
+
+/** The open file, or null when the Waveform editor is empty. */
+export const waveFile: Readable<WaveFile | null> & { current(): WaveFile | null } = {
+  subscribe: fileState.subscribe,
+  current: () => fileValue,
+};
+
+/** The edit list, mirrored from the core. */
+export const wave = new SessionStore({
+  get: async () => {
+    throw new Error("Open a file in the Waveform editor first.");
+  },
+  apply: (op: Op) => waveApply<Op, SessionDoc>(op),
+  setView: (view: ViewDoc) => waveSetView(view),
+});
+
+/** Zoom commands of the visible Waveform view, set while it is mounted. */
+export const waveZoom: { run: ((kind: "in" | "out" | "full" | "selection" | "amp-in" | "amp-out") => void) | null } = { run: null };
+
+/** Undo history for the Waveform editor's file. */
+export const waveHistory = new UndoStack({ baseLabel: "Open" });
+
+/** Play, pause and stop for the Waveform editor's file. */
+export const waveTransport = new TransportStore({ play: (from) => wavePlay(from, editor.current().playMode), stop: transportStop, status: transportStatus }, wave);
+
+function adopt(doc: WaveDocRaw<SessionDoc>): void {
+  wave.set(doc.session, doc.path);
+  fileState.set({ path: doc.path, format: doc.format, bitDepth: doc.bit_depth, untitled: doc.untitled });
+}
+
+/** Opens a file, replacing the one open now. The caller asks about unsaved edits first. */
+export async function openWaveFile(path: string): Promise<void> {
+  spectralSelection.set(null);
+  await waveTransport.stop();
+  const doc = await waveOpen<SessionDoc>(path);
+  adopt(doc);
+  await waveHistory.clear("Open");
+}
+
+let untitledCount = 0;
+
+/** Paste to New File: a new untitled file made from clips placed from 0. */
+export async function newWaveFromClips(sampleRate: number, clips: ClipDoc[], media: MediaRefDoc[]): Promise<void> {
+  spectralSelection.set(null);
+  await waveTransport.stop();
+  const channels = Math.min(2, Math.max(1, ...media.map((m) => m.channels)));
+  untitledCount += 1;
+  const doc = await waveNewFromClips<SessionDoc, ClipDoc, MediaRefDoc>(`Untitled ${untitledCount}`, sampleRate, channels, clips, media);
+  adopt(doc);
+  await waveHistory.clear("New");
+  // A new file is unsaved work.
+  await waveHistory.markUnsaved();
+}
+
+/** File > New Audio File: an empty untitled file. */
+export async function newEmptyWaveFile(name: string, sampleRate: number, channels: number, bitDepth: number): Promise<void> {
+  spectralSelection.set(null);
+  await waveTransport.stop();
+  const doc = await waveNew<SessionDoc>(name, sampleRate, channels, bitDepth);
+  adopt(doc);
+  await waveHistory.clear("New");
+}
+
+export async function closeWaveFile(): Promise<void> {
+  spectralSelection.set(null);
+  await waveTransport.stop();
+  await waveClose();
+  fileState.set(null);
+  await waveHistory.clear("Open");
+}
+
+/** True when the file is a WAV, the only kind saved in place. */
+export function savesInPlace(f: WaveFile | null): boolean {
+  return !!f && !f.untitled && ["WAV", "FLAC", "MP3"].includes(f.format.toUpperCase());
+}
+
+/**
+ * Saves the edits. Null `path` replaces the open file; a path writes a
+ * new file and the editor moves to it. Either way the edit list starts
+ * fresh on the saved audio, so the history is cleared.
+ */
+export async function saveWaveFile(path: string | null, bitDepth: number | null = null): Promise<void> {
+  await waveTransport.stop();
+  const doc = await waveSave<SessionDoc>(path, bitDepth);
+  adopt(doc);
+  await waveHistory.clear(path ? "Saved As" : "Saved");
+}
+
+/** The current spectral selection in the Waveform editor: boxes, lassos and brush strokes. Null when none. */
+export const spectralSelection = writable<readonly SpectralShape[] | null>(null);

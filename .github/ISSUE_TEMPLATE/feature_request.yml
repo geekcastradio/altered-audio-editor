@@ -1,0 +1,13 @@
+name: Feature idea
+description: Suggest something new
+labels: [enhancement]
+body:
+  - type: textarea
+    attributes:
+      label: What you want to do
+      description: Describe the task you're trying to get done, not another program's feature name.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: How you'd expect it to work

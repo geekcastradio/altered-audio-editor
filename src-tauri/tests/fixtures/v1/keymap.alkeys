@@ -1,0 +1,10 @@
+{
+  "format": "altaudio.keymap",
+  "schema_version": 1,
+  "bindings": {
+    "edit.find": [],
+    "help.about": [
+      "F1"
+    ]
+  }
+}

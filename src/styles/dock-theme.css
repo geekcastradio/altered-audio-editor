@@ -1,0 +1,237 @@
+/*
+  SPDX-License-Identifier: GPL-3.0-or-later
+  Copyright (c) The GeekCast Radio Network, LLC.
+  This file is part of Altered Audio Editor.
+
+  Docking theme. Maps the docking library's variables onto our design
+  tokens. Compact tab strips, flat dark chrome, a thin accent line on the
+  active tab of the focused group.
+*/
+
+.dockview-theme-altaudio {
+  color-scheme: dark;
+
+  --dv-group-view-background-color: var(--surface-1);
+  --dv-tabs-and-actions-container-background-color: var(--surface-0);
+  --dv-tabs-and-actions-container-height: 24px;
+  --dv-tabs-and-actions-container-font-size: var(--font-size);
+  --dv-tab-font-size: var(--font-size);
+
+  --dv-activegroup-visiblepanel-tab-background-color: var(--surface-1);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--surface-0);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--surface-1);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--surface-0);
+  --dv-activegroup-visiblepanel-tab-color: var(--text);
+  --dv-activegroup-hiddenpanel-tab-color: var(--text-dim);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--text-dim);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--text-faint);
+  --dv-tab-divider-color: var(--surface-0);
+
+  --dv-separator-border: transparent;
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: var(--accent-dim);
+  --dv-active-sash-transition-delay: 0.15s;
+
+  --dv-drag-over-background-color: rgba(63, 169, 245, 0.18);
+  --dv-drag-over-border-color: var(--accent);
+  --dv-drag-over-border: 1px solid var(--accent);
+  --dv-icon-hover-background-color: var(--surface-3);
+  --dv-paneview-active-outline-color: var(--accent);
+  --dv-tabs-container-scrollbar-color: var(--border-strong);
+
+  --dv-floating-box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+  --dv-floating-border: 1px solid var(--border-strong);
+  --dv-floating-titlebar-height: 20px;
+
+  --dv-border-radius: 0px;
+  --dv-tab-margin: 0;
+  --dv-spacing-padding: 0px;
+  --dv-overlay-z-index: 999;
+
+  height: 100%;
+  font-family: var(--font-ui);
+  background: var(--gutter);
+}
+
+/* Each panel group sits in its own frame with a thin gutter around it,
+   so dense panels stay easy to tell apart on long sessions. */
+.dockview-theme-altaudio .dv-groupview {
+  border: 2px solid var(--gutter);
+  box-sizing: border-box;
+}
+
+.dockview-theme-altaudio .dv-groupview.dv-active-group {
+  border-color: var(--gutter);
+}
+
+/* Panel chrome is never text-selectable; panel content opts back in. */
+.dockview-theme-altaudio .dv-tabs-and-actions-container,
+.aa-panel-body {
+  user-select: none;
+}
+
+.dockview-theme-altaudio .dv-tab {
+  padding: 0 5px;
+}
+
+/* No close button on tabs, so a stray click never closes a panel.
+   Panels close from the tab's right-click menu or the Window menu. */
+.dockview-theme-altaudio .dv-tab .dv-default-tab .dv-default-tab-content {
+  margin-right: 0;
+}
+
+.dockview-theme-altaudio .dv-tab .dv-default-tab .dv-default-tab-action {
+  display: none;
+}
+
+/* The right actions container stays in the flow so the tab overflow
+   button (which dockview puts there) takes real space instead of
+   covering a tab. Our float and maximize buttons float over the strip. */
+.dockview-theme-altaudio .dv-right-actions-container {
+  position: relative;
+  flex: none;
+  height: 100%;
+}
+
+.dockview-theme-altaudio .dv-tabs-overflow-dropdown-root {
+  display: flex;
+  height: 100%;
+}
+
+.dockview-theme-altaudio .dv-tabs-and-actions-container {
+  position: relative;
+}
+
+.aa-panel-body {
+  height: 100%;
+  overflow: auto;
+}
+
+.aa-group-actions {
+  /* Anchored to the left edge of the overflow button, if there is one. */
+  position: absolute;
+  top: 0;
+  right: 100%;
+  z-index: 3;
+  visibility: hidden;
+  background: var(--surface-0);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 100%;
+  padding: 0 4px;
+}
+
+.dv-groupview:hover .aa-group-actions,
+.aa-group-actions:focus-within,
+.aa-group-actions:has(.always) {
+  visibility: visible;
+}
+
+.aa-group-actions button {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-faint);
+}
+
+.aa-group-actions button:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.aa-group-actions button.on {
+  color: var(--accent);
+}
+
+.aa-group-actions svg {
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+}
+
+/* Overflow chevron sits on the strip background so it never overlaps tab text. */
+.dockview-theme-altaudio .dv-tabs-overflow-dropdown-default {
+  background: var(--surface-0);
+  color: var(--text-dim);
+  padding: 0 4px;
+}
+
+/* In-app file drags (src/app/pathdrag.ts). */
+.path-drag-ghost {
+  position: fixed;
+  z-index: 7000;
+  padding: 2px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: var(--font-size-small);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+body.path-dragging,
+body.path-dragging * {
+  cursor: copy !important;
+  user-select: none;
+}
+
+/* Panel tabs: title plus a menu button (three stacked dots) shown on the
+   active tab of each group. The active tab's title is underlined, in the
+   accent color when its group has focus. */
+.aa-tab {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 100%;
+}
+
+.aa-tab-title {
+  padding: 2px 0;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.dv-tab.dv-active-tab .aa-tab-title {
+  border-bottom-color: var(--text-faint);
+}
+
+.dv-groupview.dv-active-group .dv-tab.dv-active-tab .aa-tab-title {
+  border-bottom-color: var(--accent);
+}
+
+.aa-tab-menu {
+  display: none;
+  place-items: center;
+  width: 14px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.aa-tab-menu svg {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+
+.dv-tab.dv-active-tab .aa-tab-menu {
+  display: grid;
+}
+
+.aa-tab-menu:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}

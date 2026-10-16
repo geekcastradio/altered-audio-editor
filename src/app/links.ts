@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) The GeekCast Radio Network, LLC.
+// This file is part of Altered Audio Editor.
+
+/**
+ * Web links shown in the Help menu. A null link shows its menu item
+ * disabled until the page exists. The core only opens https links on
+ * the hosts in `src-tauri/src/commands/links.rs`.
+ *
+ * These are the only places the app touches the web, and only when the
+ * user picks them. There is no telemetry, update check or sign-in.
+ */
+export const LINKS = {
+  website: "https://thegcrn.com/",
+  /** Plugins page. Not live yet. */
+  plugins: null as string | null,
+  /** Optional donation page (Help > Support Altered Audio Editor). Never shown anywhere else. */
+  donate: "https://paypal.me/scp21" as string | null,
+  /** The project lead's book, Altered Audio: Podcasting Demystified. */
+  book: "https://www.barnesandnoble.com/w/altered-audio-steve-phillips/1147888459",
+} as const;

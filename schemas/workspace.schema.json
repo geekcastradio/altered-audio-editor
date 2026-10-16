@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Workspace",
+  "description": "A saved panel layout.",
+  "type": "object",
+  "properties": {
+    "built_in": {
+      "description": "Ships with the app. Built-in workspaces can be reset but not\ndeleted.",
+      "type": "boolean"
+    },
+    "format": {
+      "description": "Always `altaudio.workspace`.",
+      "type": "string",
+      "const": "altaudio.workspace"
+    },
+    "id": {
+      "description": "Stable slug, for example `default` or `podcast-edit`.",
+      "type": "string"
+    },
+    "layout": {
+      "description": "Serialized docking layout from the frontend. The core stores it\nas-is and never interprets it."
+    },
+    "name": {
+      "type": "string"
+    },
+    "schema_version": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "format",
+    "schema_version",
+    "id",
+    "name",
+    "built_in",
+    "layout"
+  ]
+}

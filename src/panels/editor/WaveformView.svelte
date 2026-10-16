@@ -1,0 +1,787 @@
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  Copyright (c) The GeekCast Radio Network, LLC.
+  This file is part of Altered Audio Editor.
+
+  The Waveform editor: one audio file drawn as one continuous waveform
+  per channel, with a time selection, a level scale and a quick level
+  control. The file is an edit list in the core (see wave-edit.ts); this
+  view draws the result and turns gestures into actions.
+-->
+<script lang="ts">
+  import type { ActionRegistry } from "../../app/actions";
+  import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
+  import { editor, type EditorState } from "../../stores/editor";
+  import type { PeakStore } from "../../stores/peaks";
+  import { clipLength, sessionEnd, type ClipDoc, type SessionDoc, type SessionStore } from "../../stores/session";
+  import type { TransportState, TransportStore } from "../../stores/transport";
+  import { onDestroy } from "svelte";
+  import { waveZoom, type WaveFile } from "../../stores/wave";
+  import { levelAt, pointsOf } from "./envelope";
+  import { fit, formatIn, peakRange, pickLevel, rulerTicks, sampleAt, xOf, zoomAround, type Viewport } from "./timeline";
+  import TransportBar from "./TransportBar.svelte";
+  import SpectrumView from "./SpectrumView.svelte";
+
+  interface Props {
+    wave: SessionStore;
+    file: WaveFile | null;
+    transport: TransportStore;
+    peaks: PeakStore;
+    actions: ActionRegistry;
+    shortcutFor?: (id: string) => string | undefined;
+    /** Applies a level change in dB to the selection, or the whole file. */
+    onLevel: (db: number) => void;
+  }
+
+  const { wave, file, transport, peaks, actions, shortcutFor = () => undefined, onLevel }: Props = $props();
+
+  const RULER_H = 22;
+  const SCALE_W = 46;
+
+  let doc = $state<SessionDoc | null>(null);
+  $effect(() =>
+    wave.subscribe((d) => {
+      doc = d;
+    }),
+  );
+  let tp = $state<TransportState | null>(null);
+  $effect(() =>
+    transport.subscribe((t) => {
+      tp = t;
+    }),
+  );
+  let ed = $state<EditorState>(editor.current());
+  $effect(() =>
+    editor.subscribe((s) => {
+      ed = s;
+    }),
+  );
+  let peakTick = $state(0);
+  $effect(() => peaks.subscribe(() => peakTick++));
+  let tick = $state(0);
+  $effect(() =>
+    actions.changed.subscribe((n) => {
+      tick = n;
+    }),
+  );
+
+  const run = (id: string) => void actions.run(id);
+  const can = (id: string) => {
+    void tick;
+    return actions.isEnabled(id);
+  };
+  const tip = (label: string, id: string) => {
+    const k = shortcutFor(id);
+    return k ? `${label} (${k})` : label;
+  };
+
+  let width = $state(800);
+  let height = $state(300);
+  let canvas = $state<HTMLCanvasElement | null>(null);
+  let ruler = $state<HTMLCanvasElement | null>(null);
+  let area = $state<HTMLElement | null>(null);
+  let menu = $state<{ x: number; y: number; items: ContextItem[] } | null>(null);
+  /** Amplitude zoom: 1 shows full scale; higher makes quiet audio bigger. */
+  let ampZoom = $state(1);
+
+  const rate = $derived(doc?.sample_rate ?? 48_000);
+  const total = $derived(doc ? sessionEnd(doc) : 0);
+  const view = $derived<Viewport>({ spp: doc?.view.samples_per_pixel ?? 1024, scroll: doc?.view.scroll ?? 0 });
+  const playhead = $derived(tp?.playing ? tp.position : (doc?.view.playhead ?? 0));
+  const selection = $derived(doc?.view.selection ?? null);
+  const channels = $derived(Math.max(1, Math.min(2, doc?.media[0]?.channels ?? 1)));
+  const clips = $derived((doc?.tracks[0]?.clips ?? []).slice().sort((a, b) => a.start - b.start));
+
+  function setView(v: Partial<{ spp: number; scroll: number; playhead: number; selection: { start: number; end: number } | null }>) {
+    if (!doc) return;
+    const maxScroll = Math.max(0, total - width * (v.spp ?? view.spp) * 0.5);
+    wave.setView({
+      ...doc.view,
+      samples_per_pixel: v.spp ?? doc.view.samples_per_pixel,
+      scroll: Math.max(0, Math.min(maxScroll, Math.round(v.scroll ?? doc.view.scroll))),
+      playhead: Math.max(0, Math.round(v.playhead ?? doc.view.playhead)),
+      selection: v.selection === undefined ? doc.view.selection : v.selection,
+    });
+  }
+
+  // A newly opened file fits the window.
+  let fittedFor = "";
+  $effect(() => {
+    if (!doc || !file || width <= 0 || fittedFor === file.path + doc.id) return;
+    fittedFor = file.path + doc.id;
+    const f = fit(total, width);
+    setView({ spp: f.spp, scroll: 0 });
+  });
+
+  // Keep the playhead in view while playing.
+  $effect(() => {
+    if (!tp?.playing || width <= 0) return;
+    const x = xOf(tp.position, view);
+    if (x > width - 20 || x < 0) setView({ scroll: tp.position - 20 * view.spp });
+  });
+
+  /** The view's zoom commands, used by the Zoom actions while this editor shows. */
+  export function zoom(kind: "in" | "out" | "full" | "selection" | "amp-in" | "amp-out"): void {
+    if (!doc) return;
+    if (kind === "amp-in") ampZoom = Math.min(16, ampZoom * 2);
+    else if (kind === "amp-out") ampZoom = Math.max(1, ampZoom / 2);
+    else if (kind === "full") {
+      const f = fit(total, width);
+      setView({ spp: f.spp, scroll: 0 });
+    } else if (kind === "selection" && selection) {
+      const f = fit(selection.end - selection.start, width);
+      setView({ spp: f.spp, scroll: Math.max(0, selection.start - (selection.end - selection.start) * 0.05) });
+    } else if (kind === "in" || kind === "out") {
+      const anchor = Math.max(0, Math.min(width, xOf(playhead, view)));
+      const z = zoomAround(view, kind === "in" ? 0.5 : 2, anchor);
+      setView({ spp: z.spp, scroll: z.scroll });
+    }
+  }
+
+  waveZoom.run = (k) => zoom(k);
+  onDestroy(() => {
+    if (waveZoom.run) waveZoom.run = null;
+  });
+
+  /** Level of a piece at `rel` samples from its start, as a linear factor. */
+  function pieceGain(c: ClipDoc, rel: number, len: number): number {
+    if (c.muted) return 0;
+    let g = 10 ** (c.gain_db / 20);
+    const vol = pointsOf(c, "volume");
+    if (vol.length) {
+      const db = levelAt(vol, rel);
+      g *= db <= -59.9 ? 0 : 10 ** (db / 20);
+    }
+    if (rel < c.fade_in.length) g *= rel / Math.max(1, c.fade_in.length);
+    if (len - rel < c.fade_out.length) g *= (len - rel) / Math.max(1, c.fade_out.length);
+    return g;
+  }
+
+  function css(name: string): string {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  /** dB marks on the level scale. */
+  const MARKS = [0, -3, -6, -9, -12, -18, -24];
+
+  // Waveform.
+  $effect(() => {
+    void peakTick;
+    const c = canvas;
+    if (!c || !doc) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = width;
+    const h = height;
+    c.width = Math.round((w + SCALE_W) * dpr);
+    c.height = Math.round(h * dpr);
+    c.style.width = `${w + SCALE_W}px`;
+    c.style.height = `${h}px`;
+    const g = c.getContext("2d");
+    if (!g) return;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.fillStyle = css("--surface-0");
+    g.fillRect(0, 0, w + SCALE_W, h);
+    const laneH = h / channels;
+    const media = new Map(doc.media.map((m) => [m.id, m]));
+    const waveColor = css("--wave") || css("--clip-1") || "#53c28b";
+
+    for (let ch = 0; ch < channels; ch++) {
+      const top = ch * laneH;
+      const mid = top + laneH / 2;
+      const half = laneH / 2 - 2;
+      // Level grid.
+      g.strokeStyle = "rgba(255, 255, 255, 0.06)";
+      g.lineWidth = 1;
+      for (const db of MARKS) {
+        const a = 10 ** (db / 20) * ampZoom;
+        if (a > 1.0001) continue;
+        for (const y of [mid - a * half, mid + a * half]) {
+          g.beginPath();
+          g.moveTo(0, Math.round(y) + 0.5);
+          g.lineTo(w, Math.round(y) + 0.5);
+          g.stroke();
+        }
+      }
+      g.strokeStyle = "rgba(255, 255, 255, 0.18)";
+      g.beginPath();
+      g.moveTo(0, Math.round(mid) + 0.5);
+      g.lineTo(w, Math.round(mid) + 0.5);
+      g.stroke();
+      if (ch > 0) {
+        g.fillStyle = css("--border-strong");
+        g.fillRect(0, Math.round(top), w + SCALE_W, 1);
+      }
+    }
+
+    // Time grid at the ruler's labeled ticks.
+    g.strokeStyle = "rgba(255, 255, 255, 0.05)";
+    g.lineWidth = 1;
+    for (const t of rulerTicks(view, w, rate)) {
+      if (!t.label) continue;
+      const x = Math.round(t.x) + 0.5;
+      g.beginPath();
+      g.moveTo(x, 0);
+      g.lineTo(x, h);
+      g.stroke();
+    }
+
+    // Each piece of the edit list, drawn where it now sits.
+    g.fillStyle = waveColor;
+    for (const clip of clips) {
+      const m = media.get(clip.media_id);
+      if (!m) continue;
+      const len = clipLength(clip, m, rate);
+      const x0 = Math.max(0, Math.floor(xOf(clip.start, view)));
+      const x1 = Math.min(w, Math.ceil(xOf(clip.start + len, view)));
+      if (x1 <= 0 || x0 >= w) continue;
+      const entry = peaks.get(m.path);
+      if (entry.status !== "ready" || !entry.summary) continue;
+      const srcRate = m.sample_rate || entry.summary.sampleRate;
+      const framesPerPx = (view.spp * srcRate) / rate;
+      const level = pickLevel(entry.levels, framesPerPx);
+      if (!level) continue;
+      const pch = entry.summary.channels;
+      const region = clip.source_out - clip.source_in;
+      for (let px = x0; px < x1; px++) {
+        const rel = view.scroll + px * view.spp - clip.start;
+        if (rel < 0 || rel >= len) continue;
+        let into = (rel * srcRate) / rate;
+        if (clip.looped && region > 0) into = (((into + clip.looped.phase) % region) + region) % region;
+        const s0 = clip.source_in + into;
+        const s1 = Math.min(clip.source_out, s0 + framesPerPx);
+        const k = pieceGain(clip, rel, len) * ampZoom;
+        for (let ch = 0; ch < channels; ch++) {
+          const top = ch * laneH;
+          const mid = top + laneH / 2;
+          const half = laneH / 2 - 2;
+          const [lo, hi] = peakRange(level, pch, Math.min(ch, pch - 1), s0, Math.max(s0 + 1, s1));
+          const y0 = mid - Math.min(1, hi * k) * half;
+          const y1 = mid - Math.max(-1, lo * k) * half;
+          g.fillRect(px, y0, 1, Math.max(1, y1 - y0));
+        }
+      }
+    }
+
+    // Past the end of the file.
+    const endX = xOf(total, view);
+    if (endX < w) {
+      g.fillStyle = "rgba(0, 0, 0, 0.35)";
+      g.fillRect(Math.max(0, endX), 0, w - Math.max(0, endX), h);
+    }
+
+    // Selection.
+    if (selection) {
+      const a = Math.max(0, xOf(selection.start, view));
+      const b = Math.min(w, xOf(selection.end, view));
+      if (b > a) {
+        g.fillStyle = "rgba(255, 255, 255, 0.14)";
+        g.fillRect(a, 0, b - a, h);
+      }
+    }
+
+    // Playhead.
+    const px = xOf(playhead, view);
+    if (px >= 0 && px <= w) {
+      g.fillStyle = css("--playhead");
+      g.fillRect(Math.round(px), 0, 1, h);
+    }
+
+    // Level scale on the right.
+    g.fillStyle = css("--surface-2");
+    g.fillRect(w, 0, SCALE_W, h);
+    g.fillStyle = css("--border");
+    g.fillRect(w, 0, 1, h);
+    g.font = `10px ${css("--font-mono")}`;
+    g.textBaseline = "middle";
+    g.fillStyle = css("--text-dim");
+    for (let ch = 0; ch < channels; ch++) {
+      const top = ch * laneH;
+      const mid = top + laneH / 2;
+      const half = laneH / 2 - 2;
+      let lastY = -100;
+      for (const db of MARKS) {
+        const a = 10 ** (db / 20) * ampZoom;
+        if (a > 1.0001) continue;
+        const y = mid - a * half;
+        if (Math.abs(y - lastY) < 11 || y < top + 5) continue;
+        lastY = y;
+        g.fillText(db === 0 ? " 0" : String(db), w + 8, y);
+        g.fillText(db === 0 ? " 0" : String(db), w + 8, mid + a * half);
+      }
+      g.fillText("-∞", w + 8, mid);
+      if (channels === 2) {
+        g.fillStyle = css("--text-faint");
+        g.fillText(ch === 0 ? "L" : "R", w + 34, top + 10);
+        g.fillStyle = css("--text-dim");
+      }
+    }
+  });
+
+  // Ruler.
+  $effect(() => {
+    void peakTick;
+    const c = ruler;
+    if (!c || !doc) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = width;
+    c.width = Math.round((w + SCALE_W) * dpr);
+    c.height = Math.round(RULER_H * dpr);
+    c.style.width = `${w + SCALE_W}px`;
+    c.style.height = `${RULER_H}px`;
+    const g = c.getContext("2d");
+    if (!g) return;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.fillStyle = css("--surface-2");
+    g.fillRect(0, 0, w + SCALE_W, RULER_H);
+    g.fillStyle = css("--text-dim");
+    g.strokeStyle = css("--border-strong");
+    g.font = `10px ${css("--font-ui")}`;
+    g.textBaseline = "top";
+    for (const t of rulerTicks(view, w, rate)) {
+      const x = Math.round(t.x) + 0.5;
+      g.beginPath();
+      g.moveTo(x, t.label ? 8 : 15);
+      g.lineTo(x, RULER_H);
+      g.stroke();
+      if (t.label) g.fillText(ed.timeFormat === "time" ? t.label : formatIn(sampleAt(t.x, view), rate, ed.timeFormat), x + 3, 2);
+    }
+    if (selection) {
+      const a = Math.max(0, xOf(selection.start, view));
+      const b = Math.min(w, xOf(selection.end, view));
+      if (b > a) {
+        g.fillStyle = "rgba(255, 255, 255, 0.16)";
+        g.fillRect(a, 0, b - a, RULER_H);
+      }
+    }
+    const px = xOf(playhead, view);
+    if (px >= 0 && px <= w) {
+      g.fillStyle = css("--playhead");
+      g.beginPath();
+      g.moveTo(px - 5, RULER_H - 7);
+      g.lineTo(px + 5, RULER_H - 7);
+      g.lineTo(px, RULER_H);
+      g.fill();
+    }
+    g.fillStyle = css("--text-faint");
+    g.fillText("dB", w + 8, 6);
+  });
+
+  // Gestures.
+  function xIn(e: { clientX: number }, el: HTMLElement): number {
+    return e.clientX - el.getBoundingClientRect().left;
+  }
+
+  function onPointer(e: PointerEvent) {
+    if (!doc || e.button !== 0) return;
+    const el = e.currentTarget as HTMLElement;
+    if (xIn(e, el) > width) return;
+    e.preventDefault();
+    const clamp = (s: number) => Math.max(0, Math.min(total, s));
+    const v = view;
+    const at = (cx: number) => clamp(Math.round(sampleAt(cx - el.getBoundingClientRect().left, v)));
+    const anchor = e.shiftKey && selection ? (Math.abs(at(e.clientX) - selection.start) < Math.abs(at(e.clientX) - selection.end) ? selection.end : selection.start) : at(e.clientX);
+    let dragged = e.shiftKey && !!selection;
+    const move = (ev: PointerEvent) => {
+      const s = at(ev.clientX);
+      if (!dragged && Math.abs(s - anchor) / v.spp < 3) return;
+      dragged = true;
+      setView({ selection: { start: Math.min(anchor, s), end: Math.max(anchor, s) } });
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", up, true);
+      if (dragged) {
+        move(ev);
+        const sel = doc?.view.selection;
+        if (sel && !tp?.playing) setView({ playhead: sel.start });
+        return;
+      }
+      // A click moves the playhead and clears the selection.
+      setView({ selection: null });
+      void transport.seek(anchor);
+    };
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", up, true);
+  }
+
+  function onRulerPointer(e: PointerEvent) {
+    if (!doc || e.button !== 0) return;
+    const x = xIn(e, e.currentTarget as HTMLElement);
+    if (x > width) return;
+    void transport.seek(Math.max(0, Math.min(total, Math.round(sampleAt(x, view)))));
+  }
+
+  function onWheel(e: WheelEvent) {
+    if (!area) return;
+    const x = Math.max(0, Math.min(width, xIn(e, area)));
+    if (e.altKey) {
+      e.preventDefault();
+      zoom(e.deltaY < 0 ? "amp-in" : "amp-out");
+    } else if (e.ctrlKey) {
+      e.preventDefault();
+      const z = zoomAround(view, e.deltaY > 0 ? 1.25 : 0.8, x);
+      setView({ spp: z.spp, scroll: z.scroll });
+    } else {
+      e.preventDefault();
+      const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      setView({ scroll: view.scroll + d * view.spp });
+    }
+  }
+
+  function onMenu(e: MouseEvent) {
+    e.preventDefault();
+    const act = (label: string, id: string): ContextItem => ({ kind: "item", label, shortcut: shortcutFor(id), disabled: !can(id), run: () => run(id) });
+    menu = {
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        act("Cut", "edit.cut"),
+        act("Copy", "edit.copy"),
+        act("Paste", "edit.paste"),
+        act("Delete", "edit.delete"),
+        act("Crop", "edit.crop"),
+        { kind: "sep" },
+        act("Silence", "fx.silence"),
+        act("Fade In", "fx.fade-in"),
+        act("Fade Out", "fx.fade-out"),
+        act("Amplify...", "fx.amplify"),
+        act("Normalize...", "fx.normalize"),
+        { kind: "sep" },
+        act("Select All", "edit.select-all"),
+        act("Deselect All", "edit.deselect"),
+      ],
+    };
+  }
+
+  // Horizontal scroll bar.
+  const thumbW = $derived(total > 0 ? Math.max(24, Math.min(width, (width * width * view.spp) / Math.max(total, width * view.spp))) : width);
+  const thumbX = $derived(total > 0 ? Math.min(width - thumbW, (view.scroll / Math.max(1, total)) * width) : 0);
+  function onThumbPointer(e: PointerEvent) {
+    e.preventDefault();
+    const x0 = e.clientX;
+    const s0 = view.scroll;
+    const per = total / Math.max(1, width);
+    const move = (ev: PointerEvent) => setView({ scroll: s0 + (ev.clientX - x0) * per });
+    const up = () => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", up, true);
+    };
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", up, true);
+  }
+
+  // Quick level: drag left or right, release to apply.
+  let level = $state(0);
+  let levelDrag = $state(false);
+  function onLevelPointer(e: PointerEvent) {
+    e.preventDefault();
+    const x0 = e.clientX;
+    levelDrag = true;
+    const move = (ev: PointerEvent) => {
+      const step = ev.shiftKey ? 0.02 : 0.1;
+      level = Math.round(Math.max(-30, Math.min(20, (ev.clientX - x0) * step)) * 10) / 10;
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", up, true);
+      levelDrag = false;
+      const db = level;
+      level = 0;
+      if (db !== 0) onLevel(db);
+    };
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", up, true);
+  }
+
+  // Share of the height the waveform gets when the spectrum shows.
+  let split = $state(0.4);
+  let section = $state<HTMLElement | null>(null);
+  function onSplitPointer(e: PointerEvent) {
+    e.preventDefault();
+    const box = area?.getBoundingClientRect();
+    const total = section?.getBoundingClientRect();
+    if (!box || !total) return;
+    const top = box.top;
+    const spectrumBottom = total.bottom - 60;
+    const move = (ev: PointerEvent) => {
+      const h = spectrumBottom - top;
+      if (h > 0) split = Math.max(0.12, Math.min(0.88, (ev.clientY - top) / h));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", up, true);
+    };
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", up, true);
+  }
+
+  const fileName = $derived(file ? file.path.split(/[\\/]/).pop() : "");
+  const info = $derived(
+    doc && file
+      ? [`${(rate / 1000).toLocaleString("en-US")} kHz`, channels === 1 ? "Mono" : "Stereo", file.bitDepth ? `${file.bitDepth}-bit` : file.format]
+          .filter(Boolean)
+          .join("  ")
+      : "",
+  );
+</script>
+
+<section
+  class="wave"
+  style:grid-template-rows={(ed.showSpectrum || ed.showPitch) && doc && file ? `auto auto minmax(0, ${split}fr) 5px minmax(0, ${1 - split}fr) auto auto` : undefined}
+  aria-label="Waveform"
+  data-area="waveform"
+  bind:this={section}
+>
+  <div class="head">
+    {#if file}
+      <span class="name" title={file.path}>{fileName}</span>
+      <span class="info">{info}</span>
+      {#if file.untitled}<span class="unsaved">Not saved yet</span>{/if}
+      <span class="spacer"></span>
+      <button
+        type="button"
+        class="tool text"
+        class:on={ed.showSpectrum}
+        aria-pressed={ed.showSpectrum}
+        title={tip("Show Spectrum: frequencies over time under the waveform, for selecting and removing sounds", "view.spectrum")}
+        onclick={() => run("view.spectrum")}>Spectrum</button
+      >
+      <button type="button" class="tool text" title={tip("Save", "file.save")} onclick={() => run("file.save")}>Save</button>
+      <button type="button" class="tool text" title={tip("Close File", "file.close")} onclick={() => run("file.close")}>Close</button>
+    {:else}
+      <span class="info">Waveform editor</span>
+    {/if}
+  </div>
+
+  {#if doc && file}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <canvas class="ruler" bind:this={ruler} onpointerdown={onRulerPointer} onwheel={onWheel}></canvas>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="area" bind:this={area} bind:clientHeight={height} onwheel={onWheel} oncontextmenu={onMenu}>
+      <div class="measure" bind:clientWidth={width} style:right="{SCALE_W}px"></div>
+      <canvas bind:this={canvas} onpointerdown={onPointer} ondblclick={() => run("edit.select-all")}></canvas>
+      <div class="hud" class:active={levelDrag} title="Drag left or right to change the level of the selection (or the whole file). Shift for fine steps.">
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <span class="knob" onpointerdown={onLevelPointer}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M8 8l{3.5 * Math.sin((level / 30) * 2.4)} {-3.5 * Math.cos((level / 30) * 2.4)}" stroke="currentColor" stroke-width="1.6" /></svg>
+        </span>
+        <span class="val">{level > 0 ? "+" : ""}{level.toFixed(1)} dB</span>
+      </div>
+    </div>
+    {#if ed.showSpectrum || ed.showPitch}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="divider" title="Drag to share the space between the waveform and the spectrum" onpointerdown={onSplitPointer}></div>
+      <SpectrumView
+        {doc}
+        {view}
+        {width}
+        scaleWidth={SCALE_W}
+        {total}
+        {playhead}
+        {selection}
+        tool={ed.spectralTool}
+        brushSize={ed.brushSize}
+        showSpectrum={ed.showSpectrum}
+        showPitch={ed.showPitch}
+        onSeek={(s) => void transport.seek(s)}
+        onSelectTime={(sel) => setView({ selection: sel })}
+        {run}
+        {tip}
+      />
+    {/if}
+    <div class="hbar">
+      <div class="track" style:margin-right="{SCALE_W}px">
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="thumb" style:width="{thumbW}px" style:left="{thumbX}px" onpointerdown={onThumbPointer}></div>
+      </div>
+    </div>
+    <TransportBar {transport} {rate} {playhead} end={total} hasSelection={!!selection} {shortcutFor} zoom={(k) => { if (k !== "tracks-in" && k !== "tracks-out") zoom(k); }} amplitude />
+  {:else}
+    <div class="empty">
+      <p>No file is open in the Waveform editor.</p>
+      <p class="hint">Double-click a file in the Files panel, or select a clip and choose Clip &gt; Open in Waveform Editor.</p>
+    </div>
+  {/if}
+</section>
+
+{#if menu}
+  <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => (menu = null)} />
+{/if}
+
+<style>
+  .wave {
+    display: grid;
+    grid-template-rows: auto auto 1fr auto auto;
+    grid-template-columns: minmax(0, 1fr);
+    height: 100%;
+    overflow: hidden;
+    background: var(--surface-0);
+  }
+
+  .divider {
+    cursor: row-resize;
+    background: var(--track-gap);
+  }
+
+  .divider:hover {
+    background: var(--accent-dim);
+  }
+
+  .tool.on {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .head {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    min-height: 26px;
+    padding: 2px 8px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-1);
+  }
+
+  .name {
+    overflow: hidden;
+    color: var(--text);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .info {
+    color: var(--text-faint);
+    font-size: var(--font-size-small);
+    white-space: pre;
+  }
+
+  .unsaved {
+    color: var(--clip-5);
+    font-size: var(--font-size-small);
+  }
+
+  .spacer {
+    flex: 1;
+  }
+
+  .tool {
+    height: 20px;
+    padding: 0 8px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: none;
+    color: var(--text-dim);
+    font: inherit;
+    font-size: var(--font-size-small);
+  }
+
+  .tool:hover {
+    border-color: var(--border-strong);
+    color: var(--text);
+  }
+
+  .ruler {
+    display: block;
+    cursor: text;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .area {
+    position: relative;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .measure {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 0;
+  }
+
+  .area canvas {
+    display: block;
+    cursor: text;
+  }
+
+  .hud {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding: 3px 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--surface-2) 88%, transparent);
+    color: var(--text-dim);
+    font-size: var(--font-size-small);
+    transform: translateX(-50%);
+    user-select: none;
+  }
+
+  .hud.active {
+    border-color: var(--accent);
+  }
+
+  .knob {
+    display: grid;
+    place-items: center;
+    cursor: ew-resize;
+    color: var(--text);
+  }
+
+  .knob svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .val {
+    min-width: 56px;
+    color: var(--value);
+    font-family: var(--font-mono);
+  }
+
+  .hbar {
+    height: 10px;
+    padding: 1px 0;
+    background: var(--surface-1);
+  }
+
+  .hbar .track {
+    position: relative;
+    height: 100%;
+  }
+
+  .thumb {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: 4px;
+    background: var(--surface-3);
+  }
+
+  .thumb:hover {
+    background: var(--border-strong);
+  }
+
+  .empty {
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 4px;
+    grid-row: 2 / -1;
+    color: var(--text-dim);
+  }
+
+  .empty p {
+    margin: 0;
+  }
+
+  .hint {
+    color: var(--text-faint);
+    font-size: var(--font-size-small);
+  }
+</style>

@@ -1,0 +1,127 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) The GeekCast Radio Network, LLC.
+// This file is part of Altered Audio Editor.
+
+//! Altered Audio Editor core.
+//!
+//! The interface never touches audio. It sends commands to this core
+//! and renders the state it gets back.
+
+pub mod browse;
+pub mod codecs;
+pub mod commands;
+pub mod dsp;
+pub mod engine;
+pub mod export;
+pub mod library;
+pub mod peaks;
+pub mod session;
+pub mod sesx;
+
+/// Starts the desktop app.
+pub fn run() {
+    tauri::Builder::default()
+        .manage(engine::PreviewPlayer::default())
+        .manage(engine::Transport::default())
+        .manage(engine::Recorder::default())
+        .manage(commands::session::OpenSession::default())
+        .manage(commands::export::ExportCancel::default())
+        .manage(commands::batch::BatchCancel::default())
+        .manage(commands::wave::OpenWave::default())
+        .manage(commands::wave::Playing::default())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![
+            commands::app::app_info,
+            commands::app::app_exit,
+            commands::app::app_minimize,
+            commands::browse::browse_locations,
+            commands::browse::browse_list,
+            commands::browse::preview_play,
+            commands::browse::preview_stop,
+            commands::browse::preview_status,
+            commands::keymap::keymap_load,
+            commands::keymap::keymap_save,
+            commands::library::library_default_root,
+            commands::library::library_create,
+            commands::library::library_open,
+            commands::library::library_save,
+            commands::library::library_import,
+            commands::library::library_clean_up,
+            commands::library::library_pick_folder,
+            commands::links::open_link,
+            commands::media::media_expand,
+            commands::media::media_probe,
+            commands::media::media_pick_files,
+            commands::media::media_pick_tracks,
+            commands::media::media_unzip,
+            commands::media::media_pick_folder,
+            commands::media::media_reveal,
+            commands::peaks::peaks_ensure,
+            commands::peaks::peaks_level,
+            commands::preferences::preferences_load,
+            commands::preferences::preferences_save,
+            commands::transport::transport_play,
+            commands::transport::transport_stop,
+            commands::transport::transport_status,
+            commands::devices::audio_inputs,
+            commands::devices::open_sound_settings,
+            commands::record::record_start,
+            commands::record::record_stop,
+            commands::record::record_status,
+            commands::record::record_monitor,
+            commands::quickpass::quickpass_levels,
+            commands::spectral::wave_spectrogram,
+            commands::spectral::wave_spectral_edit,
+            commands::spectral::wave_pitch,
+            commands::session::session_get,
+            commands::session::session_apply,
+            commands::session::session_set_view,
+            commands::session::session_new,
+            commands::session::session_save,
+            commands::session::session_open,
+            commands::session::session_autosave,
+            commands::session::session_clear_autosave,
+            commands::session::session_recoverable,
+            commands::session::session_recover,
+            commands::session::session_discard_recovery,
+            commands::session::session_pick_save,
+            commands::session::session_pick_open,
+            commands::session::file_pick_open,
+            commands::export::export_pick_path,
+            commands::export::export_pick_folder,
+            commands::export::paths_exist,
+            commands::batch::batch_convert,
+            commands::batch::batch_cancel,
+            commands::export::export_mixdown,
+            commands::export::export_cancel,
+            commands::export::loudness_check,
+            commands::export::export_merge,
+            commands::export::export_region_copy,
+            commands::wave::wave_open,
+            commands::wave::wave_get,
+            commands::wave::wave_close,
+            commands::wave::wave_apply,
+            commands::wave::wave_set_view,
+            commands::wave::wave_play,
+            commands::wave::wave_save,
+            commands::wave::wave_peak,
+            commands::wave::wave_new_from_clips,
+            commands::wave::wave_new,
+            commands::template::template_list,
+            commands::template::template_save,
+            commands::template::template_delete,
+            commands::session::session_default_folder,
+            commands::workspace::workspace_list,
+            commands::workspace::workspace_get,
+            commands::workspace::workspace_put,
+            commands::workspace::workspace_delete,
+            commands::session::session_import_sesx,
+            commands::app::app_set_title,
+            commands::workspace::workspace_load,
+            commands::workspace::workspace_save,
+            commands::workspace::workspace_clear,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running Altered Audio Editor");
+}

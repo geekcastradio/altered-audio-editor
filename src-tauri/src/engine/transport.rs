@@ -1,0 +1,634 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) The GeekCast Radio Network, LLC.
+// This file is part of Altered Audio Editor.
+
+//! Multitrack playback.
+//!
+//! Threads:
+//! - the caller (a Tauri command) starts, stops and updates playback;
+//! - a render thread streams every track's clips a little ahead into one
+//!   lock-free ring buffer per track;
+//! - the device's audio thread mixes those rings with the current track
+//!   gains (atomics), writes the output, and records peak meters.
+//!
+//! Fader, pan, mute and solo changes take effect on the next audio
+//! buffer. Edits that move audio in time restart playback in place.
+
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
+use std::time::Duration;
+
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{FromSample, SampleFormat, SizedSample, StreamConfig};
+use rtrb::{Consumer, Producer, RingBuffer};
+use serde::Serialize;
+
+use super::plan::{self, Plan};
+use super::render::Renderer;
+use crate::session::model::{Id, Session};
+
+/// Audio rendered ahead of the device, per track.
+const AHEAD_SECONDS: f64 = 0.5;
+/// Frames rendered per step on the render thread.
+const BLOCK: usize = 2048;
+
+fn f32_bits(v: f32) -> u32 {
+    v.to_bits()
+}
+
+fn bits_f32(b: u32) -> f32 {
+    f32::from_bits(b)
+}
+
+/// State shared with the render and audio threads.
+struct Shared {
+    stop: AtomicBool,
+    /// Output frames sent to the device.
+    played: AtomicU64,
+    gains: Vec<[AtomicU32; 2]>,
+    master: AtomicU32,
+    /// Peak since last read, as f32 bits. Positive floats order like
+    /// their bit patterns, so `fetch_max` works on the bits.
+    meters: Vec<[AtomicU32; 2]>,
+    master_meter: [AtomicU32; 2],
+    underruns: AtomicU64,
+}
+
+impl Shared {
+    fn new(tracks: usize, gains: &[[f32; 2]], master: f32) -> Self {
+        Self {
+            stop: AtomicBool::new(false),
+            played: AtomicU64::new(0),
+            gains: (0..tracks)
+                .map(|i| {
+                    let g = gains.get(i).copied().unwrap_or([0.0, 0.0]);
+                    [
+                        AtomicU32::new(f32_bits(g[0])),
+                        AtomicU32::new(f32_bits(g[1])),
+                    ]
+                })
+                .collect(),
+            master: AtomicU32::new(f32_bits(master)),
+            meters: (0..tracks)
+                .map(|_| [AtomicU32::new(0), AtomicU32::new(0)])
+                .collect(),
+            master_meter: [AtomicU32::new(0), AtomicU32::new(0)],
+            underruns: AtomicU64::new(0),
+        }
+    }
+
+    fn set_gains(&self, gains: &[[f32; 2]], master: f32) {
+        for (slot, g) in self.gains.iter().zip(gains) {
+            slot[0].store(f32_bits(g[0]), Ordering::Relaxed);
+            slot[1].store(f32_bits(g[1]), Ordering::Relaxed);
+        }
+        self.master.store(f32_bits(master), Ordering::Relaxed);
+    }
+}
+
+/// Where playback leaves the timeline and where it picks up again, in
+/// session samples.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Jump {
+    /// Loop Playback: play `start..end` over and over.
+    Loop { start: u64, end: u64 },
+    /// Skip Selection: play up to `start`, then carry on from `end`.
+    Skip { start: u64, end: u64 },
+}
+
+impl Jump {
+    /// Where playback really begins when asked to start at `from`:
+    /// starting inside a skipped range starts after it.
+    fn first(self, from: u64) -> u64 {
+        match self {
+            Jump::Skip { start, end } if from >= start && from < end => end,
+            _ => from,
+        }
+    }
+
+    /// The jump as (at, to), if it still lies ahead of `from`.
+    fn points(self, from: u64) -> Option<(u64, u64)> {
+        match self {
+            Jump::Loop { start, end } if end > start && from < end => Some((end, start)),
+            Jump::Skip { start, end } if end > start && from < start => Some((start, end)),
+            _ => None,
+        }
+    }
+
+    /// Timeline position after `elapsed` samples of playback from `from`.
+    pub fn position(jump: Option<Jump>, from: u64, elapsed: u64) -> u64 {
+        let linear = from + elapsed;
+        let Some(j) = jump else { return linear };
+        match (j, j.points(from)) {
+            (Jump::Loop { start, end }, Some(_)) if linear >= end => {
+                start + (linear - end) % (end - start)
+            }
+            (Jump::Skip { start, end }, Some(_)) if linear >= start => linear + (end - start),
+            _ => linear,
+        }
+    }
+}
+
+struct Running {
+    shared: Arc<Shared>,
+    thread: Option<JoinHandle<()>>,
+    /// Session sample where playback started.
+    start: u64,
+    jump: Option<Jump>,
+    session_rate: u32,
+    out_rate: u32,
+    layout: plan::Layout,
+    track_ids: Vec<Id>,
+}
+
+impl Running {
+    fn position(&self) -> u64 {
+        let elapsed = plan::to_session(
+            self.shared.played.load(Ordering::Relaxed),
+            self.session_rate,
+            self.out_rate,
+        );
+        Jump::position(self.jump, self.start, elapsed)
+    }
+
+    fn stop(&mut self) {
+        self.shared.stop.store(true, Ordering::SeqCst);
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
+}
+
+/// Peak levels since the last status call, 0 to 1 (and above on overs).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransportStatus {
+    pub playing: bool,
+    /// Session samples.
+    pub position: u64,
+    pub track_ids: Vec<Id>,
+    pub meters: Vec<[f32; 2]>,
+    pub master: [f32; 2],
+    pub underruns: u64,
+}
+
+#[derive(Default)]
+pub struct Transport {
+    current: Mutex<Option<Running>>,
+}
+
+impl Transport {
+    /// Starts playing `session` from session sample `from`, looping or
+    /// skipping as `jump` says.
+    pub fn play(&self, session: &Session, from: u64, jump: Option<Jump>) -> Result<(), String> {
+        let mut cur = self.current.lock().map_err(|e| e.to_string())?;
+        if let Some(mut r) = cur.take() {
+            r.stop();
+        }
+        *cur = Some(start(session.clone(), from, jump)?);
+        Ok(())
+    }
+
+    /// Stops and returns the position reached, if it was playing.
+    pub fn stop(&self) -> Option<u64> {
+        let mut cur = self.current.lock().ok()?;
+        let mut r = cur.take()?;
+        let pos = r.position();
+        r.stop();
+        Some(pos)
+    }
+
+    pub fn is_playing(&self) -> bool {
+        self.current.lock().map(|c| c.is_some()).unwrap_or(false)
+    }
+
+    pub fn status(&self) -> TransportStatus {
+        let idle = TransportStatus {
+            playing: false,
+            position: 0,
+            track_ids: Vec::new(),
+            meters: Vec::new(),
+            master: [0.0, 0.0],
+            underruns: 0,
+        };
+        let Ok(cur) = self.current.lock() else {
+            return idle;
+        };
+        let Some(r) = cur.as_ref() else {
+            return idle;
+        };
+        let take = |a: &AtomicU32| bits_f32(a.swap(0, Ordering::Relaxed));
+        TransportStatus {
+            playing: true,
+            position: r.position(),
+            track_ids: r.track_ids.clone(),
+            meters: r
+                .shared
+                .meters
+                .iter()
+                .map(|m| [take(&m[0]), take(&m[1])])
+                .collect(),
+            master: [
+                take(&r.shared.master_meter[0]),
+                take(&r.shared.master_meter[1]),
+            ],
+            underruns: r.shared.underruns.load(Ordering::Relaxed),
+        }
+    }
+
+    /// Brings playback in line with an edited session: new gains apply
+    /// at once; changes that move audio restart from the same spot.
+    pub fn sync(&self, session: &Session) -> Result<(), String> {
+        let mut cur = self.current.lock().map_err(|e| e.to_string())?;
+        let Some(r) = cur.as_mut() else {
+            return Ok(());
+        };
+        if r.layout == plan::layout(session) && r.session_rate == session.sample_rate {
+            r.shared
+                .set_gains(&plan::gains(session), plan::master_gain(session));
+            return Ok(());
+        }
+        let mut pos = r.position();
+        if r.session_rate != session.sample_rate {
+            pos = plan::to_out(pos, r.session_rate, session.sample_rate);
+        }
+        let jump = r.jump;
+        let mut old = cur.take().expect("checked above");
+        old.stop();
+        *cur = Some(start(session.clone(), pos, jump)?);
+        Ok(())
+    }
+}
+
+impl Drop for Transport {
+    fn drop(&mut self) {
+        let _ = self.stop();
+    }
+}
+
+fn start(session: Session, from: u64, jump: Option<Jump>) -> Result<Running, String> {
+    let from = jump.map_or(from, |j| j.first(from));
+    let jump = jump.filter(|j| j.points(from).is_some());
+    let gains = plan::gains(&session);
+    let master = plan::master_gain(&session);
+    let layout = plan::layout(&session);
+    let track_ids: Vec<Id> = session.tracks.iter().map(|t| t.id).collect();
+    let session_rate = session.sample_rate;
+    let tracks = track_ids.len().max(1);
+    let shared = Arc::new(Shared::new(tracks, &gains, master));
+
+    let (ready_tx, ready_rx) = mpsc::channel::<Result<u32, String>>();
+    let thread_shared = shared.clone();
+    let thread = thread::Builder::new()
+        .name("transport".into())
+        .spawn(move || run(session, from, jump, thread_shared, ready_tx))
+        .map_err(|e| e.to_string())?;
+    let out_rate = match ready_rx.recv_timeout(Duration::from_secs(5)) {
+        Ok(Ok(rate)) => rate,
+        Ok(Err(e)) => {
+            let _ = thread.join();
+            return Err(e);
+        }
+        Err(_) => {
+            shared.stop.store(true, Ordering::SeqCst);
+            return Err("The audio device did not respond.".into());
+        }
+    };
+    Ok(Running {
+        shared,
+        thread: Some(thread),
+        start: from,
+        jump,
+        session_rate,
+        out_rate,
+        layout,
+        track_ids,
+    })
+}
+
+fn run(
+    session: Session,
+    from: u64,
+    jump: Option<Jump>,
+    shared: Arc<Shared>,
+    ready: mpsc::Sender<Result<u32, String>>,
+) {
+    let host = cpal::default_host();
+    let Some(device) = host.default_output_device() else {
+        let _ = ready.send(Err("No audio output device found.".into()));
+        return;
+    };
+    let supported = match device.default_output_config() {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = ready.send(Err(format!("The audio device is not available: {e}")));
+            return;
+        }
+    };
+    let format = supported.sample_format();
+    let config: StreamConfig = supported.config();
+    let out_rate = config.sample_rate;
+    let channels = usize::from(config.channels);
+
+    let mut p: Plan = plan::build(&session, out_rate);
+    if p.tracks.is_empty() {
+        // Keep the clock running with one silent track.
+        p.tracks.push(plan::TrackPlan {
+            id: crate::session::model::new_id(),
+            clips: Vec::new(),
+        });
+    }
+    let tracks = p.tracks.len();
+    let start_frame = plan::to_out(from, session.sample_rate, out_rate);
+    let mut renderer = Renderer::new(p, start_frame);
+    if let Some((at, to)) = jump.and_then(|j| j.points(from)) {
+        let r = session.sample_rate;
+        renderer = renderer.with_jump(plan::to_out(at, r, out_rate), plan::to_out(to, r, out_rate));
+    }
+
+    let cap = ((f64::from(out_rate) * AHEAD_SECONDS) as usize).max(BLOCK * 2) * 2;
+    let mut producers = Vec::with_capacity(tracks);
+    let mut consumers = Vec::with_capacity(tracks);
+    for _ in 0..tracks {
+        let (p, c) = RingBuffer::<f32>::new(cap);
+        producers.push(p);
+        consumers.push(c);
+    }
+
+    // Fill ahead before the device starts, so playback starts clean.
+    let mut blocks: Vec<Vec<f32>> = vec![Vec::with_capacity(BLOCK * 2); tracks];
+    while producers.iter().all(|p| p.slots() >= BLOCK * 2) {
+        renderer.render(BLOCK, &mut blocks);
+        push_all(&mut producers, &blocks);
+    }
+
+    let render_shared = shared.clone();
+    let render = thread::Builder::new()
+        .name("transport-render".into())
+        .spawn(move || render_loop(renderer, producers, blocks, render_shared));
+    let render = match render {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = ready.send(Err(e.to_string()));
+            return;
+        }
+    };
+
+    let stream = match format {
+        SampleFormat::F32 => build::<f32>(&device, config, consumers, shared.clone(), channels),
+        SampleFormat::I16 => build::<i16>(&device, config, consumers, shared.clone(), channels),
+        SampleFormat::I32 => build::<i32>(&device, config, consumers, shared.clone(), channels),
+        SampleFormat::U16 => build::<u16>(&device, config, consumers, shared.clone(), channels),
+        other => Err(format!("Unsupported output sample format: {other}")),
+    };
+    let stream = match stream.and_then(|s| s.play().map(|_| s).map_err(|e| e.to_string())) {
+        Ok(s) => s,
+        Err(e) => {
+            shared.stop.store(true, Ordering::SeqCst);
+            let _ = render.join();
+            let _ = ready.send(Err(format!("Could not start playback: {e}")));
+            return;
+        }
+    };
+    let _ = ready.send(Ok(out_rate));
+
+    while !shared.stop.load(Ordering::SeqCst) {
+        thread::sleep(Duration::from_millis(15));
+    }
+    drop(stream);
+    let _ = render.join();
+}
+
+fn push_all(producers: &mut [Producer<f32>], blocks: &[Vec<f32>]) {
+    for (p, b) in producers.iter_mut().zip(blocks) {
+        let (_, left) = p.push_partial_slice(b);
+        debug_assert!(left.is_empty(), "room was checked first");
+    }
+}
+
+fn render_loop(
+    mut renderer: Renderer,
+    mut producers: Vec<Producer<f32>>,
+    mut blocks: Vec<Vec<f32>>,
+    shared: Arc<Shared>,
+) {
+    while !shared.stop.load(Ordering::SeqCst) {
+        if producers.iter().all(|p| p.slots() >= BLOCK * 2) {
+            renderer.render(BLOCK, &mut blocks);
+            push_all(&mut producers, &blocks);
+        } else {
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+}
+
+fn build<T>(
+    device: &cpal::Device,
+    config: StreamConfig,
+    mut consumers: Vec<Consumer<f32>>,
+    shared: Arc<Shared>,
+    channels: usize,
+) -> Result<cpal::Stream, String>
+where
+    T: SizedSample + FromSample<f32>,
+{
+    // Scratch for the audio thread, allocated here, never in the callback.
+    let n = consumers.len();
+    let mut gains = vec![[0f32; 2]; n];
+    let mut peaks = vec![[0f32; 2]; n];
+    device
+        .build_output_stream(
+            config,
+            move |out: &mut [T], _| {
+                mix(
+                    out,
+                    channels,
+                    &mut consumers,
+                    &shared,
+                    &mut gains,
+                    &mut peaks,
+                );
+            },
+            |e| eprintln!("transport stream error: {e}"),
+            None,
+        )
+        .map_err(|e| e.to_string())
+}
+
+/// The audio thread's whole job: no allocation, no locks, no I/O.
+fn mix<T>(
+    out: &mut [T],
+    channels: usize,
+    consumers: &mut [Consumer<f32>],
+    shared: &Shared,
+    gains: &mut [[f32; 2]],
+    peaks: &mut [[f32; 2]],
+) where
+    T: SizedSample + FromSample<f32>,
+{
+    let channels = channels.max(1);
+    let frames = out.len() / channels;
+    let avail = consumers.iter().map(|c| c.slots() / 2).min().unwrap_or(0);
+    let n = avail.min(frames);
+    for (g, a) in gains.iter_mut().zip(&shared.gains) {
+        g[0] = bits_f32(a[0].load(Ordering::Relaxed));
+        g[1] = bits_f32(a[1].load(Ordering::Relaxed));
+    }
+    for p in peaks.iter_mut() {
+        *p = [0.0, 0.0];
+    }
+    let master = bits_f32(shared.master.load(Ordering::Relaxed));
+    let mut mpeak = [0f32; 2];
+    for f in 0..n {
+        let mut l = 0f32;
+        let mut r = 0f32;
+        for (t, c) in consumers.iter_mut().enumerate() {
+            let sl = c.pop().unwrap_or(0.0) * gains[t][0];
+            let sr = c.pop().unwrap_or(0.0) * gains[t][1];
+            peaks[t][0] = peaks[t][0].max(sl.abs());
+            peaks[t][1] = peaks[t][1].max(sr.abs());
+            l += sl;
+            r += sr;
+        }
+        l *= master;
+        r *= master;
+        mpeak[0] = mpeak[0].max(l.abs());
+        mpeak[1] = mpeak[1].max(r.abs());
+        let frame = &mut out[f * channels..(f + 1) * channels];
+        frame[0] = T::from_sample(l);
+        if channels > 1 {
+            frame[1] = T::from_sample(r);
+        }
+        for s in frame.iter_mut().skip(2) {
+            *s = T::from_sample(0.0f32);
+        }
+    }
+    for s in out[n * channels..].iter_mut() {
+        *s = T::from_sample(0.0f32);
+    }
+    if n < frames {
+        shared.underruns.fetch_add(1, Ordering::Relaxed);
+    }
+    for (m, p) in shared.meters.iter().zip(peaks.iter()) {
+        m[0].fetch_max(f32_bits(p[0]), Ordering::Relaxed);
+        m[1].fetch_max(f32_bits(p[1]), Ordering::Relaxed);
+    }
+    shared.master_meter[0].fetch_max(f32_bits(mpeak[0]), Ordering::Relaxed);
+    shared.master_meter[1].fetch_max(f32_bits(mpeak[1]), Ordering::Relaxed);
+    shared.played.fetch_add(n as u64, Ordering::Relaxed);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Jump;
+
+    #[test]
+    fn position_follows_loops_and_skips() {
+        let lp = Some(Jump::Loop {
+            start: 100,
+            end: 200,
+        });
+        assert_eq!(Jump::position(lp, 50, 40), 90);
+        assert_eq!(Jump::position(lp, 50, 150), 100);
+        assert_eq!(Jump::position(lp, 50, 275), 125);
+        // Starting after the loop plays straight on.
+        assert_eq!(Jump::position(lp, 300, 10), 310);
+        let sk = Some(Jump::Skip {
+            start: 100,
+            end: 200,
+        });
+        assert_eq!(Jump::position(sk, 50, 40), 90);
+        assert_eq!(Jump::position(sk, 50, 60), 210);
+        assert_eq!(Jump::position(None, 50, 60), 110);
+        // Starting inside a skipped range starts after it.
+        assert_eq!(
+            Jump::Skip {
+                start: 100,
+                end: 200
+            }
+            .first(150),
+            200
+        );
+    }
+
+    use super::*;
+
+    #[test]
+    fn mix_applies_gains_meters_and_counts_frames() {
+        let shared = Shared::new(2, &[[1.0, 0.5], [0.0, 0.0]], 1.0);
+        let (mut p0, c0) = RingBuffer::<f32>::new(16);
+        let (mut p1, c1) = RingBuffer::<f32>::new(16);
+        for v in [0.5, 0.5, -0.25, -0.25] {
+            p0.push(v).unwrap();
+        }
+        for v in [0.9, 0.9, 0.9, 0.9] {
+            p1.push(v).unwrap();
+        }
+        let mut consumers = vec![c0, c1];
+        let mut gains = vec![[0.0; 2]; 2];
+        let mut peaks = vec![[0.0; 2]; 2];
+        let mut out = [9.0f32; 6];
+        mix(&mut out, 2, &mut consumers, &shared, &mut gains, &mut peaks);
+        // Two frames mixed, the third is silence because the rings ran dry.
+        assert_eq!(out, [0.5, 0.25, -0.25, -0.125, 0.0, 0.0]);
+        assert_eq!(shared.played.load(Ordering::Relaxed), 2);
+        assert_eq!(shared.underruns.load(Ordering::Relaxed), 1);
+        assert_eq!(bits_f32(shared.meters[0][0].load(Ordering::Relaxed)), 0.5);
+        assert_eq!(
+            bits_f32(shared.meters[1][0].load(Ordering::Relaxed)),
+            0.0,
+            "muted track shows no level"
+        );
+        assert_eq!(
+            bits_f32(shared.master_meter[1].load(Ordering::Relaxed)),
+            0.25
+        );
+    }
+
+    #[test]
+    fn gain_updates_apply_without_restart() {
+        let shared = Shared::new(1, &[[1.0, 1.0]], 1.0);
+        shared.set_gains(&[[0.25, 0.0]], 2.0);
+        let (mut p, c) = RingBuffer::<f32>::new(4);
+        p.push(1.0).unwrap();
+        p.push(1.0).unwrap();
+        let mut consumers = vec![c];
+        let mut out = [0f32; 2];
+        mix(
+            &mut out,
+            2,
+            &mut consumers,
+            &shared,
+            &mut [[0.0; 2]],
+            &mut [[0.0; 2]],
+        );
+        assert_eq!(out, [0.5, 0.0]);
+    }
+
+    #[test]
+    fn extra_device_channels_stay_silent() {
+        let shared = Shared::new(1, &[[1.0, 1.0]], 1.0);
+        let (mut p, c) = RingBuffer::<f32>::new(4);
+        p.push(0.3).unwrap();
+        p.push(0.6).unwrap();
+        let mut out = [7f32; 4];
+        mix(
+            &mut out,
+            4,
+            &mut [c],
+            &shared,
+            &mut [[0.0; 2]],
+            &mut [[0.0; 2]],
+        );
+        assert_eq!(out, [0.3, 0.6, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn idle_status() {
+        let t = Transport::default();
+        assert!(!t.status().playing);
+        assert_eq!(t.stop(), None);
+    }
+}

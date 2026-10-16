@@ -1,0 +1,2894 @@
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  Copyright (c) The GeekCast Radio Network, LLC.
+  This file is part of Altered Audio Editor.
+
+  App shell: menu bar, docking layout, status bar.
+-->
+<script lang="ts">
+  import { onMount, type Component } from "svelte";
+  import {
+    workspaceDelete,
+    exitApp,
+    getAppInfo,
+    loadKeymapOverrides,
+    workspaceGet,
+    workspaceList,
+    minimizeWindow,
+    openLink,
+    pickMediaFiles,
+    pickMediaFolder,
+    revealMedia,
+    saveKeymapOverrides,
+    workspacePut,
+    type AppInfo,
+  } from "./core";
+  import { LINKS } from "./links";
+  import { sessionHistory } from "../stores/history";
+  import { keymap } from "../stores/keymap";
+  import { bindKeymap } from "../keymap/dispatch";
+  import KeyboardShortcutsDialog from "./KeyboardShortcutsDialog.svelte";
+  import { DockController, type PanelContent, type WorkspaceState } from "./docking/dock";
+  import { PANELS, panelDef, type PanelId } from "./docking/registry";
+  import DockShell from "./docking/DockShell.svelte";
+  import { ActionRegistry } from "./actions";
+  import { MENUS } from "./menus/model";
+  import MenuBar from "./menus/MenuBar.svelte";
+  import AboutDialog from "./AboutDialog.svelte";
+  import HistoryPanel from "../panels/history/HistoryPanel.svelte";
+  import EditorPanel from "../panels/editor/EditorPanel.svelte";
+  import { peaks, session, transport } from "../stores/open-session";
+  import LevelsPanel from "../panels/levels/LevelsPanel.svelte";
+  import QuickPassPanel from "../panels/quickpass/QuickPassPanel.svelte";
+  import BatchConvertPanel from "../panels/batch/BatchConvertPanel.svelte";
+  import { trackNameFromFile } from "./track-names";
+  import MixerPanel from "../panels/mixer/MixerPanel.svelte";
+  import TimeInfoPanel from "../panels/time-info/TimeInfoPanel.svelte";
+  import { editor, restoreSettings, settingsOf } from "../stores/editor";
+  import { anchorStart, clipsFrom, clipsUpTo, nextClipId } from "./clip-select";
+  import { clipLength, sessionEnd, type ClipDoc, type Op, type TrackDoc } from "../stores/session";
+  import { fit, zoomAround } from "../panels/editor/timeline";
+  import ChoiceDialog, { type ChoiceButton } from "./ChoiceDialog.svelte";
+  import ExportDialog, { type ExportScopeInfo, type ExportSettings } from "./ExportDialog.svelte";
+  import { extensionOf, kindOfPath, sanitizeFormat, type OutputFormat } from "./output-format";
+  import SessionPropertiesDialog from "./SessionPropertiesDialog.svelte";
+  import PromptDialog from "./PromptDialog.svelte";
+  import ExportProgress from "./ExportProgress.svelte";
+  import LoudnessDialog from "./LoudnessDialog.svelte";
+  import { DEFAULT_TARGET, type LoudnessReport } from "./loudness";
+  import ClipColorDialog from "./ClipColorDialog.svelte";
+  import MarkersPanel from "../panels/markers/MarkersPanel.svelte";
+  import { newMarker, nextMarkerName } from "../panels/markers/markers";
+  import { listen } from "@tauri-apps/api/event";
+  import {
+    clipsAt,
+    copyClips,
+    fadeClip,
+    findClips,
+    loopChanges,
+    gapAt,
+    LockedError,
+    pasteClips,
+    rippleDeleteClips,
+    rippleDeleteRange,
+    splitClips,
+    trimToPlayhead,
+    trimToRange,
+    type ClipBoard,
+  } from "../panels/editor/clip-edit";
+  import type { ClipChange } from "../stores/session";
+  import { propertiesOp, type SessionProperties } from "./session-properties";
+  import { SessionFiles, displayName, planOpen, type Choice } from "./session-files";
+  import { RECENT_SLOTS, WORKSPACE_SLOTS } from "./menus/model";
+  import {
+    sessionAutosave,
+    sessionClearAutosave,
+    sessionDiscardRecovery,
+    sessionNew,
+    sessionOpen,
+    sessionPickOpen,
+    filePickOpen,
+    exportPickPath,
+    exportMixdown,
+    exportMerge,
+    exportRegionCopy,
+    templateList,
+    templateSave,
+    templateDelete,
+    sessionDefaultFolder,
+    type TemplateEntry,
+    wavePeak,
+    exportCancel,
+    exportPickFolder,
+    pathsExist,
+    pickTrackFiles,
+    unzipMedia,
+    loudnessCheck,
+    sessionPickSave,
+    sessionImportSesx,
+    sessionRecover,
+    sessionRecoverable,
+    sessionSave,
+    setWindowTitle,
+    waveSpectralEdit,
+    recordStart,
+    recordStatus,
+    recordStop,
+    recordMonitor,
+    type RecordTarget,
+    type Recoverable,
+  } from "./core";
+  import { isTauri } from "@tauri-apps/api/core";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import type { MediaRefDoc, SessionDoc } from "../stores/session";
+  import PendingPanel from "../panels/PendingPanel.svelte";
+  import FilesPanel from "../panels/files/FilesPanel.svelte";
+  import DriveManagerPanel from "../panels/drive-manager/DriveManagerPanel.svelte";
+  import { prefs } from "../stores/prefs";
+  import { libraries } from "../stores/library";
+  import LibrariesPanel from "../panels/libraries/LibrariesPanel.svelte";
+  import { mediaPool } from "../stores/media";
+  import { FileDropRouter, bindNativeFileDrop } from "./filedrop";
+  import { activeArea, currentArea, trackArea, type Area } from "./area";
+  import { revealLabel } from "../lib/platform";
+  import ToolStrip from "./ToolStrip.svelte";
+  import NewAudioFileDialog, { type NewAudioSettings } from "./NewAudioFileDialog.svelte";
+  import NewSessionDialog, { type NewSessionSettings } from "./NewSessionDialog.svelte";
+  import { closeWaveFile, newEmptyWaveFile, newWaveFromClips, openWaveFile, saveWaveFile, savesInPlace, spectralSelection, wave, waveFile, waveHistory, waveTransport, waveZoom } from "../stores/wave";
+  import { get } from "svelte/store";
+  import { rasterize } from "../panels/editor/spectrum";
+  import { inputLevels, liveTakes, recordControl, recording } from "../stores/record";
+  import { amplifyRange, clampRange, copyRange, cropTo, deleteRange, fadeRange, insertFile, mixPasteAt, pasteAt, replaceRange, silenceRange, type WaveBoard } from "../panels/editor/wave-edit";
+
+  let info = $state<AppInfo | null>(null);
+  let coreError = $state<string | null>(null);
+  let lastError = $state<string | null>(null);
+
+  let notice = $state<string | null>(null);
+  let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+
+  let errorTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function showError(e: unknown) {
+    lastError = e instanceof Error ? e.message : String(e);
+    console.error(e);
+    clearTimeout(errorTimer);
+    errorTimer = setTimeout(() => (lastError = null), 12000);
+  }
+
+  /** A short status bar message that clears itself. */
+  function showNotice(text: string) {
+    notice = text;
+    clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => (notice = null), 6000);
+  }
+
+  /** Replaces any zips with the audio extracted from them (into a folder beside each zip). */
+  async function withUnzipped(paths: string[]): Promise<string[]> {
+    const out: string[] = [];
+    for (const p of paths) {
+      if (!/\.zip$/i.test(p)) {
+        out.push(p);
+        continue;
+      }
+      try {
+        out.push(...(await unzipMedia(p)));
+      } catch (e) {
+        showError(e);
+      }
+    }
+    return out;
+  }
+
+  async function importPaths(raw: string[]) {
+    const paths = await withUnzipped(raw);
+    if (paths.length === 0) return;
+    dock.show("files");
+    const result = await mediaPool.importPaths(paths, sessionHistory);
+    if (result.added === 0) {
+      showNotice(result.duplicates > 0 ? "Those files are already in the session." : "No audio files found there.");
+    } else if (result.duplicates > 0) {
+      showNotice(`Skipped ${result.duplicates} already in the session.`);
+    }
+  }
+
+  const uuid = () => crypto.randomUUID();
+
+  function nextTrackName(tracks: readonly TrackDoc[]): string {
+    const names = new Set(tracks.map((t) => t.name));
+    let n = tracks.length + 1;
+    while (names.has(`Track ${n}`)) n++;
+    return `Track ${n}`;
+  }
+
+  const stem = (name: string) => name.replace(/\.[^.]+$/, "");
+
+  /** Adds files as clips, one after another, on a track (or a new one) starting at `at`. */
+  /**
+   * The ops that put `paths` on a track (null makes a new track) one
+   * after another from `at`. Null when none of the files can be read.
+   */
+  async function placeOps(paths: string[], trackId: string | null, at: number): Promise<{ ops: Op[]; clips: { id: string }[]; target: string } | null> {
+    if (!session.current || paths.length === 0) return null;
+    const imported = await mediaPool.importPaths(paths, sessionHistory);
+    await mediaPool.whenIdle();
+    const doc = session.current;
+    const items = imported.ids.map((id) => mediaPool.get(id)).filter((it) => it?.status === "ready" && it.info);
+    if (items.length === 0) return null;
+    const ops: Op[] = [];
+    let target = trackId;
+    if (!target || !doc.tracks.some((t) => t.id === target)) {
+      target = uuid();
+      ops.push({
+        op: "add_track",
+        id: target,
+        name: nextTrackName(doc.tracks),
+        stereo: (items[0]!.info!.channels ?? 2) > 1,
+        index: doc.tracks.length,
+      });
+    }
+    const known = new Set(doc.media.map((m) => m.id));
+    const clips = [];
+    let pos = Math.max(0, Math.round(at));
+    for (const it of items) {
+      const info = it!.info!;
+      if (!known.has(it!.id)) {
+        known.add(it!.id);
+        ops.push({
+          op: "add_media",
+          media: {
+            id: it!.id,
+            path: it!.path,
+            relative_path: null,
+            sample_rate: info.sampleRate,
+            channels: info.channels,
+            length: info.length,
+          },
+        });
+      }
+      clips.push({ id: uuid(), name: stem(it!.name), media_id: it!.id, start: pos, source_in: 0, source_out: info.length });
+      pos += Math.round((info.length * doc.sample_rate) / info.sampleRate);
+    }
+    ops.push({ op: "add_clips", track_id: target, clips });
+    return { ops, clips, target };
+  }
+
+  /**
+   * Multitrack > Insert Files as Tracks: each file on its own new track,
+   * all starting at `at`, named after the file. Made for per-speaker
+   * recordings, which line up from the same start. One undo step.
+   */
+  async function placeAsTracks(raw: string[], at: number) {
+    const doc0 = session.current;
+    if (!doc0) return;
+    const paths = await withUnzipped(raw);
+    if (paths.length === 0) return;
+    const imported = await mediaPool.importPaths(paths, sessionHistory);
+    await mediaPool.whenIdle();
+    const doc = session.current ?? doc0;
+    const ids = [...new Set([...imported.ids, ...paths.map((p) => mediaPool.current.items.find((it) => it.path === p)?.id).filter((x): x is string => !!x)])];
+    const items = ids.map((id) => mediaPool.get(id)).filter((it) => it?.status === "ready" && it.info);
+    if (items.length === 0) {
+      showNotice("None of those files could be read.");
+      return;
+    }
+    const ops: Op[] = [];
+    const known = new Set(doc.media.map((m) => m.id));
+    const clipIds: string[] = [];
+    const start = Math.max(0, Math.round(at));
+    for (const [i, it] of items.entries()) {
+      const info = it!.info!;
+      const track = uuid();
+      ops.push({ op: "add_track", id: track, name: trackNameFromFile(it!.name), stereo: info.channels > 1, index: doc.tracks.length + i });
+      if (!known.has(it!.id)) {
+        known.add(it!.id);
+        ops.push({
+          op: "add_media",
+          media: { id: it!.id, path: it!.path, relative_path: null, sample_rate: info.sampleRate, channels: info.channels, length: info.length },
+        });
+      }
+      const id = uuid();
+      clipIds.push(id);
+      ops.push({ op: "add_clips", track_id: track, clips: [{ id, name: stem(it!.name), media_id: it!.id, start, source_in: 0, source_out: info.length }] });
+    }
+    await session.edit(items.length === 1 ? "Insert File as Track" : `Insert ${items.length} Files as Tracks`, { op: "batch", ops }, sessionHistory);
+    editor.selectClips(clipIds);
+    editor.setMode("multitrack");
+    dock.show("editor");
+    // A fresh session shows the whole recording.
+    if (doc0.tracks.every((t) => t.clips.length === 0)) await actions.run("view.zoom-session");
+  }
+
+  async function placeFiles(paths: string[], trackId: string | null, at: number) {
+    if (!session.current || paths.length === 0) return;
+    const placed = await placeOps(paths, trackId, at);
+    if (!placed) {
+      showNotice("None of those files could be read.");
+      return;
+    }
+    const { ops, clips, target } = placed;
+    await session.edit(clips.length === 1 ? "Add Clip" : `Add ${clips.length} Clips`, { op: "batch", ops }, sessionHistory);
+    editor.selectClips(
+      clips.map((c) => c.id),
+      target,
+    );
+  }
+
+  /** A folder named `name` beside the saved session, asking to save first if needed. Null if not saved. */
+  async function folderBesideSession(name: string, why: string): Promise<string | null> {
+    if (!session.path) {
+      showNotice(`Save the session first. ${why}`);
+      await actions.run("file.save-as");
+      if (!session.path) return null;
+    }
+    const sp = session.path;
+    const cut = Math.max(sp.lastIndexOf("/"), sp.lastIndexOf("\\"));
+    const sep = sp.includes("\\") ? "\\" : "/";
+    return `${sp.slice(0, cut)}${sep}${name}`;
+  }
+
+  /**
+   * Clip > Make Unique Copy: each selected clip gets its own copy of the
+   * audio it plays (just its part of the file, untouched), so later
+   * changes to it never reach other clips sharing the original. Gain,
+   * fades and envelopes stay as they are. One undo step.
+   */
+  async function makeUniqueCopy() {
+    const doc0 = session.current;
+    if (!doc0 || exporting) return;
+    const found = findClips(doc0, editor.current().selectedClips).filter((f) => !f.clip.locked);
+    if (found.length === 0) return;
+    const folder = await folderBesideSession("Clip Copies", "Clip copies are kept in a folder next to it.");
+    if (!folder) return;
+    exporting = { title: found.length === 1 ? "Copying clip audio" : `Copying audio for ${found.length} clips`, progress: 0 };
+    try {
+      const paths: string[] = [];
+      for (const [i, f] of found.entries()) {
+        const m = doc0.media.find((x) => x.id === f.clip.media_id);
+        if (!m) throw new Error(`The file for "${f.clip.name}" is missing from this session.`);
+        paths.push(await exportRegionCopy(m.path, f.clip.source_in, f.clip.source_out, folder, `${f.clip.name} Copy`));
+        exporting = { ...exporting!, progress: (i + 1) / found.length };
+      }
+      const imported = await mediaPool.importPaths(paths, sessionHistory);
+      await mediaPool.whenIdle();
+      const doc = session.current!;
+      const known = new Set(doc.media.map((x) => x.id));
+      const ops: Op[] = [];
+      const restored: [string, ClipDoc][] = [];
+      for (const [i, f] of found.entries()) {
+        const it = mediaPool.get(imported.ids[i]!);
+        if (!it || it.status !== "ready" || !it.info) throw new Error(`The copy of "${f.clip.name}" could not be read back.`);
+        if (!known.has(it.id)) {
+          known.add(it.id);
+          ops.push({
+            op: "add_media",
+            media: { id: it.id, path: it.path, relative_path: null, sample_rate: it.info.sampleRate, channels: it.info.channels, length: it.info.length },
+          });
+        }
+        restored.push([f.track.id, { ...f.clip, media_id: it.id, source_in: 0, source_out: it.info.length }]);
+      }
+      ops.push({ op: "remove_clips", ids: found.map((f) => f.clip.id) }, { op: "restore_clips", clips: restored });
+      await session.edit(found.length === 1 ? "Make Unique Copy" : `Make ${found.length} Unique Copies`, { op: "batch", ops }, sessionHistory);
+      editor.selectClips(found.map((f) => f.clip.id));
+      showNotice(found.length === 1 ? `The clip now plays its own copy, ${paths[0]!.split(/[\\/]/).pop()}.` : `${found.length} clips now play their own copies.`);
+    } catch (e) {
+      showError(e);
+    } finally {
+      exporting = null;
+    }
+  }
+
+  /** Two or more selected clips on one track, none locked: what Merge Clips works on. */
+  function mergeTarget(): { trackId: string; clips: ClipDoc[] } | null {
+    const doc = session.current;
+    if (!doc) return null;
+    const found = findClips(doc, editor.current().selectedClips);
+    if (found.length < 2) return null;
+    const trackId = found[0]!.track.id;
+    if (found.some((f) => f.track.id !== trackId || f.clip.locked)) return null;
+    return { trackId, clips: found.map((f) => f.clip).sort((a, b) => a.start - b.start) };
+  }
+
+  function mergeReason(): string {
+    const doc = session.current;
+    const found = doc ? findClips(doc, editor.current().selectedClips) : [];
+    if (found.length < 2) return "Select two or more clips on one track.";
+    if (found.some((f) => f.clip.locked)) return "One of the selected clips is locked.";
+    return "The selected clips must be on the same track.";
+  }
+
+  /**
+   * Clip > Merge Clips: renders the selected clips (with their gain,
+   * fades and envelopes, not the track's settings) into one new file in
+   * a "Merged Clips" folder beside the session, then swaps them for one
+   * clip. One undo step; the original files are untouched.
+   */
+  async function mergeClips() {
+    const m = mergeTarget();
+    if (!m || exporting) return;
+    const folder = await folderBesideSession("Merged Clips", "Merged clips are kept in a folder next to it.");
+    if (!folder) return;
+    const doc = session.current!;
+    const start = m.clips[0]!.start;
+    const end = Math.max(...m.clips.map((c) => c.start + clipLength(c, doc.media.find((x) => x.id === c.media_id), doc.sample_rate)));
+    exporting = { title: "Merging clips", progress: 0 };
+    let off: (() => void) | null = null;
+    try {
+      off = await listen<{ done: number; total: number }>("export-progress", (e) => {
+        if (exporting) exporting = { ...exporting, progress: e.payload.total > 0 ? e.payload.done / e.payload.total : 0 };
+      });
+      const r = await exportMerge(folder, `${m.clips[0]!.name} Merged`, { range: [start, end], clips: m.clips.map((c) => c.id), track: m.trackId });
+      if (r.cancelled) {
+        showNotice("Merge cancelled. Nothing changed.");
+        return;
+      }
+      const placed = await placeOps([r.path], m.trackId, start);
+      if (!placed) {
+        showNotice("The merged file could not be read back.");
+        return;
+      }
+      const ops: Op[] = [{ op: "remove_clips", ids: m.clips.map((c) => c.id) }, ...placed.ops];
+      await session.edit(`Merge ${m.clips.length} Clips`, { op: "batch", ops }, sessionHistory);
+      editor.selectClips(
+        placed.clips.map((c) => c.id),
+        m.trackId,
+      );
+      const clipped = r.peak > 1 ? " The merged audio goes above 0 dBFS; it is saved as float, so nothing is lost, but turn the clip down before export." : "";
+      showNotice(`Merged ${m.clips.length} clips into ${r.path.split(/[\\/]/).pop()}.${clipped}`);
+    } catch (e) {
+      showError(e);
+    } finally {
+      off?.();
+      exporting = null;
+    }
+  }
+
+  /**
+   * File > Open. Sessions open as usual. Audio files go into the Files
+   * panel; when the session has no clips yet, each one is also placed on
+   * its own track at the start so it can be played and edited right away.
+   */
+  async function openAny(): Promise<void> {
+    const picked = await filePickOpen();
+    if (picked.length === 0) return;
+    const plan = planOpen(picked);
+    if (plan.session && !(await files.open(plan.session))) return;
+    if (plan.sesx && !(await files.importSesx(plan.sesx))) return;
+    if (plan.audio.length > 0) await openAudio(plan.audio);
+    if (plan.skipped.length > 0) {
+      const names = plan.skipped.map((p) => p.split(/[\\/]/).pop()).join(", ");
+      showNotice(`Not opened: ${names}. Pick one session at a time, plus any audio files.`);
+    }
+  }
+
+  async function openAudio(paths: string[]): Promise<void> {
+    const doc = session.current;
+    if (!doc) return;
+    const empty = doc.tracks.every((t) => t.clips.length === 0);
+    if (empty) {
+      // Each file onto the next empty track (new sessions start with some), then new tracks.
+      for (const [i, p] of paths.entries()) await placeFiles([p], doc.tracks[i]?.id ?? null, 0);
+      await actions.run("view.zoom-session");
+      return;
+    }
+    const imported = await mediaPool.importPaths(paths, sessionHistory);
+    mediaPool.setSelection(imported.ids);
+    showNotice(
+      paths.length === 1
+        ? "Added to the Files panel. Drag it onto a track, or use Insert Files at Playhead."
+        : `Added ${paths.length} files to the Files panel. Drag them onto tracks, or use Insert Files at Playhead.`,
+    );
+  }
+
+  function addTrack(stereo: boolean) {
+    const doc = session.current;
+    if (!doc) return;
+    const sel = editor.current().selectedTrack;
+    const i = doc.tracks.findIndex((t) => t.id === sel);
+    const id = uuid();
+    const index = i >= 0 ? i + 1 : doc.tracks.length;
+    return session
+      .edit(stereo ? "Add Stereo Track" : "Add Mono Track", { op: "add_track", id, name: nextTrackName(doc.tracks), stereo, index }, sessionHistory)
+      .then(() => editor.selectTrack(id));
+  }
+
+  /** Gives every `id` field inside a copied object a new value. */
+  function freshIds<T>(value: T): T {
+    if (Array.isArray(value)) return value.map(freshIds) as T;
+    if (value && typeof value === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value)) out[k] = k === "id" ? uuid() : freshIds(v);
+      return out as T;
+    }
+    return value;
+  }
+
+  const selectedTrack = () => session.current?.tracks.find((t) => t.id === editor.current().selectedTrack) ?? null;
+
+  function usedMedia(): Set<string> {
+    const used = new Set<string>();
+    for (const t of session.current?.tracks ?? []) for (const c of t.clips) used.add(c.media_id);
+    return used;
+  }
+
+  // Questions that need an answer before work continues.
+  let promptReq = $state<{ title: string; label: string; value: string; resolve: (v: string | null) => void } | null>(null);
+  function promptText(title: string, label: string, value: string): Promise<string | null> {
+    return new Promise((resolve) => {
+      promptReq = { title, label, value, resolve };
+    });
+  }
+
+  // Clip commands. They act on the selected clips; split and trim also
+  // need the playhead inside the clip.
+  const selectedClipDocs = () => {
+    const doc = session.current;
+    return doc ? findClips(doc, editor.current().selectedClips).map((l) => l.clip) : [];
+  };
+  const playheadNow = () => (transport.current.playing ? transport.current.position : (session.current?.view.playhead ?? 0));
+
+  async function editClips(label: string, changes: ClipChange[]) {
+    if (changes.length > 0) await session.edit(label, { op: "set_clips", changes }, sessionHistory);
+  }
+
+  async function split(all: boolean) {
+    const doc = session.current;
+    if (!doc) return;
+    const at = playheadNow();
+    const ids = all ? clipsAt(doc, at, new Set()) : clipsAt(doc, at, editor.current().selectedClips);
+    const op = splitClips(doc, ids, at, uuid);
+    if (!op) {
+      showNotice("Move the playhead inside a clip to split it.");
+      return;
+    }
+    await session.edit(ids.length > 1 ? "Split Clips" : "Split Clip", op, sessionHistory);
+  }
+
+  async function trimTo(edge: "start" | "end") {
+    const doc = session.current;
+    if (!doc) return;
+    const at = playheadNow();
+    const ids = clipsAt(doc, at, editor.current().selectedClips).filter((id) => editor.current().selectedClips.has(id));
+    const changes = trimToPlayhead(doc, ids, at, edge);
+    if (changes.length === 0) showNotice("Select a clip and put the playhead inside it.");
+    await editClips(edge === "start" ? "Trim Start" : "Trim End", changes);
+  }
+
+  async function toggleFade(which: "in" | "out") {
+    const doc = session.current;
+    if (!doc) return;
+    const clips = selectedClipDocs();
+    const on = clips.every((c) => (which === "in" ? c.fade_in : c.fade_out).length > 0);
+    const second = doc.sample_rate;
+    const changes = clips
+      .map((c) => fadeClip(doc, c, which, on ? 0 : second))
+      .filter((c): c is ClipChange => c !== null);
+    await editClips(on ? `Remove Fade ${which === "in" ? "In" : "Out"}` : `Fade ${which === "in" ? "In" : "Out"}`, changes);
+  }
+
+  async function clipGain() {
+    const clips = selectedClipDocs();
+    if (clips.length === 0) return;
+    const v = await promptText("Clip Gain", "Gain in dB (-96 to +24)", clips[0]!.gain_db.toFixed(1));
+    if (v === null) return;
+    const db = Number(v.replace(",", "."));
+    if (!Number.isFinite(db)) {
+      showNotice("Clip gain must be a number of dB, like -3 or 2.5.");
+      return;
+    }
+    const g = Math.max(-96, Math.min(24, db));
+    await editClips("Clip Gain", clips.map((c) => ({ id: c.id, gain_db: g })));
+  }
+
+  // Clipboard for clips. Lives for the app session; not the system clipboard.
+  let clipBoard: ClipBoard | null = null;
+  const inEditor = () => currentArea() === "multitrack";
+  const timeSel = () => session.current?.view.selection ?? null;
+
+  /** Runs an edit that may hit a locked clip, showing why instead of failing silently. */
+  async function guarded(label: string, build: () => Op | null, empty: string) {
+    let op: Op | null;
+    try {
+      op = build();
+    } catch (e) {
+      if (e instanceof LockedError) {
+        showNotice(e.message);
+        return;
+      }
+      throw e;
+    }
+    if (!op) {
+      showNotice(empty);
+      return;
+    }
+    await session.edit(label, op, sessionHistory);
+  }
+
+  function copySelected(): boolean {
+    const doc = session.current;
+    if (!doc) return false;
+    clipBoard = copyClips(doc, editor.current().selectedClips);
+    actions.invalidate();
+    return clipBoard !== null;
+  }
+
+  async function pasteAtPlayhead() {
+    const doc = session.current;
+    if (!doc || !clipBoard) return;
+    const sel = editor.current().selectedTrack;
+    const row = Math.max(0, doc.tracks.findIndex((t) => t.id === sel));
+    const r = pasteClips(doc, clipBoard, playheadNow(), row, uuid);
+    if (!r) {
+      showNotice("The copied clips' files are no longer in this session.");
+      return;
+    }
+    await session.edit(r.ids.length === 1 ? "Paste Clip" : `Paste ${r.ids.length} Clips`, r.op, sessionHistory);
+    editor.selectClips(r.ids);
+  }
+
+  // Mixdown. One export at a time, with a progress dialog.
+  let exporting = $state<{ title: string; progress: number } | null>(null);
+
+  type MixSource = "all" | "selection" | "clips";
+  type MixTarget = "file" | "files-panel" | "track";
+
+  function mixRange(source: MixSource): { range?: [number, number]; clips?: string[]; start: number } | null {
+    const doc = session.current;
+    if (!doc) return null;
+    if (source === "selection") {
+      const r = timeSel();
+      return r ? { range: [r.start, r.end], start: r.start } : null;
+    }
+    if (source === "clips") {
+      const found = findClips(doc, editor.current().selectedClips);
+      if (found.length === 0) return null;
+      const start = Math.min(...found.map((f) => f.clip.start));
+      const end = Math.max(...found.map((f) => f.clip.start + clipLength(f.clip, doc.media.find((m) => m.id === f.clip.media_id), doc.sample_rate)));
+      return { range: [start, end], clips: found.map((f) => f.clip.id), start };
+    }
+    return { start: 0 };
+  }
+
+  const KEY_EXPORT = "export.mixdown";
+  let exportReq = $state<{ initial: ExportSettings; scopes: ExportScopeInfo[]; source: { sampleRate: number; channels: number; bitDepth: number } } | null>(null);
+
+  function sessionFolder(): string | null {
+    const sp = session.path;
+    return sp ? sp.slice(0, Math.max(sp.lastIndexOf("/"), sp.lastIndexOf("\\"))) || null : null;
+  }
+
+  /** File > Export: opens the Export Mixdown dialog, remembering the last format and folder. */
+  function openExportDialog(source: MixSource) {
+    const doc = session.current;
+    if (!doc) return;
+    const saved = prefs.raw(KEY_EXPORT) as { format?: unknown; folder?: unknown; addToFiles?: unknown } | null;
+    const secs = (src: MixSource): number | null => {
+      const r = mixRange(src);
+      if (!r) return null;
+      const len = r.range ? r.range[1] - r.range[0] : sessionEnd(doc);
+      return len > 0 ? len / doc.sample_rate : null;
+    };
+    const scopes: ExportScopeInfo[] = [
+      { scope: "all", label: "Whole session", seconds: secs("all"), reason: "The session has no clips yet." },
+      { scope: "selection", label: "Time selection", seconds: secs("selection"), reason: "Drag across empty space or the ruler to select a time range." },
+      { scope: "clips", label: "Selected clips", seconds: secs("clips"), reason: "Select clips first." },
+    ];
+    const folder = (typeof saved?.folder === "string" && saved.folder) || sessionFolder() || "";
+    const suffix = source === "all" ? "" : source === "selection" ? " Selection" : " Clips";
+    exportReq = {
+      initial: {
+        scope: source,
+        name: `${fileSafe(doc.name)}${suffix}`,
+        folder,
+        format: sanitizeFormat(saved?.format),
+        addToFiles: saved?.addToFiles === true,
+      },
+      scopes,
+      source: { sampleRate: doc.sample_rate, channels: doc.master?.channels === "mono" ? 1 : 2, bitDepth: doc.bit_depth },
+    };
+  }
+
+  async function finishExportDialog(v: ExportSettings | null) {
+    exportReq = null;
+    if (!v) return;
+    prefs.set(KEY_EXPORT, { format: v.format, folder: v.folder, addToFiles: v.addToFiles });
+    const sep = v.folder.includes("\\") ? "\\" : "/";
+    const path = `${v.folder.replace(/[\\/]+$/, "")}${sep}${fileSafe(v.name)}.${extensionOf(v.format.kind)}`;
+    const [exists] = await pathsExist([path]);
+    if (exists) {
+      const ok = await ask("Replace the file?", `${path.split(/[\\/]/).pop()} already exists in that folder.`, [
+        { label: "Replace", value: "yes", primary: true },
+        { label: "Cancel", value: "no" },
+      ]);
+      if (ok !== "yes") return;
+    }
+    await runMixdown(v.scope, v.addToFiles ? "files-panel" : "file", path, v.format);
+  }
+
+  async function mixDown(source: MixSource, target: MixTarget) {
+    const doc = session.current;
+    if (!doc || !mixRange(source) || exporting) return;
+    if (target === "file") {
+      openExportDialog(source);
+      return;
+    }
+    const suffix = source === "all" ? "Mixdown" : source === "selection" ? "Selection" : "Clips";
+    const path = await exportPickPath(`${doc.name} ${suffix}`, sessionFolder());
+    if (!path) return;
+    await runMixdown(source, target, path, null);
+  }
+
+  async function runMixdown(source: MixSource, target: MixTarget, path: string, format: OutputFormat | null) {
+    const what = mixRange(source);
+    if (!what || exporting) return;
+    exporting = { title: target === "track" ? "Bouncing to a new track" : "Exporting mixdown", progress: 0 };
+    let off: (() => void) | null = null;
+    try {
+      off = await listen<{ done: number; total: number }>("export-progress", (e) => {
+        if (exporting) exporting = { ...exporting, progress: e.payload.total > 0 ? e.payload.done / e.payload.total : 0 };
+      });
+      const r = await exportMixdown(path, {
+        ...(what.range ? { range: what.range } : {}),
+        ...(what.clips ? { clips: what.clips } : {}),
+        ...(format ? { format } : {}),
+      });
+      if (r.cancelled) {
+        showNotice("Export cancelled. Nothing was saved.");
+        return;
+      }
+      const name = path.split(/[\\/]/).pop();
+      const clipped = r.peak > 1 ? ` The mix clipped (peak +${(20 * Math.log10(r.peak)).toFixed(1)} dB); turn the Master down and export again.` : "";
+      if (target === "files-panel") {
+        const imported = await mediaPool.importPaths([path], sessionHistory);
+        mediaPool.setSelection(imported.ids);
+        showNotice(`Mixed down to ${name} and added it to the Files panel.${clipped}`);
+      } else if (target === "track") {
+        await placeFiles([path], null, what.start);
+        showNotice(`Bounced to ${name} on a new track.${clipped}`);
+      } else {
+        showNotice(`Exported ${name}.${clipped}`);
+      }
+    } catch (e) {
+      showError(e);
+    } finally {
+      off?.();
+      exporting = null;
+    }
+  }
+
+  /** File-safe version of a track or session name. */
+  const fileSafe = (name: string) => name.replace(/[<>:"/\\|?*\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim() || "Track";
+
+  /**
+   * One WAV per track that has clips and is not muted, each the length of
+   * the whole session so they line up when imported elsewhere.
+   */
+  async function exportStems() {
+    const doc = session.current;
+    if (!doc || exporting) return;
+    const tracks = doc.tracks.filter((t) => t.clips.length > 0 && !t.muted);
+    if (tracks.length === 0) {
+      showNotice("No unmuted tracks with clips to export.");
+      return;
+    }
+    const sp = session.path;
+    const start = sp ? sp.slice(0, Math.max(sp.lastIndexOf("/"), sp.lastIndexOf("\\"))) || null : null;
+    const folder = await exportPickFolder(start);
+    if (!folder) return;
+    const sep = folder.includes("\\") ? "\\" : "/";
+    let off: (() => void) | null = null;
+    let done = 0;
+    try {
+      for (const [i, t] of tracks.entries()) {
+        exporting = { title: `Exporting stem ${i + 1} of ${tracks.length}: ${t.name}`, progress: 0 };
+        off?.();
+        off = await listen<{ done: number; total: number }>("export-progress", (e) => {
+          if (exporting) exporting = { ...exporting, progress: e.payload.total > 0 ? e.payload.done / e.payload.total : 0 };
+        });
+        const path = `${folder}${sep}${fileSafe(doc.name)} - ${String(i + 1).padStart(2, "0")} ${fileSafe(t.name)}.wav`;
+        const r = await exportMixdown(path, { track: t.id });
+        if (r.cancelled) {
+          showNotice(`Stem export cancelled after ${done} of ${tracks.length}.`);
+          return;
+        }
+        done++;
+      }
+      showNotice(`Exported ${done} ${done === 1 ? "stem" : "stems"} to ${folder}.`);
+    } catch (e) {
+      showError(e);
+    } finally {
+      off?.();
+      exporting = null;
+    }
+  }
+
+  // Check Loudness: measures the whole session, or the time selection when there is one.
+  const KEY_LOUD_TARGET = "loudness.target";
+  let loud = $state<{ report: LoudnessReport | null; progress: number | null; target: string; scope: string } | null>(null);
+
+  async function measureLoudness() {
+    if (!loud || loud.progress !== null) return;
+    const r = timeSel();
+    loud = { ...loud, progress: 0, scope: r ? "the time selection" : "the whole session" };
+    let off: (() => void) | null = null;
+    try {
+      off = await listen<{ done: number; total: number }>("export-progress", (e) => {
+        if (loud && loud.progress !== null) loud = { ...loud, progress: e.payload.total > 0 ? e.payload.done / e.payload.total : 0 };
+      });
+      const report = await loudnessCheck(r ? { range: [r.start, r.end] } : {});
+      if (loud) loud = { ...loud, progress: null, report: report.cancelled ? loud.report : report };
+    } catch (e) {
+      if (loud) loud = { ...loud, progress: null };
+      showError(e);
+    } finally {
+      off?.();
+    }
+  }
+
+  async function applyMasterGain(db: number) {
+    const cur = session.current?.master?.volume_db ?? 0;
+    const next = Math.round((cur + db) * 10) / 10;
+    await session.edit("Master Volume", { op: "set_master_volume", volume_db: next }, sessionHistory);
+    showNotice(`Master set to ${next > 0 ? "+" : ""}${next.toFixed(1)} dB. Measuring again.`);
+    if (loud) loud = { ...loud, report: null };
+    await measureLoudness();
+  }
+
+  let colorFor = $state<{ ids: string[]; current: string | null } | null>(null);
+
+  let propertiesOpen = $state(false);
+
+  async function applyProperties(next: SessionProperties | null) {
+    propertiesOpen = false;
+    const doc = session.current;
+    if (!next || !doc) return;
+    const op = propertiesOp(doc, next);
+    if (op) await session.edit("Session Properties", op, sessionHistory);
+  }
+
+  let choice = $state<{ title: string; message: string; buttons: ChoiceButton[]; resolve: (v: string) => void } | null>(null);
+
+  function ask(title: string, message: string, buttons: ChoiceButton[]): Promise<string> {
+    return new Promise((resolve) => {
+      choice = { title, message, buttons, resolve };
+    });
+  }
+
+  const KEY_RECENT = "sessions.recent";
+  const KEY_EDITOR = "editor.settings";
+
+  const files = new SessionFiles({
+    backend: {
+      create: (options) => sessionNew<SessionDoc>(options),
+      save: (path, media, libs) => sessionSave<SessionDoc, MediaRefDoc>(path, media, libs),
+      open: (path) => sessionOpen<SessionDoc>(path),
+      autosave: (media) => sessionAutosave(media),
+      clearAutosave: () => sessionClearAutosave(),
+      recoverable: () => sessionRecoverable(),
+      recover: (p) => sessionRecover<SessionDoc>(p),
+      discardRecovery: (id) => sessionDiscardRecovery(id),
+      pickSave: (name) => sessionPickSave(name),
+      pickOpen: () => sessionPickOpen(false),
+      pickSesx: () => sessionPickOpen(true),
+      importSesx: (p) => sessionImportSesx<SessionDoc>(p),
+    },
+    session,
+    pool: mediaPool,
+    stack: sessionHistory,
+    askSave: (name) =>
+      ask("Unsaved changes", `Save changes to "${name}" before closing it?`, [
+        { label: "Save", value: "save", primary: true },
+        { label: "Don't Save", value: "discard" },
+        { label: "Cancel", value: "cancel" },
+      ]) as Promise<Choice>,
+    askRecover: (r: Recoverable) =>
+      ask(
+        "Recover unsaved work?",
+        `Altered Audio Editor did not close normally. "${r.note.original_path ? displayName(r.note.original_path, null) : r.note.name}" has unsaved work from ${new Date(r.note.saved_at).toLocaleString()}. Recover it?`,
+        [
+          { label: "Recover", value: "yes", primary: true },
+          { label: "Discard", value: "no" },
+        ],
+      ).then((v) => v === "yes"),
+    recent: {
+      get: () => {
+        const raw = prefs.raw(KEY_RECENT);
+        return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
+      },
+      set: (paths) => prefs.set(KEY_RECENT, paths),
+    },
+    notice: (t) => showNotice(t),
+    libraries: () => libraries.current.libs.map((l) => l.dir),
+    onReplaced: (doc) => {
+      editor.selectTrack(null);
+      // Reopen the libraries this session uses.
+      for (const dir of doc.libraries ?? []) {
+        if (!libraries.current.libs.some((l) => l.dir === dir)) {
+          libraries.openDir(dir).catch(() => showNotice(`Library not found: ${dir}`));
+        }
+      }
+    },
+  });
+
+  let lastTitle = "";
+  /** The Editor tab names what it shows: the session, or the file in the Waveform editor. */
+  function updateEditorTitle() {
+    const f = waveFile.current();
+    const what = inWave() && f ? (f.path.split(/[\\/]/).pop() ?? "") : files.name;
+    dock.setTitle("editor", what ? `Editor - ${what}${inWave() ? "" : files.dirty ? " *" : ""}` : "Editor");
+  }
+  function updateTitle() {
+    updateEditorTitle();
+    const t = files.title();
+    if (t !== lastTitle) {
+      lastTitle = t;
+      void setWindowTitle(t).catch(() => {});
+    }
+  }
+
+  async function exitSafely() {
+    if (!(await files.confirmDiscard())) return;
+    if (!(await confirmWaveDiscard())) return;
+    files.stopAutosave();
+    await prefs.flush();
+    await exitApp();
+  }
+
+  const fileDrop = new FileDropRouter((paths) => void importPaths(paths).catch(showError));
+
+  const asComponent = (c: unknown) => c as Component<Record<string, unknown>>;
+
+  function content(id: PanelId): PanelContent {
+    switch (id) {
+      case "history":
+        return {
+          component: asComponent(HistoryPanel),
+          props: { stack: sessionHistory, waveStack: waveHistory, shortcutFor, onError: showError },
+        };
+      case "files":
+        return {
+          component: asComponent(FilesPanel),
+          props: {
+            pool: mediaPool,
+            actions,
+            drop: fileDrop,
+            shortcutFor,
+            onDropPaths: (paths: string[]) => void importPaths(paths).catch(showError),
+            onOpen: (path: string) => void openInWaveform(path),
+          },
+        };
+      case "drive-manager":
+        return {
+          component: asComponent(DriveManagerPanel),
+          props: {
+            router: fileDrop,
+            prefs,
+            onImport: (paths: string[]) => void importPaths(paths).catch(showError),
+            onError: showError,
+          },
+        };
+      case "mixer":
+        return {
+          component: asComponent(MixerPanel),
+          props: { session, transport, runner: sessionHistory, onError: showError },
+        };
+      case "time-info":
+        return { component: asComponent(TimeInfoPanel), props: { session, transport } };
+      case "levels":
+        return { component: asComponent(LevelsPanel), props: { transport } };
+      case "batch-convert":
+        return {
+          component: asComponent(BatchConvertPanel),
+          props: { pool: mediaPool, drop: fileDrop, prefs, onNotice: showNotice, onError: showError },
+        };
+      case "quickpass":
+        return {
+          component: asComponent(QuickPassPanel),
+          props: { session, transport, runner: sessionHistory, prefs, onNotice: showNotice, onError: showError },
+        };
+      case "libraries":
+        return {
+          component: asComponent(LibrariesPanel),
+          props: {
+            store: libraries,
+            runner: sessionHistory,
+            router: fileDrop,
+            peaks,
+            shortcutFor,
+            onAddToSession: (paths: string[]) => void importPaths(paths).catch(showError),
+            onNotice: showNotice,
+            onError: showError,
+          },
+        };
+      case "markers":
+        return {
+          component: asComponent(MarkersPanel),
+          props: { session, transport, runner: sessionHistory, actions, onError: showError },
+        };
+      case "editor":
+        return {
+          component: asComponent(EditorPanel),
+          props: {
+            session,
+            runner: sessionHistory,
+            peaks,
+            transport,
+            router: fileDrop,
+            actions,
+            shortcutFor,
+            onError: showError,
+            onPlaceFiles: (paths: string[], trackId: string | null, at: number) =>
+              void placeFiles(paths, trackId, at).catch(showError),
+            prompt: promptText,
+            wave,
+            waveFile,
+            waveTransport,
+            onWaveLevel: (db: number) => void waveAmplify(db).catch(showError),
+          },
+        };
+      default: {
+        const def = panelDef(id);
+        return {
+          component: asComponent(PendingPanel),
+          props: { title: def?.title ?? id, note: def?.pending ?? "Not built yet." },
+        };
+      }
+    }
+  }
+
+  const KEY_WORKSPACE = "workspace.current";
+  let wsState: WorkspaceState = { current: "default", items: [] };
+  const dock = new DockController({
+    content,
+    workspaces: { list: workspaceList, get: workspaceGet, put: workspacePut, remove: workspaceDelete },
+    currentId: () => prefs.string(KEY_WORKSPACE, "default"),
+    setCurrentId: (id) => prefs.set(KEY_WORKSPACE, id),
+    ready: () => prefs.load(),
+    onError: showError,
+  });
+
+  let aboutOpen = $state(false);
+  let shortcutsOpen = $state(false);
+
+  const shortcutFor = (id: string) => keymap.displayFor(id);
+
+  function saveKeymap() {
+    saveKeymapOverrides(keymap.getOverrides()).catch((e: unknown) =>
+      showError(`Shortcuts could not be saved: ${String(e)}`),
+    );
+  }
+  let openPanels: ReadonlySet<PanelId> = new Set();
+  let body = $state<HTMLElement | null>(null);
+
+  /** What Delete, Select All and Deselect do in each area of the window. */
+  interface AreaOps {
+    deleteLabel: string;
+    selected(): number;
+    total(): number;
+    remove(): Promise<void> | void;
+    selectAll(): void;
+    deselect(): void;
+  }
+
+  const AREA_OPS: Record<NonNullable<Area>, AreaOps> = {
+    files: {
+      deleteLabel: "Remove from Session",
+      selected: () => mediaPool.current.selected.size,
+      total: () => mediaPool.size,
+      remove: () => {
+        const used = usedMedia();
+        const ids = [...mediaPool.current.selected];
+        const free = ids.filter((id) => !used.has(id));
+        if (free.length < ids.length) {
+          const kept = ids.length - free.length;
+          showNotice(`${kept} ${kept === 1 ? "file is" : "files are"} used by clips and stayed in the session.`);
+        }
+        return mediaPool.remove(free, sessionHistory);
+      },
+      selectAll: () => mediaPool.selectAll(),
+      deselect: () => mediaPool.setSelection([]),
+    },
+    multitrack: {
+      deleteLabel: "Delete Clips",
+      selected: () => editor.current().selectedClips.size,
+      total: () => (session.current?.tracks ?? []).reduce((n, t) => n + t.clips.length, 0),
+      remove: async () => {
+        const ids = [...editor.current().selectedClips];
+        if (!ids.length) return;
+        await session.edit(ids.length === 1 ? "Delete Clip" : `Delete ${ids.length} Clips`, { op: "remove_clips", ids }, sessionHistory);
+        editor.selectClips([]);
+      },
+      selectAll: () => editor.selectClips((session.current?.tracks ?? []).flatMap((t) => t.clips.map((c) => c.id))),
+      deselect: () => {
+        editor.selectClips([]);
+        const v = session.current?.view;
+        if (v?.selection) session.setView({ ...v, selection: null });
+      },
+    },
+    // Edit actions reach the Waveform editor through overlays; these are the fallbacks.
+    waveform: {
+      deleteLabel: "Delete Selection",
+      selected: () => 0,
+      total: () => 0,
+      remove: () => {},
+      selectAll: () => {},
+      deselect: () => {},
+    },
+    libraries: {
+      deleteLabel: "Remove from Library",
+      selected: () => libraries.current.selected.size,
+      total: () => libraries.shownItems().length,
+      remove: () => libraries.removeItems([...libraries.current.selected], sessionHistory),
+      selectAll: () => libraries.setSelection(libraries.shownItems().map((i) => i.id)),
+      deselect: () => libraries.setSelection([]),
+    },
+  };
+
+  const areaOps = (): AreaOps | null => {
+    const a = currentArea();
+    return a ? AREA_OPS[a] : null;
+  };
+  const AREA_FIRST = "Click in the Files panel, Libraries, or the Editor first.";
+
+  const actions = new ActionRegistry();
+
+  // Waveform editor. Edits act on the selection; Amplify and Normalize
+  // act on the whole file when nothing is selected.
+  const inWave = () => editor.current().mode === "waveform";
+  const waveIsOpen = () => inWave() && waveFile.current() !== null;
+  const waveFocus = () => waveIsOpen() && currentArea() !== "files" && currentArea() !== "libraries";
+  const waveSel = (): [number, number] | null => {
+    const d = wave.current;
+    const s = d?.view.selection;
+    return d && s ? clampRange(d, s.start, s.end) : null;
+  };
+  const waveAll = (): [number, number] | null => {
+    const d = wave.current;
+    return d ? (waveSel() ?? clampRange(d, 0, sessionEnd(d))) : null;
+  };
+  const NEED_WAVE_SEL = "Drag across the waveform to select audio first.";
+  let waveBoard: WaveBoard | null = null;
+
+  async function waveEdit(label: string, op: Op | null): Promise<boolean> {
+    if (!op) return false;
+    await wave.edit(label, op, waveHistory);
+    return true;
+  }
+
+  function waveSetSelection(sel: [number, number] | null, playhead?: number) {
+    const d = wave.current;
+    if (!d) return;
+    wave.setView({
+      ...d.view,
+      selection: sel ? { start: sel[0], end: sel[1] } : null,
+      playhead: Math.max(0, Math.round(playhead ?? d.view.playhead)),
+    });
+  }
+
+  const wavePlayhead = () => (waveTransport.current.playing ? waveTransport.current.position : (wave.current?.view.playhead ?? 0));
+  const waveName = () => waveFile.current()?.path.split(/[\\/]/).pop() ?? "the file";
+
+  /** Asks about unsaved Waveform edits. False means stop. */
+  async function confirmWaveDiscard(): Promise<boolean> {
+    if (!waveFile.current() || !waveHistory.current.dirty) return true;
+    const v = await ask("Unsaved changes", `Save changes to ${waveName()}?`, [
+      { label: "Save", value: "save", primary: true },
+      { label: "Don't Save", value: "discard" },
+      { label: "Cancel", value: "cancel" },
+    ]);
+    if (v === "cancel") return false;
+    if (v === "save") return saveWave(false);
+    return true;
+  }
+
+  /** Opens a file in the Waveform editor and shows it. */
+  async function openInWaveform(path: string) {
+    if (!(await confirmWaveDiscard())) return;
+    await transport.stop();
+    try {
+      await openWaveFile(path);
+    } catch (e) {
+      showError(e);
+      return;
+    }
+    editor.setMode("waveform");
+    dock.show("editor");
+    actions.invalidate();
+  }
+
+  /** Saves the Waveform editor's file. Returns false if cancelled or failed. */
+  async function saveWave(as: boolean): Promise<boolean> {
+    const f = waveFile.current();
+    if (!f || exporting) return false;
+    const cut = Math.max(f.path.lastIndexOf("/"), f.path.lastIndexOf("\\"));
+    const folder = cut > 0 ? f.path.slice(0, cut) : null;
+    const stemName = waveName().replace(/\.[^.]+$/, "");
+    let path: string | null = null;
+    if (as || !savesInPlace(f)) {
+      const why = !as && !savesInPlace(f) ? `Save ${f.format || "this file"} as WAV, FLAC or MP3` : "Save Audio As";
+      path = await exportPickPath(stemName, folder, why, kindOfPath(f.path) ?? "wav", true);
+      if (!path) return false;
+      if (kindOfPath(path) === null) path = `${path}.wav`;
+      if (kindOfPath(path) === "mp3") {
+        const ok = await ask("Save as MP3?", "MP3 is lossy: fine for publishing, but keep a WAV or FLAC copy if you'll edit it again.", [
+          { label: "Save MP3", value: "yes", primary: true },
+          { label: "Cancel", value: "no" },
+        ]);
+        if (ok !== "yes") return false;
+      }
+    } else if (f.format.toUpperCase() === "MP3") {
+      const ok = await ask(
+        "Re-encode the MP3?",
+        `Saving ${waveName()} encodes it as MP3 again, which loses a little quality each time. Use Save Audio As and pick WAV or FLAC to keep full quality.`,
+        [
+          { label: "Save MP3", value: "yes", primary: true },
+          { label: "Cancel", value: "no" },
+        ],
+      );
+      if (ok !== "yes") return false;
+    }
+    if (path === null && session.current?.media.some((m) => m.path === f.path)) {
+      const ok = await ask(
+        "Save over the original?",
+        `Clips in the session play ${waveName()}, so saving changes them too. To keep them as they are, cancel and use Clip > Make Unique Copy first, or use Save As.`,
+        [
+          { label: "Save", value: "yes", primary: true },
+          { label: "Cancel", value: "no" },
+        ],
+      );
+      if (ok !== "yes") return false;
+    }
+    exporting = { title: "Saving audio", progress: 0 };
+    let off: (() => void) | null = null;
+    try {
+      off = await listen<{ done: number; total: number }>("export-progress", (e) => {
+        if (exporting) exporting = { ...exporting, progress: e.payload.total > 0 ? e.payload.done / e.payload.total : 0 };
+      });
+      await saveWaveFile(path);
+      const saved = waveFile.current()?.path ?? f.path;
+      peaks.invalidate(saved);
+      showNotice(`Saved ${saved.split(/[\\/]/).pop()}.`);
+      return true;
+    } catch (e) {
+      showError(e);
+      return false;
+    } finally {
+      off?.();
+      exporting = null;
+      actions.invalidate();
+    }
+  }
+
+  async function waveAmplify(db: number) {
+    const d = wave.current;
+    const r = waveAll();
+    if (!d || !r || !db) return;
+    await waveEdit(`Amplify ${db > 0 ? "+" : ""}${db.toFixed(1)} dB`, amplifyRange(d, r[0], r[1], db, uuid));
+  }
+
+  /** Spectral edit on the current spectral selection: turn it down by `db` (-120 removes it), or repair it. */
+  async function waveSpectral(mode: "gain" | "repair", db: number, label: string) {
+    const shapes = get(spectralSelection);
+    const d = wave.current;
+    const mask = shapes ? rasterize(shapes) : null;
+    // A Spot Repair stroke is used once, not kept as a selection.
+    if (editor.current().spectralTool === "spot") spectralSelection.set(null);
+    if (!mask || !d) return;
+    try {
+      const r = await waveSpectralEdit(mask, mode, db);
+      await waveEdit(label, replaceRange(wave.current ?? d, r.start, r.end, r.media, label, uuid));
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  // Recording. Multitrack: every armed track records its input into
+  // its own file, from the playhead, while the session plays. Waveform
+  // editor: the take goes into the file at the playhead.
+  let take: { mode: "multitrack" | "wave"; at: number } | null = null;
+  let recPoll: ReturnType<typeof setInterval> | undefined;
+
+  function stamp(): string {
+    const d = new Date();
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  }
+
+  async function toggleRecord() {
+    if (take) {
+      await finishRecord();
+      return;
+    }
+    try {
+      if (inWave()) {
+        const d = wave.current;
+        const f = waveFile.current();
+        if (!d || !f) {
+          showNotice("Open or create a file in the Waveform editor first.");
+          return;
+        }
+        await waveTransport.stop();
+        const base = f.path.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ?? "Take";
+        const channels = Math.min(2, Math.max(1, d.media[0]?.channels ?? 1));
+        const at = wavePlayhead();
+        await recordStart([{ key: "wave", input: null, channels, name: `${base} take ${stamp()}` }]);
+        take = { mode: "wave", at };
+      } else {
+        const doc = session.current;
+        if (!doc) return;
+        let armed = doc.tracks.filter((t) => t.record_armed);
+        if (armed.length === 0) {
+          const sel = doc.tracks.find((t) => t.id === editor.current().selectedTrack);
+          if (!sel) {
+            showNotice("Arm a track first: click R on the track you want to record.");
+            return;
+          }
+          await session.edit("Arm Track", { op: "set_track", id: sel.id, changes: { record_armed: true } }, sessionHistory);
+          armed = [sel];
+        }
+        const targets: RecordTarget[] = armed.map((t) => ({
+          key: t.id,
+          input: t.input ?? null,
+          channels: t.channels === "mono" ? 1 : 2,
+          name: `${t.name} ${stamp()}`,
+        }));
+        const at = playheadNow();
+        await transport.stop();
+        await recordStart(targets);
+        take = { mode: "multitrack", at };
+        liveTakes.set({ at, rate: 0, blocks: {} });
+        void transport.play(at);
+      }
+      recording.set({ active: true, seconds: 0, peak: 0 });
+      startInputPoll();
+    } catch (e) {
+      take = null;
+      liveTakes.set(null);
+      showError(e);
+    }
+  }
+
+  // Input meters: armed tracks' inputs stay open for their meters while
+  // not recording, and the same poll feeds the live waveform while recording.
+  function startInputPoll() {
+    if (recPoll) return;
+    recPoll = setInterval(async () => {
+      const st = await recordStatus().catch(() => null);
+      if (!st || (!st.recording && !st.monitoring)) {
+        inputLevels.set({});
+        return;
+      }
+      if (st.recording) recording.set({ active: true, seconds: st.seconds, peak: st.peak });
+      inputLevels.update((old) => {
+        const next: Record<string, number> = {};
+        for (const k of new Set([...Object.keys(old), ...Object.keys(st.live)])) {
+          const fall = (old[k] ?? 0) * 0.8;
+          next[k] = Math.max(st.live[k]?.peak ?? 0, fall < 0.002 ? 0 : fall);
+        }
+        return next;
+      });
+      if (st.recording) {
+        liveTakes.update((lt) => {
+          if (!lt) return lt;
+          const blocks = { ...lt.blocks };
+          for (const [k, v] of Object.entries(st.live)) if (v.blocks.length) blocks[k] = [...(blocks[k] ?? []), ...v.blocks];
+          return { ...lt, rate: st.rate, blocks };
+        });
+      }
+    }, 80);
+  }
+
+  function stopInputPoll() {
+    clearInterval(recPoll);
+    recPoll = undefined;
+    inputLevels.set({});
+  }
+
+  /** Opens or closes the armed tracks' inputs for their meters. */
+  let monitorKey = "";
+  function syncMonitor(force = false) {
+    if (take) return;
+    const armed = (session.current?.tracks ?? []).filter((t) => t.record_armed);
+    const key = armed.map((t) => `${t.id}:${t.input ?? ""}:${t.channels}`).join("|");
+    if (!force && key === monitorKey) return;
+    monitorKey = key;
+    const targets: RecordTarget[] = armed.map((t) => ({ key: t.id, input: t.input ?? null, channels: t.channels === "mono" ? 1 : 2, name: t.name }));
+    void recordMonitor(targets).catch(() => {});
+    if (targets.length) startInputPoll();
+    else stopInputPoll();
+  }
+
+  async function finishRecord() {
+    const t = take;
+    take = null;
+    stopInputPoll();
+    liveTakes.set(null);
+    recording.set({ active: false, seconds: 0, peak: 0 });
+    let takes;
+    try {
+      takes = await recordStop();
+    } catch (e) {
+      showError(e);
+      syncMonitor(true);
+      return;
+    } finally {
+      // Back to metering the armed inputs.
+      setTimeout(() => syncMonitor(true), 0);
+    }
+    if (!t) return;
+    if (t.mode === "multitrack") await transport.stop();
+    const usable = takes.filter((k) => k.length > 0);
+    if (usable.length === 0) {
+      showNotice("Nothing was recorded.");
+      return;
+    }
+    const media = (k: (typeof usable)[number]) => ({
+      id: uuid(),
+      path: k.path,
+      relative_path: null,
+      sample_rate: k.sample_rate,
+      channels: k.channels,
+      length: k.length,
+    });
+    if (t.mode === "wave") {
+      const d = wave.current;
+      if (!d) return;
+      const r = insertFile(d, t.at, media(usable[0]!), "Take", uuid);
+      if (r && (await waveEdit("Record", r.op))) waveSetSelection([t.at, t.at + r.length], t.at);
+      return;
+    }
+    const ops: Op[] = [];
+    for (const k of usable) {
+      const m = media(k);
+      ops.push({ op: "add_media", media: m });
+      const name = k.path.split(/[\\/]/).pop()?.replace(/\.wav$/i, "") ?? "Take";
+      ops.push({ op: "add_clips", track_id: k.key, clips: [{ id: uuid(), name, media_id: m.id, start: t.at, source_in: 0, source_out: k.length }] });
+    }
+    try {
+      await session.edit(usable.length === 1 ? "Record" : `Record ${usable.length} Tracks`, { op: "batch", ops }, sessionHistory);
+      // The takes show in the Files panel too.
+      await mediaPool.importPaths(
+        usable.map((k) => k.path),
+        sessionHistory,
+      );
+    } catch (e) {
+      showError(e);
+    }
+  }
+  recordControl.toggle = () => void toggleRecord();
+
+  async function waveNormalize() {
+    const r = waveAll();
+    if (!r) return;
+    const v = await promptText("Normalize", "Peak level in dB (for example -1.0)", "-1.0");
+    if (v === null) return;
+    const target = Number(v);
+    if (!Number.isFinite(target) || target > 0) {
+      showNotice("Enter a level of 0 dB or below, for example -1.0.");
+      return;
+    }
+    const peak = await wavePeak(r);
+    if (peak <= 0) {
+      showNotice("The selection is silent, so there is nothing to normalize.");
+      return;
+    }
+    const db = Math.round((target - 20 * Math.log10(peak)) * 100) / 100;
+    if (Math.abs(db) < 0.01) {
+      showNotice(`Already peaks at ${target.toFixed(1)} dB.`);
+      return;
+    }
+    await waveEdit(`Normalize to ${target.toFixed(1)} dB`, amplifyRange(wave.current!, r[0], r[1], db, uuid));
+  }
+
+  // File > New Audio File.
+  let newAudio = $state<NewAudioSettings | null>(null);
+  let newAudioCount = 0;
+  const KEY_NEW_AUDIO = "newAudio.defaults";
+  const KEY_NEW_SESSION = "newSession.defaults";
+  /** Last-used settings from prefs, kept only when each field has the right type. */
+  function lastUsed<T extends Record<string, unknown>>(key: string, base: T): T {
+    const raw = prefs.raw(key);
+    if (!raw || typeof raw !== "object") return base;
+    const out = { ...base };
+    for (const k of Object.keys(base) as (keyof T)[]) {
+      const v = (raw as Record<string, unknown>)[k as string];
+      if (typeof v === typeof base[k] || (base[k] === null && (typeof v === "string" || v === null))) out[k] = v as T[keyof T];
+    }
+    return out;
+  }
+
+  function askNewAudio() {
+    const d = session.current;
+    const last = lastUsed(KEY_NEW_AUDIO, { sampleRate: d?.sample_rate ?? 48_000, channels: 2, bitDepth: d?.bit_depth ?? 32 });
+    newAudio = { name: `Untitled ${newAudioCount + 1}`, sampleRate: last.sampleRate, channels: last.channels === 1 ? 1 : 2, bitDepth: last.bitDepth };
+  }
+  async function makeNewAudio(v: NewAudioSettings) {
+    prefs.set(KEY_NEW_AUDIO, { sampleRate: v.sampleRate, channels: v.channels, bitDepth: v.bitDepth });
+    if (!(await confirmWaveDiscard())) return;
+    try {
+      await newEmptyWaveFile(v.name, v.sampleRate, v.channels, v.bitDepth);
+      newAudioCount += 1;
+    } catch (e) {
+      showError(e);
+      return;
+    }
+    await transport.stop();
+    editor.setMode("waveform");
+    dock.show("editor");
+    actions.invalidate();
+  }
+
+  // File > New Session.
+  let newSessionReq = $state<{ initial: NewSessionSettings; templates: TemplateEntry[]; error?: string } | null>(null);
+  let newSessionCount = 0;
+  async function askNewSession() {
+    // Each lookup on its own, so one failing never hides the other.
+    const templates = await templateList().catch((e: unknown): TemplateEntry[] => (showError(e), []));
+    const folder = await sessionDefaultFolder().catch(() => "");
+    const last = lastUsed(KEY_NEW_SESSION, { folder, template: null as string | null, sampleRate: 48_000, bitDepth: 32, mono: false });
+    newSessionCount += 1;
+    newSessionReq = { initial: { name: `Untitled Session ${newSessionCount}`, ...last }, templates };
+  }
+  async function makeNewSession(v: NewSessionSettings) {
+    prefs.set(KEY_NEW_SESSION, { folder: v.folder, template: v.template, sampleRate: v.sampleRate, bitDepth: v.bitDepth, mono: v.mono });
+    try {
+      await files.newSession({
+        name: v.name,
+        sample_rate: v.sampleRate,
+        bit_depth: v.bitDepth,
+        mono: v.mono,
+        template: v.template,
+        folder: v.folder || null,
+      });
+    } catch (e) {
+      // A name or folder problem: back to the dialog with what was typed.
+      const message = e instanceof Error ? e.message : String(e);
+      const templates = await templateList().catch((): TemplateEntry[] => []);
+      newSessionReq = { initial: v, templates, error: message };
+      return;
+    }
+    if (inWave()) editor.setMode("multitrack");
+    await actions.run("view.zoom-session");
+  }
+  async function deleteTemplate(t: TemplateEntry): Promise<boolean> {
+    const ok = await ask("Delete template", `Delete the template "${t.name}"? Sessions made from it are not affected.`, [
+      { label: "Delete", value: "yes", primary: true },
+      { label: "Cancel", value: "no" },
+    ]);
+    if (ok !== "yes") return false;
+    try {
+      await templateDelete(t.path);
+    } catch (e) {
+      showError(e);
+      return false;
+    }
+    if (newSessionReq) newSessionReq = { ...newSessionReq, templates: newSessionReq.templates.filter((x) => x.path !== t.path) };
+    return true;
+  }
+  async function saveAsTemplate() {
+    const name = await promptText("Save as Session Template", "Template name", session.current?.name ?? "My Show");
+    if (!name?.trim()) return;
+    try {
+      const t = await templateSave(name.trim());
+      showNotice(`Saved the template "${t.name}": ${t.tracks} tracks${t.clips ? `, ${t.clips} clips` : ""}. Pick it in File > New Session.`);
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  /** Paste to New File: the Waveform clipboard in the Waveform editor, otherwise the copied clips. */
+  async function pasteToNewFile() {
+    if (!(await confirmWaveDiscard())) return;
+    try {
+      if (inWave() && waveBoard) {
+        await newWaveFromClips(waveBoard.rate, waveBoard.clips, waveBoard.media);
+      } else if (clipBoard && session.current) {
+        const doc = session.current;
+        const clips = clipBoard.items.map((i) => ({ ...i.clip, id: uuid() }));
+        const used = new Set(clips.map((c) => c.media_id));
+        await newWaveFromClips(doc.sample_rate, clips, doc.media.filter((m) => used.has(m.id)));
+      } else return;
+    } catch (e) {
+      showError(e);
+      return;
+    }
+    await transport.stop();
+    editor.setMode("waveform");
+    dock.show("editor");
+    actions.invalidate();
+  }
+
+  function registerWaveActions(): (() => void)[] {
+    const ov = actions.overlay.bind(actions);
+    const NOT_WAVE = "Works in the Waveform editor. Double-click a file in the Files panel to open it there.";
+    return [
+      actions.register({
+        id: "view.editor.multitrack",
+        run: () => {
+          void waveTransport.stop();
+          editor.setMode("multitrack");
+          dock.show("editor");
+        },
+        checked: () => !inWave(),
+      }),
+      actions.register({ id: "file.new-audio", run: () => askNewAudio() }),
+      actions.register({
+        id: "view.editor.waveform",
+        run: () => {
+          // With no file open, switching to the Waveform editor starts a new one.
+          if (!waveFile.current()) {
+            askNewAudio();
+            return;
+          }
+          void transport.stop();
+          editor.setMode("waveform");
+          dock.show("editor");
+        },
+        checked: () => inWave(),
+      }),
+      ...(["move", "razor", "slip", "time"] as const).map((t) =>
+        actions.register({
+          id: `tool.${t}`,
+          run: () => {
+            if (inWave() && t === "time") {
+              editor.setSpectralTool("time");
+              return;
+            }
+            if (inWave()) editor.setMode("multitrack");
+            editor.setTool(t);
+          },
+          checked: () => (inWave() ? t === "time" && editor.current().spectralTool === "time" : editor.current().tool === t),
+        }),
+      ),
+      // Spectral tools work on the Waveform editor's spectrum.
+      ...(["box", "lasso", "brush", "spot"] as const).map((t) =>
+        actions.register({
+          id: `tool.${t}`,
+          run: () => {
+            const e = editor.current();
+            if (!e.showSpectrum && !e.showPitch) editor.setShowSpectrum(true);
+            editor.setSpectralTool(t);
+          },
+          enabled: () => waveIsOpen(),
+          reason: () => "Open a file in the Waveform editor to use the spectral tools.",
+          checked: () => inWave() && editor.current().spectralTool === t,
+        }),
+      ),
+      actions.register({
+        id: "view.pitch",
+        run: () => editor.setShowPitch(!editor.current().showPitch),
+        label: () => (editor.current().showPitch ? "Hide Pitch" : "Show Pitch"),
+        checked: () => editor.current().showPitch,
+      }),
+      actions.register({
+        id: "clip.edit-source",
+        run: () => {
+          const c = selectedClipDocs()[0];
+          const m = c ? session.current?.media.find((x) => x.id === c.media_id) : undefined;
+          if (m) return openInWaveform(m.path);
+        },
+        enabled: () => selectedClipDocs().length === 1,
+        reason: () => "Select one clip.",
+      }),
+      // Waveform-only commands: disabled with a reason elsewhere.
+      actions.register({
+        id: "edit.paste-new",
+        run: () => pasteToNewFile(),
+        enabled: () => (inWave() ? waveBoard !== null : clipBoard !== null),
+        reason: () => "Copy audio in the Waveform editor, or clips in the Multitrack, first.",
+      }),
+      actions.register({
+        id: "view.spectrum",
+        run: () => editor.setShowSpectrum(!editor.current().showSpectrum),
+        label: () => (editor.current().showSpectrum ? "Hide Spectrum" : "Show Spectrum"),
+        checked: () => editor.current().showSpectrum,
+      }),
+      ...["fx.spectrum.reduce-12", "fx.spectrum.reduce-24", "fx.spectrum.remove", "fx.spectrum.repair"].map((id) =>
+        actions.register({ id, run: () => {}, enabled: () => false, reason: () => NOT_WAVE }),
+      ),
+      ...["edit.mix-paste", "edit.crop", "fx.silence", "fx.fade-in", "fx.fade-out", "fx.amplify", "fx.normalize"].map((id) =>
+        actions.register({ id, run: () => {}, enabled: () => false, reason: () => NOT_WAVE }),
+      ),
+      ov(waveFocus, {
+        id: "edit.undo",
+        run: () => waveHistory.undo().then(() => undefined),
+        enabled: () => waveHistory.current.canUndo,
+        label: () => (waveHistory.current.undoLabel ? `Undo ${waveHistory.current.undoLabel}` : null),
+      }),
+      ov(waveFocus, {
+        id: "edit.redo",
+        run: () => waveHistory.redo().then(() => undefined),
+        enabled: () => waveHistory.current.canRedo,
+        label: () => (waveHistory.current.redoLabel ? `Redo ${waveHistory.current.redoLabel}` : null),
+      }),
+      ov(waveFocus, {
+        id: "edit.select-all",
+        run: () => {
+          const d = wave.current;
+          if (d) waveSetSelection([0, sessionEnd(d)]);
+        },
+      }),
+      ov(waveFocus, { id: "edit.deselect", run: () => waveSetSelection(null), enabled: () => waveSel() !== null, reason: () => "Nothing is selected." }),
+      ov(waveFocus, {
+        id: "edit.delete",
+        run: async () => {
+          const r = waveSel();
+          if (r && (await waveEdit("Delete", deleteRange(wave.current!, r[0], r[1], uuid)))) waveSetSelection(null, r[0]);
+        },
+        enabled: () => waveSel() !== null,
+        label: () => "Delete Selection",
+        reason: () => NEED_WAVE_SEL,
+      }),
+      ov(waveFocus, {
+        id: "edit.copy",
+        run: () => {
+          const r = waveSel();
+          if (r) waveBoard = copyRange(wave.current!, r[0], r[1]);
+          actions.invalidate();
+        },
+        enabled: () => waveSel() !== null,
+        reason: () => NEED_WAVE_SEL,
+      }),
+      ov(waveFocus, {
+        id: "edit.cut",
+        run: async () => {
+          const r = waveSel();
+          if (!r) return;
+          waveBoard = copyRange(wave.current!, r[0], r[1]);
+          if (await waveEdit("Cut", deleteRange(wave.current!, r[0], r[1], uuid))) waveSetSelection(null, r[0]);
+        },
+        enabled: () => waveSel() !== null,
+        reason: () => NEED_WAVE_SEL,
+      }),
+      ov(waveFocus, {
+        id: "edit.paste",
+        run: async () => {
+          if (!waveBoard) return;
+          // Pasting over a selection replaces it.
+          const r = waveSel();
+          if (r) await waveEdit("Delete", deleteRange(wave.current!, r[0], r[1], uuid));
+          const at = r ? r[0] : wavePlayhead();
+          const p = pasteAt(wave.current!, waveBoard, at, uuid);
+          if (p && (await waveEdit("Paste", p.op))) waveSetSelection([at, at + p.length], at);
+        },
+        enabled: () => waveBoard !== null,
+        reason: () => "Copy or cut audio in the Waveform editor first.",
+      }),
+      ov(waveFocus, {
+        id: "edit.mix-paste",
+        run: async () => {
+          if (!waveBoard) return;
+          const v = await promptText("Mix Paste", "Level of the pasted audio (dB)", "0.0");
+          if (v === null) return;
+          const db = Number(v);
+          if (!Number.isFinite(db) || Math.abs(db) > 48) {
+            showNotice("Enter a number of decibels between -48 and 48.");
+            return;
+          }
+          const at = waveSel()?.[0] ?? wavePlayhead();
+          const p = mixPasteAt(wave.current!, waveBoard, at, db, uuid);
+          if (p && (await waveEdit("Mix Paste", p.op))) waveSetSelection([at, at + p.length], at);
+        },
+        enabled: () => waveBoard !== null,
+        reason: () => "Copy or cut audio in the Waveform editor first.",
+      }),
+      ov(waveFocus, {
+        id: "edit.crop",
+        run: async () => {
+          const r = waveSel();
+          if (r && (await waveEdit("Crop", cropTo(wave.current!, r[0], r[1], uuid)))) waveSetSelection([0, r[1] - r[0]], 0);
+        },
+        enabled: () => waveSel() !== null,
+        reason: () => NEED_WAVE_SEL,
+      }),
+      ov(waveIsOpen, {
+        id: "fx.silence",
+        run: async () => {
+          const r = waveSel();
+          if (r) await waveEdit("Silence", silenceRange(wave.current!, r[0], r[1], uuid));
+        },
+        enabled: () => waveSel() !== null,
+        reason: () => NEED_WAVE_SEL,
+      }),
+      ov(waveIsOpen, {
+        id: "fx.fade-in",
+        run: async () => {
+          const r = waveSel();
+          if (r) await waveEdit("Fade In", fadeRange(wave.current!, r[0], r[1], "in", uuid));
+        },
+        enabled: () => waveSel() !== null,
+        reason: () => NEED_WAVE_SEL,
+      }),
+      ov(waveIsOpen, {
+        id: "fx.fade-out",
+        run: async () => {
+          const r = waveSel();
+          if (r) await waveEdit("Fade Out", fadeRange(wave.current!, r[0], r[1], "out", uuid));
+        },
+        enabled: () => waveSel() !== null,
+        reason: () => NEED_WAVE_SEL,
+      }),
+      ov(waveIsOpen, {
+        id: "fx.amplify",
+        run: async () => {
+          const v = await promptText("Amplify", waveSel() ? "Change the selection by (dB)" : "Change the whole file by (dB)", "3.0");
+          if (v === null) return;
+          const db = Number(v);
+          if (!Number.isFinite(db) || Math.abs(db) > 48) {
+            showNotice("Enter a number of decibels between -48 and 48.");
+            return;
+          }
+          await waveAmplify(db);
+        },
+      }),
+      ov(waveIsOpen, { id: "fx.normalize", run: () => waveNormalize() }),
+      ...(
+        [
+          ["fx.spectrum.reduce-12", "gain", -12, "Spectral Reduce 12 dB"],
+          ["fx.spectrum.reduce-24", "gain", -24, "Spectral Reduce 24 dB"],
+          ["fx.spectrum.remove", "gain", -120, "Spectral Remove"],
+          ["fx.spectrum.repair", "repair", 0, "Spot Repair"],
+        ] as const
+      ).map(([id, mode, db, label]) =>
+        ov(waveIsOpen, {
+          id,
+          run: () => waveSpectral(mode, db, label),
+          enabled: () => get(spectralSelection) !== null,
+          reason: () => "Show the spectrum and drag a rectangle on it first.",
+        }),
+      ),
+      ov(waveIsOpen, { id: "file.save", run: () => saveWave(false).then(() => undefined), label: () => "Save Audio" }),
+      ov(waveIsOpen, { id: "file.save-as", run: () => saveWave(true).then(() => undefined), label: () => "Save Audio As..." }),
+      ov(waveIsOpen, {
+        id: "file.close",
+        run: async () => {
+          if (await confirmWaveDiscard()) await closeWaveFile();
+        },
+        label: () => "Close Audio File",
+      }),
+      ov(waveIsOpen, { id: "multitrack.play-pause", run: () => waveTransport.toggle() }),
+      ov(waveIsOpen, { id: "multitrack.stop", run: () => waveTransport.stop() }),
+      ov(waveIsOpen, { id: "view.zoom-in", run: () => waveZoom.run?.("in") }),
+      ov(waveIsOpen, { id: "view.zoom-out", run: () => waveZoom.run?.("out") }),
+      ov(waveIsOpen, { id: "view.zoom-session", run: () => waveZoom.run?.("full") }),
+      ov(waveIsOpen, { id: "view.zoom-selection", run: () => waveZoom.run?.("selection"), enabled: () => waveSel() !== null }),
+      waveHistory.subscribe(() => actions.invalidate()),
+      waveFile.subscribe(() => actions.invalidate()),
+      editor.subscribe(() => actions.invalidate()),
+      wave.subscribe(() => actions.invalidate()),
+    ];
+  }
+
+  function registerActions(): (() => void)[] {
+    const offs = [
+      actions.register({
+        id: "edit.undo",
+        run: () => sessionHistory.undo().then(() => undefined),
+        enabled: () => sessionHistory.current.canUndo,
+        label: () => (sessionHistory.current.undoLabel ? `Undo ${sessionHistory.current.undoLabel}` : null),
+      }),
+      actions.register({
+        id: "edit.redo",
+        run: () => sessionHistory.redo().then(() => undefined),
+        enabled: () => sessionHistory.current.canRedo,
+        label: () => (sessionHistory.current.redoLabel ? `Redo ${sessionHistory.current.redoLabel}` : null),
+      }),
+      // Unsaved-changes prompt arrives with session save (task 12).
+      actions.register({ id: "file.exit", run: () => exitSafely() }),
+      actions.register({ id: "window.reset-layout", run: () => dock.resetToDefault() }),
+      actions.register({ id: "window.minimize", run: () => minimizeWindow() }),
+      actions.register({ id: "edit.keyboard-shortcuts", run: () => void (shortcutsOpen = true) }),
+      actions.register({ id: "help.shortcuts", run: () => void (shortcutsOpen = true) }),
+      actions.register({ id: "help.website", run: () => openLink(LINKS.website) }),
+      actions.register({ id: "help.book", run: () => openLink(LINKS.book) }),
+      actions.register({ id: "help.about", run: () => void (aboutOpen = true) }),
+      actions.register({
+        id: "file.import-files",
+        run: async () => importPaths(await pickMediaFiles()),
+      }),
+      actions.register({
+        id: "file.import-folder",
+        run: async () => {
+          const folder = await pickMediaFolder();
+          if (folder) await importPaths([folder]);
+        },
+      }),
+      actions.register({
+        id: "file.reveal",
+        run: () => {
+          const first = mediaPool.selectedItems()[0];
+          return first ? revealMedia(first.path) : undefined;
+        },
+        enabled: () => mediaPool.current.selected.size === 1,
+        label: () => revealLabel(),
+        reason: () => "Select one file in the Files panel.",
+      }),
+      actions.register({
+        id: "edit.delete",
+        run: () => areaOps()?.remove(),
+        enabled: () => (areaOps()?.selected() ?? 0) > 0,
+        label: () => areaOps()?.deleteLabel ?? null,
+        reason: () => (areaOps() ? "Nothing is selected." : AREA_FIRST),
+      }),
+      actions.register({
+        id: "edit.select-all",
+        run: () => areaOps()?.selectAll(),
+        enabled: () => (areaOps()?.total() ?? 0) > 0,
+        reason: () => (areaOps() ? "Nothing to select." : AREA_FIRST),
+      }),
+      actions.register({
+        id: "edit.deselect",
+        run: () => areaOps()?.deselect(),
+        enabled: () => (areaOps()?.selected() ?? 0) > 0,
+        reason: () => (areaOps() ? "Nothing is selected." : AREA_FIRST),
+      }),
+      actions.register({
+        id: "edit.find",
+        run: () => {
+          // The Editor has nothing to search yet, so Find goes to the Files panel.
+          const area = currentArea() === "libraries" ? "libraries" : "files";
+          dock.show(area);
+          // The panel may have just been opened; wait a frame for it to render.
+          requestAnimationFrame(() =>
+            document.querySelector<HTMLInputElement>(`[data-area="${area}"] input[type="search"]`)?.focus(),
+          );
+        },
+      }),
+    ];
+    const view = () => session.current?.view;
+    const zoomBy = (factor: number) => {
+      const v = view();
+      if (!v) return;
+      const w = editor.current().width;
+      const z = zoomAround({ spp: v.samples_per_pixel, scroll: v.scroll }, factor, w / 2);
+      session.setView({ ...v, samples_per_pixel: z.spp, scroll: z.scroll });
+    };
+    const contentEnd = () => {
+      const doc = session.current;
+      if (!doc) return 0;
+      const media = new Map(doc.media.map((m) => [m.id, m]));
+      let end = 0;
+      for (const t of doc.tracks) for (const c of t.clips) end = Math.max(end, c.start + clipLength(c, media.get(c.media_id), doc.sample_rate));
+      return end;
+    };
+    /** Where a "clips to ..." selection starts or ends: the chosen clips, or the playhead when none are chosen. */
+    const clipSpan = () => {
+      const doc = session.current;
+      if (!doc) return null;
+      const media = new Map(doc.media.map((m) => [m.id, m]));
+      let first = Infinity;
+      let last = -Infinity;
+      let any = false;
+      for (const t of doc.tracks)
+        for (const c of t.clips) {
+          if (!editor.current().selectedClips.has(c.id)) continue;
+          any = true;
+          first = Math.min(first, c.start);
+          last = Math.max(last, c.start + clipLength(c, media.get(c.media_id), doc.sample_rate));
+        }
+      return any ? { first, last } : { first: playheadNow(), last: playheadNow() };
+    };
+    const selectClipActions = () => {
+      const pick = (label: string, ids: string[], track: string | null) => {
+        if (ids.length === 0) {
+          showNotice(`${label}: no clips there.`);
+          return;
+        }
+        editor.selectClips(ids, track);
+      };
+      return [
+        actions.register({
+          id: "edit.select-next-clip",
+          run: () => {
+            const t = selectedTrack();
+            if (!t) return;
+            const id = nextClipId(t.clips, editor.current().selectedClips, playheadNow());
+            if (id) editor.selectClips([id], t.id);
+            else showNotice("There is no next clip in this track.");
+          },
+          enabled: () => (selectedTrack()?.clips.length ?? 0) > 0,
+          reason: () => "Select a track with clips first.",
+        }),
+        actions.register({
+          id: "edit.select-clips-track-end",
+          run: () => {
+            const t = selectedTrack();
+            if (!t) return;
+            const from = anchorStart(t.clips, editor.current().selectedClips, playheadNow());
+            pick("Clips to End of Track", clipsFrom(t.clips, from), t.id);
+          },
+          enabled: () => (selectedTrack()?.clips.length ?? 0) > 0,
+          reason: () => "Select a track with clips first.",
+        }),
+        actions.register({
+          id: "edit.select-clips-session-start",
+          run: () => {
+            const doc = session.current;
+            if (!doc) return;
+            const all = doc.tracks.flatMap((t) => t.clips);
+            const to = anchorStart(all, editor.current().selectedClips, playheadNow());
+            pick("Clips to Start of Session", all.length ? clipsUpTo(all, to) : [], editor.current().selectedTrack);
+          },
+          enabled: () => contentEnd() > 0,
+          reason: () => "The session has no clips yet.",
+        }),
+        actions.register({
+          id: "edit.select-clips-session-end",
+          run: () => {
+            const doc = session.current;
+            if (!doc) return;
+            const all = doc.tracks.flatMap((t) => t.clips);
+            const from = anchorStart(all, editor.current().selectedClips, playheadNow());
+            pick("Clips to End of Session", clipsFrom(all, from), editor.current().selectedTrack);
+          },
+          enabled: () => contentEnd() > 0,
+          reason: () => "The session has no clips yet.",
+        }),
+        actions.register({
+          id: "edit.select-view-time",
+          run: () => {
+            const v = view();
+            if (!v) return;
+            const w = editor.current().width;
+            session.setView({ ...v, selection: { start: Math.max(0, v.scroll), end: Math.max(0, v.scroll) + Math.round(w * v.samples_per_pixel) } });
+          },
+          enabled: () => session.current !== null,
+        }),
+        actions.register({
+          id: "edit.select-all-time",
+          run: () => {
+            const v = view();
+            const end = contentEnd();
+            if (v && end > 0) session.setView({ ...v, selection: { start: 0, end } });
+          },
+          enabled: () => contentEnd() > 0,
+          reason: () => "The session has no clips yet.",
+        }),
+        actions.register({
+          id: "edit.select-time-around-clips",
+          run: () => {
+            const v = view();
+            const span = clipSpan();
+            if (v && span && editor.current().selectedClips.size > 0) session.setView({ ...v, selection: { start: span.first, end: span.last } });
+          },
+          enabled: () => editor.current().selectedClips.size > 0,
+          reason: () => "Select clips first.",
+        }),
+        actions.register({
+          id: "edit.clear-time-selection",
+          run: () => {
+            const v = view();
+            if (v) session.setView({ ...v, selection: null });
+          },
+          enabled: () => timeSel() !== null,
+          reason: () => "There is no time selection.",
+        }),
+      ];
+    };
+    offs.push(
+      actions.register({ id: "multitrack.play-pause", run: () => transport.toggle() }),
+      actions.register({
+        id: "multitrack.record",
+        run: () => toggleRecord(),
+        label: () => (take ? "Stop Recording" : "Record"),
+      }),
+      actions.register({ id: "multitrack.stop", run: () => transport.stop() }),
+      actions.register({
+        id: "multitrack.properties",
+        enabled: () => session.current !== null,
+        run: () => {
+          propertiesOpen = true;
+        },
+      }),
+      actions.register({ id: "multitrack.add.mono", run: () => addTrack(false) }),
+      actions.register({ id: "multitrack.add.stereo", run: () => addTrack(true) }),
+      actions.register({
+        id: "multitrack.delete-track",
+        run: async () => {
+          const t = selectedTrack();
+          if (t) await session.edit("Delete Track", { op: "remove_track", id: t.id }, sessionHistory);
+          editor.selectTrack(null);
+        },
+        enabled: () => selectedTrack() !== null,
+        reason: () => "Select a track first.",
+      }),
+      actions.register({
+        id: "multitrack.duplicate-track",
+        run: async () => {
+          const doc = session.current;
+          const t = selectedTrack();
+          if (!doc || !t) return;
+          const copy = freshIds(structuredClone(t));
+          copy.name = `${t.name} copy`;
+          const index = doc.tracks.findIndex((x) => x.id === t.id) + 1;
+          await session.edit("Duplicate Track", { op: "restore_track", track: copy, index }, sessionHistory);
+          editor.selectTrack(copy.id);
+        },
+        enabled: () => selectedTrack() !== null,
+        reason: () => "Select a track first.",
+      }),
+      actions.register({
+        id: "multitrack.delete-empty",
+        run: async () => {
+          const empty = (session.current?.tracks ?? []).filter((t) => t.clips.length === 0);
+          if (!empty.length) return;
+          await session.edit(
+            empty.length === 1 ? "Delete Empty Track" : "Delete Empty Tracks",
+            { op: "batch", ops: empty.map((t) => ({ op: "remove_track" as const, id: t.id })) },
+            sessionHistory,
+          );
+        },
+        enabled: () => (session.current?.tracks ?? []).some((t) => t.clips.length === 0),
+        reason: () => "No empty tracks.",
+      }),
+      actions.register({
+        id: "multitrack.insert-files",
+        run: async () => {
+          const paths = await pickMediaFiles();
+          if (paths.length) await placeFiles(paths, editor.current().selectedTrack, view()?.playhead ?? 0);
+        },
+      }),
+      actions.register({
+        id: "multitrack.insert-tracks",
+        run: async () => {
+          const paths = await pickTrackFiles();
+          if (paths.length) await placeAsTracks(paths, 0);
+        },
+        enabled: () => session.current !== null,
+        reason: () => "Open or create a session first.",
+      }),
+      actions.register({
+        id: "multitrack.insert-selected-tracks",
+        run: () => placeAsTracks(mediaPool.selectedItems().map((it) => it.path), 0),
+        enabled: () => session.current !== null && mediaPool.selectedItems().length > 0,
+        reason: () => (session.current ? "Select files in the Files panel first." : "Open or create a session first."),
+      }),
+      actions.register({ id: "view.zoom-in", run: () => zoomBy(0.5), enabled: () => session.current !== null }),
+      actions.register({ id: "view.zoom-out", run: () => zoomBy(2), enabled: () => session.current !== null }),
+      actions.register({
+        id: "view.zoom-session",
+        run: () => {
+          const v = view();
+          if (!v) return;
+          const f = fit(contentEnd(), editor.current().width);
+          session.setView({ ...v, samples_per_pixel: f.spp, scroll: 0 });
+        },
+        enabled: () => contentEnd() > 0,
+        reason: () => "The session has no clips yet.",
+      }),
+      actions.register({
+        id: "edit.select-track-clips",
+        run: () => {
+          const t = selectedTrack();
+          if (t) editor.selectClips(t.clips.map((c) => c.id), t.id);
+        },
+        enabled: () => (selectedTrack()?.clips.length ?? 0) > 0,
+        reason: () => "Select a track with clips first.",
+      }),
+      actions.register({
+        id: "view.time.decimal",
+        run: () => editor.setTimeFormat("time"),
+        checked: () => editor.current().timeFormat === "time",
+      }),
+      actions.register({
+        id: "view.time.samples",
+        run: () => editor.setTimeFormat("samples"),
+        checked: () => editor.current().timeFormat === "samples",
+      }),
+      actions.register({
+        id: "view.env.volume",
+        run: () => editor.setShowVolume(!editor.current().showVolume),
+        checked: () => editor.current().showVolume,
+      }),
+      actions.register({
+        id: "view.env.pan",
+        run: () => editor.setShowPan(!editor.current().showPan),
+        checked: () => editor.current().showPan,
+      }),
+      actions.register({
+        id: "view.time.timecode",
+        run: () => editor.setTimeFormat("timecode"),
+        checked: () => editor.current().timeFormat === "timecode",
+      }),
+      ...(
+        [
+          ["file.export.mixdown", "all", "file"],
+          ["file.export.selection", "selection", "file"],
+          ["multitrack.mixdown.all", "all", "files-panel"],
+          ["multitrack.mixdown.selection", "selection", "files-panel"],
+          ["multitrack.mixdown.clips", "clips", "files-panel"],
+          ["multitrack.bounce.selection", "selection", "track"],
+          ["multitrack.bounce.clips", "clips", "track"],
+        ] as const
+      ).map(([id, source, target]) =>
+        actions.register({
+          id,
+          run: () => mixDown(source, target),
+          enabled: () => exporting === null && mixRange(source) !== null && contentEnd() > 0,
+          reason: () =>
+            contentEnd() === 0
+              ? "The session has no clips yet."
+              : source === "selection"
+                ? "Drag across empty space or the ruler to select a time range."
+                : "Select clips first.",
+        }),
+      ),
+      ...Array.from({ length: WORKSPACE_SLOTS }, (_, i) =>
+        actions.register({
+          id: `window.workspace.${i + 1}`,
+          run: () => {
+            const w = wsState.items[i];
+            if (w) return dock.switchTo(w.id);
+          },
+          label: () => wsState.items[i]?.name ?? null,
+          visible: () => i < wsState.items.length,
+          checked: () => wsState.items[i]?.id === wsState.current,
+        }),
+      ),
+      actions.register({ id: "window.workspace.reset", run: () => dock.resetCurrent() }),
+      actions.register({
+        id: "window.workspace.save-changes",
+        run: async () => {
+          await dock.saveChanges();
+          showNotice(`Saved "${dock.currentWorkspace.name}". Reset Workspace now returns to this arrangement.`);
+        },
+        enabled: () => !dock.currentWorkspace.builtIn,
+        reason: () => "Built-in workspaces keep their own starting layout. Use Save as New Workspace.",
+      }),
+      actions.register({
+        id: "window.workspace.save-as",
+        run: async () => {
+          const name = await promptText("Save as New Workspace", "Workspace name", `${dock.currentWorkspace.name} copy`);
+          if (name) await dock.saveAs(name);
+        },
+      }),
+      actions.register({
+        id: "window.workspace.delete",
+        run: async () => {
+          const w = dock.currentWorkspace;
+          const ok = await ask("Delete workspace", `Delete the workspace "${w.name}"? This cannot be undone.`, [
+            { label: "Delete", value: "yes", primary: true },
+            { label: "Cancel", value: "no" },
+          ]);
+          if (ok === "yes") await dock.remove(w.id);
+        },
+        enabled: () => !dock.currentWorkspace.builtIn,
+        reason: () => "Built-in workspaces cannot be deleted.",
+      }),
+      actions.register({
+        id: "clip.group",
+        run: () => {
+          const g = uuid();
+          return editClips("Group Clips", selectedClipDocs().map((c) => ({ id: c.id, group: g })));
+        },
+        enabled: () => editor.current().selectedClips.size > 1,
+        reason: () => "Select two or more clips (Ctrl+click) first.",
+      }),
+      actions.register({
+        id: "clip.ungroup",
+        run: () =>
+          editClips(
+            "Ungroup Clips",
+            selectedClipDocs()
+              .filter((c) => c.group)
+              .map((c) => ({ id: c.id, ungroup: true })),
+          ),
+        enabled: () => selectedClipDocs().some((c) => c.group),
+        reason: () => "Select a grouped clip first.",
+      }),
+      actions.register({
+        id: "file.check-loudness",
+        run: () => {
+          loud = { report: null, progress: null, target: prefs.string(KEY_LOUD_TARGET, DEFAULT_TARGET), scope: "" };
+          return measureLoudness();
+        },
+        enabled: () => exporting === null && contentEnd() > 0,
+        reason: () => "The session has no clips yet.",
+      }),
+      actions.register({
+        id: "file.export.stems",
+        run: () => exportStems(),
+        enabled: () => exporting === null && (session.current?.tracks.some((t) => t.clips.length > 0 && !t.muted) ?? false),
+        reason: () => "The session has no unmuted tracks with clips.",
+      }),
+      actions.register({
+        id: "edit.marker.cue",
+        run: async () => {
+          const doc = session.current;
+          if (!doc) return;
+          const m = newMarker(uuid(), nextMarkerName(doc.markers), playheadNow());
+          await session.edit("Add Marker", { op: "add_markers", markers: [m] }, sessionHistory);
+        },
+        enabled: () => session.current !== null,
+      }),
+      actions.register({
+        id: "edit.marker.range",
+        run: async () => {
+          const doc = session.current;
+          const r = timeSel();
+          if (!doc || !r) return;
+          const m = newMarker(uuid(), nextMarkerName(doc.markers, "Range"), r.start, r.end - r.start);
+          await session.edit("Add Range Marker", { op: "add_markers", markers: [m] }, sessionHistory);
+        },
+        enabled: () => timeSel() !== null,
+        reason: () => "Drag across empty space or the ruler to select a time range.",
+      }),
+      actions.register({
+        id: "edit.snap.markers",
+        run: () => editor.setSnap({ markers: !editor.current().snap.markers }),
+        checked: () => editor.current().snap.markers,
+        enabled: () => editor.current().snap.on,
+      }),
+      actions.register({
+        id: "edit.snap.ruler",
+        run: () => editor.setSnap({ ruler: !editor.current().snap.ruler }),
+        checked: () => editor.current().snap.ruler,
+        enabled: () => editor.current().snap.on,
+      }),
+      actions.register({
+        id: "clip.auto-crossfade",
+        run: () => editor.setAutoCrossfade(!editor.current().autoCrossfade),
+        checked: () => editor.current().autoCrossfade,
+      }),
+      actions.register({
+        id: "clip.color",
+        run: () => {
+          const clips = selectedClipDocs();
+          if (clips.length) colorFor = { ids: clips.map((c) => c.id), current: clips[0]!.color };
+        },
+        enabled: () => editor.current().selectedClips.size > 0,
+        reason: () => "Select a clip first.",
+      }),
+      actions.register({
+        id: "edit.copy",
+        run: () => void copySelected(),
+        enabled: () => inEditor() && editor.current().selectedClips.size > 0,
+        reason: () => (inEditor() ? "Select clips first." : "Copy works on clips in the Editor."),
+      }),
+      actions.register({
+        id: "edit.cut",
+        run: async () => {
+          if (!copySelected()) return;
+          const ids = [...editor.current().selectedClips];
+          await session.edit(ids.length === 1 ? "Cut Clip" : `Cut ${ids.length} Clips`, { op: "remove_clips", ids }, sessionHistory);
+          editor.selectClips([]);
+        },
+        enabled: () => inEditor() && editor.current().selectedClips.size > 0,
+        reason: () => (inEditor() ? "Select clips first." : "Cut works on clips in the Editor."),
+      }),
+      actions.register({
+        id: "edit.paste",
+        run: () => pasteAtPlayhead(),
+        enabled: () => inEditor() && clipBoard !== null && (session.current?.tracks.length ?? 0) > 0,
+        reason: () => (clipBoard ? "Click in the Editor first." : "Copy or cut clips first."),
+      }),
+      actions.register({
+        id: "edit.ripple.clips",
+        run: () => guarded("Ripple Delete", () => rippleDeleteClips(session.current!, editor.current().selectedClips), "Select clips first."),
+        enabled: () => editor.current().selectedClips.size > 0,
+        reason: () => "Select clips first.",
+      }),
+      actions.register({
+        id: "edit.ripple.time-track",
+        run: () => {
+          const r = timeSel();
+          const t = editor.current().selectedTrack;
+          if (!r || !t) return;
+          return guarded("Ripple Delete", () => rippleDeleteRange(session.current!, [t], r.start, r.end, uuid), "Nothing to delete in that range.");
+        },
+        enabled: () => timeSel() !== null && editor.current().selectedTrack !== null,
+        reason: () => (timeSel() ? "Select a track first." : "Drag across empty space in the Editor to select a time range."),
+      }),
+      actions.register({
+        id: "edit.ripple.time-all",
+        run: () => {
+          const r = timeSel();
+          const doc = session.current;
+          if (!r || !doc) return;
+          return guarded(
+            "Ripple Delete",
+            () => rippleDeleteRange(doc, doc.tracks.map((t) => t.id), r.start, r.end, uuid),
+            "Nothing to delete in that range.",
+          ).then(() => {
+            const cur = session.current;
+            if (cur) session.setView({ ...cur.view, selection: null, playhead: r.start });
+          });
+        },
+        enabled: () => timeSel() !== null,
+        reason: () => "Drag across empty space in the Editor to select a time range.",
+      }),
+      actions.register({
+        id: "edit.ripple.gap",
+        run: () => {
+          const doc = session.current;
+          const t = editor.current().selectedTrack;
+          if (!doc || !t) return;
+          const g = gapAt(doc, t, playheadNow());
+          if (!g) {
+            showNotice("Put the playhead in an empty space between two clips on the selected track.");
+            return;
+          }
+          return guarded("Close Gap", () => rippleDeleteRange(doc, [t], g.start, g.end, uuid), "Nothing to close.");
+        },
+        enabled: () => editor.current().selectedTrack !== null,
+        reason: () => "Select a track first.",
+      }),
+      ...selectClipActions(),
+      actions.register({
+        id: "edit.select-to-end",
+        run: () => {
+          const v = view();
+          if (!v) return;
+          const end = contentEnd();
+          const at = playheadNow();
+          if (end > at) session.setView({ ...v, selection: { start: at, end } });
+        },
+        enabled: () => contentEnd() > 0,
+      }),
+      actions.register({
+        id: "view.zoom-selection",
+        run: () => {
+          const v = view();
+          const r = timeSel();
+          if (!v || !r) return;
+          const w = editor.current().width;
+          const span = r.end - r.start;
+          const f = fit(span, w);
+          session.setView({ ...v, samples_per_pixel: f.spp, scroll: Math.max(0, Math.round(r.start - span * 0.025)) });
+        },
+        enabled: () => timeSel() !== null,
+        reason: () => "Drag across empty space in the Editor to select a time range.",
+      }),
+      actions.register({
+        id: "clip.trim.selection",
+        run: () => {
+          const doc = session.current;
+          const r = timeSel();
+          if (!doc || !r) return;
+          return editClips("Trim to Selection", trimToRange(doc, editor.current().selectedClips, r.start, r.end));
+        },
+        enabled: () => timeSel() !== null && editor.current().selectedClips.size > 0,
+        reason: () => "Select clips and a time range first.",
+      }),
+      actions.register({
+        id: "edit.snap.on",
+        run: () => editor.setSnap({ on: !editor.current().snap.on }),
+        checked: () => editor.current().snap.on,
+      }),
+      actions.register({
+        id: "edit.snap.clips",
+        run: () => editor.setSnap({ clips: !editor.current().snap.clips }),
+        checked: () => editor.current().snap.clips,
+        enabled: () => editor.current().snap.on,
+      }),
+      actions.register({
+        id: "edit.snap.playhead",
+        run: () => editor.setSnap({ playhead: !editor.current().snap.playhead }),
+        checked: () => editor.current().snap.playhead,
+        enabled: () => editor.current().snap.on,
+      }),
+      actions.register({ id: "clip.split", run: () => split(false), enabled: () => (session.current?.tracks.some((t) => t.clips.length > 0) ?? false) }),
+      actions.register({ id: "clip.split-all", run: () => split(true), enabled: () => (session.current?.tracks.some((t) => t.clips.length > 0) ?? false) }),
+      actions.register({
+        id: "clip.trim.start",
+        run: () => trimTo("start"),
+        enabled: () => editor.current().selectedClips.size > 0,
+        reason: () => "Select a clip first.",
+      }),
+      actions.register({
+        id: "clip.trim.end",
+        run: () => trimTo("end"),
+        enabled: () => editor.current().selectedClips.size > 0,
+        reason: () => "Select a clip first.",
+      }),
+      actions.register({
+        id: "clip.loop",
+        run: () => {
+          const doc = session.current;
+          if (!doc) return;
+          const { changes, on } = loopChanges(doc, editor.current().selectedClips);
+          return editClips(on ? "Loop Clip" : "Stop Looping Clip", changes);
+        },
+        enabled: () => selectedClipDocs().some((c) => !c.locked),
+        reason: () => "Select a clip that is not locked.",
+        checked: () => {
+          const c = selectedClipDocs();
+          return c.length > 0 && c.every((x) => !!x.looped);
+        },
+      }),
+      actions.register({
+        id: "clip.unique",
+        run: () => makeUniqueCopy(),
+        enabled: () => exporting === null && selectedClipDocs().some((c) => !c.locked),
+        reason: () => (exporting ? "Wait for the current export to finish." : "Select a clip that is not locked."),
+      }),
+      actions.register({
+        id: "clip.merge",
+        run: () => mergeClips(),
+        enabled: () => exporting === null && mergeTarget() !== null,
+        reason: () => (exporting ? "Wait for the current export to finish." : mergeReason()),
+      }),
+      actions.register({
+        id: "clip.mute",
+        run: () => {
+          const clips = selectedClipDocs();
+          const on = clips.every((c) => c.muted);
+          return editClips(on ? "Unmute Clip" : "Mute Clip", clips.map((c) => ({ id: c.id, muted: !on })));
+        },
+        enabled: () => editor.current().selectedClips.size > 0,
+        checked: () => {
+          const c = selectedClipDocs();
+          return c.length > 0 && c.every((x) => x.muted);
+        },
+        reason: () => "Select a clip first.",
+      }),
+      actions.register({
+        id: "clip.lock",
+        run: () => {
+          const clips = selectedClipDocs();
+          const on = clips.every((c) => c.locked);
+          return editClips(on ? "Unlock Clip" : "Lock Clip", clips.map((c) => ({ id: c.id, locked: !on })));
+        },
+        enabled: () => editor.current().selectedClips.size > 0,
+        checked: () => {
+          const c = selectedClipDocs();
+          return c.length > 0 && c.every((x) => x.locked);
+        },
+        reason: () => "Select a clip first.",
+      }),
+      actions.register({
+        id: "clip.fade-in",
+        run: () => toggleFade("in"),
+        enabled: () => editor.current().selectedClips.size > 0,
+        checked: () => {
+          const c = selectedClipDocs();
+          return c.length > 0 && c.every((x) => x.fade_in.length > 0);
+        },
+        reason: () => "Select a clip first.",
+      }),
+      actions.register({
+        id: "clip.fade-out",
+        run: () => toggleFade("out"),
+        enabled: () => editor.current().selectedClips.size > 0,
+        checked: () => {
+          const c = selectedClipDocs();
+          return c.length > 0 && c.every((x) => x.fade_out.length > 0);
+        },
+        reason: () => "Select a clip first.",
+      }),
+      actions.register({
+        id: "clip.gain",
+        run: () => clipGain(),
+        enabled: () => editor.current().selectedClips.size > 0,
+        reason: () => "Select a clip first.",
+      }),
+      actions.register({
+        id: "clip.reveal",
+        run: () => {
+          const ids = editor.current().selectedClips;
+          const media = new Set<string>();
+          for (const t of session.current?.tracks ?? []) for (const c of t.clips) if (ids.has(c.id)) media.add(c.media_id);
+          dock.show("files");
+          mediaPool.setSelection(media);
+        },
+        enabled: () => editor.current().selectedClips.size > 0,
+        reason: () => "Select a clip first.",
+      }),
+      actions.register({
+        id: "file.close-unused",
+        run: async () => {
+          const used = usedMedia();
+          const unused = mediaPool.current.items.filter((it) => !used.has(it.id)).map((it) => it.id);
+          await mediaPool.remove(unused, sessionHistory);
+          showNotice(unused.length ? `Removed ${unused.length} unused ${unused.length === 1 ? "file" : "files"}.` : "Every file is used by a clip.");
+        },
+        enabled: () => mediaPool.size > 0,
+        reason: () => "No files in the session.",
+      }),
+    );
+    offs.push(
+      actions.register({ id: "file.new-session", run: () => askNewSession() }),
+      actions.register({ id: "file.save-template", run: () => saveAsTemplate() }),
+      actions.register({ id: "file.open", run: () => openAny() }),
+      actions.register({ id: "file.save", run: () => files.save().then(() => undefined) }),
+      actions.register({ id: "file.save-as", run: () => files.saveAs().then(() => undefined) }),
+      actions.register({ id: "file.save-all", run: () => files.save().then(() => undefined) }),
+      actions.register({ id: "file.close", run: () => files.close().then(() => undefined) }),
+      actions.register({ id: "file.import-sesx", run: () => files.importSesx().then(() => undefined) }),
+      actions.register({ id: "file.close-all", run: () => files.close().then(() => undefined) }),
+      actions.register({
+        id: "file.recent.none",
+        run: () => {},
+        enabled: () => false,
+        visible: () => files.recentPaths().length === 0,
+        reason: () => "Sessions you save or open appear here.",
+      }),
+    );
+    for (let i = 0; i < RECENT_SLOTS; i++) {
+      offs.push(
+        actions.register({
+          id: `file.recent.${i + 1}`,
+          run: async () => {
+            const p = files.recentPaths()[i];
+            if (p) await files.open(p);
+          },
+          visible: () => files.recentPaths()[i] !== undefined,
+          label: () => {
+            const p = files.recentPaths()[i];
+            return p ? `${i + 1}  ${p}` : null;
+          },
+        }),
+      );
+    }
+    const pluginsUrl = LINKS.plugins;
+    if (pluginsUrl) offs.push(actions.register({ id: "help.plugins", run: () => openLink(pluginsUrl) }));
+    const donateUrl = LINKS.donate;
+    if (donateUrl) offs.push(actions.register({ id: "help.donate", run: () => openLink(donateUrl) }));
+    for (const p of PANELS) {
+      offs.push(
+        actions.register({
+          id: `window.panel.${p.id}`,
+          run: () => dock.toggle(p.id),
+          checked: () => openPanels.has(p.id),
+        }),
+      );
+    }
+    return offs;
+  }
+
+  onMount(() => {
+    void prefs
+      .load()
+      .then(() => libraries.restore())
+      .then((missing) => {
+        if (missing.length) showNotice(`Could not open ${missing.length === 1 ? "a library" : `${missing.length} libraries`}: ${missing.join(", ")}`);
+      })
+      .catch(showError);
+    getAppInfo()
+      .then((i) => (info = i))
+      .catch((e: unknown) => (coreError = e instanceof Error ? e.message : String(e)));
+    const offs = registerActions();
+    offs.push(...registerWaveActions());
+    offs.push(sessionHistory.subscribe(() => actions.invalidate()));
+    offs.push(
+      dock.open.subscribe((ids) => {
+        openPanels = ids;
+        actions.invalidate();
+      }),
+    );
+    offs.push(keymap.changed.subscribe(() => actions.invalidate()));
+    offs.push(mediaPool.subscribe(() => actions.invalidate()));
+    offs.push(libraries.subscribe(() => actions.invalidate()));
+    offs.push(session.subscribe(() => actions.invalidate()));
+    offs.push(editor.subscribe(() => actions.invalidate()));
+    offs.push(
+      dock.workspaces.subscribe((w) => {
+        wsState = w;
+        actions.invalidate();
+      }),
+    );
+    session
+      .load()
+      .then(() => prefs.load())
+      .then(() => {
+        // Editor settings (snapping, crossfades, time format) carry over between runs.
+        restoreSettings(prefs.raw(KEY_EDITOR));
+        let last = JSON.stringify(settingsOf(editor.current()));
+        offs.push(
+          editor.subscribe((st) => {
+            const now = JSON.stringify(settingsOf(st));
+            if (now === last) return;
+            last = now;
+            prefs.set(KEY_EDITOR, settingsOf(st));
+          }),
+        );
+      })
+      .then(() => files.checkRecovery())
+      .catch(showError)
+      .finally(() => files.startAutosave());
+    offs.push(() => files.stopAutosave());
+    offs.push(sessionHistory.subscribe(updateTitle));
+    offs.push(session.subscribe(updateTitle));
+    offs.push(session.subscribe(() => syncMonitor()));
+    offs.push(editor.subscribe(() => updateEditorTitle()));
+    offs.push(wave.subscribe(() => updateEditorTitle()));
+    if (isTauri()) {
+      let stopClose: (() => void) | null = null;
+      let gone = false;
+      void getCurrentWindow()
+        .onCloseRequested(async (e) => {
+          e.preventDefault();
+          await exitSafely();
+        })
+        .then((off) => (gone ? off() : (stopClose = off)));
+      offs.push(() => {
+        gone = true;
+        stopClose?.();
+      });
+    }
+    offs.push(activeArea.subscribe(() => actions.invalidate()));
+    if (body) offs.push(trackArea(body));
+    let unbindDrop: (() => void) | null = null;
+    let stopped = false;
+    bindNativeFileDrop(fileDrop)
+      .then((off) => (stopped ? off() : (unbindDrop = off)))
+      .catch(showError);
+    offs.push(() => {
+      stopped = true;
+      unbindDrop?.();
+    });
+    loadKeymapOverrides()
+      .then((o) => keymap.setOverrides(o))
+      .catch((e: unknown) => showError(`Saved shortcuts could not be read, using defaults: ${String(e)}`));
+    offs.push(bindKeymap(keymap, actions, showError));
+    return () => offs.forEach((off) => off());
+  });
+</script>
+
+<div class="shell">
+  <header class="top">
+    <MenuBar menus={MENUS} {actions} {shortcutFor} onError={showError} />
+  </header>
+  <ToolStrip {actions} {shortcutFor} />
+
+  <main class="body" bind:this={body}>
+    <DockShell {dock} />
+  </main>
+
+  <footer class="status">
+    {#if info}
+      <span>Core {info.version}</span>
+      <span>Session format v{info.sessionSchemaVersion}</span>
+    {:else if coreError}
+      <span class="warn">Core not connected: {coreError}</span>
+    {:else}
+      <span>Connecting to core...</span>
+    {/if}
+    {#if notice}
+      <span>{notice}</span>
+    {/if}
+    {#if lastError}
+      <span class="warn">{lastError}</span>
+    {/if}
+  </footer>
+</div>
+
+{#if shortcutsOpen}
+  <KeyboardShortcutsDialog {keymap} onChange={saveKeymap} onClose={() => (shortcutsOpen = false)} />
+{/if}
+
+{#if colorFor}
+  <ClipColorDialog
+    current={colorFor.current}
+    onDone={(c) => {
+      const target = colorFor;
+      colorFor = null;
+      if (target && c !== null) void editClips("Clip Color", target.ids.map((id) => ({ id, color: c }))).catch(showError);
+    }}
+  />
+{/if}
+
+{#if loud}
+  <LoudnessDialog
+    report={loud.report}
+    progress={loud.progress}
+    targetId={loud.target}
+    scope={loud.scope}
+    onTarget={(id) => {
+      prefs.set(KEY_LOUD_TARGET, id);
+      if (loud) loud = { ...loud, target: id };
+    }}
+    onMeasure={() => void measureLoudness()}
+    onCancel={() => void exportCancel()}
+    onApplyGain={(db) => void applyMasterGain(db).catch(showError)}
+    onClose={() => (loud = null)}
+  />
+{/if}
+
+{#if exporting}
+  <ExportProgress title={exporting.title} progress={exporting.progress} onCancel={() => void exportCancel()} />
+{/if}
+
+{#if promptReq}
+  <PromptDialog
+    title={promptReq.title}
+    label={promptReq.label}
+    value={promptReq.value}
+    onDone={(v) => {
+      const r = promptReq?.resolve;
+      promptReq = null;
+      r?.(v);
+    }}
+  />
+{/if}
+
+{#if propertiesOpen && session.current}
+  <SessionPropertiesDialog doc={session.current} path={session.path} onDone={(v) => void applyProperties(v)} />
+{/if}
+
+{#if exportReq}
+  <ExportDialog
+    initial={exportReq.initial}
+    scopes={exportReq.scopes}
+    source={exportReq.source}
+    onBrowse={(from) => exportPickFolder(from || null, "Export To")}
+    onDone={(v) => void finishExportDialog(v)}
+  />
+{/if}
+
+{#if choice}
+  <ChoiceDialog
+    title={choice.title}
+    message={choice.message}
+    buttons={choice.buttons}
+    onChoose={(v) => {
+      const r = choice?.resolve;
+      choice = null;
+      r?.(v);
+    }}
+  />
+{/if}
+
+{#if newSessionReq}
+  <NewSessionDialog
+    initial={newSessionReq.initial}
+    templates={newSessionReq.templates}
+    error={newSessionReq.error ?? null}
+    onBrowse={(current) => exportPickFolder(current || null, "Folder for New Sessions")}
+    onDeleteTemplate={deleteTemplate}
+    onDone={(v) => {
+      newSessionReq = null;
+      if (v) void makeNewSession(v);
+    }}
+  />
+{/if}
+
+{#if newAudio}
+  <NewAudioFileDialog
+    initial={newAudio}
+    onDone={(v) => {
+      newAudio = null;
+      if (v) void makeNewAudio(v);
+    }}
+  />
+{/if}
+
+{#if aboutOpen}
+  <AboutDialog version={info?.version ?? null} onClose={() => (aboutOpen = false)} />
+{/if}
+
+<style>
+  .shell {
+    display: grid;
+    grid-template-rows: 24px auto 1fr var(--row-height);
+    height: 100%;
+  }
+
+  .top {
+    display: flex;
+    align-items: stretch;
+    padding: 0;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .body {
+    min-height: 0;
+    background: var(--surface-0);
+  }
+
+  .status {
+    display: flex;
+    gap: var(--space-4);
+    align-items: center;
+    padding: 0 var(--space-3);
+    background: var(--surface-2);
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: var(--font-size-small);
+  }
+
+  .warn {
+    color: var(--danger);
+  }
+</style>
