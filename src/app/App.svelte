@@ -984,7 +984,7 @@
       case "quickpass":
         return {
           component: asComponent(QuickPassPanel),
-          props: { session, transport, runner: sessionHistory, prefs, onNotice: showNotice, onError: showError },
+          props: { session, transport, runner: sessionHistory, prefs, ask: promptText, onNotice: showNotice, onError: showError },
         };
       case "libraries":
         return {
@@ -1847,7 +1847,7 @@
         label: () => "Close Audio File",
       }),
       ov(waveIsOpen, { id: "multitrack.play-pause", run: () => waveTransport.toggle() }),
-      ov(waveIsOpen, { id: "multitrack.stop", run: () => waveTransport.stop() }),
+      ov(waveIsOpen, { id: "multitrack.stop", run: () => (take ? finishRecord() : waveTransport.stop()) }),
       ov(waveIsOpen, { id: "view.zoom-in", run: () => waveZoom.run?.("in") }),
       ov(waveIsOpen, { id: "view.zoom-out", run: () => waveZoom.run?.("out") }),
       ov(waveIsOpen, { id: "view.zoom-session", run: () => waveZoom.run?.("full") }),
@@ -2072,7 +2072,7 @@
         run: () => toggleRecord(),
         label: () => (take ? "Stop Recording" : "Record"),
       }),
-      actions.register({ id: "multitrack.stop", run: () => transport.stop() }),
+      actions.register({ id: "multitrack.stop", run: () => (take ? finishRecord() : transport.stop()) }),
       actions.register({
         id: "multitrack.properties",
         enabled: () => session.current !== null,

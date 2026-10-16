@@ -95,7 +95,10 @@ export class PeakStore {
       const levels: PeakLevel[] = [];
       for (let i = 0; i < summary.levels.length; i++) {
         const buf = await this.backend.level(path, i);
-        levels.push({ block: summary.levels[i]!.block, data: new Int16Array(buf) });
+        // Some webviews hand raw bytes back as an array or a typed view, not an ArrayBuffer.
+        const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : ArrayBuffer.isView(buf) ? new Uint8Array((buf as ArrayBufferView).buffer, (buf as ArrayBufferView).byteOffset, (buf as ArrayBufferView).byteLength) : Uint8Array.from(buf as unknown as ArrayLike<number>);
+        const even = bytes.byteLength - (bytes.byteLength % 2);
+        levels.push({ block: summary.levels[i]!.block, data: new Int16Array(bytes.slice(0, even).buffer) });
       }
       Object.assign(e, { status: "ready", progress: 1, summary, levels, error: null });
     } catch (err) {

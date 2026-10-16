@@ -69,6 +69,17 @@ export function bindKeymap(keymap: Keymap, actions: ActionRegistry, onError: (e:
     if (result.prevent) e.preventDefault();
     if (result.action) actions.run(result.action).catch(onError);
   };
+  // Clicking a canvas or empty panel does not move focus, so a search box
+  // would keep swallowing keys such as Space. Clicking anywhere that is not
+  // a text field leaves the field.
+  const leaveField = (e: PointerEvent) => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && isTextEntry(active) && !isTextEntry(e.target) && !(e.target instanceof Node && active.contains(e.target))) active.blur();
+  };
   window.addEventListener("keydown", handler);
-  return () => window.removeEventListener("keydown", handler);
+  window.addEventListener("pointerdown", leaveField, true);
+  return () => {
+    window.removeEventListener("keydown", handler);
+    window.removeEventListener("pointerdown", leaveField, true);
+  };
 }

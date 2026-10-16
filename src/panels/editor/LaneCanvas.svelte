@@ -145,6 +145,14 @@
         const srcRate = m!.sample_rate || entry.summary.sampleRate;
         const framesPerPx = (view.spp * srcRate) / sessionRate;
         const level = pickLevel(entry.levels, framesPerPx);
+        if (!level || level.data.length === 0) {
+          // Ready but nothing to draw: say so instead of leaving the clip blank.
+          g.save();
+          g.fillStyle = css("--danger");
+          g.font = `11px ${css("--font-ui")}`;
+          g.fillText(`No waveform data (${entry.levels.length} levels)`, left + 6, body.top + 12);
+          g.restore();
+        }
         if (level) {
           g.fillStyle = color;
           g.globalAlpha = clip.muted ? 0.35 : 0.95;

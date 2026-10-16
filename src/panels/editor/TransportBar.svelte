@@ -65,6 +65,12 @@
     }),
   );
 
+  /** Stop ends a recording in progress as well as playback. */
+  function stopAll() {
+    if (rec.active) recordControl.toggle?.();
+    else void transport.stop();
+  }
+
   const tip = (label: string, id?: string) => {
     const k = id ? shortcutFor(id) : undefined;
     return k ? `${label} (${k})` : label;
@@ -90,7 +96,7 @@
   </button>
 
   <div class="transport" role="group" aria-label="Transport">
-    <button type="button" class="tool" title={tip("Stop", "multitrack.stop")} aria-label="Stop" onclick={() => void transport.stop()}>
+    <button type="button" class="tool" title={tip("Stop", "multitrack.stop")} aria-label="Stop" onclick={stopAll}>
       <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor" /></svg>
     </button>
     <button
@@ -160,8 +166,6 @@
     </button>
   </div>
 
-  <span class="spacer"></span>
-
   <div class="zoom" role="group" aria-label="Zoom">
     {#if amplitude}
       <button type="button" class="tool" title="Zoom In Amplitude (Alt + mouse wheel)" aria-label="Zoom in amplitude" onclick={() => zoom("amp-in")}>
@@ -198,7 +202,8 @@
 
 <style>
   .bar {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     gap: 6px;
     align-items: center;
     min-height: 32px;
@@ -227,12 +232,12 @@
     align-items: center;
   }
 
-  .transport {
-    margin-left: 12px;
+  .bar > :first-child {
+    justify-self: start;
   }
 
-  .spacer {
-    flex: 1;
+  .zoom {
+    justify-self: end;
   }
 
   .sep {

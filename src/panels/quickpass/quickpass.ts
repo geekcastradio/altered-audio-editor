@@ -22,11 +22,32 @@ export interface QuickPassSettings {
   contentDb: number;
   /** Speech shorter than this (seconds) does not break a silence. */
   minContentSec: number;
+  /** What fixing a silence does. */
+  action: FixAction;
+  /** Remove leaves this much of each silence (milliseconds) so speech does not run together. */
+  keepMs: number;
   /** Where Remove closes the gap. */
   ripple: "track" | "all";
 }
 
-export const DEFAULTS: QuickPassSettings = { quietDb: -45, minQuietSec: 0.5, contentDb: -35, minContentSec: 0.1, ripple: "track" };
+export type FixAction = "remove" | "split" | "mark";
+
+export const DEFAULTS: QuickPassSettings = { quietDb: -60, minQuietSec: 0.5, contentDb: -50, minContentSec: 0.05, action: "remove", keepMs: 100, ripple: "track" };
+
+export interface Preset {
+  name: string;
+  settings: QuickPassSettings;
+}
+
+/** Starting points. Each is a full set of settings the user can then adjust. */
+export const BUILTIN_PRESETS: readonly Preset[] = [
+  { name: "Default", settings: DEFAULTS },
+  { name: "Trim Long Silent Pauses", settings: { ...DEFAULTS, quietDb: -74, minQuietSec: 1, contentDb: -63, minContentSec: 0.05, action: "remove", keepMs: 100 } },
+  { name: "Tighten Pauses Between Speakers", settings: { ...DEFAULTS, quietDb: -55, minQuietSec: 0.8, contentDb: -45, minContentSec: 0.1, action: "remove", keepMs: 300 } },
+  { name: "Remove Digital Dropouts", settings: { ...DEFAULTS, quietDb: -100, minQuietSec: 0.01, contentDb: -80, minContentSec: 0.02, action: "remove", keepMs: 0 } },
+  { name: "Mark Long Pauses", settings: { ...DEFAULTS, quietDb: -60, minQuietSec: 2, contentDb: -50, minContentSec: 0.1, action: "mark", keepMs: 0 } },
+  { name: "Split at Pauses", settings: { ...DEFAULTS, quietDb: -60, minQuietSec: 1, contentDb: -50, minContentSec: 0.1, action: "split", keepMs: 0 } },
+];
 
 const num = (v: unknown, lo: number, hi: number, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback);
 
@@ -36,9 +57,11 @@ export function sanitizeSettings(raw: unknown): QuickPassSettings {
   const quietDb = num(r.quietDb, -100, -1, DEFAULTS.quietDb);
   return {
     quietDb,
-    minQuietSec: num(r.minQuietSec, 0.05, 60, DEFAULTS.minQuietSec),
+    minQuietSec: num(r.minQuietSec, 0.005, 60, DEFAULTS.minQuietSec),
     contentDb: Math.max(quietDb, num(r.contentDb, -100, 0, DEFAULTS.contentDb)),
     minContentSec: num(r.minContentSec, 0.01, 10, DEFAULTS.minContentSec),
+    action: r.action === "split" || r.action === "mark" ? r.action : "remove",
+    keepMs: num(r.keepMs, 0, 5000, DEFAULTS.keepMs),
     ripple: r.ripple === "all" ? "all" : "track",
   };
 }
@@ -146,12 +169,21 @@ export function applyLocal(doc: SessionDoc, op: Op): SessionDoc {
 }
 
 /** Removes the silences and closes the gaps, last one first so earlier ones keep their place. */
-export function removeOp(doc: SessionDoc, found: readonly Finding[], s: Pick<QuickPassSettings, "ripple">, newId: () => string): Op | null {
+export function cutRange(f: Pick<Finding, "start" | "end">, keepMs: number, rate: number): [number, number] | null {
+  const half = Math.round((keepMs / 1000) * rate * 0.5);
+  const a = f.start + half;
+  const b = f.end - half;
+  return b > a ? [a, b] : null;
+}
+
+export function removeOp(doc: SessionDoc, found: readonly Finding[], s: Pick<QuickPassSettings, "ripple" | "keepMs">, newId: () => string): Op | null {
   const ops: Op[] = [];
   let cur = doc;
   for (const f of [...found].sort((a, b) => b.start - a.start)) {
+    const cut = cutRange(f, s.keepMs, doc.sample_rate);
+    if (!cut) continue;
     const tracks = s.ripple === "all" ? cur.tracks.map((t) => t.id) : [f.trackId];
-    const op = rippleDeleteRange(cur, tracks, f.start, f.end, newId);
+    const op = rippleDeleteRange(cur, tracks, cut[0], cut[1], newId);
     if (!op) continue;
     ops.push(op);
     cur = applyLocal(cur, op);
@@ -196,8 +228,10 @@ export function markersFor(doc: SessionDoc, found: readonly Finding[], newId: ()
 }
 
 /** After `gone` is removed, where the other findings sit. Those inside it are dropped. */
-export function shiftFindings(rest: readonly Finding[], gone: Finding, ripple: "track" | "all"): Finding[] {
-  const len = gone.end - gone.start;
+export function shiftFindings(rest: readonly Finding[], gone: Finding, ripple: "track" | "all", keepMs = 0, rate = 48000): Finding[] {
+  const cut = cutRange(gone, keepMs, rate) ?? [gone.start, gone.start];
+  const len = cut[1] - cut[0];
+  gone = { ...gone, start: cut[0], end: cut[1] };
   return rest
     .filter((f) => f.id !== gone.id && !((ripple === "all" || f.trackId === gone.trackId) && f.start < gone.end && f.end > gone.start))
     .map((f) => (f.start >= gone.end && (ripple === "all" || f.trackId === gone.trackId) ? { ...f, start: f.start - len, end: f.end - len } : f));

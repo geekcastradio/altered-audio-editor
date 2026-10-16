@@ -631,3 +631,7 @@ QuickPass now scans the selected clips (or every clip on a track that plays when
 ## 2026-10-15: first release is v0.1.1
 
 The repository history was rewritten into one clean commit before going public, and the first `v0.1.0` tag and draft pointed at the old history. The first public release is therefore v0.1.1, so the number alone shows it came from the clean history. Version lives in `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` and `src-tauri/tauri.conf.json`; change all five together.
+
+## 2026-10-16: QuickPass layout, key and transport fixes
+
+QuickPass now has a Scan view and a Settings view with a preset list (built-in plus the user's own, saved with a name). Settings hold the silence level and time, the sound level and time, Find Levels, and what fixing does: remove (keeping an optional short pause so speech does not run together, default 100 ms), split, or mark. The Scan view lists findings; click selects a row and moves the playhead, Ctrl+click adds to the selection, Fix and Fix All act, Clear Fixed tidies the list. Fixes: clicking away from a text field (such as the Libraries search box) now releases keyboard focus, so Space plays and pauses again; Stop also ends a recording in progress; the transport buttons sit in the centre of the bar with zoom on the right.

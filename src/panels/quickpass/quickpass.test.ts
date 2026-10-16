@@ -3,10 +3,10 @@
 // This file is part of Altered Audio Editor.
 
 import { describe, expect, it } from "vitest";
-import { DEFAULTS, findSilences, sanitizeSettings, shiftFindings, silentRuns, suggestLevels, type Finding } from "./quickpass";
+import { BUILTIN_PRESETS, cutRange, DEFAULTS, findSilences, sanitizeSettings, shiftFindings, silentRuns, suggestLevels, type Finding } from "./quickpass";
 
 const W = 0.1; // seconds per window
-const s = { ...DEFAULTS, minQuietSec: 0.3, minContentSec: 0.2 };
+const s = { ...DEFAULTS, quietDb: -45, contentDb: -35, minQuietSec: 0.3, minContentSec: 0.2 };
 const quiet = (n: number) => Array<number>(n).fill(-60);
 const loud = (n: number) => Array<number>(n).fill(-20);
 
@@ -63,6 +63,7 @@ describe("suggestLevels", () => {
 describe("sanitizeSettings", () => {
   it("fills in and clamps", () => {
     expect(sanitizeSettings(null)).toEqual(DEFAULTS);
+    expect(sanitizeSettings({ action: "bogus", keepMs: -5 })).toMatchObject({ action: "remove", keepMs: 0 });
     expect(sanitizeSettings({ quietDb: -30, contentDb: -50, ripple: "all" })).toMatchObject({ quietDb: -30, contentDb: -30, ripple: "all" });
   });
 });
@@ -113,7 +114,7 @@ const fnd = (start: number, end: number) => ({ id: `f${start}`, trackId: "t", cl
 describe("acting on findings", () => {
   it("removes two silences from one clip in a single edit", () => {
     const doc = mkDoc([mkClip("a", 0, 48_000)]);
-    const op = removeOp(doc, [fnd(6_000, 12_000), fnd(24_000, 30_000)], { ripple: "track" }, nid)!;
+    const op = removeOp(doc, [fnd(6_000, 12_000), fnd(24_000, 30_000)], { ripple: "track", keepMs: 0 }, nid)!;
     const after = applyLocal(doc, op);
     const t = after.tracks[0]!;
     const total = t.clips.reduce((s, c) => s + (c.source_out - c.source_in), 0);
@@ -136,5 +137,28 @@ describe("acting on findings", () => {
     const m = markersFor({ ...doc, markers: [{ ...markersFor(doc, [fnd(0, 10)], nid)[0]! }] }, [fnd(20, 30), fnd(40, 50)], nid);
     expect(m.map((x) => x.name)).toEqual(["Silence 2", "Silence 3"]);
     expect(m[0]!.duration).toBe(10);
+  });
+});
+
+describe("keeping some pause", () => {
+  it("cuts only the middle of a silence", () => {
+    expect(cutRange({ start: 0, end: 48_000 }, 100, 48_000)).toEqual([2_400, 45_600]);
+  });
+  it("leaves a silence that is shorter than the pause alone", () => {
+    expect(cutRange({ start: 0, end: 4_000 }, 100, 48_000)).toBeNull();
+  });
+  it("removing with a kept pause shortens the silence", () => {
+    const doc = mkDoc([mkClip("a", 0, 48_000)]);
+    const op = removeOp(doc, [fnd(10_000, 20_000)], { ripple: "track", keepMs: 100 }, nid)!;
+    const t = applyLocal(doc, op).tracks[0]!;
+    expect(t.clips.reduce((n, c) => n + (c.source_out - c.source_in), 0)).toBe(48_000 - (10_000 - 4_800));
+  });
+});
+
+describe("presets", () => {
+  it("are all valid settings with unique names", () => {
+    const names = BUILTIN_PRESETS.map((p) => p.name);
+    expect(new Set(names).size).toBe(names.length);
+    for (const p of BUILTIN_PRESETS) expect(sanitizeSettings(p.settings)).toEqual(p.settings);
   });
 });
