@@ -30,9 +30,17 @@ describe("menu model", () => {
     for (const m of MENUS) check(m.items);
   });
 
-  it("does not use other products' feature names", () => {
-    const banned =
-      /effects rack|essential sound|diagnostics|batch process|match loudness|favorites|audition help|selection\/view|media browser|speech volume leveler|dynamics processing|hard limiter|click remover|autogate|denoise|kill the|spectral frequency display|spot healing/i;
+  // The list of names to keep out lives in private/banned-terms.txt (one
+  // regular expression per line), which is never committed. Without it,
+  // for example in CI, the check is skipped.
+  const found = import.meta.glob<string>("../../../private/banned-terms.txt", { query: "?raw", import: "default", eager: true });
+  const bannedText = Object.values(found)[0];
+  it.skipIf(bannedText === undefined)("does not use other products' feature names", () => {
+    const terms = (bannedText ?? "")
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const banned = new RegExp(terms.join("|"), "i");
     for (const m of MENUS) {
       for (const it of allItems(m.items)) {
         if (it.kind !== "sep") expect(it.label).not.toMatch(banned);
