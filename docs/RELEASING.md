@@ -5,8 +5,8 @@
 3. Tag and push:
 
    ```
-   git tag v0.1.0
-   git push origin v0.1.0
+   git tag v0.1.1
+   git push origin v0.1.1
    ```
 
 4. The Release workflow builds the installer and a portable zip, then makes a **draft** release.
