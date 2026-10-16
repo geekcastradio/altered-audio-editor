@@ -71,12 +71,23 @@ fn measure(session: &Session, id: Id, window_ms: u32) -> Option<ClipLevels> {
         ..Default::default()
     };
     let mut audio: Vec<f32> = Vec::with_capacity(((end - start) * 2) as usize);
-    mixdown::render_mix(&s, &req, &AtomicBool::new(false), |_, _| {}, |block| {
-        audio.extend_from_slice(block);
-        Ok(())
-    })
+    mixdown::render_mix(
+        &s,
+        &req,
+        &AtomicBool::new(false),
+        |_, _| {},
+        |block| {
+            audio.extend_from_slice(block);
+            Ok(())
+        },
+    )
     .ok()?;
-    Some(ClipLevels { clip_id: id, start, window, db: window_db(&audio, window as usize) })
+    Some(ClipLevels {
+        clip_id: id,
+        start,
+        window,
+        db: window_db(&audio, window as usize),
+    })
 }
 
 /// Measures the given clips as they play (gain and Voice Chain included).
@@ -97,7 +108,9 @@ pub async fn quickpass_levels(
             .filter(|id| wanted.contains(id))
             .collect();
         ids.sort();
-        ids.into_iter().filter_map(|id| measure(&session, id, window_ms)).collect()
+        ids.into_iter()
+            .filter_map(|id| measure(&session, id, window_ms))
+            .collect()
     })
     .await
     .map_err(|e| e.to_string())
