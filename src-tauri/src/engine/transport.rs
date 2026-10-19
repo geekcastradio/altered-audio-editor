@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::traits::{DeviceTrait, StreamTrait};
 use cpal::{FromSample, SampleFormat, SizedSample, StreamConfig};
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde::Serialize;
@@ -452,7 +452,7 @@ fn run(
     ready: mpsc::Sender<Result<u32, String>>,
 ) {
     let host = cpal::default_host();
-    let Some(device) = host.default_output_device() else {
+    let Some(device) = super::output::output_device(&host) else {
         let _ = ready.send(Err("No audio output device found.".into()));
         return;
     };

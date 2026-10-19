@@ -1,0 +1,478 @@
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  Copyright (c) The GeekCast Radio Network, LLC.
+  This file is part of Altered Audio Editor.
+
+  Edit > Settings: every app setting on one dialog, page by page. The
+  whole dialog is one draft: OK applies it, Cancel or Escape drops it.
+  Settings the app cannot act on yet are shown greyed out with the
+  reason, never faked.
+-->
+<script lang="ts">
+  import { cacheInfo, cacheClearPeaks, openSoundSettings, type CacheInfo } from "../core";
+  import { audioOutputs } from "../core";
+  import { BROADCAST_REGIONS, targetsFor } from "../loudness";
+  import { DEFAULT_SETTINGS, NO_COLORS, TIMECODE_RATES, type AppColors } from "../../stores/settings";
+  import { cleanDraft, LATER_PAGES, PAGES, sizeText, type Page, type SettingsDraft } from "./pages";
+
+  interface Props {
+    initial: SettingsDraft;
+    page?: Page;
+    onApply: (d: SettingsDraft) => void;
+    onNotice?: (m: string) => void;
+    onClose: () => void;
+  }
+
+  const { initial, page: startPage = "General", onApply, onNotice = () => {}, onClose }: Props = $props();
+
+  // svelte-ignore state_referenced_locally
+  let d = $state<SettingsDraft>(structuredClone(initial));
+  // svelte-ignore state_referenced_locally
+  let page = $state<Page>(startPage);
+
+  let outputs = $state<{ name: string; isDefault: boolean }[] | null>(null);
+  let cache = $state<CacheInfo | null>(null);
+  let busy = $state(false);
+  $effect(() => {
+    if (page === "Audio Devices" && outputs === null)
+      void audioOutputs()
+        .then((o) => (outputs = o))
+        .catch(() => (outputs = []));
+    if (page === "Cache and Files" && cache === null) void refreshCache();
+  });
+  async function refreshCache() {
+    cache = await cacheInfo().catch(() => null);
+  }
+  async function clearPeaks() {
+    busy = true;
+    try {
+      const freed = await cacheClearPeaks();
+      onNotice(`Cleared ${sizeText(freed)} of waveform drawings. They are rebuilt as files are shown.`);
+      await refreshCache();
+    } finally {
+      busy = false;
+    }
+  }
+
+  const COLOR_ROWS: { key: keyof AppColors; label: string; theme: string }[] = [
+    { key: "wave", label: "Waveform (Waveform editor)", theme: "#53c28b" },
+    { key: "playhead", label: "Playhead", theme: "#f2c14e" },
+    { key: "accent", label: "Accent (focus and selection)", theme: "#3fa9f5" },
+    { key: "laneSelected", label: "Selected track lane", theme: "#34343b" },
+  ];
+  const CACHE_NOTES: Record<string, string> = {
+    peaks: "Waveform drawings",
+    spectral: "Spectrum edit results",
+    "wave-fx": "Voice Chain apply results",
+    untitled: "Untitled Waveform files",
+    recordings: "Recordings not yet saved with a session",
+  };
+
+  function ok() {
+    onApply(cleanDraft($state.snapshot(d) as SettingsDraft));
+  }
+  function resetPage() {
+    const def = DEFAULT_SETTINGS;
+    if (page === "General") Object.assign(d.app, { zoomStep: def.zoomStep, wheelAnchor: def.wheelAnchor, fadeShape: def.fadeShape, spaceAction: def.spaceAction });
+    else if (page === "Appearance") d.app.colors = { ...NO_COLORS };
+    else if (page === "Autosave") Object.assign(d.app, { autosave: def.autosave, autosaveMinutes: def.autosaveMinutes, backups: def.backups, backupCount: def.backupCount });
+    else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb });
+  }
+  const resettable = $derived(["General", "Appearance", "Autosave", "Playback and Recording"].includes(page));
+</script>
+
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === "Escape") onClose();
+  }}
+/>
+
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+<div class="backdrop" onclick={onClose}>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="st-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
+    <header><h1 id="st-title">Settings</h1></header>
+    <div class="body">
+      <nav aria-label="Settings pages">
+        {#each PAGES as p (p)}
+          <button type="button" class:on={page === p} class:later={LATER_PAGES[p] !== undefined} aria-current={page === p ? "page" : undefined} onclick={() => (page = p)}>{p}</button>
+        {/each}
+      </nav>
+
+      <section class="page" aria-label={page}>
+        <h2>{page}</h2>
+
+        {#if LATER_PAGES[page]}
+          <p class="later-note">{LATER_PAGES[page]}</p>
+        {/if}
+
+        {#if page === "General"}
+          <label class="row">Ctrl + wheel zooms by <input type="number" min="5" max="100" step="5" bind:value={d.app.zoomStep} /> % a step</label>
+          <fieldset>
+            <legend>Ctrl + wheel zooms around</legend>
+            <label><input type="radio" bind:group={d.app.wheelAnchor} value="mouse" /> The mouse pointer</label>
+            <label><input type="radio" bind:group={d.app.wheelAnchor} value="playhead" /> The playhead</label>
+          </fieldset>
+          <fieldset>
+            <legend>New fades start as</legend>
+            <label><input type="radio" bind:group={d.app.fadeShape} value="cosine" /> S curve (smooth at both ends)</label>
+            <label><input type="radio" bind:group={d.app.fadeShape} value="linear" /> Straight line</label>
+            <label><input type="radio" bind:group={d.app.fadeShape} value="logarithmic" /> Logarithmic (fast start)</label>
+          </fieldset>
+          <fieldset>
+            <legend>Space bar while playing</legend>
+            <label><input type="radio" bind:group={d.app.spaceAction} value="pause" /> Pause where it is</label>
+            <label><input type="radio" bind:group={d.app.spaceAction} value="stop" /> Stop and go back to where it started</label>
+          </fieldset>
+          <label class="off" title="Warnings with a 'don't ask again' box arrive with the first such warning."><input type="checkbox" disabled /> Show warnings I turned off again <span class="why">No warnings can be turned off yet.</span></label>
+        {:else if page === "Appearance"}
+          <p class="note">Leave a color on Theme to keep the built-in one. Changes show the next time each view redraws.</p>
+          <div class="colors">
+            {#each COLOR_ROWS as r (r.key)}
+              <span>{r.label}</span>
+              <input type="color" value={d.app.colors[r.key] || r.theme} oninput={(e) => (d.app.colors[r.key] = e.currentTarget.value)} aria-label={r.label} />
+              <button type="button" disabled={!d.app.colors[r.key]} onclick={() => (d.app.colors[r.key] = "")}>Theme</button>
+            {/each}
+          </div>
+          <label class="off"><select disabled><option>Dark</option></select> Theme <span class="why">One dark theme for now; a light theme is planned.</span></label>
+        {:else if page === "Audio Devices"}
+          <label class="row">
+            Play through
+            <select class="grow" value={d.app.output ?? ""} onchange={(e) => (d.app.output = e.currentTarget.value || null)}>
+              <option value="">System default{outputs?.find((o) => o.isDefault) ? ` (${outputs.find((o) => o.isDefault)?.name})` : ""}</option>
+              {#each outputs ?? [] as o (o.name)}<option value={o.name}>{o.name}</option>{/each}
+              {#if d.app.output && outputs && !outputs.some((o) => o.name === d.app.output)}<option value={d.app.output}>{d.app.output} (not connected)</option>{/if}
+            </select>
+          </label>
+          <p class="note">Used for playback, file previews and input monitoring from the next time they start. If it is unplugged, the system default plays instead.</p>
+          <label class="off"><select disabled><option>Picked per track</option></select> Recording input <span class="why">Each track picks its own input in its track header.</span></label>
+          <label class="off"><select disabled><option>Automatic</option></select> Buffer size <span class="why">Set by the system for now; a choice arrives with ASIO.</span></label>
+          <label class="off"><select disabled><option>Shared (WASAPI)</option></select> Driver type <span class="why">ASIO arrives with per-channel routing.</span></label>
+          <div><button type="button" onclick={() => void openSoundSettings()}>Open System Sound Settings</button></div>
+        {:else if page === "Channel Routing"}
+          <label class="off"><select disabled><option>1 and 2</option></select> Input channels for stereo tracks</label>
+          <label class="off"><select disabled><option>1 and 2</option></select> Output channels</label>
+        {:else if page === "Autosave"}
+          <label><input type="checkbox" bind:checked={d.app.autosave} /> Save a recovery copy of the session</label>
+          <label class="row" class:dim={!d.app.autosave}>Every <input type="number" min="1" max="60" step="1" bind:value={d.app.autosaveMinutes} disabled={!d.app.autosave} /> minutes</label>
+          <p class="note">The recovery copy is offered back if the app closes without saving. It never replaces your session file.</p>
+          <fieldset>
+            <legend>Backups of the session file</legend>
+            <label><input type="checkbox" bind:checked={d.app.backups} /> Keep older copies when saving</label>
+            <label class="row" class:dim={!d.app.backups}>Keep the newest <input type="number" min="1" max="50" step="1" bind:value={d.app.backupCount} disabled={!d.app.backups} /> copies</label>
+            <p class="note">Each save first copies the previous file into a Backups folder beside the session, named with the date and time.</p>
+          </fieldset>
+        {:else if page === "Controllers"}
+          <label class="off"><button type="button" disabled>Add Controller...</button></label>
+        {:else if page === "Editing"}
+          <label class="off"><input type="checkbox" disabled /> Crossfade the edges of cuts and deletes in the Waveform editor <span class="why">Planned with the next Waveform editor batch.</span></label>
+          <label class="off"><input type="number" disabled value="1" /> Files processed at once in Batch Convert <span class="why">One at a time for now.</span></label>
+          <label class="off"><select disabled><option>High</option></select> Sample rate conversion quality <span class="why">Always the high-quality converter.</span></label>
+        {:else if page === "Effects"}
+          <label><input type="checkbox" bind:checked={d.app.openChainOnAdd} /> Show the Voice Chain when adding an effect from the Effects menu</label>
+          <label class="off"><input type="checkbox" disabled checked /> Bypassed effects are skipped on playback <span class="why">Always on: a bypassed effect costs nothing.</span></label>
+          <label class="off"><select disabled><option>By category</option></select> Effects menu order <span class="why">Grouped by category.</span></label>
+        {:else if page === "Cache and Files"}
+          {#if cache}
+            <p class="note">Working files live in <code>{cache.path}</code></p>
+            <table>
+              <tbody>
+                {#each cache.folders as f (f.name)}
+                  <tr><td>{CACHE_NOTES[f.name] ?? f.name}</td><td class="num">{sizeText(f.bytes)}</td></tr>
+                {/each}
+              </tbody>
+            </table>
+            <div class="row">
+              <button type="button" disabled={busy} onclick={() => void clearPeaks()}>Clear Waveform Drawings</button>
+              <span class="why">Edit results, untitled files and unsaved recordings stay: an open file or session may use them.</span>
+            </div>
+          {:else}
+            <p class="note">Reading the cache folder…</p>
+          {/if}
+          <label class="off"><button type="button" disabled>Move Cache...</button> <span class="why">The cache stays in the app's own folder for now.</span></label>
+        {:else if page === "Markers"}
+          <label class="off"><input type="checkbox" disabled checked /> Marker changes can be undone <span class="why">Always on.</span></label>
+          <label class="off"><input type="checkbox" disabled checked /> Markers move with cuts, pastes and crops <span class="why">Always on.</span></label>
+          <label class="off"><input type="checkbox" disabled checked /> Write chapters into exported MP3 and FLAC files <span class="why">Chosen in each export.</span></label>
+          <label class="row">Name for new markers <input type="text" maxlength="40" bind:value={d.app.markerName} /> (numbered after it)</label>
+        {:else if page === "Multitrack"}
+          <fieldset>
+            <legend>Solo</legend>
+            <label><input type="radio" bind:group={d.app.soloExclusive} value={false} /> Several tracks can be soloed at once</label>
+            <label><input type="radio" bind:group={d.app.soloExclusive} value={true} /> Soloing a track unsolos the others</label>
+          </fieldset>
+          <label class="off"><select disabled><option>Balance (centre at full level)</option></select> Pan law <span class="why">Planned with buses.</span></label>
+          <label class="off"><input type="checkbox" disabled checked /> New tracks get a color in turn <span class="why">Always on.</span></label>
+        {:else if page === "Clips"}
+          <label><input type="checkbox" bind:checked={d.editor.autoCrossfade} /> Crossfade clips that overlap on a track</label>
+          <label class="off"><input type="checkbox" disabled /> Files dropped together go on their own tracks <span class="why">Use Insert Files as Tracks for that for now.</span></label>
+          <label class="off"><select disabled><option>Keep pitch</option></select> Time Stretch starts as <span class="why">Picked in the Time Stretch dialog each time.</span></label>
+        {:else if page === "Playback and Recording"}
+          <fieldset>
+            <legend>Playback</legend>
+            <label><input type="checkbox" bind:checked={d.editor.followPlayhead} /> Scroll to follow the playhead</label>
+            <label class="off"><input type="checkbox" disabled /> Play audio while scrubbing <span class="why">Planned.</span></label>
+          </fieldset>
+          <fieldset>
+            <legend>Meters turn yellow and red at</legend>
+            <label class="row">Yellow from <input type="number" min="-40" max="-1" step="1" bind:value={d.app.meterYellowDb} /> dBFS</label>
+            <label class="row">Red from <input type="number" min="-39" max="0" step="1" bind:value={d.app.meterRedDb} /> dBFS</label>
+          </fieldset>
+          <fieldset>
+            <legend>Recording</legend>
+            <label class="row">Trim from each take <input type="number" min="0" max="1000" step="1" bind:value={d.record.offsetMs} /> ms (latency offset)</label>
+            <label class="row">Play before a punch-in <input type="number" min="0" max="10" step="0.5" bind:value={d.record.prerollSec} /> seconds</label>
+            <label><input type="checkbox" bind:checked={d.record.punch} /> With a time selection, record only into the selection</label>
+            <label class="row">
+              Count down before recording
+              <select value={String(d.app.countdownSec)} onchange={(e) => (d.app.countdownSec = Number(e.currentTarget.value))}>
+                <option value="0">Off</option>
+                <option value="3">3 seconds</option>
+                <option value="5">5 seconds</option>
+              </select>
+            </label>
+          </fieldset>
+        {:else if page === "Spectrum Views"}
+          <label class="off"><select disabled><option>2048</option></select> Spectrum detail <span class="why">Fixed for now, tuned for speech.</span></label>
+          <label class="off"><input type="number" disabled value="100" /> Spectrum range (dB) <span class="why">Fixed for now.</span></label>
+          <label class="off"><input type="checkbox" disabled /> Gridlines on the spectrum <span class="why">Planned.</span></label>
+        {:else if page === "Time Display"}
+          <label class="row">
+            Show times as
+            <select bind:value={d.editor.timeFormat}>
+              <option value="time">Minutes and seconds (1:05.250)</option>
+              <option value="timecode">Timecode (hh:mm:ss:ff)</option>
+              <option value="samples">Samples</option>
+            </select>
+          </label>
+          <label class="row">
+            Timecode frame rate
+            <select value={String(d.app.timecodeFps)} onchange={(e) => (d.app.timecodeFps = Number(e.currentTarget.value))}>
+              {#each TIMECODE_RATES as r (r)}<option value={String(r)}>{r} frames a second</option>{/each}
+            </select>
+          </label>
+          <label class="off"><input type="number" disabled value="120" /> Tempo for bars and beats <span class="why">Arrives with MIDI tracks.</span></label>
+        {:else if page === "Loudness"}
+          <label class="row">
+            Broadcast region
+            <select bind:value={d.loudness.region}>
+              {#each BROADCAST_REGIONS as r (r.id)}<option value={r.id}>{r.name} ({r.standard})</option>{/each}
+            </select>
+          </label>
+          <label class="row">
+            Target in Check Loudness
+            <select bind:value={d.loudness.target}>
+              {#each targetsFor(d.loudness.region) as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
+            </select>
+          </label>
+          <p class="note">Podcast targets follow published podcast guidance (stereo -16 LUFS, mono -19 LUFS, true peak at or below -1 dBTP). Broadcast targets follow the region.</p>
+        {:else if page === "Privacy"}
+          <p class="note">Altered Audio Editor never goes online by itself. No account, no sign-in, no tracking, no usage data, no crash reports, no update checks. Everything stays on this computer.</p>
+          <p class="note">The only web pages it opens are the ones you pick in the Help menu, in your own browser.</p>
+          <label class="off"><input type="checkbox" disabled /> Check for updates once a week <span class="why">Arrives after the first public release, and stays off unless you turn it on.</span></label>
+        {/if}
+      </section>
+    </div>
+    <footer>
+      {#if resettable}<button type="button" class="left" onclick={resetPage}>Reset This Page</button>{/if}
+      <button type="button" onclick={onClose}>Cancel</button>
+      <button type="button" class="primary" onclick={ok}>OK</button>
+    </footer>
+  </div>
+</div>
+
+<style>
+  .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 5000;
+    display: grid;
+    place-items: center;
+    background: rgba(0, 0, 0, 0.5);
+  }
+  .dialog {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    width: min(780px, 96vw);
+    height: min(560px, 92vh);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-2);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+    font-size: 12px;
+  }
+  header {
+    padding: 10px 14px 6px;
+  }
+  h1 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .body {
+    display: grid;
+    grid-template-columns: 170px minmax(0, 1fr);
+    min-height: 0;
+    gap: 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  nav {
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+    padding: 6px 0;
+    background: var(--surface-1);
+    border-right: 1px solid var(--border);
+  }
+  nav button {
+    padding: 4px 12px;
+    border: 0;
+    border-left: 2px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  nav button:hover {
+    color: var(--text);
+  }
+  nav button.on {
+    border-left-color: var(--accent);
+    background: var(--surface-3);
+    color: var(--text);
+  }
+  nav button.later {
+    color: var(--text-faint);
+  }
+  .page {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: auto;
+    padding: 10px 16px 14px;
+  }
+  h2 {
+    margin: 0 0 2px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  fieldset {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding: 4px 10px 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+  }
+  legend {
+    padding: 0 4px;
+    color: var(--text-dim);
+  }
+  label {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .grow {
+    flex: 1;
+    min-width: 0;
+  }
+  .off,
+  .dim {
+    color: var(--text-faint);
+  }
+  .why {
+    color: var(--text-faint);
+    font-style: italic;
+  }
+  .note {
+    margin: 0;
+    color: var(--text-dim);
+  }
+  .later-note {
+    margin: 0;
+    padding: 6px 8px;
+    border-left: 2px solid var(--accent-dim);
+    background: var(--surface-1);
+    color: var(--text-dim);
+  }
+  .colors {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 48px auto;
+    gap: 6px 10px;
+    align-items: center;
+    max-width: 420px;
+  }
+  input[type="color"] {
+    width: 44px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid var(--border-strong);
+    background: transparent;
+  }
+  input[type="number"],
+  input[type="text"],
+  select,
+  button {
+    height: 22px;
+    padding: 0 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--surface-1);
+    color: var(--text);
+    font: inherit;
+  }
+  input[type="number"] {
+    width: 64px;
+  }
+  button {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  button:disabled,
+  select:disabled,
+  input:disabled {
+    opacity: 0.5;
+  }
+  table {
+    border-collapse: collapse;
+    max-width: 420px;
+  }
+  td {
+    padding: 2px 8px 2px 0;
+    color: var(--text-dim);
+  }
+  td.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  code {
+    font-family: var(--font-mono);
+    word-break: break-all;
+  }
+  footer {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    padding: 10px 14px;
+  }
+  footer .left {
+    margin-right: auto;
+  }
+  footer button {
+    min-width: 72px;
+  }
+  .primary {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent, #fff);
+  }
+</style>

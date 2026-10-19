@@ -62,6 +62,12 @@
   import MusicFitDialog from "./MusicFitDialog.svelte";
   import { describeJoins, describePlan, FIT_XFADE, fitOps, type FitPlan } from "../panels/editor/musicfit";
   import { ALIGN_MAX_MS, alignOps, alignPair, describeAlign } from "../panels/editor/align";
+  import SettingsDialog from "./settings/SettingsDialog.svelte";
+  import { balance, balanceItems, describeBalance } from "./speaker-balance";
+  import { HOST_PROFILES, profileById, profileOp } from "./host-profiles";
+  import type { SettingsDraft } from "./settings/pages";
+  import { colorVars, meterPercent, sanitizeSettings, settings, type AppSettings } from "../stores/settings";
+  import type { TransportStore } from "../stores/transport";
   import GenerateDialog, { type GenerateMode, type GenerateValues } from "./GenerateDialog.svelte";
   import { naturalLength, stretchTo, unstretch } from "../panels/editor/stretch";
   import { CHAPTER_FORMATS, embedList, type ChapterFormat } from "../panels/markers/chapters";
@@ -138,6 +144,7 @@
     waveSpectralEdit,
     waveApplyChain,
     phaseAlign,
+    setAudioOutput,
     recordStart,
     recordStatus,
     recordStop,
@@ -841,6 +848,42 @@
     const rate = m.sample_rate || doc.sample_rate;
     return musicFit(m.path, f.clip.source_in / rate, f.clip.source_out / rate, seconds, FIT_XFADE);
   }
+  // Multitrack > Speaker Balance.
+  let balancing = $state(false);
+  async function runSpeakerBalance() {
+    const doc = session.current;
+    if (!doc || balancing) return;
+    const items = balanceItems(doc);
+    if (items.length < 2) return showNotice("Speaker Balance needs at least two voice tracks with audio.");
+    balancing = true;
+    try {
+      const reports: LoudnessReport[] = [];
+      for (const [i, item] of items.entries()) {
+        showNotice(`Speaker Balance: measuring ${item.label} (${i + 1} of ${items.length})…`);
+        reports.push(await loudnessCheck({ track: item.key, clips: item.clipIds, clipOnly: true, dry: true }));
+      }
+      const now = session.current ?? doc;
+      const b = balance(now, items, reports);
+      if (b.changes.length > 0) await session.edit("Speaker Balance", { op: "set_clips", changes: b.changes }, sessionHistory);
+      showNotice(describeBalance(b));
+    } finally {
+      balancing = false;
+    }
+  }
+
+  /** The track a Host Profile command acts on: the selected one. */
+  const profileTrack = () => session.current?.tracks.find((t) => t.id === editor.current().selectedTrack) ?? null;
+  async function applyProfile(id: string | null) {
+    const t = profileTrack();
+    if (!t) return;
+    const p = id ? (profileById(id) ?? null) : null;
+    await session.edit(p ? `Host Profile: ${p.name}` : "Clear Host Profile", profileOp(t, p, uuid), sessionHistory);
+    if (p) {
+      dock.show("voice-chain");
+      showNotice(`${t.name}: ${p.name} profile applied (gate at ${p.gateDb} dB${p.role === "guest" ? ", guest track" : ""}).`);
+    }
+  }
+
   async function runPhaseAlign() {
     const d = session.current;
     const pair = d ? alignPair(d, editor.current().selectedClips) : null;
@@ -1219,7 +1262,7 @@
   const files = new SessionFiles({
     backend: {
       create: (options) => sessionNew<SessionDoc>(options),
-      save: (path, media, libs) => sessionSave<SessionDoc, MediaRefDoc>(path, media, libs),
+      save: (path, media, libs) => sessionSave<SessionDoc, MediaRefDoc>(path, media, libs, settings.current.backups ? settings.current.backupCount : 0),
       open: (path) => sessionOpen<SessionDoc>(path),
       autosave: (media) => sessionAutosave(media),
       clearAutosave: () => sessionClearAutosave(),
@@ -1566,7 +1609,7 @@
     // In the Waveform editor the chain is a preview, not an edit; Apply in the panel writes it.
     if (at.wave) await wave.apply(op);
     else await session.edit(`Add ${info.name}`, op, sessionHistory);
-    dock.show("voice-chain");
+    if (settings.current.openChainOnAdd) dock.show("voice-chain");
     showNotice(`Added ${info.name} to ${at.name}.`);
   }
 
@@ -1738,6 +1781,50 @@
     }
   }
 
+  // Edit > Settings.
+  const KEY_SETTINGS = "app.settings";
+  let settingsDraft = $state<SettingsDraft | null>(null);
+  function openSettings() {
+    const ed = editor.current();
+    settingsDraft = {
+      app: structuredClone(settings.current),
+      editor: { followPlayhead: ed.followPlayhead, autoCrossfade: ed.autoCrossfade, timeFormat: ed.timeFormat },
+      record: recordOptions(),
+      loudness: { region: prefs.string(KEY_LOUD_REGION, DEFAULT_REGION), target: prefs.string(KEY_LOUD_TARGET, DEFAULT_TARGET) },
+    };
+  }
+  function applySettingsDraft(d: SettingsDraft) {
+    settingsDraft = null;
+    const autosaveChanged = d.app.autosave !== settings.current.autosave || d.app.autosaveMinutes !== settings.current.autosaveMinutes;
+    settings.set(d.app);
+    prefs.set(KEY_SETTINGS, settings.current);
+    editor.setFollowPlayhead(d.editor.followPlayhead);
+    editor.setAutoCrossfade(d.editor.autoCrossfade);
+    editor.setTimeFormat(d.editor.timeFormat);
+    prefs.set(KEY_RECORD, d.record);
+    prefs.set(KEY_LOUD_REGION, d.loudness.region);
+    prefs.set(KEY_LOUD_TARGET, d.loudness.target);
+    applyAppSettings(settings.current, autosaveChanged);
+  }
+  /** Puts settings that live outside the interface's own reads into effect. */
+  function applyAppSettings(s: AppSettings, autosave: boolean) {
+    const root = document.documentElement.style;
+    for (const k of ["--wave", "--playhead", "--accent", "--lane-selected"]) root.removeProperty(k);
+    for (const [k, v] of Object.entries(colorVars(s.colors))) root.setProperty(k, v);
+    root.setProperty("--meter-yellow", `${meterPercent(s.meterYellowDb)}%`);
+    root.setProperty("--meter-red", `${meterPercent(s.meterRedDb)}%`);
+    if (isTauri()) void setAudioOutput(s.output).catch(showError);
+    if (autosave) restartAutosave();
+  }
+  function restartAutosave() {
+    files.stopAutosave();
+    if (settings.current.autosave) files.startAutosave(settings.current.autosaveMinutes * 60_000);
+  }
+  /** Space bar: pause where it is, or stop and go back, per Settings > General. */
+  function spaceToggle(t: TransportStore): Promise<void> {
+    return t.current.playing && settings.current.spaceAction === "stop" ? t.stop() : t.toggle();
+  }
+
   // Recording. Multitrack: every armed track records its input into
   // its own file, from the playhead, while the session plays. Waveform
   // editor: the take goes into the file at the playhead.
@@ -1753,11 +1840,31 @@
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
   }
 
+  // Settings > Playback and Recording: a count before recording starts.
+  let countdown = $state<number | null>(null);
+  async function countIn(): Promise<boolean> {
+    const secs = settings.current.countdownSec;
+    if (secs <= 0) return true;
+    for (let n = secs; n > 0; n--) {
+      countdown = n;
+      await new Promise((r) => setTimeout(r, 1000));
+      if (countdown === null) return false;
+    }
+    countdown = null;
+    return true;
+  }
+
   async function toggleRecord() {
+    if (countdown !== null) {
+      // Pressing Record again during the count cancels it.
+      countdown = null;
+      return;
+    }
     if (take) {
       await finishRecord();
       return;
     }
+    if (!(await countIn())) return;
     try {
       if (inWave()) {
         const d = wave.current;
@@ -2342,7 +2449,7 @@
         run: async () => {
           const d = wave.current;
           if (!d) return;
-          const m = newMarker(uuid(), nextMarkerName(d.markers), wavePlayhead());
+          const m = newMarker(uuid(), nextMarkerName(d.markers, settings.current.markerName), wavePlayhead());
           await waveEdit("Add Marker", { op: "add_markers", markers: [m] });
         },
       }),
@@ -2358,7 +2465,7 @@
         enabled: () => waveSel() !== null,
         reason: () => NEED_WAVE_SEL,
       }),
-      ov(waveIsOpen, { id: "multitrack.play-pause", run: () => waveTransport.toggle() }),
+      ov(waveIsOpen, { id: "multitrack.play-pause", run: () => spaceToggle(waveTransport) }),
       ov(waveIsOpen, { id: "multitrack.stop", run: () => (take ? finishRecord() : waveTransport.stop()) }),
       ov(waveIsOpen, { id: "view.zoom-in", run: () => waveZoom.run?.("in") }),
       ov(waveIsOpen, { id: "view.zoom-out", run: () => waveZoom.run?.("out") }),
@@ -2390,6 +2497,7 @@
       actions.register({ id: "window.reset-layout", run: () => dock.resetToDefault() }),
       actions.register({ id: "window.minimize", run: () => minimizeWindow() }),
       actions.register({ id: "edit.keyboard-shortcuts", run: () => void (shortcutsOpen = true) }),
+      actions.register({ id: "edit.settings", run: () => openSettings() }),
       actions.register({ id: "help.shortcuts", run: () => void (shortcutsOpen = true) }),
       actions.register({ id: "help.website", run: () => openLink(LINKS.website) }),
       actions.register({ id: "help.book", run: () => openLink(LINKS.book) }),
@@ -2578,7 +2686,7 @@
       ];
     };
     offs.push(
-      actions.register({ id: "multitrack.play-pause", run: () => transport.toggle() }),
+      actions.register({ id: "multitrack.play-pause", run: () => spaceToggle(transport) }),
       actions.register({
         id: "multitrack.record",
         run: () => toggleRecord(),
@@ -2838,7 +2946,7 @@
         run: async () => {
           const doc = session.current;
           if (!doc) return;
-          const m = newMarker(uuid(), nextMarkerName(doc.markers), playheadNow());
+          const m = newMarker(uuid(), nextMarkerName(doc.markers, settings.current.markerName), playheadNow());
           await session.edit("Add Marker", { op: "add_markers", markers: [m] }, sessionHistory);
         },
         enabled: () => session.current !== null,
@@ -3154,6 +3262,26 @@
         },
       }),
       actions.register({
+        id: "multitrack.speaker-balance",
+        run: () => void runSpeakerBalance().catch(showError),
+        enabled: () => !balancing && session.current !== null && balanceItems(session.current).length >= 2,
+        reason: () => (balancing ? "Measuring now." : "Needs two or more voice tracks with audio (music, effects and ambience tracks are left out)."),
+      }),
+      ...HOST_PROFILES.map((p) =>
+        actions.register({
+          id: `multitrack.profile.${p.id}`,
+          run: () => void applyProfile(p.id).catch(showError),
+          enabled: () => profileTrack() !== null,
+          reason: () => "Select a track first.",
+        }),
+      ),
+      actions.register({
+        id: "multitrack.profile.clear",
+        run: () => void applyProfile(null).catch(showError),
+        enabled: () => !!profileTrack()?.host_profile_id,
+        reason: () => "The selected track has no host profile.",
+      }),
+      actions.register({
         id: "clip.phase-align",
         run: () => void runPhaseAlign().catch(showError),
         enabled: () => {
@@ -3377,6 +3505,8 @@
       .then(() => {
         // Editor settings (snapping, crossfades, time format) carry over between runs.
         restoreSettings(prefs.raw(KEY_EDITOR));
+        settings.set(sanitizeSettings(prefs.raw(KEY_SETTINGS)));
+        applyAppSettings(settings.current, false);
         let last = JSON.stringify(settingsOf(editor.current()));
         offs.push(
           editor.subscribe((st) => {
@@ -3389,7 +3519,7 @@
       })
       .then(() => files.checkRecovery())
       .catch(showError)
-      .finally(() => files.startAutosave());
+      .finally(() => restartAutosave());
     offs.push(() => files.stopAutosave());
     offs.push(sessionHistory.subscribe(updateTitle));
     offs.push(session.subscribe(updateTitle));
@@ -3501,6 +3631,14 @@
     onApply={(v) => void addTracks(v).catch(showError)}
     onClose={() => (addTracksOpen = false)}
   />
+{/if}
+
+{#if countdown !== null}
+  <div class="countdown" role="status" aria-live="assertive">Recording in {countdown}<span>Press Record again to cancel</span></div>
+{/if}
+
+{#if settingsDraft}
+  <SettingsDialog initial={settingsDraft} onApply={applySettingsDraft} onNotice={showNotice} onClose={() => (settingsDraft = null)} />
 {/if}
 
 {#if recordOptionsOpen}
@@ -3677,6 +3815,30 @@
 {/if}
 
 <style>
+  .countdown {
+    position: fixed;
+    top: 40%;
+    left: 50%;
+    z-index: 6000;
+    display: grid;
+    gap: 4px;
+    padding: 14px 28px;
+    transform: translate(-50%, -50%);
+    border: 1px solid var(--danger);
+    border-radius: 4px;
+    background: var(--surface-2);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+    color: var(--text);
+    font-size: 28px;
+    font-weight: 600;
+    text-align: center;
+    pointer-events: none;
+  }
+  .countdown span {
+    color: var(--text-dim);
+    font-size: 12px;
+    font-weight: 400;
+  }
   .shell {
     display: grid;
     grid-template-rows: 24px auto 1fr var(--row-height);

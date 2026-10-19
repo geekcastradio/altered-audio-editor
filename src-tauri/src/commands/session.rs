@@ -209,6 +209,7 @@ pub async fn session_save(
     path: Option<PathBuf>,
     media: Vec<MediaRef>,
     libraries: Option<Vec<PathBuf>>,
+    backups: Option<u32>,
 ) -> Result<SessionWithPath, String> {
     let new_path = path.is_some();
     let (mut session, target) = {
@@ -231,10 +232,19 @@ pub async fn session_save(
         }
     }
     let t2 = target.clone();
-    let saved = spawn_blocking(move || file::save(&session, &t2, &media))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
+    let keep = backups.unwrap_or(0).min(MAX_BACKUPS);
+    let saved = spawn_blocking(move || {
+        // The file about to be replaced becomes the newest backup.
+        if keep > 0 {
+            if let Err(e) = backup_previous(&t2, keep as usize, chrono::Local::now()) {
+                eprintln!("session backup skipped: {e}");
+            }
+        }
+        file::save(&session, &t2, &media)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
     let open = app.state::<OpenSession>();
     let mut s = open.0.lock().map_err(|e| e.to_string())?;
     // Keep edits made while the file was being written; take the saved
@@ -252,6 +262,57 @@ pub async fn session_save(
         path: Some(target),
         missing: Vec::new(),
     })
+}
+
+/// Most backups kept per session.
+const MAX_BACKUPS: u32 = 50;
+
+/// Copies the session file at `target` (if there is one) into a Backups
+/// folder beside it, named with the time, and keeps only the newest `keep`.
+fn backup_previous(
+    target: &std::path::Path,
+    keep: usize,
+    now: chrono::DateTime<chrono::Local>,
+) -> std::io::Result<()> {
+    if !target.exists() {
+        return Ok(());
+    }
+    let dir = target
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join("Backups");
+    std::fs::create_dir_all(&dir)?;
+    let stem = target
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let name = format!("{stem} {}.{EXTENSION}", now.format("%Y-%m-%d %H%M%S"));
+    std::fs::copy(target, dir.join(name))?;
+    let prefix = format!("{stem} ");
+    let suffix = format!(".{EXTENSION}");
+    let mut ours: Vec<PathBuf> = std::fs::read_dir(&dir)?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+                n.strip_prefix(&prefix)
+                    .and_then(|r| r.strip_suffix(&suffix))
+                    // Only our own timestamped names: "2026-10-19 093000".
+                    .is_some_and(|t| {
+                        t.len() == 17
+                            && t.chars()
+                                .all(|c| c.is_ascii_digit() || c == '-' || c == ' ')
+                    })
+            })
+        })
+        .collect();
+    // Timestamps sort by name; drop the oldest beyond `keep`.
+    ours.sort();
+    let extra = ours.len().saturating_sub(keep);
+    for old in &ours[..extra] {
+        std::fs::remove_file(old)?;
+    }
+    Ok(())
 }
 
 fn with_extension(p: PathBuf) -> PathBuf {
@@ -470,5 +531,47 @@ mod tests {
         assert_eq!(s.tracks[5].name, "Track 6");
         assert!(s.tracks.iter().all(|t| t.clips.is_empty()));
         assert_eq!(s.sample_rate, 44_100);
+    }
+
+    #[test]
+    fn backups_keep_the_newest_few() {
+        use chrono::TimeZone;
+        let d = tempfile::tempdir().unwrap();
+        let target = d.path().join("Show.altaudio");
+        std::fs::write(&target, "v1").unwrap();
+        for m in 0..5 {
+            let t = chrono::Local
+                .with_ymd_and_hms(2026, 10, 19, 9, m, 0)
+                .unwrap();
+            super::backup_previous(&target, 3, t).unwrap();
+        }
+        let dir = d.path().join("Backups");
+        // Another session's backups in the same folder are left alone.
+        std::fs::write(dir.join("Other 2026-01-01 000000.altaudio"), "x").unwrap();
+        super::backup_previous(
+            &target,
+            3,
+            chrono::Local
+                .with_ymd_and_hms(2026, 10, 19, 10, 0, 0)
+                .unwrap(),
+        )
+        .unwrap();
+        let mut names: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            [
+                "Other 2026-01-01 000000.altaudio",
+                "Show 2026-10-19 090300.altaudio",
+                "Show 2026-10-19 090400.altaudio",
+                "Show 2026-10-19 100000.altaudio"
+            ]
+        );
+        // No file yet: nothing to back up.
+        super::backup_previous(&d.path().join("New.altaudio"), 3, chrono::Local::now()).unwrap();
     }
 }

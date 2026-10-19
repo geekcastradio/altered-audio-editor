@@ -126,6 +126,7 @@ export interface TrackDoc {
   id: string;
   name: string;
   role: "standard" | "guest";
+  host_profile_id?: string | null;
   channels: "mono" | "stereo";
   color: string | null;
   height: number;
@@ -260,6 +261,9 @@ export interface TrackChanges {
   collapsed?: boolean;
   monitor_input?: boolean;
   input?: string | null;
+  role?: "standard" | "guest";
+  /** The host profile applied; "" clears it. */
+  host_profile_id?: string;
 }
 
 /** An edit the core understands. */

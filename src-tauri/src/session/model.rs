@@ -161,6 +161,23 @@ pub struct Send {
     pub enabled: bool,
 }
 
+impl Session {
+    /// Takes every Voice Chain off (tracks, clips, buses and the master),
+    /// for measuring or saving the audio as it is.
+    pub fn strip_effects(&mut self) {
+        self.master.effects = EffectChain::default();
+        for b in &mut self.buses {
+            b.effects = EffectChain::default();
+        }
+        for t in &mut self.tracks {
+            t.effects = EffectChain::default();
+            for c in &mut t.clips {
+                c.effects = EffectChain::default();
+            }
+        }
+    }
+}
+
 /// What kind of voice a track carries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -612,4 +629,20 @@ pub struct EpisodeMetadata {
     pub artist: Option<String>,
     pub artwork: Option<PathBuf>,
     pub explicit: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strip_effects_clears_every_chain() {
+        let mut s = Session::new("t", 48_000);
+        s.tracks.push(Track::new("A", ChannelLayout::Stereo));
+        s.tracks[0].effects.input_gain_db = 6.0;
+        s.master.effects.input_gain_db = 3.0;
+        s.strip_effects();
+        assert_eq!(s.tracks[0].effects, EffectChain::default());
+        assert_eq!(s.master.effects, EffectChain::default());
+    }
 }

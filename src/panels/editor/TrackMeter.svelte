@@ -85,7 +85,7 @@
   .bar {
     position: relative;
     overflow: hidden;
-    background: linear-gradient(to top, #3d8f6a 0 80%, #c9b33f 80% 95%, #e5534b 95% 100%);
+    background: linear-gradient(to top, #3d8f6a 0 var(--meter-yellow, 80%), #c9b33f var(--meter-yellow, 80%) var(--meter-red, 95%), #e5534b var(--meter-red, 95%) 100%);
   }
 
   .cover {

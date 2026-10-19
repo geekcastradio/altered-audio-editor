@@ -1,0 +1,159 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) The GeekCast Radio Network, LLC.
+// This file is part of Altered Audio Editor.
+
+/**
+ * App-wide settings from Edit > Settings that are not editor state:
+ * zoom step, fades, colors, the output device, autosave and so on.
+ * Saved in the app's preferences under one key; read synchronously
+ * wherever they apply, so a change takes effect on the next action.
+ */
+
+/** A fade curve, as the session stores it. */
+export type FadeShape = "linear" | "logarithmic" | "cosine";
+export type WheelAnchor = "mouse" | "playhead";
+export type SpaceAction = "pause" | "stop";
+
+export interface AppColors {
+  /** Waveforms in the Waveform editor. Empty keeps the theme color. */
+  wave: string;
+  playhead: string;
+  accent: string;
+  /** The selected track's lane. */
+  laneSelected: string;
+}
+
+export interface AppSettings {
+  /** How much one Ctrl+wheel step zooms, in percent. */
+  zoomStep: number;
+  wheelAnchor: WheelAnchor;
+  /** Shape a new fade starts with. */
+  fadeShape: FadeShape;
+  /** What the space bar does to a playing session. */
+  spaceAction: SpaceAction;
+  colors: AppColors;
+  /** System name of the output; null is the system default. */
+  output: string | null;
+  autosave: boolean;
+  autosaveMinutes: number;
+  /** Show the Voice Chain when an effect is added from the Effects menu. */
+  openChainOnAdd: boolean;
+  /** Soloing a track unsolos the others. */
+  soloExclusive: boolean;
+  /** Meter color changes, dBFS. */
+  meterYellowDb: number;
+  meterRedDb: number;
+  /** Keep older copies of the session file in a Backups folder when saving. */
+  backups: boolean;
+  backupCount: number;
+  /** Seconds counted down before recording starts; 0 starts at once. */
+  countdownSec: number;
+  /** Name new markers start with, numbered after it. */
+  markerName: string;
+  /** Frames per second for timecode. */
+  timecodeFps: number;
+}
+
+export const TIMECODE_RATES = [24, 25, 30, 50, 60] as const;
+
+export const NO_COLORS: AppColors = { wave: "", playhead: "", accent: "", laneSelected: "" };
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  zoomStep: 25,
+  wheelAnchor: "mouse",
+  fadeShape: "cosine",
+  spaceAction: "pause",
+  colors: { ...NO_COLORS },
+  output: null,
+  autosave: true,
+  autosaveMinutes: 2,
+  openChainOnAdd: true,
+  soloExclusive: false,
+  meterYellowDb: -12,
+  meterRedDb: -3,
+  backups: false,
+  backupCount: 5,
+  countdownSec: 0,
+  markerName: "Marker",
+  timecodeFps: 30,
+};
+
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/** Saved settings, with defaults for anything missing, out of range or the wrong type. */
+export function sanitizeSettings(raw: unknown): AppSettings {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const d = DEFAULT_SETTINGS;
+  const num = (v: unknown, lo: number, hi: number, def: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def);
+  const bool = (v: unknown, def: boolean) => (typeof v === "boolean" ? v : def);
+  const c = (o.colors && typeof o.colors === "object" ? o.colors : {}) as Record<string, unknown>;
+  const color = (v: unknown) => (typeof v === "string" && HEX.test(v) ? v.toLowerCase() : "");
+  const yellow = num(o.meterYellowDb, -40, -1, d.meterYellowDb);
+  return {
+    zoomStep: Math.round(num(o.zoomStep, 5, 100, d.zoomStep)),
+    wheelAnchor: o.wheelAnchor === "playhead" ? "playhead" : "mouse",
+    fadeShape: o.fadeShape === "linear" || o.fadeShape === "logarithmic" ? o.fadeShape : "cosine",
+    spaceAction: o.spaceAction === "stop" ? "stop" : "pause",
+    colors: { wave: color(c.wave), playhead: color(c.playhead), accent: color(c.accent), laneSelected: color(c.laneSelected) },
+    output: typeof o.output === "string" && o.output.trim() ? o.output : null,
+    autosave: bool(o.autosave, d.autosave),
+    autosaveMinutes: Math.round(num(o.autosaveMinutes, 1, 60, d.autosaveMinutes)),
+    openChainOnAdd: bool(o.openChainOnAdd, d.openChainOnAdd),
+    soloExclusive: bool(o.soloExclusive, d.soloExclusive),
+    meterYellowDb: yellow,
+    // Red sits above yellow.
+    meterRedDb: num(o.meterRedDb, yellow + 1, 0, Math.max(d.meterRedDb, yellow + 1)),
+    backups: bool(o.backups, d.backups),
+    backupCount: Math.round(num(o.backupCount, 1, 50, d.backupCount)),
+    countdownSec: Math.round(num(o.countdownSec, 0, 10, d.countdownSec)),
+    markerName: typeof o.markerName === "string" && o.markerName.trim() ? o.markerName.trim().slice(0, 40) : d.markerName,
+    timecodeFps: TIMECODE_RATES.includes(o.timecodeFps as never) ? (o.timecodeFps as number) : d.timecodeFps,
+  };
+}
+
+type Listener = (s: AppSettings) => void;
+
+class SettingsStore {
+  private value: AppSettings = { ...DEFAULT_SETTINGS, colors: { ...NO_COLORS } };
+  private readonly listeners = new Set<Listener>();
+
+  get current(): AppSettings {
+    return this.value;
+  }
+
+  set(next: AppSettings): void {
+    this.value = sanitizeSettings(next);
+    for (const fn of this.listeners) fn(this.value);
+  }
+
+  subscribe(fn: Listener): () => void {
+    this.listeners.add(fn);
+    fn(this.value);
+    return () => {
+      this.listeners.delete(fn);
+    };
+  }
+}
+
+export const settings = new SettingsStore();
+
+/** The Ctrl+wheel zoom ratios for zooming in and out. */
+export function zoomRatios(step = settings.current.zoomStep): { zoomIn: number; zoomOut: number } {
+  const out = 1 + step / 100;
+  return { zoomIn: 1 / out, zoomOut: out };
+}
+
+/** The theme color overrides as CSS variables; empty ones fall back to the theme. */
+export function colorVars(c: AppColors): Record<string, string> {
+  const v: Record<string, string> = {};
+  if (c.wave) v["--wave"] = c.wave;
+  if (c.playhead) v["--playhead"] = c.playhead;
+  if (c.accent) v["--accent"] = c.accent;
+  if (c.laneSelected) v["--lane-selected"] = c.laneSelected;
+  return v;
+}
+
+/** Where a level in dBFS sits on a -60 to 0 dB meter, as a percentage. */
+export function meterPercent(db: number, floorDb = -60): number {
+  return Math.max(0, Math.min(100, ((db - floorDb) / -floorDb) * 100));
+}

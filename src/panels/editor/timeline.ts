@@ -7,6 +7,7 @@
  * math is tested without a screen.
  */
 
+import { settings } from "../../stores/settings";
 export interface Viewport {
   /** Session samples per screen pixel. */
   spp: number;
@@ -113,7 +114,7 @@ export function formatTimecode(samples: number, rate: number, fps = TIMECODE_FPS
 /** A position in the chosen display format. */
 export function formatIn(samples: number, rate: number, format: "time" | "samples" | "timecode"): string {
   if (format === "samples") return String(Math.round(samples));
-  if (format === "timecode") return formatTimecode(samples, rate);
+  if (format === "timecode") return formatTimecode(samples, rate, settings.current.timecodeFps);
   return formatClock(samples, rate);
 }
 

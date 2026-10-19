@@ -77,16 +77,7 @@ pub struct WaveDoc {
 /// chain is only ever a preview, so saving and destructive edits work
 /// on the file itself; Apply is what writes a chain into the audio.
 pub fn without_effects(mut session: Session) -> Session {
-    session.master.effects = Default::default();
-    for b in &mut session.buses {
-        b.effects = Default::default();
-    }
-    for t in &mut session.tracks {
-        t.effects = Default::default();
-        for c in &mut t.clips {
-            c.effects = Default::default();
-        }
-    }
+    session.strip_effects();
     session
 }
 

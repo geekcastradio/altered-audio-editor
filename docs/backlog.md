@@ -207,3 +207,11 @@ Still open, and why:
 - Clip chain meters (track chains are metered).
 - AAC encoder-delay trim. Windows' encoder adds silence at the start; how much it adds and whether players skip it needs checking on Windows with a test file before the edit list is written.
 - HE-AAC, AAC on macOS and Linux, release signing: see the notes in the session reply of 2026-10-18 (need a bundled encoder, Mac hardware, and the project lead's signing keys).
+
+## Settings (built 2026-10-18)
+
+Edit > Settings with every page; see decisions.md. Greyed-out items waiting on other work: channel routing and driver type (ASIO), buffer size, controllers, numbered session backups, Waveform edge crossfades, pan law (buses), spectrum detail and range, timecode frame rate, scrubbing, record countdown, weekly update check, a light theme, moving the cache folder.
+
+## Built for 0.1.3 (2026-10-19)
+
+Speaker Balance, host profiles with Guest track mode, session backups, record count-in, new-marker name, timecode frame rate. Next: the master chain and bus decision (see decisions.md), then Pitch Tune, Pitch Curve, Pitch Draw and formant keeping, then Waveform editor edge crossfades and scrubbing.

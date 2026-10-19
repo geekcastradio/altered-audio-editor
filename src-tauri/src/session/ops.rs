@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use super::model::{
     AudioType, ChannelLayout, Clip, ClipLoop, ClipStretch, EffectChain, Envelope, EnvelopePoint,
-    EnvelopeTarget, Fade, Id, Marker, MarkerKind, MediaRef, Session, SessionView, Track,
+    EnvelopeTarget, Fade, Id, Marker, MarkerKind, MediaRef, Session, SessionView, Track, TrackRole,
     STRETCH_MAX, STRETCH_MIN,
 };
 
@@ -84,6 +84,12 @@ pub struct TrackChanges {
     /// Hardware input; `Some(None)` clears it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input: Option<Option<String>>,
+    /// Standard or remote guest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<TrackRole>,
+    /// The host profile applied; an empty id clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_profile_id: Option<String>,
 }
 
 /// Changes to one clip. Fields left out are unchanged. `track_id` moves
@@ -431,6 +437,14 @@ pub fn apply(s: &mut Session, op: &Op) -> Result<Op, OpError> {
             }
             if let Some(v) = &changes.input {
                 old.input = Some(std::mem::replace(&mut t.input, v.clone()));
+            }
+            if let Some(v) = changes.role {
+                old.role = Some(std::mem::replace(&mut t.role, v));
+            }
+            if let Some(v) = &changes.host_profile_id {
+                let next = Some(v.clone()).filter(|v| !v.is_empty());
+                old.host_profile_id =
+                    Some(std::mem::replace(&mut t.host_profile_id, next).unwrap_or_default());
             }
             Ok(Op::SetTrack {
                 id: *id,

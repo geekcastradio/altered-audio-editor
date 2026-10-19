@@ -9,9 +9,11 @@ on:
     branches: [main]
   pull_request:
 
+# A newer push to a pull request replaces its older run. Pushes to main
+# always run to the end, so every commit on main gets a result.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   windows:

@@ -8,6 +8,8 @@
   management and zoom. Playback arrives in P2, clip editing in P3.
 -->
 <script lang="ts">
+  import { settings, zoomRatios } from "../../stores/settings";
+  import { trackOp } from "../mixer/solo";
   import { onDestroy } from "svelte";
   import type { ActionRegistry } from "../../app/actions";
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
@@ -363,7 +365,10 @@
       onZoom(e.deltaY < 0 ? "amp-in" : "amp-out");
     } else if (e.ctrlKey) {
       e.preventDefault();
-      const z = zoomAround(view, e.deltaY > 0 ? 1.25 : 0.8, Math.max(0, e.clientX - left));
+      const r = zoomRatios();
+      const mouse = Math.max(0, e.clientX - left);
+      const at = settings.current.wheelAnchor === "playhead" ? Math.max(0, Math.min(lanesEl.clientWidth, xOf(playhead, view))) : mouse;
+      const z = zoomAround(view, e.deltaY > 0 ? r.zoomOut : r.zoomIn, at);
       setView({ spp: z.spp, scroll: z.scroll });
     } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
       e.preventDefault();
@@ -1045,7 +1050,7 @@
   }
 
   function setTrack(track: TrackDoc, changes: TrackChanges, label: string) {
-    void session.edit(label, { op: "set_track", id: track.id, changes }, runner).catch(onError);
+    void session.edit(label, trackOp(doc, track.id, changes as Record<string, unknown>), runner).catch(onError);
   }
 
   const formatDb = (v: number) => (v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1));

@@ -64,6 +64,50 @@ fn list() -> Vec<AudioInput> {
     out
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioOutput {
+    pub name: String,
+    pub is_default: bool,
+}
+
+fn outputs() -> Vec<AudioOutput> {
+    let host = cpal::default_host();
+    let default = host
+        .default_output_device()
+        .and_then(|d| d.description().ok())
+        .map(|d| d.name().to_string());
+    let Ok(devices) = host.output_devices() else {
+        return Vec::new();
+    };
+    let mut out: Vec<AudioOutput> = devices
+        .filter_map(|d| {
+            let name = d.description().ok()?.name().to_string();
+            d.default_output_config().ok()?;
+            Some(AudioOutput {
+                is_default: default.as_deref() == Some(name.as_str()),
+                name,
+            })
+        })
+        .collect();
+    out.sort_by_key(|d| (!d.is_default, d.name.to_lowercase()));
+    out.dedup_by(|a, b| a.name == b.name);
+    out
+}
+
+/// The speakers and headphones available now, the system default first.
+#[tauri::command]
+pub async fn audio_outputs() -> Result<Vec<AudioOutput>, String> {
+    spawn_blocking(outputs).await.map_err(|e| e.to_string())
+}
+
+/// Plays through `name` from the next time playback starts; None (or a
+/// name that is not connected) uses the system default.
+#[tauri::command]
+pub fn set_audio_output(name: Option<String>) {
+    crate::engine::output::set_choice(name);
+}
+
 /// The audio inputs available now. Empty when there are none.
 #[tauri::command]
 pub async fn audio_inputs() -> Result<Vec<AudioInput>, String> {

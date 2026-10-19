@@ -9,6 +9,7 @@
   view draws the result and turns gestures into actions.
 -->
 <script lang="ts">
+  import { settings, zoomRatios } from "../../stores/settings";
   import { KIND_COLORS } from "../markers/markers";
   import type { ActionRegistry } from "../../app/actions";
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
@@ -438,7 +439,9 @@
       zoom(e.deltaY < 0 ? "amp-in" : "amp-out");
     } else if (e.ctrlKey) {
       e.preventDefault();
-      const z = zoomAround(view, e.deltaY > 0 ? 1.25 : 0.8, x);
+      const r = zoomRatios();
+      const at = settings.current.wheelAnchor === "playhead" ? Math.max(0, Math.min(width, xOf(playhead, view))) : x;
+      const z = zoomAround(view, e.deltaY > 0 ? r.zoomOut : r.zoomIn, at);
       setView({ spp: z.spp, scroll: z.scroll });
     } else {
       e.preventDefault();

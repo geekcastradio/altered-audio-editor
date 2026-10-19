@@ -328,8 +328,9 @@ export function sessionNew<T>(options: NewSessionOptions = {}): Promise<SessionR
   return invoke<SessionResult<T>>("session_new", { options });
 }
 
-export function sessionSave<T, M>(path: string | null, media: M[], libraries: string[]): Promise<SessionResult<T>> {
-  return invoke<SessionResult<T>>("session_save", { path, media, libraries });
+/** Saves the session. `backups` older copies are kept in a Backups folder beside it (0 keeps none). */
+export function sessionSave<T, M>(path: string | null, media: M[], libraries: string[], backups = 0): Promise<SessionResult<T>> {
+  return invoke<SessionResult<T>>("session_save", { path, media, libraries, backups });
 }
 
 export function sessionOpen<T>(path: string): Promise<SessionResult<T>> {
@@ -432,6 +433,8 @@ export interface MixdownRequest {
   format?: OutputFormat;
   /** Only what belongs to the clips: track volume, pan and the Master are left out. */
   clipOnly?: boolean;
+  /** Leave every Voice Chain out (measuring the raw audio). */
+  dry?: boolean;
 }
 
 export interface MixdownResult {
@@ -546,7 +549,7 @@ export function sessionDefaultFolder(): Promise<string> {
 /** Measures the mix's loudness. Progress arrives as `export-progress`; `exportCancel` stops it. */
 export function loudnessCheck(request: MixdownRequest): Promise<import("./loudness").LoudnessReport> {
   return invoke("loudness_check", {
-    request: { range: request.range ?? null, clips: request.clips ?? null, bit_depth: null, track: request.track ?? null, clip_only: request.clipOnly ?? false },
+    request: { range: request.range ?? null, clips: request.clips ?? null, bit_depth: null, track: request.track ?? null, clip_only: request.clipOnly ?? false, dry: request.dry ?? false },
   });
 }
 
@@ -668,6 +671,31 @@ export function recordStop(): Promise<Take[]> {
 
 export function recordStatus(): Promise<RecordStatus> {
   return invoke<RecordStatus>("record_status");
+}
+
+/** The speakers and headphones, the system default first. */
+export function audioOutputs(): Promise<{ name: string; isDefault: boolean }[]> {
+  return invoke("audio_outputs");
+}
+
+/** Plays through `name` from the next time playback starts; null uses the system default. */
+export function setAudioOutput(name: string | null): Promise<void> {
+  return invoke<void>("set_audio_output", { name });
+}
+
+export interface CacheInfo {
+  path: string;
+  folders: { name: string; bytes: number; clearable: boolean }[];
+}
+
+/** Where the app keeps its working files, and how big each folder is. */
+export function cacheInfo(): Promise<CacheInfo> {
+  return invoke<CacheInfo>("cache_info");
+}
+
+/** Deletes the saved waveform drawings (rebuilt when needed). Resolves to the bytes freed. */
+export function cacheClearPeaks(): Promise<number> {
+  return invoke<number>("cache_clear_peaks");
 }
 
 /** Opens the system's sound settings (inputs and outputs). */

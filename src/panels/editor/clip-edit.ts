@@ -11,6 +11,7 @@
  * file's own rate.
  */
 
+import { settings } from "../../stores/settings";
 import { clipLength, stretchOf, type ClipChange, type ClipDoc, type EnvelopePointDoc, type MediaRefDoc, type Op, type SessionDoc, type TrackDoc } from "../../stores/session";
 import { pointsOf, sliceVolume, type EnvKind } from "./envelope";
 
@@ -254,7 +255,8 @@ export function fadeClip(doc: SessionDoc, clip: ClipDoc, which: "in" | "out", le
   const l = Math.max(0, Math.min(Math.round(length), len - other));
   const cur = which === "in" ? clip.fade_in : clip.fade_out;
   if (l === cur.length) return null;
-  const shape = cur.length === 0 && cur.shape === "linear" ? "cosine" : cur.shape;
+  // A new fade takes the shape picked in Settings > General.
+  const shape = cur.length === 0 && cur.shape === "linear" ? settings.current.fadeShape : cur.shape;
   const fade = { ...cur, length: l, shape };
   return which === "in" ? { id: clip.id, fade_in: fade } : { id: clip.id, fade_out: fade };
 }
@@ -645,7 +647,7 @@ export function withCrossfades(doc: SessionDoc, changes: ClipChange[]): ClipChan
     const cur = merged.get(c.id) ?? { id: c.id };
     const base = cur[which] ?? c[which];
     if (base.length === length) return;
-    merged.set(c.id, { ...cur, [which]: { ...base, length, shape: base.length === 0 ? "cosine" : base.shape } });
+    merged.set(c.id, { ...cur, [which]: { ...base, length, shape: base.length === 0 ? settings.current.fadeShape : base.shape } });
   };
   for (const t of previewTracks(doc, changes)) {
     const clips = [...t.clips].sort((a, b) => a.start - b.start);

@@ -8,6 +8,7 @@
   undo step.
 -->
 <script lang="ts">
+  import { trackOp } from "./solo";
   import type { CommandRunner } from "../../stores/media-pool";
   import type { SessionDoc, SessionStore, TrackDoc } from "../../stores/session";
   import type { MeterLevel, TransportState, TransportStore } from "../../stores/transport";
@@ -45,7 +46,7 @@
   const masterDb = $derived(doc?.master?.volume_db ?? 0);
 
   function setTrack(t: TrackDoc, changes: Partial<Pick<TrackDoc, "volume_db" | "pan" | "muted" | "solo" | "record_armed">>, label: string) {
-    void session.edit(label, { op: "set_track", id: t.id, changes }, runner).catch(onError);
+    void session.edit(label, trackOp(doc, t.id, changes), runner).catch(onError);
   }
 
   function setMaster(db: number) {

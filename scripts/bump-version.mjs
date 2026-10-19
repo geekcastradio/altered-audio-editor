@@ -38,6 +38,11 @@ else if (arg === "major") next = `${maj + 1}.0.0`;
 else if (/^\d+\.\d+\.\d+$/.test(arg)) next = arg;
 else throw new Error(`Use patch, minor, major or a version like 1.0.0, not "${arg}".`);
 
+if (next === current) {
+  console.log(`Already at ${current}. Nothing to change.`);
+  process.exit(0);
+}
+
 // JSON files: change only the version fields, keep the formatting.
 /** @param {string} p @param {number} count */
 const swapJson = (p, count) => {

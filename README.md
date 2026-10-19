@@ -53,6 +53,8 @@ Early versions are pre-releases. Expect rough edges and keep backups of your rec
 - **Phase Align:** line up two recordings of the same voice (a host mic and a room mic, a camera and a recorder) to the sample, flipping polarity when needed.
 - **Chapters:** chapter markers export as a timestamp list for video descriptions, a CSV spreadsheet, or podcast chapters JSON, and are written into exported MP3 and FLAC files.
 - **Batch Convert:** turn a folder of files into WAV, FLAC, MP3 or AAC in one go, optionally running a Voice Chain preset on each, then normalizing the peak and fading the ends, with naming, a destination folder, sample rate, channel and dither settings, per-file progress, and tags copied across or set for every file (WAV, FLAC, MP3 and M4A).
+- **Speaker Balance and host profiles:** level every voice track to the quietest in one click before processing, and start each host's track from a Close Mic, Standard Mic or Remote Guest profile.
+- **Settings:** zoom, fades, colors, output device, autosave, solo, meter colors, recording offset, time format loudness defaults, session backups and a record count-in in one place (Edit > Settings).
 - **Session templates:** start every episode from your show's track layout.
 - **Imports `.sesx` sessions:** brings in tracks, clips and positions from `.sesx` multitrack session files.
 

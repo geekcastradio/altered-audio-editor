@@ -55,8 +55,16 @@ pub async fn peaks_ensure(app: AppHandle, path: PathBuf) -> Result<PeakSummary, 
 #[tauri::command]
 pub async fn peaks_level(app: AppHandle, path: PathBuf, level: usize) -> Result<Response, String> {
     let dir = cache_dir(&app)?;
-    spawn_blocking(move || peaks::read_level(&dir, &path, level).map_err(|e| e.to_string()))
-        .await
-        .map_err(|e| e.to_string())?
-        .map(Response::new)
+    spawn_blocking(move || {
+        // A cleared cache (Settings > Media and Cache) is rebuilt here.
+        peaks::read_level(&dir, &path, level)
+            .or_else(|_| {
+                peaks::ensure(&dir, &path, |_| true)
+                    .and_then(|_| peaks::read_level(&dir, &path, level))
+            })
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map(Response::new)
 }

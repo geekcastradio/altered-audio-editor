@@ -45,6 +45,10 @@ pub struct MixdownRequest {
     /// Merge Clips, where the track still applies its own settings.
     #[serde(default)]
     pub clip_only: bool,
+    /// Leaves every Voice Chain out, for measuring the raw audio
+    /// (Speaker Balance).
+    #[serde(default)]
+    pub dry: bool,
     /// 1 writes a mono file (left and right averaged). None or 2 writes stereo.
     #[serde(default)]
     pub channels: Option<u16>,
@@ -118,6 +122,9 @@ pub fn render_mix(
         for t in &mut s.tracks {
             t.clips.retain(|c| keep.contains(&c.id));
         }
+    }
+    if req.dry {
+        s.strip_effects();
     }
     if req.clip_only {
         for t in &mut s.tracks {
@@ -366,6 +373,7 @@ mod tests {
             bit_depth: Some(32),
             track: None,
             clip_only: false,
+            dry: false,
             channels: None,
             format: None,
         };
@@ -442,6 +450,7 @@ mod tests {
             bit_depth: Some(32),
             track: Some(s.tracks[0].id),
             clip_only: true,
+            dry: false,
             channels: Some(1),
             format: None,
         };

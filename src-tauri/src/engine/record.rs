@@ -704,8 +704,7 @@ fn run(
 /// the ring that feeds it (stereo frames) and the running stream.
 fn open_monitor(rate: u32) -> Result<(Producer<f32>, cpal::Stream), String> {
     let host = cpal::default_host();
-    let dev = host
-        .default_output_device()
+    let dev = super::output::output_device(&host)
         .ok_or("Input monitoring needs an output: no speakers or headphones found.")?;
     let mut best: Option<cpal::SupportedStreamConfig> = None;
     for c in dev.supported_output_configs().map_err(|e| e.to_string())? {
