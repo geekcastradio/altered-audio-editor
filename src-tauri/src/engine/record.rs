@@ -8,6 +8,11 @@
 //! device callback only copies samples into a lock-free ring buffer;
 //! the same thread drains the ring every few milliseconds and writes
 //! each track's channels to its own 32-bit float WAV file.
+//!
+//! Input monitoring: targets marked `monitor` are also mixed to stereo
+//! and sent to the default output, so the talent hears themselves.
+//! Software monitoring adds some delay (the device buffers plus about
+//! 10 to 30 ms here); an interface's own direct monitoring has none.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -34,6 +39,9 @@ pub struct RecordTarget {
     pub channels: u16,
     /// File name, without extension.
     pub name: String,
+    /// Also play this input through the speakers.
+    #[serde(default)]
+    pub monitor: bool,
 }
 
 /// A finished take.
@@ -222,8 +230,61 @@ impl LiveTap {
     }
 }
 
+/// Mixes the monitored targets' channels to stereo for the speakers. A
+/// mono target goes to both sides; a stereo one keeps its sides.
+pub struct MonitorMix {
+    picks: Vec<Vec<usize>>,
+    device_channels: usize,
+}
+
+impl MonitorMix {
+    /// None when no target asks to be monitored.
+    pub fn new(targets: &[(RecordTarget, Vec<usize>)], device_channels: usize) -> Option<Self> {
+        let picks: Vec<Vec<usize>> = targets
+            .iter()
+            .filter(|(t, c)| t.monitor && !c.is_empty())
+            .map(|(_, c)| c.clone())
+            .collect();
+        (!picks.is_empty()).then_some(Self {
+            picks,
+            device_channels: device_channels.max(1),
+        })
+    }
+
+    /// Appends one stereo frame (left, right) per whole input frame.
+    pub fn mix(&self, interleaved: &[f32], out: &mut Vec<f32>) {
+        for frame in interleaved.chunks_exact(self.device_channels) {
+            let (mut l, mut r) = (0f32, 0f32);
+            for chans in &self.picks {
+                let at = |i: usize| {
+                    chans
+                        .get(i)
+                        .and_then(|&c| frame.get(c))
+                        .copied()
+                        .unwrap_or(0.0)
+                };
+                if chans.len() == 1 {
+                    l += at(0);
+                    r += at(0);
+                } else {
+                    l += at(0);
+                    r += at(1);
+                }
+            }
+            out.push(l.clamp(-1.0, 1.0));
+            out.push(r.clamp(-1.0, 1.0));
+        }
+    }
+}
+
+/// Most monitor audio allowed to wait for the speakers, in seconds. More
+/// than this and new audio is dropped, so the delay cannot creep up.
+const MONITOR_MAX_QUEUE: f64 = 0.08;
+
 struct Shared {
     stop: AtomicBool,
+    /// Why monitoring could not start, if it could not.
+    monitor_note: Mutex<Option<String>>,
     live: Mutex<HashMap<String, Live>>,
     /// Frames captured by the first device, for the elapsed time.
     frames: AtomicU64,
@@ -258,6 +319,9 @@ pub struct RecordStatus {
     /// Input peak since the last call, 0 to 1.
     pub peak: f32,
     pub overruns: u64,
+    /// Set when input monitoring was asked for but could not start.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub monitor_note: Option<String>,
 }
 
 #[derive(Default)]
@@ -300,6 +364,7 @@ impl Recorder {
         }
         let shared = Arc::new(Shared {
             stop: AtomicBool::new(false),
+            monitor_note: Mutex::new(None),
             live: Mutex::new(HashMap::new()),
             frames: AtomicU64::new(0),
             rate: AtomicU32::new(0),
@@ -392,6 +457,7 @@ impl Recorder {
             seconds: 0.0,
             peak: 0.0,
             overruns: 0,
+            monitor_note: None,
         };
         let Ok(cur) = self.current.lock() else {
             return idle;
@@ -414,6 +480,7 @@ impl Recorder {
             seconds: r.shared.frames.load(Ordering::Relaxed) as f64 / f64::from(rate),
             peak: f32::from_bits(r.shared.peak.swap(0, Ordering::Relaxed)),
             overruns: r.shared.overruns.load(Ordering::Relaxed),
+            monitor_note: r.shared.monitor_note.lock().ok().and_then(|n| n.clone()),
         }
     }
 }
@@ -524,10 +591,32 @@ fn run(
     }
     let _ = ready.send(Ok(()));
 
+    // Input monitoring. A system-audio take is already what the speakers
+    // play, so it is never sent back to them.
+    let mix = if loopback {
+        None
+    } else {
+        MonitorMix::new(&targets, channels)
+    };
+    let mut monitor: Option<(Producer<f32>, cpal::Stream)> = None;
+    if mix.is_some() {
+        match open_monitor(rate) {
+            Ok(v) => monitor = Some(v),
+            Err(e) => {
+                if let Ok(mut n) = shared.monitor_note.lock() {
+                    *n = Some(e);
+                }
+            }
+        }
+    }
+    let max_queue = (MONITOR_MAX_QUEUE * f64::from(rate)) as usize * 2;
+    let mut mixed: Vec<f32> = Vec::new();
+
     let mut block = vec![0f32; 4096 * channels];
     let mut drain = |consumer: &mut Consumer<f32>,
                      writer: &mut Option<TakeWriter>,
-                     tap: &mut LiveTap|
+                     tap: &mut LiveTap,
+                     monitor: &mut Option<(Producer<f32>, cpal::Stream)>|
      -> Result<u64, String> {
         let mut frames = 0u64;
         loop {
@@ -550,6 +639,18 @@ fn run(
             if let Ok(mut live) = shared.live.lock() {
                 tap.push(&block[..n], &mut live);
             }
+            if let (Some(m), Some((p, _))) = (mix.as_ref(), monitor.as_mut()) {
+                mixed.clear();
+                m.mix(&block[..n], &mut mixed);
+                let queued = p.buffer().capacity() - p.slots();
+                if queued + mixed.len() <= max_queue.max(mixed.len()) {
+                    for &v in &mixed {
+                        if p.push(v).is_err() {
+                            break;
+                        }
+                    }
+                }
+            }
         }
     };
     let started = Instant::now();
@@ -557,7 +658,7 @@ fn run(
     let mut quiet = Vec::new();
     let mut result = Ok(0);
     while !shared.stop.load(Ordering::SeqCst) {
-        match drain(&mut consumer, &mut writer, &mut tap) {
+        match drain(&mut consumer, &mut writer, &mut tap, &mut monitor) {
             Ok(n) => got += n,
             Err(e) => {
                 result = Err(e);
@@ -589,13 +690,92 @@ fn run(
     }
     drop(stream);
     if result.is_ok() {
-        result = drain(&mut consumer, &mut writer, &mut tap);
+        result = drain(&mut consumer, &mut writer, &mut tap, &mut monitor);
     }
+    drop(monitor);
     let takes = match writer {
         Some(w) => w.finish()?,
         None => Vec::new(),
     };
     result.map(|_| takes)
+}
+
+/// Opens the default output at the input's rate for monitoring. Returns
+/// the ring that feeds it (stereo frames) and the running stream.
+fn open_monitor(rate: u32) -> Result<(Producer<f32>, cpal::Stream), String> {
+    let host = cpal::default_host();
+    let dev = host
+        .default_output_device()
+        .ok_or("Input monitoring needs an output: no speakers or headphones found.")?;
+    let mut best: Option<cpal::SupportedStreamConfig> = None;
+    for c in dev.supported_output_configs().map_err(|e| e.to_string())? {
+        if c.min_sample_rate() > rate || c.max_sample_rate() < rate {
+            continue;
+        }
+        let score = |c: &cpal::SupportedStreamConfigRange| {
+            (c.channels() >= 2, c.sample_format() == SampleFormat::F32)
+        };
+        let better = best.as_ref().is_none_or(|b| {
+            let bb = (b.channels() >= 2, b.sample_format() == SampleFormat::F32);
+            score(&c) > bb
+        });
+        if better {
+            best = Some(c.with_sample_rate(rate));
+        }
+    }
+    let supported = best.ok_or_else(|| {
+        format!("Input monitoring is off: the output does not play at {rate} Hz, the input's rate. Set both to the same rate in the system sound settings.")
+    })?;
+    let format = supported.sample_format();
+    let config: StreamConfig = supported.config();
+    // A second of room; the writer keeps it far emptier than that.
+    let (producer, consumer) = RingBuffer::<f32>::new((rate as usize * 2).max(8192));
+    let stream = match format {
+        SampleFormat::F32 => build_out::<f32>(&dev, config, consumer),
+        SampleFormat::I16 => build_out::<i16>(&dev, config, consumer),
+        SampleFormat::I32 => build_out::<i32>(&dev, config, consumer),
+        SampleFormat::U16 => build_out::<u16>(&dev, config, consumer),
+        other => Err(format!("Unsupported output sample format: {other}")),
+    }?;
+    stream.play().map_err(|e| e.to_string())?;
+    Ok((producer, stream))
+}
+
+fn build_out<T>(
+    device: &cpal::Device,
+    config: StreamConfig,
+    mut consumer: Consumer<f32>,
+) -> Result<cpal::Stream, String>
+where
+    T: SizedSample + FromSample<f32>,
+{
+    let out_channels = usize::from(config.channels).max(1);
+    device
+        .build_output_stream(
+            config,
+            move |data: &mut [T], _| {
+                // Audio thread: copy only. Silence when the ring runs dry.
+                for frame in data.chunks_mut(out_channels) {
+                    let (l, r) = if consumer.slots() >= 2 {
+                        (consumer.pop().unwrap_or(0.0), consumer.pop().unwrap_or(0.0))
+                    } else {
+                        (0.0, 0.0)
+                    };
+                    for (i, s) in frame.iter_mut().enumerate() {
+                        let v = match (out_channels, i) {
+                            (1, _) => (l + r) * 0.5,
+                            (_, 0) => l,
+                            (_, 1) => r,
+                            _ => 0.0,
+                        };
+                        *s = T::from_sample(v);
+                    }
+                }
+            },
+            |e| eprintln!("monitor stream error: {e}"),
+            None,
+        )
+        .map_err(|e| e.to_string())
 }
 
 fn build<T>(
@@ -676,12 +856,41 @@ mod tests {
     }
 
     #[test]
+    fn monitor_mixes_only_marked_targets_to_stereo() {
+        let mk = |key: &str, monitor: bool| RecordTarget {
+            key: key.into(),
+            input: None,
+            channels: 1,
+            name: key.into(),
+            monitor,
+        };
+        assert!(MonitorMix::new(&[(mk("a", false), vec![0])], 3).is_none());
+        // Device has 3 channels: a mono mic on 0 (monitored), a stereo pair
+        // on 1-2 (monitored), and nothing else.
+        let m = MonitorMix::new(
+            &[
+                (mk("mic", true), vec![0]),
+                (mk("pair", true), vec![1, 2]),
+                (mk("quiet", false), vec![0]),
+            ],
+            3,
+        )
+        .unwrap();
+        let mut out = Vec::new();
+        m.mix(&[0.1, 0.2, 0.3, 0.9, 0.9, 0.9], &mut out);
+        assert_eq!(out.len(), 4);
+        assert!((out[0] - 0.3).abs() < 1e-6 && (out[1] - 0.4).abs() < 1e-6);
+        assert_eq!(out[2], 1.0, "sums are clamped");
+    }
+
+    #[test]
     fn live_tap_measures_each_target() {
         let mk = |key: &str| RecordTarget {
             key: key.into(),
             input: None,
             channels: 1,
             name: key.into(),
+            monitor: false,
         };
         let mut tap = LiveTap::new(&[(mk("a"), vec![0]), (mk("b"), vec![1])], 2);
         let mut live = HashMap::new();
@@ -703,6 +912,7 @@ mod tests {
             input: None,
             channels: 1,
             name: key.into(),
+            monitor: false,
         };
         let mut w = TakeWriter::create(
             dir.path(),

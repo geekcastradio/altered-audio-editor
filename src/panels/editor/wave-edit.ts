@@ -9,7 +9,7 @@
  * Ranges are in samples at the file's rate.
  */
 
-import { clipLength, sessionEnd, type ClipChange, type ClipDoc, type EnvelopePointDoc, type MediaRefDoc, type Op, type SessionDoc } from "../../stores/session";
+import { clipLength, sessionEnd, type ClipChange, type ClipDoc, type EnvelopePointDoc, type MarkerChange, type MediaRefDoc, type Op, type SessionDoc } from "../../stores/session";
 import { clipEnd, isolate, mediaOf, pieceOf, rippleDeleteRange } from "./clip-edit";
 import { DB_MIN, levelAt, pointsOf } from "./envelope";
 
@@ -23,9 +23,62 @@ export function clampRange(doc: SessionDoc, a: number, b: number): [number, numb
   return hi > lo ? [lo, hi] : null;
 }
 
+/** Adds marker moves to an edit, so markers stay on the same audio. */
+function withMarkers(op: Op | null, extra: Op[]): Op | null {
+  if (!op || extra.length === 0) return op;
+  return op.op === "batch" ? { op: "batch", ops: [...op.ops, ...extra] } : { op: "batch", ops: [op, ...extra] };
+}
+
+/**
+ * Marker moves for removing `a..b`: later markers move left, markers
+ * inside the cut land at its start (never silently deleted), and range
+ * markers shrink by the part that went.
+ */
+export function markersAfterCut(doc: SessionDoc, a: number, b: number): Op[] {
+  const len = b - a;
+  const at = (p: number) => (p >= b ? p - len : p >= a ? a : p);
+  const changes = doc.markers.flatMap((m): MarkerChange[] => {
+    const start = at(m.position);
+    const end = m.duration > 0 ? at(m.position + m.duration) : start;
+    const duration = Math.max(0, end - start);
+    return start !== m.position || duration !== m.duration ? [{ id: m.id, position: start, duration }] : [];
+  });
+  return changes.length ? [{ op: "set_markers", changes }] : [];
+}
+
+/** Marker moves for opening `len` samples at `at`: later markers move right, ranges across it grow. */
+export function markersAfterInsert(doc: SessionDoc, at: number, len: number): Op[] {
+  const changes = doc.markers.flatMap((m): MarkerChange[] => {
+    if (m.position >= at) return [{ id: m.id, position: m.position + len }];
+    if (m.duration > 0 && m.position + m.duration > at) return [{ id: m.id, duration: m.duration + len }];
+    return [];
+  });
+  return changes.length ? [{ op: "set_markers", changes }] : [];
+}
+
+/** Marker changes for Crop to `a..b`: markers outside go (their audio is gone), the rest move to the new start. */
+export function markersAfterCrop(doc: SessionDoc, a: number, b: number): Op[] {
+  const gone = doc.markers.filter((m) => m.position + m.duration < a || m.position > b || (m.duration === 0 && m.position === b)).map((m) => m.id);
+  const changes = doc.markers
+    .filter((m) => !gone.includes(m.id))
+    .map((m) => {
+      const start = Math.max(m.position, a);
+      const end = Math.min(m.position + m.duration, b);
+      return { id: m.id, position: start - a, duration: Math.max(0, end - start) };
+    })
+    .filter((c) => {
+      const m = doc.markers.find((x) => x.id === c.id)!;
+      return c.position !== m.position || c.duration !== m.duration;
+    });
+  const out: Op[] = [];
+  if (gone.length) out.push({ op: "remove_markers", ids: gone });
+  if (changes.length) out.push({ op: "set_markers", changes });
+  return out;
+}
+
 /** Delete: removes the range and closes the gap. */
 export function deleteRange(doc: SessionDoc, a: number, b: number, newId: () => string): Op | null {
-  return rippleDeleteRange(doc, trackIds(doc), a, b, newId);
+  return withMarkers(rippleDeleteRange(doc, trackIds(doc), a, b, newId), markersAfterCut(doc, a, b));
 }
 
 /** Every clip after `ops` (an isolate result) runs, by id. */
@@ -49,6 +102,7 @@ export function cropTo(doc: SessionDoc, a: number, b: number, newId: () => strin
   const out: Op[] = [...ops];
   if (outside.length) out.push({ op: "remove_clips", ids: outside });
   if (a > 0) out.push({ op: "set_clips", changes: inside.map((id) => ({ id, start: clips.get(id)!.start - a })) });
+  out.push(...markersAfterCrop(doc, a, b));
   return { op: "batch", ops: out };
 }
 
@@ -182,6 +236,7 @@ export function pasteAt(doc: SessionDoc, board: WaveBoard, at: number, newId: ()
   if (shift.length) ops.push({ op: "set_clips", changes: shift });
   for (const c of board.clips) restored.push([track.id, { ...c, id: newId(), start: at + Math.round(c.start * ratio) }]);
   ops.push({ op: "restore_clips", clips: restored });
+  ops.push(...markersAfterInsert(doc, at, length));
   return { op: { op: "batch", ops }, length };
 }
 
@@ -224,5 +279,6 @@ export function insertFile(doc: SessionDoc, at: number, media: MediaRefDoc, name
   if (shift.length) ops.push({ op: "set_clips", changes: shift });
   if (restored.length) ops.push({ op: "restore_clips", clips: restored });
   ops.push({ op: "add_clips", track_id: track.id, clips: [{ id: newId(), name, media_id: media.id, start: at, source_in: 0, source_out: media.length }] });
+  ops.push(...markersAfterInsert(doc, at, length));
   return { op: { op: "batch", ops }, length };
 }

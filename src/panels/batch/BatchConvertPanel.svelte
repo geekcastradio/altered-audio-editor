@@ -3,29 +3,23 @@
   Copyright (c) The GeekCast Radio Network, LLC.
   This file is part of Altered Audio Editor.
 
-  Batch Convert: a list of files and one set of output settings, turned
-  into WAV, FLAC or MP3 one after another. Add files with the buttons,
-  from the Files panel's selection, or by dropping them on the panel.
-  Rows show each file's progress; a file that fails says why and the
-  rest carry on. Settings are remembered between runs.
+  Batch Convert: a list of files, an optional Voice Chain preset run on
+  each one, and one set of output settings (in the Output Settings
+  dialog), turned into new files one after another. Add files with the
+  buttons, from the Files panel's selection, or by dropping them on the
+  panel. Rows show each file's status and stage; a file that fails says
+  why and the rest carry on. Settings are remembered between runs.
 -->
 <script lang="ts">
   import { listen } from "@tauri-apps/api/event";
   import { onDestroy } from "svelte";
-  import { batchCancel, batchConvert, expandMediaPaths, exportPickFolder, pickMediaFiles, pickMediaFolder, unzipMedia, type BatchProgress } from "../../app/core";
+  import { batchCancel, batchConvert, effectsCatalog, expandMediaPaths, exportPickFolder, pickMediaFiles, pickMediaFolder, unzipMedia, type BatchProgress } from "../../app/core";
   import type { FileDropRouter } from "../../app/filedrop";
-  import { extensionOf } from "../../app/output-format";
-  import OutputFormatFields from "../../app/OutputFormatFields.svelte";
   import type { MediaPool } from "../../stores/media-pool";
   import type { Preferences } from "../../stores/preferences";
-  import { addRows, batchRows, conflicts, destFor, expandTemplate, fileName, sanitizeBatch, type BatchRow, type BatchSettings } from "./batch";
-
-  const TOKENS = [
-    { token: "{name}", hint: "The original file name, without its extension." },
-    { token: "{number}", hint: "The file's place in this list: 01, 02, 03 and so on." },
-    { token: "{date}", hint: "Today's date, like 2026-10-15." },
-    { token: "{format}", hint: "The new format, like mp3." },
-  ] as const;
+  import { batchPresets, BUILTIN_PRESETS, presetChain, sanitizePresets, type ChainPreset } from "../voice-chain/chain";
+  import { addRows, batchRows, conflicts, destFor, effectiveTemplate, fileName, sanitizeBatch, sanitizeLevel, shapingFor, tagsFor, type BatchRow, type BatchSettings } from "./batch";
+  import BatchOutputDialog from "./BatchOutputDialog.svelte";
 
   interface Props {
     pool: MediaPool;
@@ -73,37 +67,36 @@
   });
 
   const today = new Date();
+  const template = $derived(effectiveTemplate(s));
   const dests = $derived(
-    new Map(rows.map((r, i) => [r.id, destFor(r.source, { template: s.template, folder: s.folder, kind: s.format.kind }, { number: i + 1, count: rows.length, date: today })])),
+    new Map(rows.map((r, i) => [r.id, destFor(r.source, { template, folder: s.folder, kind: s.format.kind }, { number: i + 1, count: rows.length, date: today })])),
   );
+
+  // Processing presets: the user's Voice Chain presets and the built-in ones.
+  let userPresets = $state<ChainPreset[]>([]);
+  // svelte-ignore state_referenced_locally
+  void prefs.load().then(() => (userPresets = sanitizePresets(prefs.raw("voiceChain.presets"))));
+  let known = $state<Set<string> | null>(null);
+  void effectsCatalog()
+    .then((c) => (known = new Set(c.map((e) => e.id))))
+    .catch(() => (known = null));
+  const allPresets = $derived([...userPresets, ...BUILTIN_PRESETS]);
+  const GROUPS = ["Voice chains", "Processing", "Breath gates", "Repair", "EQ"];
+  const BATCH_PRESETS = batchPresets(BUILTIN_PRESETS);
+  let outputOpen = $state(false);
   const problems = $derived(conflicts(rows, dests, s.overwrite));
   const waiting = $derived(rows.filter((r) => r.status !== "done" && !problems.has(r.id)));
-  const audioSummary = $derived.by(() => {
+  const outputSummary = $derived.by(() => {
     const f = s.format;
-    const rate = f.sampleRate ? `${f.sampleRate} Hz` : "each file's rate";
-    const ch = f.channels === 1 ? "mono" : f.channels === 2 ? "stereo" : "each file's channels";
-    const depth = f.bitDepth === 32 ? "32-bit float" : f.bitDepth ? `${f.bitDepth}-bit` : "each file's depth";
-    const q = f.kind === "mp3" ? (f.mp3Mode === "cbr" ? `MP3 ${f.mp3Bitrate} kbps constant` : `MP3 variable, quality ${f.mp3Quality}`) : `${f.kind.toUpperCase()} ${depth}`;
-    return `${q}, ${rate}, ${ch}`;
+    const kind = f.kind === "mp3" ? (f.mp3Mode === "cbr" ? `MP3 ${f.mp3Bitrate} kbps` : `MP3 VBR q${f.mp3Quality}`) : f.kind === "m4a" ? `AAC ${f.aacBitrate} kbps` : f.kind.toUpperCase();
+    const where = s.folder ? `into ${fileName(s.folder) || s.folder}` : "next to each original";
+    return `${kind}, ${where}`;
   });
-  const sample = $derived(
-    rows[0]
-      ? fileName(dests.get(rows[0].id) ?? "")
-      : `${expandTemplate(s.template, "Episode 12", s.format.kind, { number: 1, count: 1, date: today })}.${extensionOf(s.format.kind)}`,
-  );
-  let templateInput = $state<HTMLInputElement | null>(null);
-
-  /** Puts a token in the template at the cursor, or at the end. */
-  function insertToken(token: string) {
-    const el = templateInput;
-    const at = el?.selectionStart ?? s.template.length;
-    const to = el?.selectionEnd ?? at;
-    s.template = s.template.slice(0, at) + token + s.template.slice(to);
-    requestAnimationFrame(() => {
-      el?.focus();
-      el?.setSelectionRange(at + token.length, at + token.length);
-    });
-  }
+  const exampleStem = $derived.by(() => {
+    const n = rows[0] ? fileName(rows[0].source) : "Episode 12.wav";
+    const dot = n.lastIndexOf(".");
+    return dot > 0 ? n.slice(0, dot) : n;
+  });
 
   async function add(paths: string[]) {
     if (paths.length === 0) return;
@@ -141,11 +134,6 @@
     selected = next;
   }
 
-  async function chooseFolder() {
-    const f = await exportPickFolder(s.folder, "Convert Into");
-    if (f) s.folder = f;
-  }
-
   function patch(id: string, p: Partial<BatchRow>) {
     setRows(rows.map((r) => (r.id === id ? { ...r, ...p } : r)));
   }
@@ -153,14 +141,26 @@
   async function run() {
     if (running || waiting.length === 0) return;
     running = true;
-    const jobs = waiting.map((r) => ({ id: r.id, source: r.source, dest: dests.get(r.id)! }));
-    setRows(rows.map((r) => (jobs.some((j) => j.id === r.id) ? { ...r, status: "waiting", progress: 0, error: null } : r)));
+    const jobs = waiting.map((r) => ({
+      id: r.id,
+      source: r.source,
+      dest: dests.get(r.id)!,
+      tags: tagsFor(s.tags, r.source, s.format.kind, { number: rows.indexOf(r) + 1, count: rows.length, date: today }),
+    }));
+    setRows(rows.map((r) => (jobs.some((j) => j.id === r.id) ? { ...r, status: "waiting", progress: 0, error: null, stage: "Waiting" } : r)));
+    const preset = s.process ? allPresets.find((p) => p.name === s.process) : undefined;
+    if (s.process && !preset) {
+      running = false;
+      onNotice(`The preset "${s.process}" is gone. Pick another, or None.`);
+      return;
+    }
+    const process = preset ? presetChain(preset, known ?? new Set(preset.chain.slots.map((x) => x.effect)), () => crypto.randomUUID()) : null;
     const off = await listen<BatchProgress>("batch-progress", (e) => {
       const p = e.payload;
-      patch(p.id, { status: p.status, progress: p.progress, error: p.error });
+      patch(p.id, { status: p.status, progress: p.progress, error: p.error, stage: p.stage });
     });
     try {
-      const r = await batchConvert(jobs, $state.snapshot(s.format), s.overwrite);
+      const r = await batchConvert(jobs, $state.snapshot(s.format), s.overwrite, s.copyTags, process, shapingFor(s.level));
       if (s.removeDone) setRows(rows.filter((x) => x.status !== "done"));
       const parts = [`Converted ${r.done} ${r.done === 1 ? "file" : "files"}`];
       if (r.failed) parts.push(`${r.failed} failed`);
@@ -181,7 +181,7 @@
       case "running":
         return `${Math.round(r.progress * 100)}%`;
       case "done":
-        return "Done";
+        return r.error ? `Done. ${r.error}` : "Done";
       case "failed":
         return r.error ?? "Failed";
       case "stopped":
@@ -220,11 +220,39 @@
     </button>
   </div>
 
+  <label class="process" title="A Voice Chain preset run on every file before it is saved">
+    <span>Process with</span>
+    <select value={s.process ?? ""} disabled={running} onchange={(e) => (s.process = e.currentTarget.value || null)}>
+      <option value="">Nothing (convert only)</option>
+      {#if userPresets.length}
+        <optgroup label="Yours">
+          {#each userPresets as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
+        </optgroup>
+      {/if}
+      {#each GROUPS as g (g)}
+        <optgroup label={g}>
+          {#each BATCH_PRESETS.filter((p) => p.group === g) as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
+        </optgroup>
+      {/each}
+    </select>
+  </label>
+  <div class="process level" title="After the preset: bring every file to the same peak, and fade the ends">
+    <label class="check"><input type="checkbox" checked={s.level.normalize} disabled={running} onchange={(e) => (s.level.normalize = e.currentTarget.checked)} /> Normalize to</label>
+    <input type="number" class="num" min="-30" max="0" step="0.1" value={s.level.normalizeDb} disabled={running || !s.level.normalize} aria-label="Normalize peak, dB" onchange={(e) => (s.level.normalizeDb = sanitizeLevel({ ...s.level, normalizeDb: Number(e.currentTarget.value) }).normalizeDb)} />
+    <span>dB</span>
+    <span class="sep"></span>
+    <span>Fade in</span>
+    <input type="number" class="num" min="0" max="60000" step="10" value={s.level.fadeInMs} disabled={running} aria-label="Fade in, ms" onchange={(e) => (s.level.fadeInMs = sanitizeLevel({ ...s.level, fadeInMs: Number(e.currentTarget.value) }).fadeInMs)} />
+    <span>out</span>
+    <input type="number" class="num" min="0" max="60000" step="10" value={s.level.fadeOutMs} disabled={running} aria-label="Fade out, ms" onchange={(e) => (s.level.fadeOutMs = sanitizeLevel({ ...s.level, fadeOutMs: Number(e.currentTarget.value) }).fadeOutMs)} />
+    <span>ms</span>
+  </div>
+
   <div class="list" role="listbox" aria-label="Files to convert" aria-multiselectable="true">
     {#if rows.length === 0}
       <p class="empty">Drop audio files, folders or zips here, or use the buttons above. A call recorder's per-speaker files convert in one go.</p>
     {:else}
-      <div class="head" aria-hidden="true"><span>File</span><span>Becomes</span><span>Status</span></div>
+      <div class="head" aria-hidden="true"><span>Name</span><span>Status</span><span>Stage</span></div>
       {#each rows as r (r.id)}
         {@const bad = problems.has(r.id) && r.status !== "done"}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -236,52 +264,23 @@
           role="option"
           aria-selected={selected.has(r.id)}
           tabindex="-1"
-          title={r.source}
+          title={`${r.source}\nBecomes ${dests.get(r.id) ?? ""}`}
           onclick={(e) => pick(e, r.id)}
         >
           <span class="name">{fileName(r.source)}</span>
-          <span class="dest" title={dests.get(r.id)}>{fileName(dests.get(r.id) ?? "")}</span>
           <span class="status" title={statusText(r)}>
             {#if r.status === "running"}<span class="bar"><span style:width="{r.progress * 100}%"></span></span>{/if}
             {statusText(r)}
           </span>
+          <span class="dest">{r.stage ?? (problems.has(r.id) ? "Needs a fix" : "")}</span>
         </div>
       {/each}
     {/if}
   </div>
 
-  <div class="settings">
-    <h2>Name</h2>
-    <label class="template">
-      <span>Template</span>
-      <input type="text" spellcheck="false" placeholder={"{name}"} bind:value={s.template} bind:this={templateInput} disabled={running} />
-    </label>
-    <div class="tokens" role="group" aria-label="Insert into the template">
-      {#each TOKENS as t (t.token)}
-        <button type="button" title={t.hint} disabled={running} onclick={() => insertToken(t.token)}>{t.token}</button>
-      {/each}
-    </div>
-    <p class="hint">Example: <span class="mono">{sample}</span></p>
-
-    <h2>Folder</h2>
-    <label class="check"><input type="radio" name="dest" checked={s.folder === null} disabled={running} onchange={() => (s.folder = null)} /> Next to each original</label>
-    <div class="folder">
-      <label class="check"><input type="radio" name="dest" checked={s.folder !== null} disabled={running} onchange={chooseFolder} /> Into</label>
-      <input type="text" readonly value={s.folder ?? ""} placeholder="Choose a folder" title={s.folder ?? ""} />
-      <button type="button" disabled={running} onclick={chooseFolder}>Browse…</button>
-    </div>
-    <label class="check"><input type="checkbox" bind:checked={s.overwrite} disabled={running} /> Replace existing files</label>
-
-    <h2>Audio</h2>
-    <OutputFormatFields bind:format={s.format} sourceLabel="Same as each file" />
-    <p class="hint">Writes: {audioSummary}</p>
-
-    <label class="check"><input type="checkbox" bind:checked={s.removeDone} disabled={running} /> Remove finished files from the list</label>
-    <label class="check off" title="Arrives with metadata export."><input type="checkbox" disabled /> Keep markers and metadata (arrives with metadata export)</label>
-  </div>
-
   <footer>
-    <span class="count">{rows.length} {rows.length === 1 ? "file" : "files"}{problems.size ? `, ${problems.size} need attention` : ""}</span>
+    <button type="button" disabled={running} title="Naming, where files go, format and tags" onclick={() => (outputOpen = true)}>Output Settings…</button>
+    <span class="count" title={outputSummary}>{rows.length} {rows.length === 1 ? "file" : "files"}{problems.size ? `, ${problems.size} need attention` : ""} · {outputSummary}</span>
     {#if running}
       <button type="button" onclick={() => void batchCancel()}>Stop</button>
     {:else}
@@ -290,10 +289,23 @@
   </footer>
 </section>
 
+{#if outputOpen}
+  <BatchOutputDialog
+    settings={s}
+    {exampleStem}
+    pickFolder={(cur) => exportPickFolder(cur, "Convert Into")}
+    onApply={(next) => {
+      s = next;
+      outputOpen = false;
+    }}
+    onClose={() => (outputOpen = false)}
+  />
+{/if}
+
 <style>
   .panel {
     display: grid;
-    grid-template-rows: auto minmax(70px, 2fr) minmax(120px, 3fr) auto;
+    grid-template-rows: auto auto minmax(70px, 1fr) auto;
     height: 100%;
     min-height: 0;
     overflow: hidden;
@@ -315,6 +327,43 @@
 
   .gap {
     flex: 1;
+  }
+
+  .process {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+
+  .process select {
+    flex: 1;
+    min-width: 0;
+  }
+  .level {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .level .check {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+  .level .num {
+    width: 56px;
+    height: 20px;
+    padding: 0 4px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--surface-0);
+    color: var(--text);
+    font: inherit;
+    font-size: 11px;
+  }
+  .level .sep {
+    width: 8px;
   }
 
   .tool {
@@ -426,108 +475,48 @@
     background: var(--accent);
   }
 
-  .settings {
-    display: grid;
-    align-content: start;
-    gap: 6px;
-    min-height: 0;
-    overflow: auto;
-    padding: 8px 10px 10px;
-    border-top: 1px solid var(--border);
-  }
-
-  h2 {
-    margin: 6px 0 0;
-    color: var(--text-faint);
-    font-size: var(--font-size-small);
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-
-  .template {
-    display: grid;
-    gap: 3px;
-    color: var(--text-dim);
-  }
-
-  .tokens {
+  footer {
     display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 3px 6px;
+    border-top: 1px solid var(--border);
+    background: var(--surface-2);
   }
 
-  .tokens button {
-    height: 20px;
-    padding: 0 7px;
-    border: 1px solid var(--border-strong);
-    border-radius: 2px;
-    background: var(--surface-3);
-    color: var(--text-dim);
-    font: var(--font-mono, inherit);
-    font-size: var(--font-size-small);
-  }
-
-  .tokens button:disabled {
-    opacity: 0.5;
-  }
-
-  input[type="text"] {
+  .count {
+    flex: 1;
     min-width: 0;
-    height: 22px;
+    overflow: hidden;
+    color: var(--text-dim);
+    font-size: var(--font-size-small);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  footer button,
+  .process select {
+    height: 20px;
     padding: 0 6px;
     border: 1px solid var(--border-strong);
     border-radius: 2px;
     background: var(--surface-0);
     color: var(--text);
     font: inherit;
+    font-size: 11px;
+    white-space: nowrap;
   }
 
-  input[readonly] {
-    color: var(--text-dim);
-  }
-
-  .folder {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 6px;
-    align-items: center;
-  }
-
-  .check {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-  }
-
-  .off {
+  footer button:disabled {
     color: var(--text-faint);
+    opacity: 0.6;
   }
 
-  .hint {
-    margin: 0;
-    color: var(--text-faint);
-    font-size: var(--font-size-small);
-  }
-
-  .mono {
-    color: var(--text-dim);
-    font-family: var(--font-mono);
-  }
-
-  footer {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    justify-content: space-between;
-    padding: 6px 10px;
-    border-top: 1px solid var(--border);
-    background: var(--surface-2);
-  }
-
-  .count {
-    color: var(--text-dim);
-    font-size: var(--font-size-small);
+  footer button.primary {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent, #fff);
   }
 
   button:not(.tool) {

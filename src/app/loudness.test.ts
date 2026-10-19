@@ -49,3 +49,27 @@ describe("loudness verdicts", () => {
     expect(evaluate(report(-Infinity, -Infinity, -Infinity), stereo).advice).toContain("silent");
   });
 });
+
+import { BROADCAST_REGIONS, regionById, targetsFor } from "./loudness";
+
+describe("broadcast regions", () => {
+  it("defaults to the US standard", () => {
+    const b = targetById("broadcast");
+    expect(b.lufs).toBe(-24);
+    expect(b.peak).toBe(-2);
+  });
+  it("follows the chosen region", () => {
+    expect(targetById("broadcast", "europe").lufs).toBe(-23);
+    expect(targetById("broadcast", "europe").peak).toBe(-1);
+  });
+  it("falls back to the US for an unknown region", () => {
+    expect(regionById("mars").id).toBe("us");
+  });
+  it("only changes the broadcast target", () => {
+    for (const r of BROADCAST_REGIONS) {
+      const list = targetsFor(r.id);
+      expect(list.find((t) => t.id === "podcast-stereo")!.lufs).toBe(-16);
+      expect(list.find((t) => t.id === "broadcast")!.lufs).toBe(r.lufs);
+    }
+  });
+});

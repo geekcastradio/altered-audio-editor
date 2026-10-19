@@ -8,8 +8,9 @@
   bit rate for MP3. "Same as source" keeps what the audio already is.
 -->
 <script lang="ts">
+  import { PLATFORM } from "../lib/platform";
   import { formatRate } from "../panels/files/format";
-  import { depthsFor, FORMAT_KINDS, MP3_BITRATES, MP3_MAX_RATE, OUTPUT_RATES, type OutputFormat } from "./output-format";
+  import { AAC_BITRATES, depthsFor, formatAvailable, FORMAT_KINDS, MP3_BITRATES, MP3_MAX_RATE, OUTPUT_RATES, type OutputFormat } from "./output-format";
 
   interface Props {
     format: OutputFormat;
@@ -27,6 +28,7 @@
     if (format.bitDepth !== null && !depths.some((d) => d.value === format.bitDepth)) format = { ...format, bitDepth: null };
   });
 
+  const available = (k: (typeof FORMAT_KINDS)[number]["value"]) => formatAvailable(k, PLATFORM);
   const rateLabel = (r: number) => `${formatRate(r)}${format.kind === "mp3" && r > MP3_MAX_RATE ? " (MP3 uses 48 kHz)" : ""}`;
 </script>
 
@@ -35,7 +37,7 @@
     <span>Format</span>
     <select bind:value={format.kind}>
       {#each FORMAT_KINDS as k (k.value)}
-        <option value={k.value}>{k.label}</option>
+        <option value={k.value} disabled={!available(k.value)}>{k.label}{available(k.value) ? "" : " (Windows only for now)"}</option>
       {/each}
     </select>
   </label>
@@ -56,7 +58,16 @@
       <option value={2}>Stereo</option>
     </select>
   </label>
-  {#if format.kind === "mp3"}
+  {#if format.kind === "m4a"}
+    <label>
+      <span>Kbps</span>
+      <select bind:value={format.aacBitrate}>
+        {#each AAC_BITRATES as b (b)}
+          <option value={b}>{b} kbps{b === 128 ? " (spoken word)" : b === 192 ? " (music)" : ""}</option>
+        {/each}
+      </select>
+    </label>
+  {:else if format.kind === "mp3"}
     <label>
       <span>Bit rate</span>
       <select bind:value={format.mp3Mode}>
@@ -96,7 +107,11 @@
   {/if}
 </div>
 {#if lossy}
-  <p class="note">MP3 is lossy: fine for publishing, but keep a WAV or FLAC master for editing.</p>
+  <p class="note">{format.kind === "m4a" ? "AAC" : "MP3"} is lossy: fine for publishing, but keep a WAV or FLAC master for editing.{format.kind === "m4a" ? " AAC is written at 44.1 or 48 kHz, mono or stereo, using the encoder built into Windows." : ""}</p>
+{:else if format.kind === "wav" && format.bitDepth === 4}
+  <p class="note">4-bit ADPCM is lossy and about a quarter the size of 16-bit. Good for phone systems and voice prompts, not for masters.</p>
+{:else if format.kind === "wav" && format.bitDepth === 8}
+  <p class="note">8-bit has audible hiss on quiet passages. Use it only when a system asks for it.</p>
 {/if}
 
 <style>

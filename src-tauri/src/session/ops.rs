@@ -15,8 +15,9 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use super::model::{
-    ChannelLayout, Clip, ClipLoop, EffectChain, Envelope, EnvelopePoint, EnvelopeTarget, Fade, Id,
-    Marker, MarkerKind, MediaRef, Session, SessionView, Track,
+    AudioType, ChannelLayout, Clip, ClipLoop, ClipStretch, EffectChain, Envelope, EnvelopePoint,
+    EnvelopeTarget, Fade, Id, Marker, MarkerKind, MediaRef, Session, SessionView, Track,
+    STRETCH_MAX, STRETCH_MIN,
 };
 
 /// A clip to create.
@@ -49,6 +50,8 @@ impl ClipSpec {
             effects: EffectChain::default(),
             group: None,
             looped: None,
+            stretch: None,
+            audio_type: None,
         }
     }
 }
@@ -131,6 +134,18 @@ pub struct ClipChange {
     /// Stops looping: the clip plays its source region once.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unloop: Option<bool>,
+    /// Stretches the clip, or changes its stretch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stretch: Option<ClipStretch>,
+    /// Stops stretching: the clip plays at its natural length.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unstretch: Option<bool>,
+    /// Sets what the clip holds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_type: Option<AudioType>,
+    /// Clears the clip's audio type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clear_audio_type: Option<bool>,
 }
 
 /// Changes to one marker. Fields left out are unchanged.
@@ -147,12 +162,35 @@ pub struct MarkerChange {
     pub duration: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// `#rrggbb`, or an empty string for the type's color.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// Ad slots: the contracted length of the read, in session samples.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contracted_duration: Option<u64>,
+    /// Removes the contracted length (when a marker stops being an ad slot).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clear_contracted: Option<bool>,
+}
+
+/// Whose Voice Chain an edit changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", content = "id", rename_all = "snake_case")]
+pub enum EffectTarget {
+    Track(Id),
+    Clip(Id),
+    Master,
 }
 
 /// One edit. See the module docs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Op {
+    /// Replaces a track's, clip's or the master's whole Voice Chain.
+    SetEffects {
+        target: EffectTarget,
+        chain: EffectChain,
+    },
     AddTrack {
         id: Id,
         name: String,
@@ -205,6 +243,10 @@ pub enum Op {
     },
     SetMarkers {
         changes: Vec<MarkerChange>,
+    },
+    /// Replaces the Playlist panel's order.
+    SetPlaylist {
+        ids: Vec<Id>,
     },
     /// Changes the session rate. Every timeline position (clips, fades,
     /// envelopes, markers, view) is converted so it stays at the same
@@ -283,6 +325,31 @@ fn sort_markers(s: &mut Session) {
 /// Applies an op and returns its inverse. On error the session is unchanged.
 pub fn apply(s: &mut Session, op: &Op) -> Result<Op, OpError> {
     match op {
+        Op::SetEffects { target, chain } => {
+            let slot = match *target {
+                EffectTarget::Track(id) => {
+                    let i = track_index(s, id)?;
+                    &mut s.tracks[i].effects
+                }
+                EffectTarget::Clip(id) => {
+                    &mut s
+                        .tracks
+                        .iter_mut()
+                        .flat_map(|t| t.clips.iter_mut())
+                        .find(|c| c.id == id)
+                        .ok_or(OpError::NoClip(id))?
+                        .effects
+                }
+                EffectTarget::Master => &mut s.master.effects,
+            };
+            let mut chain = chain.clone();
+            chain.slots.truncate(crate::dsp::effects::MAX_SLOTS);
+            let old = std::mem::replace(slot, chain);
+            Ok(Op::SetEffects {
+                target: *target,
+                chain: old,
+            })
+        }
         Op::AddTrack {
             id,
             name,
@@ -509,6 +576,10 @@ pub fn apply(s: &mut Session, op: &Op) -> Result<Op, OpError> {
             s.markers = kept;
             Ok(Op::AddMarkers { markers: gone })
         }
+        Op::SetPlaylist { ids } => {
+            let old = std::mem::replace(&mut s.playlist, ids.clone());
+            Ok(Op::SetPlaylist { ids: old })
+        }
         Op::SetMarkers { changes } => {
             for ch in changes {
                 if !s.markers.iter().any(|m| m.id == ch.id) {
@@ -540,6 +611,21 @@ pub fn apply(s: &mut Session, op: &Op) -> Result<Op, OpError> {
                 }
                 if let Some(v) = &ch.description {
                     inv.description = Some(std::mem::replace(&mut m.description, v.clone()));
+                }
+                if let Some(v) = &ch.color {
+                    let new = if v.is_empty() { None } else { Some(v.clone()) };
+                    inv.color = Some(std::mem::replace(&mut m.color, new).unwrap_or_default());
+                }
+                if ch.contracted_duration.is_some() || ch.clear_contracted == Some(true) {
+                    let new = if ch.clear_contracted == Some(true) {
+                        None
+                    } else {
+                        ch.contracted_duration
+                    };
+                    match std::mem::replace(&mut m.contracted_duration, new) {
+                        Some(old) => inv.contracted_duration = Some(old),
+                        None => inv.clear_contracted = Some(true),
+                    }
                 }
                 inverses.push(inv);
             }
@@ -601,6 +687,8 @@ fn set_clip(s: &mut Session, ch: &ClipChange) -> Result<ClipChange, OpError> {
         || ch.source_out.is_some()
         || ch.looped.is_some()
         || ch.unloop == Some(true)
+        || ch.stretch.is_some()
+        || ch.unstretch == Some(true)
         || to_track.is_some_and(|t| t != ti);
     let unlocking = ch.locked == Some(false);
     if moves && s.tracks[ti].clips[ci].locked && !unlocking {
@@ -647,6 +735,31 @@ fn set_clip(s: &mut Session, ch: &ClipChange) -> Result<ClipChange, OpError> {
         match std::mem::replace(&mut c.looped, new) {
             Some(old) => inv.looped = Some(old),
             None => inv.unloop = Some(true),
+        }
+    }
+    if ch.stretch.is_some() || ch.unstretch == Some(true) {
+        let new = if ch.unstretch == Some(true) {
+            None
+        } else {
+            ch.stretch.map(|s| ClipStretch {
+                ratio: s.ratio.clamp(STRETCH_MIN, STRETCH_MAX),
+                ..s
+            })
+        };
+        match std::mem::replace(&mut c.stretch, new) {
+            Some(old) => inv.stretch = Some(old),
+            None => inv.unstretch = Some(true),
+        }
+    }
+    if ch.audio_type.is_some() || ch.clear_audio_type == Some(true) {
+        let new = if ch.clear_audio_type == Some(true) {
+            None
+        } else {
+            ch.audio_type
+        };
+        match std::mem::replace(&mut c.audio_type, new) {
+            Some(old) => inv.audio_type = Some(old),
+            None => inv.clear_audio_type = Some(true),
         }
     }
     if let Some(points) = &ch.volume {
@@ -811,6 +924,51 @@ mod tests {
         assert_eq!(*s, before, "undo of {op:?}");
         apply(s, &redo).unwrap();
         assert_eq!(*s, after, "redo of {op:?}");
+    }
+
+    #[test]
+    fn voice_chains_set_and_undo() {
+        let mut s = Session::new("Test", 48_000);
+        let t = new_id();
+        roundtrip(
+            &mut s,
+            Op::AddTrack {
+                id: t,
+                name: "Host".into(),
+                stereo: false,
+                index: 0,
+            },
+        );
+        let mut chain = EffectChain::default();
+        for _ in 0..20 {
+            chain.slots.push(crate::session::model::EffectSlot {
+                id: new_id(),
+                effect: "altaudio.gain".into(),
+                enabled: true,
+                params: Default::default(),
+                preset: None,
+            });
+        }
+        roundtrip(
+            &mut s,
+            Op::SetEffects {
+                target: EffectTarget::Track(t),
+                chain: chain.clone(),
+            },
+        );
+        assert_eq!(s.tracks[0].effects.slots.len(), 16, "a chain holds 16");
+        roundtrip(
+            &mut s,
+            Op::SetEffects {
+                target: EffectTarget::Master,
+                chain,
+            },
+        );
+        let missing = Op::SetEffects {
+            target: EffectTarget::Clip(new_id()),
+            chain: EffectChain::default(),
+        };
+        assert!(matches!(apply(&mut s, &missing), Err(OpError::NoClip(_))));
     }
 
     #[test]
@@ -1130,6 +1288,7 @@ mod tests {
             description: String::new(),
             chapter: None,
             contracted_duration: None,
+            color: None,
         };
         roundtrip(
             &mut s,
@@ -1371,5 +1530,77 @@ mod tests {
             },
         );
         assert!(zero.is_err(), "a loop needs a length");
+    }
+
+    #[test]
+    fn stretch_set_clamped_and_undone() {
+        let mut s = Session::new("Test", 48_000);
+        let (t, m, c) = (new_id(), new_id(), new_id());
+        apply(
+            &mut s,
+            &Op::Batch {
+                ops: vec![
+                    Op::AddMedia { media: media(m) },
+                    Op::AddTrack {
+                        id: t,
+                        name: "A".into(),
+                        stereo: false,
+                        index: 0,
+                    },
+                    Op::AddClips {
+                        track_id: t,
+                        clips: vec![ClipSpec {
+                            id: c,
+                            name: "c".into(),
+                            media_id: m,
+                            start: 0,
+                            source_in: 0,
+                            source_out: 48_000,
+                        }],
+                    },
+                ],
+            },
+        )
+        .unwrap();
+        roundtrip(
+            &mut s,
+            Op::SetClips {
+                changes: vec![ClipChange {
+                    id: c,
+                    stretch: Some(ClipStretch {
+                        ratio: 1.25,
+                        keep_pitch: true,
+                    }),
+                    ..ClipChange::default()
+                }],
+            },
+        );
+        assert_eq!(s.tracks[0].clips[0].timeline_length(48_000, 48_000), 60_000);
+        apply(
+            &mut s,
+            &Op::SetClips {
+                changes: vec![ClipChange {
+                    id: c,
+                    stretch: Some(ClipStretch {
+                        ratio: 99.0,
+                        keep_pitch: false,
+                    }),
+                    ..ClipChange::default()
+                }],
+            },
+        )
+        .unwrap();
+        assert_eq!(s.tracks[0].clips[0].stretch.unwrap().ratio, STRETCH_MAX);
+        roundtrip(
+            &mut s,
+            Op::SetClips {
+                changes: vec![ClipChange {
+                    id: c,
+                    unstretch: Some(true),
+                    ..ClipChange::default()
+                }],
+            },
+        );
+        assert!(s.tracks[0].clips[0].stretch.is_none());
     }
 }

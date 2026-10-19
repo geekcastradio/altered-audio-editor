@@ -8,7 +8,7 @@
 -->
 <script lang="ts">
   import type { PeakStore } from "../../stores/peaks";
-  import { clipLength, type ClipDoc, type FadeDoc, type MediaRefDoc, type TrackDoc } from "../../stores/session";
+  import { clipLength, stretchOf, type ClipDoc, type FadeDoc, type MediaRefDoc, type TrackDoc } from "../../stores/session";
   import { LIVE_BLOCK } from "../../app/core";
   import { defaultTrackColor, trackHeight, peakRange, pickLevel, xOf, type Viewport, TRACK_GAP } from "./timeline";
   import { chipBox, chipLabel, pointsOf, valueToY, type EnvKind } from "./envelope";
@@ -134,7 +134,10 @@
       g.beginPath();
       g.rect(left, 1, right - left, titleH);
       g.clip();
-      g.fillText(clip.name, Math.max(x0, 0) + 4, 1 + titleH / 2);
+      const st = stretchOf(clip);
+      // A stretched clip says so in its title, with the pitch mode.
+      const label = st === 1 ? clip.name : `${clip.name}  ${Math.round(st * 1000) / 10}%${clip.stretch?.keep_pitch === false ? " tape" : ""}`;
+      g.fillText(label, Math.max(x0, 0) + 4, 1 + titleH / 2);
       g.restore();
 
       // Waveform.
@@ -143,7 +146,9 @@
       if (entry?.status === "ready" && entry.summary) {
         const ch = entry.summary.channels;
         const srcRate = m!.sample_rate || entry.summary.sampleRate;
-        const framesPerPx = (view.spp * srcRate) / sessionRate;
+        // A stretched clip covers less (or more) of its file per pixel.
+        const ratio = stretchOf(clip);
+        const framesPerPx = (view.spp * srcRate) / sessionRate / ratio;
         const level = pickLevel(entry.levels, framesPerPx);
         if (!level || level.data.length === 0) {
           // Ready but nothing to draw: say so instead of leaving the clip blank.
@@ -162,7 +167,7 @@
           const phase = clip.looped ? clip.looped.phase : 0;
           for (let px = Math.floor(left); px < Math.ceil(right); px++) {
             const tl0 = view.scroll + px * view.spp - clip.start;
-            let into = (tl0 * srcRate) / sessionRate;
+            let into = (tl0 * srcRate) / sessionRate / ratio;
             if (clip.looped && region > 0) into = (((into + phase) % region) + region) % region;
             const s0 = clip.source_in + into;
             const s1 = s0 + framesPerPx;

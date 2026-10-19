@@ -2,6 +2,13 @@
 // Copyright (c) The GeekCast Radio Network, LLC.
 // This file is part of Altered Audio Editor.
 
-//! Signal processing that is not part of playback.
+//! Signal processing: effects, filters, spectral tools and time stretch.
 
+pub mod align;
+pub mod biquad;
+pub mod effects;
+pub mod elliptic;
+pub mod musicfit;
 pub mod spectral;
+pub mod stft;
+pub mod stretch;

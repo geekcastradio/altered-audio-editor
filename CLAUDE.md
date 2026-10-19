@@ -12,11 +12,12 @@ Source of truth for scope and phases: this file, with the reasons behind each ch
 
 Also read CLAUDE.local.md if present: it holds private notes and the naming map. It is never committed (see `.gitignore`). Never copy its contents into tracked files.
 
-## Current phase: P3 Editing (P1 and P2 done)
+## Current phase: P5 Effects started (P1 and P2 done, P3 editing nearly done)
 
 - P1 Foundation: all 12 tasks built; exit gate passed on a real `.sesx` session (2026-10-14).
 - P2 Playback: engine, Mixer, Levels and Time Info built. Bus tracks and sends moved to P5 with effects.
-- P3 Editing, in progress: clip editing, envelopes, ripple delete, clipboard, markers, mixdown, stems, Check Loudness, Merge Clips, Make Unique Copy, Loop Clip, Waveform editor. Tool strip (mode switch, Move, Razor, Slip, Time Selection), shared transport bar, six starting tracks, Loop Playback and Skip Selection, track header controls (dials, monitor, polarity, input picker), Spectrum and Pitch views with Box, Lasso and Brush select, Reduce, Remove, Repair and Spot Repair, double-click a clip to edit its file. Recording v1 (pulled forward from P4): armed tracks record their picked inputs, input meters when armed, live waveform while recording. Track collapse and resize, colored track scrollbar, Zoom Out Full, box select of clips. Left: Paste to New File, Mix Paste; for recording, monitoring, latency compensation and punch-in.
+- P3 Editing, in progress: clip editing, envelopes, ripple delete, clipboard, markers, mixdown, stems, Check Loudness, Merge Clips, Make Unique Copy, Loop Clip, Waveform editor. Tool strip (mode switch, Move, Razor, Slip, Time Selection), shared transport bar, six starting tracks, Loop Playback and Skip Selection, track header controls (dials, monitor, polarity, input picker), Spectrum and Pitch views with Box, Lasso and Brush select, Reduce, Remove, Repair and Spot Repair, double-click a clip to edit its file. Recording v1 (pulled forward from P4): armed tracks record their picked inputs, input meters when armed, live waveform while recording. Track collapse and resize, colored track scrollbar, Zoom Out Full, box select of clips. Since then: punch-in and a recording offset, Insert Silence, Generate Tone and Noise, time stretch, audio types on clips, Add Tracks, ad slot and social clip markers, marker colors and notes, the Playlist panel, chapter export (files and embedded), AAC export on Windows. Then markers in the Waveform editor (WAV cue points), input monitoring, and Batch Convert tags. Left: ASIO. `.aup3` import is parked as a possible later feature.
+- P5 Effects, first batch (2026-10-18): Voice Chain on clips and tracks with eight built-in effects (Parametric EQ, Hum Cut, Dynamics, Limiter, Breath Gate, De-Esser, Speech Leveler, Gain), presets, Effects menu entries. Second batch: Noise Reducer, Hiss Reducer, Room Reducer, Click Repair, Clip Repair, DC Offset Fix. Then the Batch Convert rework (processing presets, Output and Sample Settings dialogs) and Music Fit (Clip > Fit Music to Length), then QuickPass repair scans (Click Repair, Clip Repair, Mark Audio), then Band EQ, Curve EQ, Notch Filter, Precision Filter, Center Remover and Pitch Shift. Then (2026-10-18, fourth batch): live chain edits without a playback restart, chain meters, Voice Chain preview and apply in the Waveform editor, Noise Print Reducer, Sound Eraser, Phase Align, Elliptic filters, response graphs (Curve EQ points draggable), Batch Convert normalize and fades, M4A tags, Music Fit plan choice. Every effect in the behavior references gets a renamed equivalent; the list and the agreed QuickPass and Batch Convert layouts are in `docs/backlog.md`.
 
 `docs/decisions.md` records what was built and why. Later-phase features get data model fields (scaffolding) before their code. If a task pulls toward a later phase, say so before building it.
 
@@ -151,14 +152,23 @@ Build the Hum Cut, Rumble Cut and Subsonic Cut presets from scratch with our own
 
 ### Panels outside the Default layout
 
-Not in Default: Markers, History, Favorites (dropped). History and Markers stay available from the Window menu.
+Not in Default: Markers, History. (A saved-commands panel was dropped.) History and Markers stay available from the Window menu.
 
 **Excluded from Default workspace (not shown, available via the Window menu):**
 - Video panel (not planned)
-- Playlist, CD layout (not planned)
+- Playlist (built 2026-10-18, Window menu); CD layout (not planned)
 - Surround Panner, Basic Adjustments, Phase Analysis, Phase Scope (available in the Window menu, not in Default)
 - Podcast mode panels: Chapters, Transcript, Podcast Publish (View > Podcast Mode toggle)
 - Voiceover mode panels: Script, Take Lanes, Delivery Check (View > Voiceover Mode toggle)
+
+## Planned additions (community requests, October 2026)
+
+Full detail, risks and order of work are in `docs/backlog.md`. Phase placement:
+
+- **P3 and P4:** non-destructive time stretch (built: Clip > Time Stretch, and Alt+drag on a clip edge, approved 2026-10-17), non-destructive silence and breath handling in QuickPass, one-click loudness targets, chapter export, marker colors and notes, Playlist panel, ASIO and per-channel routing.
+- **P5:** VST3 plugin hosting in a separate helper process (no VST2), auto-ducking, multi-microphone alignment and bleed reduction, Realtime Export.
+- **Later:** sandboxed scripting, a local-only MCP endpoint (off by default, read-only first), MIDI tracks and instruments, video reference track and ADR cues.
+- **Rules that apply to all of these:** no network access from scripting or the MCP endpoint; any assistant or script edit is one labelled, undoable step; plugins and scripts can never crash or freeze the editor; every new third-party dependency has its licence checked and credited in `ATTRIBUTION.md` first.
 
 ## Podcast-specific features (phase assignments in spec)
 
@@ -203,6 +213,7 @@ Standard Windows shortcuts only. No application-specific keymap beyond these:
 | Move tool | V |
 | Time Selection tool | T |
 | Slip tool | Y |
+| Time stretch a clip (drag its edge) | Alt+drag |
 
 Defaults are stored in `src/keymap/default.json`. Users change them in Edit > Keyboard Shortcuts; only their changes are saved, to `keymap.alkeys` in the app config folder. Every menu item shows its shortcut. No other shortcuts are added without the project lead's explicit approval.
 
@@ -238,7 +249,8 @@ Zero logins, zero telemetry, zero tracking. The app is fully usable offline with
 
 ## Loudness defaults
 
-- Delivery targets (from published podcast loudness guidance): podcast stereo -16 LUFS, mono -19 LUFS, Spotify -14 LUFS, broadcast -23 LUFS; true peak at or below -1 dBTP.
+- Delivery targets (from published podcast loudness guidance): podcast stereo -16 LUFS, mono -19 LUFS, Spotify -14 LUFS; true peak at or below -1 dBTP.
+- Broadcast follows the region set in Check Loudness and Loudness Match. Default is the US (ATSC A/85: -24 LUFS, true peak -2 dBTP). Others: Canada (same as US), Europe and the UK (EBU R128: -23, -1), Australia and New Zealand (OP-59: -24, -2), Japan (ARIB TR-B32: -24, -1).
 - Voice Chain Limiter (P5): default ceiling -6 dB, with a -3 dB preset. Every parameter stays user-configurable: ceiling, input boost, look-ahead, release, and linked channels. Users can save their own presets.
 
 ## Architecture rules

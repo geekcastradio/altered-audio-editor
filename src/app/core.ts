@@ -9,7 +9,7 @@
 
 import type { OutputFormat } from "./output-format";
 import { invoke } from "@tauri-apps/api/core";
-import type { MediaRefDoc } from "../stores/session";
+import type { EffectChainDoc, MediaRefDoc } from "../stores/session";
 import type { SpectralMask } from "../panels/editor/spectrum";
 
 export interface AppInfo {
@@ -129,6 +129,8 @@ export function browseList(path: string, audioOnly: boolean): Promise<BrowseEntr
 
 export interface PreviewStatus {
   playing: boolean;
+  /** Highest sample left and right since the last status, 0 to 1. */
+  peak: [number, number];
   path: string | null;
   /** Seconds from the start of the file. */
   position: number;
@@ -397,6 +399,8 @@ export interface TransportStatus {
   meters: [number, number][];
   master: [number, number];
   underruns: number;
+  /** Per track, its Voice Chain's peaks for the audio just heard: left in, right in, left out, right out. Null when the track's chain does nothing. */
+  chainMeters?: ([number, number, number, number] | null)[];
 }
 
 /** How playback treats the time selection. */
@@ -426,6 +430,8 @@ export interface MixdownRequest {
   track?: string;
   /** File format, rate and quality; unset writes a WAV at the session rate. */
   format?: OutputFormat;
+  /** Only what belongs to the clips: track volume, pan and the Master are left out. */
+  clipOnly?: boolean;
 }
 
 export interface MixdownResult {
@@ -446,6 +452,11 @@ export function exportPickPath(
   all = false,
 ): Promise<string | null> {
   return invoke<string | null>("export_pick_path", { name, folder, title, ext, all });
+}
+
+/** Save dialog for a text file, then writes `content` there. Null when cancelled. */
+export function exportText(name: string, folder: string | null, title: string, filter: string, ext: string, content: string): Promise<string | null> {
+  return invoke<string | null>("export_text", { name, folder, title, filter, ext, content });
 }
 
 /** Which of `paths` already exist. */
@@ -535,7 +546,7 @@ export function sessionDefaultFolder(): Promise<string> {
 /** Measures the mix's loudness. Progress arrives as `export-progress`; `exportCancel` stops it. */
 export function loudnessCheck(request: MixdownRequest): Promise<import("./loudness").LoudnessReport> {
   return invoke("loudness_check", {
-    request: { range: request.range ?? null, clips: request.clips ?? null, bit_depth: null, track: null },
+    request: { range: request.range ?? null, clips: request.clips ?? null, bit_depth: null, track: request.track ?? null, clip_only: request.clipOnly ?? false },
   });
 }
 
@@ -594,6 +605,11 @@ export function waveSpectralEdit(mask: SpectralMask, mode: "gain" | "repair", ga
   return invoke<SpectralResult>("wave_spectral_edit", { mask, mode, gainDb: gainDb ?? null });
 }
 
+/** Renders `start..end` of the Waveform editor's file through `chain` into a new file, for replaceRange. */
+export function waveApplyChain(chain: import("../stores/session").EffectChainDoc, start: number, end: number): Promise<SpectralResult> {
+  return invoke<SpectralResult>("wave_apply_chain", { chain, start, end });
+}
+
 /** Pitch of the Waveform editor's file at `columns` points between two samples, in Hz (0 where unclear). */
 export function wavePitch(start: number, end: number, columns: number): Promise<number[]> {
   return invoke<number[]>("wave_pitch", { start, end, columns });
@@ -607,6 +623,8 @@ export interface RecordTarget {
   channels: number;
   /** File name without extension. */
   name: string;
+  /** Also play the input through the speakers. */
+  monitor?: boolean;
 }
 
 export interface Take {
@@ -634,6 +652,8 @@ export interface RecordStatus {
   seconds: number;
   peak: number;
   overruns: number;
+  /** Why input monitoring could not start, when it was asked for. */
+  monitorNote?: string;
 }
 
 /** Starts recording. Returns the folder the takes go in. */
@@ -665,11 +685,15 @@ export interface BatchJob {
   id: string;
   source: string;
   dest: string;
+  /** Tags to write over any copied ones. */
+  tags?: Partial<Record<"title" | "artist" | "album" | "year" | "genre" | "comment", string>> | null;
 }
 
 export interface BatchProgress {
   id: string;
   status: "running" | "done" | "failed" | "stopped";
+  /** Processing, Converting, Saved or Not saved. */
+  stage: string;
   /** 0 to 1 while running. */
   progress: number;
   error: string | null;
@@ -683,8 +707,15 @@ export interface BatchSummary {
 }
 
 /** Converts files one at a time. Progress arrives as `batch-progress` events. */
-export function batchConvert(jobs: BatchJob[], format: OutputFormat, overwrite: boolean): Promise<BatchSummary> {
-  return invoke<BatchSummary>("batch_convert", { jobs, format, overwrite });
+export function batchConvert(
+  jobs: BatchJob[],
+  format: OutputFormat,
+  overwrite: boolean,
+  copyTags = false,
+  process: EffectChainDoc | null = null,
+  shape: { normalizeDb: number | null; fadeInMs: number; fadeOutMs: number } | null = null,
+): Promise<BatchSummary> {
+  return invoke<BatchSummary>("batch_convert", { jobs, format, overwrite, copyTags, process, shape });
 }
 
 /** Stops Batch Convert; the file in progress is discarded. */
@@ -709,10 +740,104 @@ export interface ClipLevels {
   start: number;
   /** Session samples in each window. */
   window: number;
-  /** Level of each window in dBFS. */
+  /** RMS level of each window in dBFS. */
   db: number[];
+  /** Highest sample in each window in dBFS. */
+  peak: number[];
 }
 
 export function quickpassLevels(clipIds: string[], windowMs: number): Promise<ClipLevels[]> {
   return invoke("quickpass_levels", { clipIds, windowMs });
+}
+
+export interface GenerateRequest {
+  kind: "tone" | "white" | "pink" | "silence";
+  seconds: number;
+  frequency: number;
+  levelDb: number;
+  sampleRate: number;
+  channels: number;
+}
+
+/** Writes a tone or noise to `path` as a WAV file. */
+export function generateAudio(path: string, request: GenerateRequest): Promise<string> {
+  return invoke<string>("generate_audio", { path, request });
+}
+
+/** Writes chapters into an exported MP3 or FLAC. False when the format has no chapter support here. */
+export function exportEmbedChapters(path: string, chapters: { title: string; startMs: number; endMs: number | null }[], totalMs: number): Promise<boolean> {
+  return invoke<boolean>("export_embed_chapters", { path, chapters, totalMs });
+}
+
+/** One control of a built-in effect, as the core describes it. */
+export interface EffectParamInfo {
+  key: string;
+  name: string;
+  unit: string;
+  min: number;
+  max: number;
+  default: number;
+  step: number;
+  log: boolean;
+  choices?: string[];
+  toggle: boolean;
+  group?: string;
+  /** Moving it changes the effect's look-ahead, which restarts playback, so it applies on release. */
+  retimes?: boolean;
+  /** Stored with the effect but not a control (a learned noise print). */
+  hidden?: boolean;
+}
+
+export interface EffectInfo {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  params: EffectParamInfo[];
+}
+
+/** Every built-in effect, with its controls. */
+export function effectsCatalog(): Promise<EffectInfo[]> {
+  return invoke<EffectInfo[]>("effects_catalog");
+}
+
+/** An EQ or filter's response: [frequency, dB] pairs from 20 Hz to 20 kHz. Empty for other effects. */
+export function effectResponse(slot: import("../stores/session").EffectSlotDoc, points: number): Promise<[number, number][]> {
+  return invoke<[number, number][]>("effect_response", { slot, points });
+}
+
+/** Where to learn a noise print from, in timeline samples. */
+export type LearnSource = { kind: "wave"; start: number; end: number } | { kind: "track" | "clip"; id: string; start: number; end: number };
+
+/** Learns a noise print: the settings to put on a Noise Print Reducer. */
+export function learnNoisePrint(source: LearnSource): Promise<{ params: Record<string, number>; seconds: number }> {
+  return invoke("learn_noise_print", { source });
+}
+
+/** How far clip `other` trails clip `reference`, searching up to `maxMs` either way. */
+export function phaseAlign(reference: string, other: string, maxMs: number): Promise<import("../panels/editor/align").Alignment> {
+  return invoke("phase_align", { reference, other, maxMs });
+}
+
+/** Plans Music Fit for the part of `path` from `start` to `end` seconds: up to three plans, best first, joining in different places. */
+export function musicFit(path: string, start: number, end: number, target: number, xfade: number): Promise<import("../panels/editor/musicfit").FitPlan[]> {
+  return invoke("music_fit", { path, start, end, target, xfade });
+}
+
+/** Clicks or clipped spots found in one clip, as [first, last] timeline samples. */
+export interface ClipSpots {
+  clipId: string;
+  spans: [number, number][];
+}
+
+export type SpotsRequest = { kind: "clicks"; sensitivity: number; widthMs: number } | { kind: "clipping"; levelDb: number; longestMs: number };
+
+/** Finds clicks or clipping in clips as they play. */
+export function quickpassSpots(clipIds: string[], spots: SpotsRequest): Promise<ClipSpots[]> {
+  return invoke<ClipSpots[]>("quickpass_spots", { clipIds, spots });
+}
+
+/** Writes a copy of source frames `from..to` with `spans` (frames from `from`) repaired. Returns its path. */
+export function quickpassRepairCopy(source: string, from: number, to: number, folder: string, name: string, spots: SpotsRequest, spans: [number, number][]): Promise<string> {
+  return invoke<string>("quickpass_repair_copy", { source, from, to, folder, name, spots, spans });
 }

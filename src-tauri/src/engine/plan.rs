@@ -8,11 +8,14 @@
 //! Gains change often (faders, mute, solo) and are applied by the audio
 //! thread from atomics, so they never need a rebuild. Anything that
 //! moves audio in time (clips, tracks, order) changes the `layout` and
-//! playback restarts from where it was.
+//! playback restarts from where it was. Voice Chain changes are listed
+//! apart (`chains`): they swap into the running renderer, with no
+//! restart, unless the chain's look-ahead changes.
 
 use std::path::PathBuf;
 
-use crate::session::model::{Clip, EnvelopeTarget, Fade, FadeShape, Id, Session};
+use crate::dsp::effects::chain_hash;
+use crate::session::model::{Clip, EffectChain, EnvelopeTarget, Fade, FadeShape, Id, Session};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClipPlan {
@@ -42,6 +45,12 @@ pub struct ClipPlan {
     pub loop_len: u64,
     /// Where in the region the clip starts, in output frames.
     pub loop_phase: u64,
+    /// Time stretch: timeline length over natural length. 1 is none.
+    pub stretch: f64,
+    /// Stretch keeps the pitch (true) or changes it with speed (false).
+    pub keep_pitch: bool,
+    /// Clip Voice Chain, run after the clip's gain and fades.
+    pub effects: EffectChain,
 }
 
 impl ClipPlan {
@@ -62,6 +71,9 @@ impl ClipPlan {
             pan: Vec::new(),
             loop_len: 0,
             loop_phase: 0,
+            stretch: 1.0,
+            keep_pitch: true,
+            effects: EffectChain::default(),
         }
     }
 
@@ -202,6 +214,8 @@ pub fn fade_curve(shape: FadeShape, t: f32) -> f32 {
 pub struct TrackPlan {
     pub id: Id,
     pub clips: Vec<ClipPlan>,
+    /// Track Voice Chain, run on the track before its fader.
+    pub effects: EffectChain,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -224,6 +238,7 @@ pub fn build(session: &Session, out_rate: u32) -> Plan {
         .iter()
         .map(|t| TrackPlan {
             id: t.id,
+            effects: t.effects.clone(),
             clips: t
                 .clips
                 .iter()
@@ -245,7 +260,10 @@ pub fn build(session: &Session, out_rate: u32) -> Plan {
                             region,
                             convert(l.phase % src_len, src_rate, out_rate) % region,
                         ),
-                        _ => (region, 0, 0),
+                        _ => {
+                            let r = c.stretch_ratio();
+                            ((region as f64 * r).round() as u64, 0, 0)
+                        }
                     };
                     if len == 0 {
                         return None;
@@ -280,6 +298,9 @@ pub fn build(session: &Session, out_rate: u32) -> Plan {
                         ),
                         loop_len,
                         loop_phase,
+                        stretch: c.stretch_ratio(),
+                        keep_pitch: c.stretch.is_none_or(|s| s.keep_pitch),
+                        effects: c.effects.clone(),
                     })
                 })
                 .collect(),
@@ -345,6 +366,12 @@ fn envelope_hash(c: &Clip) -> u64 {
         h ^= v;
         h = h.wrapping_mul(0x100_0000_01b3);
     };
+    // A stretch changes what plays where, so it is part of the shape too.
+    if let Some(st) = c.stretch {
+        mix(0x5354_5243);
+        mix(st.ratio.to_bits());
+        mix(u64::from(st.keep_pitch));
+    }
     // The loop changes what plays where, so it is part of the shape too.
     if let Some(l) = c.looped {
         mix(0x4c4f_4f50);
@@ -366,8 +393,35 @@ fn envelope_hash(c: &Clip) -> u64 {
     h
 }
 
-/// Per track: track id and its clips, in order.
+/// Per track: track id and its clips, in order. A change restarts
+/// playback from the same spot.
 pub type Layout = Vec<(Id, Vec<ClipKey>)>;
+
+/// Every Voice Chain that plays: owner id, true for a track (false for
+/// a clip), and a fingerprint of the chain.
+pub type Chains = Vec<(Id, bool, u64)>;
+
+pub fn chains(session: &Session) -> Chains {
+    let mut out = Vec::new();
+    for t in &session.tracks {
+        out.push((t.id, true, chain_hash(&t.effects)));
+        for c in &t.clips {
+            out.push((c.id, false, chain_hash(&c.effects)));
+        }
+    }
+    out
+}
+
+/// The chain of the track or clip `id`.
+pub fn chain_of(session: &Session, id: Id, track: bool) -> Option<&EffectChain> {
+    session.tracks.iter().find_map(|t| {
+        if track {
+            (t.id == id).then_some(&t.effects)
+        } else {
+            t.clips.iter().find(|c| c.id == id).map(|c| &c.effects)
+        }
+    })
+}
 
 pub fn layout(session: &Session) -> Layout {
     session
@@ -488,6 +542,11 @@ mod tests {
         s.tracks[0].volume_db = -10.0;
         s.tracks[0].muted = true;
         assert_eq!(layout(&s), before);
+        // Voice Chain edits are not timing; they are listed apart.
+        let chained = chains(&s);
+        s.tracks[0].effects.input_gain_db = 3.0;
+        assert_eq!(layout(&s), before);
+        assert_ne!(chains(&s), chained);
         s.tracks[0].clips[0].start += 1;
         assert_ne!(layout(&s), before);
     }

@@ -20,7 +20,7 @@ use crate::codecs;
 use crate::engine::{PreviewPlayer, Transport};
 use crate::export::encode::{FormatKind, OutputFormat};
 use crate::export::mixdown::{self, MixdownRequest};
-use crate::session::model::{new_id, MediaRef, Session, SessionView};
+use crate::session::model::{new_id, Marker, MarkerKind, MediaRef, Session, SessionView};
 use crate::session::ops::{self, ClipSpec, Op};
 
 pub struct WaveState {
@@ -73,6 +73,23 @@ pub struct WaveDoc {
 
 /// Builds the edit-list session for a file: one track, one clip over
 /// the whole file.
+/// `session` with every Voice Chain taken off. In the Waveform editor a
+/// chain is only ever a preview, so saving and destructive edits work
+/// on the file itself; Apply is what writes a chain into the audio.
+pub fn without_effects(mut session: Session) -> Session {
+    session.master.effects = Default::default();
+    for b in &mut session.buses {
+        b.effects = Default::default();
+    }
+    for t in &mut session.tracks {
+        t.effects = Default::default();
+        for c in &mut t.clips {
+            c.effects = Default::default();
+        }
+    }
+    session
+}
+
 pub fn session_for(info: &codecs::AudioInfo) -> Result<Session, String> {
     let name = Path::new(&info.name)
         .file_stem()
@@ -141,6 +158,42 @@ fn doc_of(state: &WaveState) -> WaveDoc {
     }
 }
 
+/// Markers for a file's cue points.
+fn markers_from_cues(cues: &[codecs::cue::Cue]) -> Vec<Marker> {
+    cues.iter()
+        .map(|c| Marker {
+            id: new_id(),
+            name: c.label.clone(),
+            kind: MarkerKind::Cue,
+            position: c.position,
+            duration: c.length,
+            description: String::new(),
+            chapter: None,
+            contracted_duration: None,
+            color: None,
+        })
+        .collect()
+}
+
+/// Cue points for the editor's markers, at `rate` (the saved file's rate).
+fn cues_from_markers(markers: &[Marker], session_rate: u32, rate: u32) -> Vec<codecs::cue::Cue> {
+    let conv = |v: u64| {
+        if session_rate == rate || session_rate == 0 {
+            v
+        } else {
+            (u128::from(v) * u128::from(rate) / u128::from(session_rate)) as u64
+        }
+    };
+    markers
+        .iter()
+        .map(|m| codecs::cue::Cue {
+            position: conv(m.position),
+            length: conv(m.duration),
+            label: m.name.clone(),
+        })
+        .collect()
+}
+
 /// Opens `path` in the Waveform editor, replacing whatever was open.
 #[tauri::command]
 pub async fn wave_open(
@@ -157,7 +210,12 @@ pub async fn wave_open(
     if info.length == 0 {
         return Err("This file has no audio to edit.".into());
     }
-    let session = session_for(&info)?;
+    let mut session = session_for(&info)?;
+    let p = path.clone();
+    let cues = spawn_blocking(move || codecs::cue::read_cues(&p))
+        .await
+        .map_err(|e| e.to_string())?;
+    session.markers = markers_from_cues(&cues);
     if playing.is(PlayingDoc::Wave) {
         transport.stop();
     }
@@ -458,7 +516,8 @@ pub async fn wave_save(
         let state = w
             .as_ref()
             .ok_or("No file is open in the Waveform editor.")?;
-        (state.session.clone(), state.path.clone())
+        // A previewed chain is not part of the file until it is applied.
+        (without_effects(state.session.clone()), state.path.clone())
     };
     let untitled = wave
         .0
@@ -500,7 +559,7 @@ pub async fn wave_save(
             bit_depth: match kind {
                 FormatKind::Wav => Some(depth),
                 FormatKind::Flac => Some(depth.min(24)),
-                FormatKind::Mp3 => None,
+                FormatKind::Mp3 | FormatKind::M4a => None,
             },
             channels: Some(channels),
             ..Default::default()
@@ -508,6 +567,7 @@ pub async fn wave_save(
         ..Default::default()
     };
     let view = session.view.clone();
+    let markers = session.markers.clone();
     let saved = target.clone();
     spawn_blocking(move || -> Result<(), String> {
         let dir = saved.parent().map(Path::to_path_buf).unwrap_or_default();
@@ -533,6 +593,17 @@ pub async fn wave_save(
             let _ = std::fs::remove_file(&tmp);
             return Err(e.to_string());
         }
+        // WAV keeps the markers inside the file as cue points.
+        if kind == FormatKind::Wav && !session.markers.is_empty() {
+            let rate = codecs::probe(&tmp)
+                .map(|i| i.sample_rate)
+                .unwrap_or(session.sample_rate);
+            let cues = cues_from_markers(&session.markers, session.sample_rate, rate);
+            if let Err(e) = codecs::cue::write_cues(&tmp, &cues) {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(format!("Could not save the markers: {e}"));
+            }
+        }
         std::fs::rename(&tmp, &saved).map_err(|e| {
             let _ = std::fs::remove_file(&tmp);
             format!("Could not replace {}: {e}", saved.display())
@@ -549,6 +620,9 @@ pub async fn wave_save(
         .map_err(|e| e.to_string())?;
     let mut fresh = session_for(&info)?;
     fresh.view = view;
+    // Markers carry over: they sit on the same audio in the saved file.
+    // (WAV also stores them in the file; FLAC and MP3 keep them while open.)
+    fresh.markers = markers;
     let mut w = wave.0.lock().map_err(|e| e.to_string())?;
     *w = Some(WaveState {
         session: fresh,

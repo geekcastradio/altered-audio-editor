@@ -23,6 +23,11 @@ export const KIND_COLORS: Record<MarkerKind, string> = {
   social_clip: "--clip-6",
 };
 
+/** A marker's color for CSS: its own, or its type's. */
+export function markerCss(m: Pick<MarkerDoc, "kind" | "color">): string {
+  return m.color ? m.color : `var(${KIND_COLORS[m.kind]})`;
+}
+
 export function newMarker(id: string, name: string, position: number, duration = 0, kind: MarkerKind = "cue"): MarkerDoc {
   return {
     id,

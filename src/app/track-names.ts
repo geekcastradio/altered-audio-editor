@@ -16,3 +16,24 @@ export function trackNameFromFile(fileName: string): string {
     .trim();
   return s || base;
 }
+
+/**
+ * Names for `count` new tracks that do not clash with `existing`. With
+ * no base they continue "Track N"; with a base ("Guest") the first is
+ * the base itself when free, then "Guest 2", "Guest 3" and so on.
+ */
+export function newTrackNames(existing: readonly string[], count: number, base = ""): string[] {
+  const taken = new Set(existing);
+  const out: string[] = [];
+  const b = base.trim();
+  let n = b ? 1 : existing.length + 1;
+  while (out.length < count) {
+    const name = b ? (n === 1 ? b : `${b} ${n}`) : `Track ${n}`;
+    if (!taken.has(name)) {
+      out.push(name);
+      taken.add(name);
+    }
+    n++;
+  }
+  return out;
+}

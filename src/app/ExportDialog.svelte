@@ -18,6 +18,8 @@
     folder: string;
     format: OutputFormat;
     addToFiles: boolean;
+    /** Write chapter markers into the file (MP3 and FLAC). */
+    chapters: boolean;
   }
 
   export interface ExportScopeInfo {
@@ -39,10 +41,12 @@
     scopes: ExportScopeInfo[];
     source: { sampleRate: number; channels: number; bitDepth: number };
     onBrowse: (from: string) => Promise<string | null>;
+    /** Chapter markers in the session. */
+    chapterCount?: number;
     onDone: (value: ExportSettings | null) => void;
   }
 
-  const { initial, scopes, source, onBrowse, onDone }: Props = $props();
+  const { initial, scopes, source, onBrowse, chapterCount = 0, onDone }: Props = $props();
 
   // svelte-ignore state_referenced_locally
   let s = $state<ExportSettings>({ ...initial, format: { ...initial.format } });
@@ -130,9 +134,15 @@
 
     <section class="options">
       <label class="check"><input type="checkbox" bind:checked={s.addToFiles} /> Add the file to the Files panel</label>
-      <label class="check off" title="Arrives with metadata export (title, artist, chapters).">
-        <input type="checkbox" disabled /> Include markers and metadata (arrives with metadata export)
-      </label>
+      {#if chapterCount > 0}
+        <label class="check" class:off={s.format.kind !== "mp3" && s.format.kind !== "flac"} title={s.format.kind === "mp3" || s.format.kind === "flac" ? "" : "Chapters go into MP3 and FLAC files. For other formats, use File > Export > Markers and Chapters."}>
+          <input type="checkbox" bind:checked={s.chapters} disabled={s.format.kind !== "mp3" && s.format.kind !== "flac"} /> Add the {chapterCount} chapter {chapterCount === 1 ? "marker" : "markers"} to the file
+        </label>
+      {:else}
+        <label class="check off" title="Set a marker's type to Chapter, or use Edit > Markers > Add Chapter Marker.">
+          <input type="checkbox" disabled /> Add chapters to the file (no chapter markers yet)
+        </label>
+      {/if}
     </section>
 
     <footer>

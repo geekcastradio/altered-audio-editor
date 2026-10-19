@@ -56,8 +56,9 @@ dependencies = [
 
 [[package]]
 name = "altered-audio-editor"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
+ "altered-os-aac",
  "audioadapter-buffers",
  "chrono",
  "cpal",
@@ -85,6 +86,13 @@ dependencies = [
  "url",
  "uuid",
  "zip",
+]
+
+[[package]]
+name = "altered-os-aac"
+version = "0.1.0"
+dependencies = [
+ "windows",
 ]
 
 [[package]]

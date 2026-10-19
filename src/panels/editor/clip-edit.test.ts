@@ -375,3 +375,48 @@ describe("looped clips", () => {
     expect(t[0]!.clips[0]!.looped).toBeNull();
   });
 });
+
+import { insertTime } from "./clip-edit";
+
+describe("insertTime", () => {
+  it("splits a clip at the point and pushes everything after it", () => {
+    const doc = session([track("A", [clip("a", 0), clip("b", 100_000)]), track("B", [clip("c", 60_000)])]);
+    let n = 0;
+    const op = insertTime(doc, ["A", "B"], 24_000, 48_000, () => `n${++n}`)!;
+    expect(op.op).toBe("batch");
+    const ops = (op as { ops: { op: string }[] }).ops;
+    expect(ops[0]!.op).toBe("batch"); // the split
+    const moves = ops.find((o) => o.op === "set_clips") as unknown as { changes: { id: string; start: number }[] };
+    expect(moves.changes).toEqual(
+      expect.arrayContaining([
+        { id: "n1", start: 72_000 },
+        { id: "b", start: 148_000 },
+        { id: "c", start: 108_000 },
+      ]),
+    );
+  });
+  it("only moves the chosen tracks, and refuses locked clips in the way", () => {
+    const doc = session([track("A", [clip("b", 100_000)]), track("B", [{ ...clip("c", 60_000), locked: true }])]);
+    const op = insertTime(doc, ["A"], 24_000, 48_000, () => "x")!;
+    expect(JSON.stringify(op)).not.toContain('"c"');
+    expect(() => insertTime(doc, ["A", "B"], 24_000, 48_000, () => "x")).toThrow(LockedError);
+  });
+});
+
+import { clearRange } from "./clip-edit";
+
+describe("clearRange", () => {
+  it("leaves silence in the range without moving later audio", () => {
+    const doc = session([track("A", [clip("a", 0), clip("b", 100_000)])]);
+    let n = 0;
+    const op = clearRange(doc, ["A"], 12_000, 24_000, () => `n${++n}`)!;
+    const json = JSON.stringify(op);
+    expect(json).toContain("remove_clips");
+    // Clip b, after the range, is not touched.
+    expect(json).not.toContain('"b"');
+  });
+  it("does nothing on empty time", () => {
+    const doc = session([track("A", [clip("b", 100_000)])]);
+    expect(clearRange(doc, ["A"], 0, 24_000, () => "x")).toBeNull();
+  });
+});

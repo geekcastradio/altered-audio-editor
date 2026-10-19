@@ -15,8 +15,9 @@
   import { editor, type EditorState } from "../../stores/editor";
   import type { PeakStore } from "../../stores/peaks";
   import type { CommandRunner } from "../../stores/media-pool";
-  import { clipLength, type ClipChange, type ClipDoc, type SessionDoc, type SessionStore, type TrackChanges, type TrackDoc } from "../../stores/session";
-  import { clipsAt, fadeClip, LockedError, moveClips, nearest, previewTracks, snapTargets, splitClips, trimClip, withCrossfades, withGroups } from "./clip-edit";
+  import { clipLength, stretchOf, type ClipChange, type ClipDoc, type SessionDoc, type SessionStore, type TrackChanges, type TrackDoc } from "../../stores/session";
+  import { stretchTo } from "./stretch";
+  import { clipsAt, fadeClip, LockedError, MIN_CLIP, moveClips, nearest, previewTracks, snapTargets, splitClips, trimClip, withCrossfades, withGroups } from "./clip-edit";
   import { addPoint, chipBox, chipLabel, formatValue, levelAt, movePoint, pointsOf, valueToY, yToValue, type EnvKind } from "./envelope";
   import LaneCanvas from "./LaneCanvas.svelte";
   import Dial from "./Dial.svelte";
@@ -28,7 +29,7 @@
   import type { Readable } from "svelte/store";
   import type { WaveFile } from "../../stores/wave";
   import OverviewStrip from "./OverviewStrip.svelte";
-  import { KIND_COLORS, markerAt } from "../markers/markers";
+  import { KIND_COLORS, markerAt, markerCss } from "../markers/markers";
   import { type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
   import { defaultTrackColor, trackHeight, formatIn, rulerTicks, sampleAt, xOf, zoomAround, type Viewport, TRACK_GAP } from "./timeline";
 
@@ -242,7 +243,7 @@
     }
     for (const m of shownMarkers) {
       const mx = Math.round(xOf(m.position, view));
-      const color = cs.getPropertyValue(KIND_COLORS[m.kind]) || "#c8b040";
+      const color = m.color || cs.getPropertyValue(KIND_COLORS[m.kind]) || "#c8b040";
       if (m.duration > 0) {
         const ex = xOf(m.position + m.duration, view);
         if (ex >= 0 && mx <= w) {
@@ -388,6 +389,8 @@
   const SNAP_PX = 8;
   type Gesture = "move" | "trim-left" | "trim-right" | "fade-in" | "fade-out" | "env-line" | "env-point";
   let preview = $state<ClipChange[]>([]);
+  /** While Alt-dragging a clip edge: the stretch it would get. */
+  let stretchHint = $state<string | null>(null);
   /** Value readout beside the pointer while dragging an envelope point. */
   let envTip = $state<{ x: number; y: number; text: string } | null>(null);
   let hoverCursor = $state("default");
@@ -532,7 +535,7 @@
     e.preventDefault();
     const m = mediaMap.get(clip.media_id);
     const sr = m?.sample_rate || rate;
-    const toSrc = (d: number) => Math.round((d * sr) / rate);
+    const toSrc = (d: number) => Math.round((d * sr) / rate / stretchOf(clip));
     const x0 = e.clientX;
     const v = view;
     let change: ClipChange | null = null;
@@ -802,6 +805,8 @@
     let row = startRow;
     let moved = false;
     let changes: ClipChange[] = [];
+    // Alt while grabbing an edge stretches the clip instead of trimming it.
+    const stretching = e.altKey && (kind === "trim-left" || kind === "trim-right") && !clip.looped && !clip.locked;
     const move = (ev: PointerEvent) => {
       if (!moved && Math.abs(ev.clientX - startX) < 3 && Math.abs(ev.clientY - startY) < 3) return;
       moved = true;
@@ -812,6 +817,16 @@
         if (over) row = d0.tracks.findIndex((t) => t.id === over);
         changes = moveClips(d0, ids, dx, row - startRow, targets, tol).changes;
         if (ed.autoCrossfade) changes = withCrossfades(d0, changes);
+      } else if (stretching) {
+        const m = mediaMap.get(clip.media_id);
+        let edge = (kind === "trim-left" ? clip.start : end) + dx;
+        if (tol > 0) edge = nearest(edge, targets, tol) ?? edge;
+        edge = Math.round(edge);
+        const left = kind === "trim-left" ? Math.max(0, Math.min(edge, end - MIN_CLIP)) : clip.start;
+        const right = kind === "trim-right" ? Math.max(clip.start + MIN_CLIP, edge) : end;
+        const r = stretchTo(clip, m, rate, right - left, clip.stretch?.keep_pitch ?? true);
+        changes = r ? [left !== clip.start ? { ...r.change, start: left } : r.change] : [];
+        stretchHint = r ? `${Math.round(r.ratio * 1000) / 10}%${r.limited ? " (limit)" : ""}` : null;
       } else if (kind === "trim-left" || kind === "trim-right") {
         const side = kind === "trim-left" ? "left" : "right";
         const c = trimClip(d0, clip, side, dx, targets, tol);
@@ -839,9 +854,11 @@
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", up, true);
       preview = [];
+      stretchHint = null;
       if (!moved || changes.length === 0) return;
-      const label =
-        kind === "move"
+      const label = stretching
+        ? "Stretch Clip"
+        : kind === "move"
           ? ids.length > 1
             ? `Move ${ids.length} Clips`
             : "Move Clip"
@@ -898,6 +915,19 @@
         act("Clip Color...", "clip.color"),
         act("Group Clips", "clip.group"),
         act("Ungroup Clips", "clip.ungroup"),
+        {
+          kind: "sub",
+          label: "Audio Type",
+          items: [
+            { ...(act("Dialogue", "clip.type.dialogue") as Extract<ContextItem, { kind: "item" }>), checked: actions.isChecked("clip.type.dialogue") === true },
+            { ...(act("Music", "clip.type.music") as Extract<ContextItem, { kind: "item" }>), checked: actions.isChecked("clip.type.music") === true },
+            { ...(act("Sound Effects", "clip.type.sfx") as Extract<ContextItem, { kind: "item" }>), checked: actions.isChecked("clip.type.sfx") === true },
+            { ...(act("Ambience", "clip.type.ambience") as Extract<ContextItem, { kind: "item" }>), checked: actions.isChecked("clip.type.ambience") === true },
+            { kind: "sep" },
+            act("None", "clip.type.none"),
+          ],
+        },
+        act("Time Stretch...", "clip.stretch"),
         act(actions.isChecked("clip.fade-in") ? "Remove Fade In" : "Fade In", "clip.fade-in"),
         act(actions.isChecked("clip.fade-out") ? "Remove Fade Out" : "Fade Out", "clip.fade-out"),
         { kind: "sep" },
@@ -945,7 +975,12 @@
         sep,
         act("Clips to Start of Session", "edit.select-clips-session-start"),
         act("Clips to End of Session", "edit.select-clips-session-end"),
-        sub("Clips of Audio Type", [], "Clips don't carry an audio type yet."),
+        sub("Clips of Audio Type", [
+          act("Dialogue", "edit.select-type.dialogue"),
+          act("Music", "edit.select-type.music"),
+          act("Sound Effects", "edit.select-type.sfx"),
+          act("Ambience", "edit.select-type.ambience"),
+        ]),
         sep,
         act("Select Current View Time", "edit.select-view-time"),
         act("Select All Time", "edit.select-all-time"),
@@ -957,6 +992,7 @@
       sub("Track", [
         act("Add Mono Audio Track", "multitrack.add.mono"),
         act("Add Stereo Audio Track", "multitrack.add.stereo"),
+        act("Add Tracks...", "multitrack.add-tracks"),
         off("Add 5.1 Audio Track", "Surround tracks are not planned."),
         sep,
         off("Add Mono Bus Track", "Bus tracks arrive with effects (P5)."),
@@ -975,7 +1011,7 @@
         act("Files as Tracks...", "multitrack.insert-tracks"),
         act("Selected Files as Tracks", "multitrack.insert-selected-tracks"),
         sep,
-        off("Silence...", "Arrives with the Generate tools."),
+        act("Silence...", "multitrack.insert-silence"),
       ]),
       sub("Marker", [
         act("Add Cue Marker", "edit.marker.cue"),
@@ -1407,7 +1443,7 @@
                 type="button"
                 class="ms mon"
                 class:on={!!track.monitor_input}
-                title="Monitor Input: hear the input through this track (coming soon; the setting is saved now)"
+                title="Monitor Input: hear this track's input through the speakers while it is armed. Use headphones: speakers feed back into the mic."
                 aria-pressed={!!track.monitor_input}
                 onclick={() => setTrack(track, { monitor_input: !track.monitor_input }, "Monitor Input")}
               >
@@ -1471,6 +1507,7 @@
       </div>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="lanes" class:dropping bind:this={lanesEl} bind:clientWidth={lanesWidth} onpointerleave={() => (razor = null)}>
+        {#if stretchHint}<div class="stretch-hint" aria-live="polite">Stretch {stretchHint}</div>{/if}
         {#if selBox}
           <div class="selBox" style:left="{selBox.x}px" style:top="{selBox.y}px" style:width="{selBox.w}px" style:height="{selBox.h}px"></div>
         {/if}
@@ -1517,7 +1554,7 @@
           {#each shownMarkers as m (m.id)}
             {@const mx = xOf(m.position, view)}
             {#if mx >= 0 && mx <= lanesWidth}
-              <div class="marker-line" style:left="{mx}px" style:border-color="var({KIND_COLORS[m.kind]})"></div>
+              <div class="marker-line" style:left="{mx}px" style:border-color={markerCss(m)}></div>
             {/if}
           {/each}
           {#if doc.view.selection}
@@ -2079,6 +2116,20 @@
     position: relative;
     flex: 1;
     min-width: 0;
+  }
+
+  .stretch-hint {
+    position: absolute;
+    top: 4px;
+    right: 8px;
+    z-index: 6;
+    padding: 2px 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: 11px;
+    pointer-events: none;
   }
 
   .selBox {

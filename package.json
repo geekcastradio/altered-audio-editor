@@ -1,12 +1,13 @@
 {
   "name": "altered-audio-editor",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Free, open-source multitrack audio editor for podcasters and voiceover, by The GCRN.",
   "license": "GPL-3.0-or-later",
   "author": "The GeekCast Radio Network, LLC",
   "type": "module",
   "scripts": {
+    "bump": "node scripts/bump-version.mjs",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",

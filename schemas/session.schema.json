@@ -69,6 +69,14 @@
     "name": {
       "type": "string"
     },
+    "playlist": {
+      "description": "Playlist panel: range markers in the order they play and export.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      }
+    },
     "sample_rate": {
       "description": "Session sample rate in Hz, for example 48000.",
       "type": "integer",
@@ -121,6 +129,16 @@
     "metadata"
   ],
   "$defs": {
+    "AudioType": {
+      "description": "What a clip holds.",
+      "type": "string",
+      "enum": [
+        "dialogue",
+        "music",
+        "sfx",
+        "ambience"
+      ]
+    },
     "Bus": {
       "description": "A bus track. Tracks and other buses can output to it.",
       "type": "object",
@@ -225,6 +243,17 @@
       "description": "A non-destructive reference to part of a media file, placed on a\ntrack.",
       "type": "object",
       "properties": {
+        "audio_type": {
+          "description": "What the clip is: dialogue, music, sound effects or ambience.\nUsed to select clips by kind, and later by the Audio FX Panel.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AudioType"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "color": {
           "description": "Clip color as `#rrggbb`. None uses the track color.",
           "type": [
@@ -308,6 +337,17 @@
           "type": "integer",
           "format": "uint64",
           "minimum": 0
+        },
+        "stretch": {
+          "description": "Time stretch: the source region plays over `ratio` times its\nnatural length. Ignored while the clip loops.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ClipStretch"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -346,6 +386,25 @@
       "required": [
         "length",
         "phase"
+      ]
+    },
+    "ClipStretch": {
+      "description": "How a stretched clip plays.",
+      "type": "object",
+      "properties": {
+        "keep_pitch": {
+          "description": "True keeps the pitch (for speech and ad fitting); false changes\npitch with speed, like a tape running faster or slower.",
+          "type": "boolean"
+        },
+        "ratio": {
+          "description": "Timeline length over natural length: 1.25 plays 25 percent longer.",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "ratio",
+        "keep_pitch"
       ]
     },
     "EffectChain": {
@@ -646,6 +705,13 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "color": {
+          "description": "`#rrggbb`. None uses the color of the marker's type.",
+          "type": [
+            "string",
+            "null"
           ]
         },
         "contracted_duration": {

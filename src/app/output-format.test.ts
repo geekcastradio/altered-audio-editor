@@ -26,15 +26,22 @@ describe("output format", () => {
   });
 
   it("offers the depths each format writes", () => {
-    expect(depthsFor("wav").map((d) => d.value)).toEqual([16, 24, 32]);
+    expect(depthsFor("wav").map((d) => d.value)).toEqual([4, 8, 16, 24, 32]);
+    expect(describeFormat({ ...DEFAULT_FORMAT, bitDepth: 4 }, src)).toBe("WAV 4-bit IMA ADPCM, 48000 Hz stereo");
+    expect(describeFormat({ ...DEFAULT_FORMAT, bitDepth: 8 }, src)).toBe("WAV 8-bit, 48000 Hz stereo");
+    expect(estimateBytes({ ...DEFAULT_FORMAT, bitDepth: 4 }, 10, src)).toBe(48_000 * 2 * 0.5 * 10);
     expect(depthsFor("flac").map((d) => d.value)).toEqual([16, 24]);
     expect(depthsFor("mp3")).toEqual([]);
+    expect(depthsFor("m4a")).toEqual([]);
+    expect(describeFormat({ ...DEFAULT_FORMAT, kind: "m4a", aacBitrate: 160 }, { sampleRate: 96_000, channels: 6, bitDepth: 24 })).toBe("AAC 160 kbps, 48000 Hz stereo");
+    expect(kindOfPath("Episode.M4A")).toBe("m4a");
+    expect(sanitizeFormat({ kind: "m4a", aacBitrate: 999 }).aacBitrate).toBe(128);
   });
 
   it("estimates sizes and reads formats from names", () => {
     expect(estimateBytes({ ...DEFAULT_FORMAT, kind: "mp3" }, 60, src)).toBe(1_440_000);
     expect(estimateBytes(DEFAULT_FORMAT, 1, src)).toBe(288_000);
     expect(kindOfPath("C:\\a\\Ep 1.FLAC")).toBe("flac");
-    expect(kindOfPath("ep.m4a")).toBeNull();
+    expect(kindOfPath("ep.m4a")).toBe("m4a");
   });
 });

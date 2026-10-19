@@ -5,6 +5,7 @@
 //! Reading audio files: identify and measure them (`probe`), and stream
 //! decoded samples at any rate and channel count (`AudioReader`).
 
+pub mod cue;
 mod opus;
 mod probe;
 mod reader;

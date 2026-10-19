@@ -4,7 +4,7 @@
 
 [package]
 name = "altered-audio-editor"
-version = "0.1.1"
+version = "0.1.2"
 description = "Free, open-source multitrack audio editor for podcasters and voiceover."
 authors = ["The GeekCast Radio Network, LLC"]
 license = "GPL-3.0-or-later"
@@ -21,6 +21,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# AAC export through the encoder built into the OS (see os-aac/).
+altered-os-aac = { path = "os-aac" }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

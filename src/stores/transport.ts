@@ -34,6 +34,8 @@ export interface TransportState {
   position: number;
   master: [MeterLevel, MeterLevel];
   tracks: Record<string, [MeterLevel, MeterLevel]>;
+  /** Track Voice Chain meters by track id: left in, right in, left out, right out. Only tracks whose chain does something. */
+  chains: Record<string, [MeterLevel, MeterLevel, MeterLevel, MeterLevel]>;
 }
 
 const FALL_PER_TICK = 0.86;
@@ -41,10 +43,25 @@ const PEAK_HOLD_TICKS = 30;
 
 const quiet = (): MeterLevel => ({ level: 0, peak: 0, over: false });
 
+/** One meter reading folded into the last: slow fall, held peak. `hold` counts ticks left. */
+export function foldMeter(prev: MeterLevel, reading: number, hold: number): { meter: MeterLevel; hold: number } {
+  const level = Math.max(reading, prev.level * FALL_PER_TICK);
+  let peak = prev.peak;
+  if (reading >= peak) {
+    peak = reading;
+    hold = PEAK_HOLD_TICKS;
+  } else if (hold > 0) {
+    hold--;
+  } else {
+    peak = Math.max(level, peak * FALL_PER_TICK);
+  }
+  return { meter: { level, peak, over: prev.over || reading > 1 }, hold };
+}
+
 type Listener = (s: TransportState) => void;
 
 export class TransportStore {
-  private state: TransportState = { playing: false, position: 0, master: [quiet(), quiet()], tracks: {} };
+  private state: TransportState = { playing: false, position: 0, master: [quiet(), quiet()], tracks: {}, chains: {} };
   private readonly listeners = new Set<Listener>();
   private startedAt = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -119,7 +136,7 @@ export class TransportStore {
     const rest = (m: MeterLevel): MeterLevel => ({ level: 0, peak: 0, over: m.over });
     const tracks: Record<string, [MeterLevel, MeterLevel]> = {};
     for (const [id, [l, r]] of Object.entries(this.state.tracks)) if (l.over || r.over) tracks[id] = [rest(l), rest(r)];
-    this.set({ playing: false, position, master: [rest(this.state.master[0]), rest(this.state.master[1])], tracks });
+    this.set({ playing: false, position, master: [rest(this.state.master[0]), rest(this.state.master[1])], tracks, chains: {} });
   }
 
   /** Clears the over lights of one track, or of the master with no id. */
@@ -161,27 +178,25 @@ export class TransportStore {
       const prev = this.state.tracks[id] ?? [quiet(), quiet()];
       tracks[id] = [this.meter(`${id}:0`, prev[0], m[0]), this.meter(`${id}:1`, prev[1], m[1])];
     });
+    const chains: TransportState["chains"] = {};
+    s.trackIds.forEach((id, i) => {
+      const m = s.chainMeters?.[i];
+      if (!m) return;
+      const prev = this.state.chains[id] ?? [quiet(), quiet(), quiet(), quiet()];
+      chains[id] = [0, 1, 2, 3].map((k) => this.meter(`${id}:fx${k}`, prev[k]!, m[k]!)) as TransportState["chains"][string];
+    });
     this.set({
       position: s.position,
       tracks,
+      chains,
       master: [this.meter("m:0", this.state.master[0], s.master[0]), this.meter("m:1", this.state.master[1], s.master[1])],
     });
   }
 
   private meter(key: string, prev: MeterLevel, reading: number): MeterLevel {
-    const level = Math.max(reading, prev.level * FALL_PER_TICK);
-    let peak = prev.peak;
-    let hold = this.holds.get(key) ?? 0;
-    if (reading >= peak) {
-      peak = reading;
-      hold = PEAK_HOLD_TICKS;
-    } else if (hold > 0) {
-      hold--;
-    } else {
-      peak = Math.max(level, peak * FALL_PER_TICK);
-    }
-    this.holds.set(key, hold);
-    return { level, peak, over: prev.over || reading > 1 };
+    const r = foldMeter(prev, reading, this.holds.get(key) ?? 0);
+    this.holds.set(key, r.hold);
+    return r.meter;
   }
 
   private set(patch: Partial<TransportState>): void {

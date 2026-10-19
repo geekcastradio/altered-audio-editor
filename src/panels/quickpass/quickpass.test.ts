@@ -3,7 +3,7 @@
 // This file is part of Altered Audio Editor.
 
 import { describe, expect, it } from "vitest";
-import { BUILTIN_PRESETS, cutRange, DEFAULTS, findSilences, sanitizeSettings, shiftFindings, silentRuns, suggestLevels, type Finding } from "./quickpass";
+import { BUILTIN_PRESETS, clipRuns, cutRange, DEFAULTS, findAll, noiseRuns, scanInfo, findSilences, sanitizeSettings, shiftFindings, silentRuns, suggestLevels, type Finding } from "./quickpass";
 
 const W = 0.1; // seconds per window
 const s = { ...DEFAULTS, quietDb: -45, contentDb: -35, minQuietSec: 0.3, minContentSec: 0.2 };
@@ -37,12 +37,12 @@ describe("silentRuns", () => {
 describe("findSilences", () => {
   it("places findings on the timeline", () => {
     const f = findSilences(
-      [{ clipId: "c", start: 1000, window: 100, db: [...loud(2), ...quiet(5), ...loud(1)] }],
+      [{ clipId: "c", start: 1000, window: 100, db: [...loud(2), ...quiet(5), ...loud(1)], peak: [] }],
       new Map([["c", { trackId: "t", name: "Host" }]]),
       s,
       1000,
     );
-    expect(f).toEqual([{ id: "c:1200", trackId: "t", clipName: "Host", start: 1200, end: 1700 }]);
+    expect(f).toEqual([{ id: "c:1200", kind: "silence", trackId: "t", clipId: "c", clipName: "Host", start: 1200, end: 1700 }]);
   });
 });
 
@@ -69,7 +69,7 @@ describe("sanitizeSettings", () => {
 });
 
 describe("shiftFindings", () => {
-  const f = (id: string, trackId: string, start: number, end: number): Finding => ({ id, trackId, clipName: "", start, end });
+  const f = (id: string, trackId: string, start: number, end: number): Finding => ({ id, kind: "silence", trackId, clipName: "", start, end });
   it("moves later ones left on the same track only", () => {
     const gone = f("a", "t1", 100, 200);
     const out = shiftFindings([gone, f("b", "t1", 300, 400), f("c", "t2", 300, 400)], gone, "track");
@@ -84,7 +84,8 @@ describe("shiftFindings", () => {
   });
 });
 
-import { applyLocal, clipsOn, markersFor, removeOp, splitOp } from "./quickpass";
+import { applyLocal, clipsOn, duckOp, markersFor, removeOp, soundRuns, splitOp, spotFindings, spotsRequest } from "./quickpass";
+import { levelAt, volumePoints } from "../editor/envelope";
 import type { ClipDoc, SessionDoc, TrackDoc } from "../../stores/session";
 
 const fd = () => ({ length: 0, shape: "linear" as const, curve: 0 });
@@ -109,7 +110,7 @@ const span = (d: SessionDoc, id: string) => {
   const c = d.tracks.flatMap((t) => t.clips).find((x) => x.id === id)!;
   return [c.start, c.source_out - c.source_in] as const;
 };
-const fnd = (start: number, end: number) => ({ id: `f${start}`, trackId: "t", clipName: "a", start, end });
+const fnd = (start: number, end: number) => ({ id: `f${start}`, kind: "silence" as const, trackId: "t", clipName: "a", start, end });
 
 describe("acting on findings", () => {
   it("removes two silences from one clip in a single edit", () => {
@@ -160,5 +161,117 @@ describe("presets", () => {
     const names = BUILTIN_PRESETS.map((p) => p.name);
     expect(new Set(names).size).toBe(names.length);
     for (const p of BUILTIN_PRESETS) expect(sanitizeSettings(p.settings)).toEqual(p.settings);
+  });
+});
+
+describe("turning silences down", () => {
+  it("dips the volume over the silence and keeps the clip whole", () => {
+    const doc = mkDoc([mkClip("a", 0, 48_000)]);
+    const after = applyLocal(doc, duckOp(doc, [fnd(10_000, 20_000)], -15)!);
+    const c = after.tracks[0]!.clips;
+    expect(c).toHaveLength(1);
+    const pts = volumePoints(c[0]!);
+    expect(levelAt(pts, 15_000)).toBeCloseTo(-15);
+    expect(levelAt(pts, 5_000)).toBeCloseTo(0);
+    expect(levelAt(pts, 30_000)).toBeCloseTo(0);
+  });
+  it("keeps an existing envelope level either side", () => {
+    const base = mkClip("a", 0, 48_000);
+    const withEnv = { ...base, envelopes: [{ id: "e", target: { type: "volume" as const }, enabled: true, points: [{ position: 0, value: -6, curve: "linear" as const }, { position: 48_000, value: -6, curve: "linear" as const }] }] };
+    const doc = mkDoc([withEnv]);
+    const after = applyLocal(doc, duckOp(doc, [fnd(10_000, 20_000)], -10)!);
+    const pts = volumePoints(after.tracks[0]!.clips[0]!);
+    expect(levelAt(pts, 15_000)).toBeCloseTo(-16);
+    expect(levelAt(pts, 40_000)).toBeCloseTo(-6);
+  });
+  it("leaves locked clips alone", () => {
+    const doc = mkDoc([{ ...mkClip("a", 0, 48_000), locked: true }]);
+    expect(duckOp(doc, [fnd(10_000, 20_000)], -10)).toBeNull();
+  });
+});
+
+describe("short noises", () => {
+  const n = { ...DEFAULTS, scan: "noise" as const, quietDb: -45, maxBurstSec: 0.3, guardSec: 0.3 };
+  it("finds a cough between sentences", () => {
+    // speech, quiet, 0.2 s cough, quiet, speech
+    const db = [...loud(10), ...quiet(5), ...loud(2), ...quiet(5), ...loud(10)];
+    expect(noiseRuns(db, W, n)).toEqual([[14, 18]]);
+  });
+  it("leaves short words that sit close to other speech", () => {
+    const db = [...loud(10), ...quiet(2), ...loud(2), ...quiet(2), ...loud(10)];
+    expect(noiseRuns(db, W, n)).toEqual([]);
+  });
+  it("ignores sounds longer than the limit", () => {
+    const db = [...quiet(5), ...loud(5), ...quiet(5)];
+    expect(noiseRuns(db, W, n)).toEqual([]);
+  });
+  it("places noise findings on the timeline with their kind", () => {
+    const f = findAll(
+      [{ clipId: "c", start: 0, window: 100, db: [...quiet(5), ...loud(2), ...quiet(5)], peak: [] }],
+      new Map([["c", { trackId: "t", name: "Host" }]]),
+      n,
+      1000,
+    );
+    expect(f.map((x) => [x.kind, x.start, x.end])).toEqual([["noise", 400, 800]]);
+  });
+});
+
+describe("clipping", () => {
+  it("joins clipped windows that are close together", () => {
+    const peak = [-6, -0.1, -6, 0, -6, -6, -6, -6, -0.2, -6];
+    expect(clipRuns(peak, { ...DEFAULTS, clipDb: -0.3 })).toEqual([
+      [1, 4],
+      [8, 9],
+    ]);
+  });
+  it("offers repair, mark and split", () => {
+    expect(scanInfo("clipping").actions).toEqual(["repair", "mark", "split"]);
+    expect(sanitizeSettings({ scan: "clipping", action: "remove" }).action).toBe("repair");
+  });
+});
+
+describe("clicks, clipping and sound", () => {
+  it("turns the core's spots into findings with their clip", () => {
+    const f = spotFindings(
+      [
+        { clipId: "b", spans: [[5000, 5004]] },
+        { clipId: "a", spans: [[900, 902], [3000, 3001]] },
+        { clipId: "gone", spans: [[1, 2]] },
+      ],
+      new Map([
+        ["a", { trackId: "t1", name: "Host" }],
+        ["b", { trackId: "t2", name: "Guest" }],
+      ]),
+      "clicks",
+    );
+    expect(f.map((x) => [x.clipId, x.start, x.end])).toEqual([
+      ["a", 900, 903],
+      ["a", 3000, 3002],
+      ["b", 5000, 5005],
+    ]);
+    expect(f[0]!.kind).toBe("clicks");
+  });
+
+  it("asks the core for what the settings say", () => {
+    expect(spotsRequest({ ...DEFAULTS, scan: "clicks", clickSensitivity: 70, clickWidthMs: 0.5 })).toEqual({ kind: "clicks", sensitivity: 70, widthMs: 0.5 });
+    expect(spotsRequest({ ...DEFAULTS, scan: "clipping", clipDb: -0.5, clipLongestMs: 4 })).toEqual({ kind: "clipping", levelDb: -0.5, longestMs: 4 });
+  });
+
+  it("marks the parts with sound between silences", () => {
+    const st = { ...DEFAULTS, quietDb: -50, contentDb: -40, minQuietSec: 0.3, minContentSec: 0.1 };
+    const db = [...Array<number>(10).fill(-20), ...Array<number>(5).fill(-70), ...Array<number>(8).fill(-20), ...Array<number>(4).fill(-70)];
+    expect(soundRuns(db, 0.1, st)).toEqual([
+      [0, 10],
+      [15, 23],
+    ]);
+  });
+
+  it("ships repair presets that keep their scan type and action", () => {
+    for (const name of ["Remove Clicks", "Repair Clipping"]) {
+      const p = BUILTIN_PRESETS.find((x) => x.name === name)!;
+      expect(sanitizeSettings(p.settings).action).toBe("repair");
+    }
+    expect(BUILTIN_PRESETS.find((x) => x.name === "Mark Non-Silent Areas")!.settings.scan).toBe("audio");
+    expect(sanitizeSettings({ scan: "clicks", clickSensitivity: 500 }).clickSensitivity).toBe(100);
   });
 });

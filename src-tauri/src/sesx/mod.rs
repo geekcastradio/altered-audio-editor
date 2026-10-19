@@ -272,6 +272,8 @@ pub fn import(path: &Path) -> Result<Imported, SesxError> {
                 effects: EffectChain::default(),
                 group: None,
                 looped: None,
+                stretch: None,
+                audio_type: None,
             });
             report.clips += 1;
         }

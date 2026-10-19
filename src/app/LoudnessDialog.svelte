@@ -8,13 +8,16 @@
   gain when that alone would reach the target safely.
 -->
 <script lang="ts">
-  import { evaluate, targetById, TARGETS, type Grade, type LoudnessReport } from "./loudness";
+  import { BROADCAST_REGIONS, evaluate, regionById, targetById, targetsFor, type Grade, type LoudnessReport } from "./loudness";
 
   interface Props {
     report: LoudnessReport | null;
     /** 0 to 1 while measuring, null when idle. */
     progress: number | null;
     targetId: string;
+    /** Broadcast region id. */
+    region: string;
+    onRegion: (id: string) => void;
     /** "Whole session" or "Time selection". */
     scope: string;
     onTarget: (id: string) => void;
@@ -24,9 +27,10 @@
     onClose: () => void;
   }
 
-  const { report, progress, targetId, scope, onTarget, onMeasure, onCancel, onApplyGain, onClose }: Props = $props();
+  const { report, progress, targetId, region, onRegion, scope, onTarget, onMeasure, onCancel, onApplyGain, onClose }: Props = $props();
 
-  const target = $derived(targetById(targetId));
+  const target = $derived(targetById(targetId, region));
+  const targets = $derived(targetsFor(region));
   const verdict = $derived(report && !report.cancelled ? evaluate(report, target) : null);
   const n = (v: number | null | undefined, unit: string) => (v === null || v === undefined || !Number.isFinite(v) ? "-" : `${v.toFixed(1)} ${unit}`);
   const label: Record<Grade, string> = { pass: "Pass", close: "Close", fail: "Fix" };
@@ -42,11 +46,22 @@
     <label class="target">
       <span>Target</span>
       <select value={targetId} onchange={(e) => onTarget(e.currentTarget.value)} disabled={progress !== null}>
-        {#each TARGETS as t (t.id)}
+        {#each targets as t (t.id)}
           <option value={t.id}>{t.name}</option>
         {/each}
       </select>
     </label>
+    {#if target.id === "broadcast"}
+      <label class="target">
+        <span>Region</span>
+        <select value={region} onchange={(e) => onRegion(e.currentTarget.value)} disabled={progress !== null}>
+          {#each BROADCAST_REGIONS as r (r.id)}
+            <option value={r.id}>{r.name}: {r.standard}, {r.lufs} LUFS, peaks {r.peak} dBTP</option>
+          {/each}
+        </select>
+      </label>
+      <p class="scope">Broadcasters can set their own rules. Check the delivery spec you were given; {regionById(region).standard} is the usual starting point.</p>
+    {/if}
     <p class="scope">Measuring: {scope}. True peaks should stay at or below {target.peak} dBTP.</p>
 
     {#if progress !== null}

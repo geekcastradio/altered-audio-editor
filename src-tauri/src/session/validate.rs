@@ -197,6 +197,8 @@ mod tests {
             effects: Default::default(),
             group: None,
             looped: None,
+            stretch: None,
+            audio_type: None,
         });
         s.media.push(media);
         s.tracks.push(track);
@@ -276,6 +278,7 @@ mod tests {
             description: String::new(),
             chapter: None,
             contracted_duration: Some(48_000),
+            color: None,
         });
         assert_eq!(validate(&s).len(), 1);
         s.markers[0].kind = MarkerKind::AdSlot;

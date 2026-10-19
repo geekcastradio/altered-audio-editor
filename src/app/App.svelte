@@ -39,6 +39,7 @@
   import EditorPanel from "../panels/editor/EditorPanel.svelte";
   import { peaks, session, transport } from "../stores/open-session";
   import LevelsPanel from "../panels/levels/LevelsPanel.svelte";
+  import { PreviewMeter } from "../stores/preview-meter";
   import QuickPassPanel from "../panels/quickpass/QuickPassPanel.svelte";
   import BatchConvertPanel from "../panels/batch/BatchConvertPanel.svelte";
   import { trackNameFromFile } from "./track-names";
@@ -50,23 +51,40 @@
   import { fit, zoomAround } from "../panels/editor/timeline";
   import ChoiceDialog, { type ChoiceButton } from "./ChoiceDialog.svelte";
   import ExportDialog, { type ExportScopeInfo, type ExportSettings } from "./ExportDialog.svelte";
-  import { extensionOf, kindOfPath, sanitizeFormat, type OutputFormat } from "./output-format";
+  import { describeFormat, extensionOf, kindOfPath, sanitizeFormat, type OutputFormat } from "./output-format";
   import SessionPropertiesDialog from "./SessionPropertiesDialog.svelte";
   import PromptDialog from "./PromptDialog.svelte";
   import ExportProgress from "./ExportProgress.svelte";
   import LoudnessDialog from "./LoudnessDialog.svelte";
-  import { DEFAULT_TARGET, type LoudnessReport } from "./loudness";
+  import LoudnessMatchDialog from "./LoudnessMatchDialog.svelte";
+  import ExportMarkersDialog from "./ExportMarkersDialog.svelte";
+  import StretchDialog from "./StretchDialog.svelte";
+  import MusicFitDialog from "./MusicFitDialog.svelte";
+  import { describeJoins, describePlan, FIT_XFADE, fitOps, type FitPlan } from "../panels/editor/musicfit";
+  import { ALIGN_MAX_MS, alignOps, alignPair, describeAlign } from "../panels/editor/align";
+  import GenerateDialog, { type GenerateMode, type GenerateValues } from "./GenerateDialog.svelte";
+  import { naturalLength, stretchTo, unstretch } from "../panels/editor/stretch";
+  import { CHAPTER_FORMATS, embedList, type ChapterFormat } from "../panels/markers/chapters";
+  import { matchChanges, matchItems, matchRow, type MatchItem, type MatchRow } from "./loudness-match";
+  import { DEFAULT_REGION, DEFAULT_TARGET, targetById, type LoudnessReport } from "./loudness";
   import ClipColorDialog from "./ClipColorDialog.svelte";
   import MarkersPanel from "../panels/markers/MarkersPanel.svelte";
+  import PlaylistPanel from "../panels/playlist/PlaylistPanel.svelte";
+  import { exportNames } from "../panels/playlist/playlist";
   import { newMarker, nextMarkerName } from "../panels/markers/markers";
   import { listen } from "@tauri-apps/api/event";
   import {
+    clipEnd,
     clipsAt,
+    insertTime,
+    isolate,
+    clearRange,
     copyClips,
     fadeClip,
     findClips,
     loopChanges,
     gapAt,
+    mediaOf,
     LockedError,
     pasteClips,
     rippleDeleteClips,
@@ -76,8 +94,12 @@
     trimToRange,
     type ClipBoard,
   } from "../panels/editor/clip-edit";
-  import type { ClipChange } from "../stores/session";
+  import { AUDIO_TYPES, type ClipChange, type MarkerDoc } from "../stores/session";
   import { propertiesOp, type SessionProperties } from "./session-properties";
+  import { placeTake, punchStopAfter, recordPlan, sanitizeRecordOptions, type RecordOptions, type RecordPlan } from "./recording";
+  import RecordOptionsDialog from "./RecordOptionsDialog.svelte";
+  import AddTracksDialog, { type AddTracksValues } from "./AddTracksDialog.svelte";
+  import { newTrackNames } from "./track-names";
   import { SessionFiles, displayName, planOpen, type Choice } from "./session-files";
   import { RECENT_SLOTS, WORKSPACE_SLOTS } from "./menus/model";
   import {
@@ -89,6 +111,9 @@
     sessionPickOpen,
     filePickOpen,
     exportPickPath,
+    exportText,
+    exportEmbedChapters,
+    generateAudio,
     exportMixdown,
     exportMerge,
     exportRegionCopy,
@@ -111,17 +136,28 @@
     sessionSave,
     setWindowTitle,
     waveSpectralEdit,
+    waveApplyChain,
+    phaseAlign,
     recordStart,
     recordStatus,
     recordStop,
     recordMonitor,
+    effectsCatalog,
+    musicFit,
+    quickpassRepairCopy,
+    type SpotsRequest,
+    type EffectInfo,
     type RecordTarget,
     type Recoverable,
+    previewStatus,
   } from "./core";
   import { isTauri } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import type { MediaRefDoc, SessionDoc } from "../stores/session";
+  import type { EffectChainDoc, EffectTarget, MediaRefDoc, SessionDoc } from "../stores/session";
   import PendingPanel from "../panels/PendingPanel.svelte";
+  import VoiceChainPanel from "../panels/voice-chain/VoiceChainPanel.svelte";
+  import { addSlot, chainOf, newSlot } from "../panels/voice-chain/chain";
+  import type { Finding } from "../panels/quickpass/quickpass";
   import FilesPanel from "../panels/files/FilesPanel.svelte";
   import DriveManagerPanel from "../panels/drive-manager/DriveManagerPanel.svelte";
   import { prefs } from "../stores/prefs";
@@ -192,6 +228,7 @@
     }
   }
 
+  const previewMeter = new PreviewMeter({ status: () => previewStatus() });
   const uuid = () => crypto.randomUUID();
 
   function nextTrackName(tracks: readonly TrackDoc[]): string {
@@ -325,6 +362,70 @@
     const cut = Math.max(sp.lastIndexOf("/"), sp.lastIndexOf("\\"));
     const sep = sp.includes("\\") ? "\\" : "/";
     return `${sp.slice(0, cut)}${sep}${name}`;
+  }
+
+  /**
+   * QuickPass Repair: each clip with chosen clicks or clipped spots gets a
+   * copy of its audio with just those spots repaired, and plays that copy.
+   * The original file is never changed; one undo puts every clip back.
+   * Returns the ids of the findings that were fixed.
+   */
+  async function repairSpots(spots: SpotsRequest, list: Finding[]): Promise<string[]> {
+    const doc0 = session.current;
+    if (!doc0 || exporting) return [];
+    const byClip = new Map<string, Finding[]>();
+    for (const f of list) if (f.clipId) byClip.set(f.clipId, [...(byClip.get(f.clipId) ?? []), f]);
+    const found = findClips(doc0, new Set(byClip.keys())).filter((f) => !f.clip.locked);
+    const skipped = found.filter((f) => f.clip.looped || f.clip.stretch);
+    const work = found.filter((f) => !f.clip.looped && !f.clip.stretch);
+    if (skipped.length) showNotice(`Skipped ${skipped.length === 1 ? `"${skipped[0]!.clip.name}"` : `${skipped.length} clips`}: repair needs a clip that is not looped or stretched.`);
+    if (work.length === 0) return [];
+    const folder = await folderBesideSession("Repaired", "Repaired audio is kept in a folder next to it.");
+    if (!folder) return [];
+    exporting = { title: work.length === 1 ? "Repairing clip audio" : `Repairing audio for ${work.length} clips`, progress: 0 };
+    try {
+      const paths: string[] = [];
+      for (const [i, f] of work.entries()) {
+        const m = doc0.media.find((x) => x.id === f.clip.media_id);
+        if (!m) throw new Error(`The file for "${f.clip.name}" is missing from this session.`);
+        const ratio = (m.sample_rate || doc0.sample_rate) / doc0.sample_rate;
+        const spans = byClip.get(f.clip.id)!.map((g): [number, number] => [
+          Math.max(0, Math.round((g.start - f.clip.start) * ratio)),
+          Math.max(0, Math.round((g.end - f.clip.start) * ratio)),
+        ]);
+        paths.push(await quickpassRepairCopy(m.path, f.clip.source_in, f.clip.source_out, folder, `${f.clip.name} Repaired`, spots, spans));
+        exporting = { ...exporting!, progress: (i + 1) / work.length };
+      }
+      const imported = await mediaPool.importPaths(paths, sessionHistory);
+      await mediaPool.whenIdle();
+      const doc = session.current!;
+      const known = new Set(doc.media.map((x) => x.id));
+      const ops: Op[] = [];
+      const restored: [string, ClipDoc][] = [];
+      for (const [i, f] of work.entries()) {
+        const it = mediaPool.get(imported.ids[i]!);
+        if (!it || it.status !== "ready" || !it.info) throw new Error(`The repaired copy of "${f.clip.name}" could not be read back.`);
+        if (!known.has(it.id)) {
+          known.add(it.id);
+          ops.push({
+            op: "add_media",
+            media: { id: it.id, path: it.path, relative_path: null, sample_rate: it.info.sampleRate, channels: it.info.channels, length: it.info.length },
+          });
+        }
+        restored.push([f.track.id, { ...f.clip, media_id: it.id, source_in: 0, source_out: it.info.length }]);
+      }
+      ops.push({ op: "remove_clips", ids: work.map((f) => f.clip.id) }, { op: "restore_clips", clips: restored });
+      const n = work.reduce((a, f) => a + byClip.get(f.clip.id)!.length, 0);
+      await session.edit(spots.kind === "clicks" ? `Repair ${n === 1 ? "Click" : `${n} Clicks`}` : `Repair ${n === 1 ? "Clipped Spot" : `${n} Clipped Spots`}`, { op: "batch", ops }, sessionHistory);
+      showNotice(`Repaired ${n} ${spots.kind === "clicks" ? (n === 1 ? "click" : "clicks") : n === 1 ? "clipped spot" : "clipped spots"} in ${work.length === 1 ? `"${work[0]!.clip.name}"` : `${work.length} clips`}.`);
+      const ok = new Set(work.map((f) => f.clip.id));
+      return list.filter((f) => f.clipId && ok.has(f.clipId)).map((f) => f.id);
+    } catch (e) {
+      showError(e);
+      return [];
+    } finally {
+      exporting = null;
+    }
   }
 
   /**
@@ -478,6 +579,21 @@
         ? "Added to the Files panel. Drag it onto a track, or use Insert Files at Playhead."
         : `Added ${paths.length} files to the Files panel. Drag them onto tracks, or use Insert Files at Playhead.`,
     );
+  }
+
+  let addTracksOpen = $state(false);
+  async function addTracks(v: AddTracksValues) {
+    addTracksOpen = false;
+    const doc = session.current;
+    if (!doc) return;
+    const sel = editor.current().selectedTrack;
+    const i = doc.tracks.findIndex((t) => t.id === sel);
+    const start = i >= 0 ? i + 1 : doc.tracks.length;
+    const names = newTrackNames(doc.tracks.map((t) => t.name), v.count, v.base);
+    const ids = names.map(() => uuid());
+    const ops: Op[] = names.map((name, k) => ({ op: "add_track", id: ids[k]!, name, stereo: v.stereo, index: start + k }));
+    await session.edit(v.count === 1 ? "Add Track" : `Add ${v.count} Tracks`, { op: "batch", ops }, sessionHistory);
+    editor.selectTrack(ids[0]!);
   }
 
   function addTrack(stereo: boolean) {
@@ -657,6 +773,183 @@
     return sp ? sp.slice(0, Math.max(sp.lastIndexOf("/"), sp.lastIndexOf("\\"))) || null : null;
   }
 
+  // Effects > Generate, and Insert Silence.
+  const KEY_GENERATE = "generate.last";
+  let generateMode = $state<GenerateMode | null>(null);
+  const generateDefaults = (): GenerateValues => {
+    const saved = prefs.raw(KEY_GENERATE) as Partial<GenerateValues> | null;
+    return {
+      seconds: typeof saved?.seconds === "number" ? saved.seconds : 5,
+      frequency: typeof saved?.frequency === "number" ? saved.frequency : 1000,
+      levelDb: typeof saved?.levelDb === "number" ? saved.levelDb : -18,
+      noise: saved?.noise === "white" ? "white" : "pink",
+      channels: saved?.channels === 1 ? 1 : 2,
+      allTracks: saved?.allTracks !== false,
+      overwrite: false,
+    };
+  };
+  const selectedTrackDoc = () => session.current?.tracks.find((t) => t.id === editor.current().selectedTrack) ?? null;
+
+  async function applyGenerate(mode: GenerateMode, v: GenerateValues) {
+    generateMode = null;
+    prefs.set(KEY_GENERATE, v);
+    const doc = session.current;
+    if (!doc) return;
+    const at = playheadNow();
+    const len = Math.round(v.seconds * doc.sample_rate);
+    if (mode === "silence") {
+      const tracks = v.allTracks ? doc.tracks.map((t) => t.id) : [editor.current().selectedTrack ?? ""];
+      const sel = timeSel();
+      if (v.overwrite && sel) {
+        await guarded("Silence Time Selection", () => clearRange(doc, tracks, sel.start, sel.end, uuid), "There is no audio in the time selection.");
+        return;
+      }
+      await guarded("Insert Silence", () => insertTime(doc, tracks, at, len, uuid), "Nothing to move.");
+      return;
+    }
+    const folder = await folderBesideSession("Generated", "Generated audio is saved beside the session.");
+    if (!folder) return;
+    const sep = folder.includes("\\") ? "\\" : "/";
+    const what = mode === "tone" ? `Tone ${Math.round(v.frequency)} Hz` : `${v.noise === "pink" ? "Pink" : "White"} noise`;
+    const stamp = new Date().toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
+    const path = `${folder}${sep}${what} ${stamp}.wav`;
+    await generateAudio(path, {
+      kind: mode === "tone" ? "tone" : v.noise,
+      seconds: v.seconds,
+      frequency: v.frequency,
+      levelDb: v.levelDb,
+      sampleRate: doc.sample_rate,
+      channels: v.channels,
+    });
+    await placeFiles([path], editor.current().selectedTrack, at);
+  }
+
+  // Clip > Time Stretch.
+  // Clip > Fit Music to Length.
+  let fitFor = $state<string | null>(null);
+  const fitClip = $derived.by(() => {
+    const doc = session.current;
+    if (!doc || !fitFor) return null;
+    for (const t of doc.tracks) for (const c of t.clips) if (c.id === fitFor) return { clip: c, trackId: t.id };
+    return null;
+  });
+  function planFit(seconds: number): Promise<FitPlan[]> {
+    const doc = session.current;
+    const f = fitClip;
+    const m = f ? doc?.media.find((x) => x.id === f.clip.media_id) : undefined;
+    if (!doc || !f || !m) return Promise.reject(new Error("The clip is gone."));
+    const rate = m.sample_rate || doc.sample_rate;
+    return musicFit(m.path, f.clip.source_in / rate, f.clip.source_out / rate, seconds, FIT_XFADE);
+  }
+  async function runPhaseAlign() {
+    const d = session.current;
+    const pair = d ? alignPair(d, editor.current().selectedClips) : null;
+    if (!d || !pair) return;
+    const a = await phaseAlign(pair.reference, pair.other, ALIGN_MAX_MS);
+    const now = session.current ?? d;
+    const op = alignOps(now, pair.other, pair.trackId, a);
+    const track = now.tracks.find((t) => t.id === pair.trackId);
+    const clip = track?.clips.find((c) => c.id === pair.other);
+    if (op) await session.edit("Phase Align", op, sessionHistory);
+    showNotice(describeAlign(a, now.sample_rate, clip?.name ?? "the clip", track?.name ?? "its track"));
+  }
+
+  async function applyFit(plan: FitPlan) {
+    const doc = session.current;
+    const f = fitClip;
+    const m = f ? doc?.media.find((x) => x.id === f.clip.media_id) : undefined;
+    fitFor = null;
+    if (!doc || !f || !m) return;
+    await session.edit("Fit Music to Length", fitOps(doc, f.trackId, f.clip, m, plan, uuid), sessionHistory);
+    const origin = f.clip.source_in / (m.sample_rate || doc.sample_rate);
+    showNotice(`Fit ${f.clip.name}: ${describePlan(plan)}. ${describeJoins(plan, origin)}.`);
+  }
+
+  let stretchFor = $state<string | null>(null);
+  const stretchClip = $derived.by(() => {
+    const doc = session.current;
+    if (!doc || !stretchFor) return null;
+    for (const t of doc.tracks) for (const c of t.clips) if (c.id === stretchFor) return c;
+    return null;
+  });
+
+  async function applyStretch(seconds: number, keepPitch: boolean, toSelection: boolean) {
+    const doc = session.current;
+    const clip = stretchClip;
+    if (!doc || !clip) return;
+    const m = doc.media.find((x) => x.id === clip.media_id);
+    const r = stretchTo(clip, m, doc.sample_rate, Math.round(seconds * doc.sample_rate), keepPitch);
+    stretchFor = null;
+    if (!r) return showNotice("Nothing to change.");
+    const sel = toSelection ? timeSel() : null;
+    if (sel) r.change.start = sel.start;
+    await guarded("Time Stretch", () => ({ op: "set_clips", changes: [r.change] }), "Nothing to change.");
+    if (r.limited) showNotice("A clip plays from 25% to 400% of its natural length, so the stretch was limited.");
+  }
+
+  async function removeStretch(ids: Iterable<string>) {
+    const doc = session.current;
+    if (!doc) return;
+    const media = mediaOf(doc);
+    const changes = findClips(doc, ids).flatMap(({ clip }) => {
+      const ch = unstretch(clip, media.get(clip.media_id), doc.sample_rate);
+      return ch ? [ch] : [];
+    });
+    if (changes.length) await editClips("Remove Stretch", changes);
+  }
+
+  /** Playlist panel: each range as its own file, numbered in playlist order, in the last export format. */
+  async function exportPlaylist(items: MarkerDoc[]) {
+    const doc = session.current;
+    if (!doc || items.length === 0 || exporting) return;
+    const saved = prefs.raw(KEY_EXPORT) as { format?: unknown; folder?: unknown } | null;
+    const format = sanitizeFormat(saved?.format);
+    const start = (typeof saved?.folder === "string" && saved.folder) || sessionFolder();
+    const folder = await exportPickFolder(start || null, "Export Playlist To");
+    if (!folder) return;
+    const sep = folder.includes("\\") ? "\\" : "/";
+    const names = exportNames(items);
+    const paths = names.map((n) => `${folder.replace(/[\\/]+$/, "")}${sep}${n}.${extensionOf(format.kind)}`);
+    const exist = await pathsExist(paths);
+    if (exist.some(Boolean)) {
+      const ok = await ask("Replace files?", `${exist.filter(Boolean).length} of these files already exist in that folder.`, [
+        { label: "Replace", value: "yes", primary: true },
+        { label: "Cancel", value: "no" },
+      ]);
+      if (ok !== "yes") return;
+    }
+    exporting = { title: "Exporting playlist", progress: 0 };
+    try {
+      for (let i = 0; i < items.length; i++) {
+        const m = items[i]!;
+        exporting = { title: `Exporting ${i + 1} of ${items.length}: ${m.name}`, progress: i / items.length };
+        const r = await exportMixdown(paths[i]!, { range: [m.position, m.position + m.duration], format });
+        if (r.cancelled) {
+          showNotice(`Export stopped after ${i} of ${items.length} files.`);
+          return;
+        }
+      }
+      showNotice(`Exported ${items.length} ${items.length === 1 ? "file" : "files"} as ${describeFormat(format, { sampleRate: doc.sample_rate, channels: 2, bitDepth: doc.bit_depth })}.`);
+    } finally {
+      exporting = null;
+    }
+  }
+
+  // File > Export > Markers and Chapters.
+  const KEY_CHAPTER_FORMAT = "export.chapters-format";
+  let markersExport = $state<{ format: ChapterFormat } | null>(null);
+
+  async function saveMarkers(content: string, format: ChapterFormat) {
+    const doc = session.current;
+    const f = CHAPTER_FORMATS.find((x) => x.id === format);
+    if (!doc || !f) return;
+    const base = (doc.name || "Session").replace(/[\\/:*?"<>|]+/g, " ").trim() || "Session";
+    const path = await exportText(`${base} ${format === "podcast-json" ? "chapters" : "markers"}`, sessionFolder(), "Export Markers and Chapters", f.filter, f.ext, content);
+    if (!path) return;
+    markersExport = null;
+    showNotice(`Saved ${path.split(/[\\/]/).pop()}.`);
+  }
+
   /** File > Export: opens the Export Mixdown dialog, remembering the last format and folder. */
   function openExportDialog(source: MixSource) {
     const doc = session.current;
@@ -682,6 +975,7 @@
         folder,
         format: sanitizeFormat(saved?.format),
         addToFiles: saved?.addToFiles === true,
+        chapters: (saved as { chapters?: unknown } | null)?.chapters !== false,
       },
       scopes,
       source: { sampleRate: doc.sample_rate, channels: doc.master?.channels === "mono" ? 1 : 2, bitDepth: doc.bit_depth },
@@ -691,7 +985,7 @@
   async function finishExportDialog(v: ExportSettings | null) {
     exportReq = null;
     if (!v) return;
-    prefs.set(KEY_EXPORT, { format: v.format, folder: v.folder, addToFiles: v.addToFiles });
+    prefs.set(KEY_EXPORT, { format: v.format, folder: v.folder, addToFiles: v.addToFiles, chapters: v.chapters });
     const sep = v.folder.includes("\\") ? "\\" : "/";
     const path = `${v.folder.replace(/[\\/]+$/, "")}${sep}${fileSafe(v.name)}.${extensionOf(v.format.kind)}`;
     const [exists] = await pathsExist([path]);
@@ -702,7 +996,7 @@
       ]);
       if (ok !== "yes") return;
     }
-    await runMixdown(v.scope, v.addToFiles ? "files-panel" : "file", path, v.format);
+    await runMixdown(v.scope, v.addToFiles ? "files-panel" : "file", path, v.format, v.chapters);
   }
 
   async function mixDown(source: MixSource, target: MixTarget) {
@@ -718,7 +1012,7 @@
     await runMixdown(source, target, path, null);
   }
 
-  async function runMixdown(source: MixSource, target: MixTarget, path: string, format: OutputFormat | null) {
+  async function runMixdown(source: MixSource, target: MixTarget, path: string, format: OutputFormat | null, chapters = false) {
     const what = mixRange(source);
     if (!what || exporting) return;
     exporting = { title: target === "track" ? "Bouncing to a new track" : "Exporting mixdown", progress: 0 };
@@ -737,16 +1031,25 @@
         return;
       }
       const name = path.split(/[\\/]/).pop();
+      let chapterNote = "";
+      const doc = session.current;
+      if (chapters && doc && (format?.kind === "mp3" || format?.kind === "flac")) {
+        const list = embedList(doc.markers, doc.sample_rate, what.range ?? null);
+        if (list.length) {
+          await exportEmbedChapters(path, list, Math.round((r.frames / r.sampleRate) * 1000));
+          chapterNote = ` ${list.length} ${list.length === 1 ? "chapter" : "chapters"} added.`;
+        }
+      }
       const clipped = r.peak > 1 ? ` The mix clipped (peak +${(20 * Math.log10(r.peak)).toFixed(1)} dB); turn the Master down and export again.` : "";
       if (target === "files-panel") {
         const imported = await mediaPool.importPaths([path], sessionHistory);
         mediaPool.setSelection(imported.ids);
-        showNotice(`Mixed down to ${name} and added it to the Files panel.${clipped}`);
+        showNotice(`Mixed down to ${name} and added it to the Files panel.${chapterNote}${clipped}`);
       } else if (target === "track") {
         await placeFiles([path], null, what.start);
         showNotice(`Bounced to ${name} on a new track.${clipped}`);
       } else {
-        showNotice(`Exported ${name}.${clipped}`);
+        showNotice(`Exported ${name}.${chapterNote}${clipped}`);
       }
     } catch (e) {
       showError(e);
@@ -804,7 +1107,8 @@
 
   // Check Loudness: measures the whole session, or the time selection when there is one.
   const KEY_LOUD_TARGET = "loudness.target";
-  let loud = $state<{ report: LoudnessReport | null; progress: number | null; target: string; scope: string } | null>(null);
+  const KEY_LOUD_REGION = "loudness.region";
+  let loud = $state<{ report: LoudnessReport | null; progress: number | null; target: string; region: string; scope: string } | null>(null);
 
   async function measureLoudness() {
     if (!loud || loud.progress !== null) return;
@@ -832,6 +1136,61 @@
     showNotice(`Master set to ${next > 0 ? "+" : ""}${next.toFixed(1)} dB. Measuring again.`);
     if (loud) loud = { ...loud, report: null };
     await measureLoudness();
+  }
+
+  // Effects > Loudness Match: clip gain so each selected clip, or each track, reaches a target.
+  const KEY_MATCH_TARGET = "loudness.match-target";
+  let lm = $state<{ mode: "clips" | "tracks"; items: MatchItem[]; rows: MatchRow[] | null; progress: number | null; target: string; region: string } | null>(null);
+  let lmStop = false;
+
+  function openLoudnessMatch() {
+    const doc = session.current;
+    if (!doc) return;
+    const { mode, items } = matchItems(doc, editor.current().selectedClips);
+    if (items.length === 0) return showNotice("There are no clips to match.");
+    lm = { mode, items, rows: null, progress: null, target: prefs.string(KEY_MATCH_TARGET, DEFAULT_TARGET), region: prefs.string(KEY_LOUD_REGION, DEFAULT_REGION) };
+    void measureMatch();
+  }
+
+  async function measureMatch() {
+    const doc = session.current;
+    if (!lm || !doc || lm.progress !== null) return;
+    const t = targetById(lm.target, lm.region);
+    const media = mediaOf(doc);
+    const rows: MatchRow[] = [];
+    lmStop = false;
+    lm = { ...lm, progress: 0 };
+    try {
+      for (let i = 0; i < lm.items.length; i++) {
+        const item = lm.items[i]!;
+        let report: LoudnessReport;
+        if (lm.mode === "clips") {
+          const clip = doc.tracks.flatMap((x) => x.clips).find((c) => c.id === item.clipIds[0]);
+          if (!clip) continue;
+          report = await loudnessCheck({ range: [clip.start, clipEnd(clip, media, doc.sample_rate)], clips: [clip.id], clipOnly: true });
+        } else {
+          report = await loudnessCheck({ track: item.key, clipOnly: true });
+        }
+        if (report.cancelled || lmStop || !lm) break;
+        rows.push(matchRow(item, report, t));
+        lm = { ...lm, progress: (i + 1) / lm.items.length };
+      }
+      if (lm) lm = { ...lm, progress: null, rows: lmStop ? lm.rows : rows };
+    } catch (e) {
+      if (lm) lm = { ...lm, progress: null };
+      showError(e);
+    }
+  }
+
+  async function applyMatch(rows: MatchRow[]) {
+    const doc = session.current;
+    if (!doc) return;
+    const changes = matchChanges(doc, rows);
+    if (changes.length === 0) return showNotice("Nothing needed changing.");
+    await session.edit("Loudness Match", { op: "set_clips", changes }, sessionHistory);
+    showNotice(`Clip gain changed on ${changes.length} ${changes.length === 1 ? "clip" : "clips"}. Measuring again.`);
+    if (lm) lm = { ...lm, rows: null };
+    await measureMatch();
   }
 
   let colorFor = $state<{ ids: string[]; current: string | null } | null>(null);
@@ -975,16 +1334,21 @@
       case "time-info":
         return { component: asComponent(TimeInfoPanel), props: { session, transport } };
       case "levels":
-        return { component: asComponent(LevelsPanel), props: { transport } };
+        return { component: asComponent(LevelsPanel), props: { transport, wave: waveTransport, preview: previewMeter } };
       case "batch-convert":
         return {
           component: asComponent(BatchConvertPanel),
           props: { pool: mediaPool, drop: fileDrop, prefs, onNotice: showNotice, onError: showError },
         };
+      case "voice-chain":
+        return {
+          component: asComponent(VoiceChainPanel),
+          props: { session, runner: sessionHistory, prefs, ask: promptText, transport, wave, waveTransport, onApplyWave: applyWaveChain, onNotice: showNotice, onError: showError },
+        };
       case "quickpass":
         return {
           component: asComponent(QuickPassPanel),
-          props: { session, transport, runner: sessionHistory, prefs, ask: promptText, onNotice: showNotice, onError: showError },
+          props: { session, transport, runner: sessionHistory, prefs, ask: promptText, onRepair: repairSpots, onNotice: showNotice, onError: showError },
         };
       case "libraries":
         return {
@@ -1000,10 +1364,15 @@
             onError: showError,
           },
         };
+      case "playlist":
+        return {
+          component: asComponent(PlaylistPanel),
+          props: { session, transport, runner: sessionHistory, onExport: (items: MarkerDoc[]) => void exportPlaylist(items).catch(showError), onError: showError },
+        };
       case "markers":
         return {
           component: asComponent(MarkersPanel),
-          props: { session, transport, runner: sessionHistory, actions, onError: showError },
+          props: { session, transport, runner: sessionHistory, actions, onError: showError, wave, waveRunner: waveHistory, waveTransport, waveFile },
         };
       case "editor":
         return {
@@ -1135,6 +1504,72 @@
   // Waveform editor. Edits act on the selection; Amplify and Normalize
   // act on the whole file when nothing is selected.
   const inWave = () => editor.current().mode === "waveform";
+  // Effects menu: adds an effect to the Voice Chain of the one selected
+  // clip, or else the selected track, and shows the panel.
+  const FX_MENU = [
+    "dynamics",
+    "limiter",
+    "breath_gate",
+    "deesser",
+    "speech_leveler",
+    "parametric_eq",
+    "hum_cut",
+    "gain",
+    "noise_reducer",
+    "noise_print",
+    "sound_eraser",
+    "hiss_reducer",
+    "room_reducer",
+    "click_repair",
+    "clip_repair",
+    "dc_offset",
+    "band_eq_10",
+    "band_eq_20",
+    "band_eq_30",
+    "curve_eq",
+    "precision_filter",
+    "notch",
+    "pitch_shift",
+    "center_remover",
+  ];
+  function fxTarget(): { target: EffectTarget; chain: EffectChainDoc | undefined; name: string; wave?: boolean } | null {
+    if (inWave()) {
+      const t = wave.current?.tracks[0];
+      return t ? { target: { kind: "track", id: t.id }, chain: t.effects, name: "the preview chain", wave: true } : null;
+    }
+    const d = session.current;
+    const ed = editor.current();
+    if (!d) return null;
+    if (ed.selectedClips.size === 1) {
+      const id = [...ed.selectedClips][0]!;
+      for (const t of d.tracks) {
+        const c = t.clips.find((x) => x.id === id);
+        if (c) return { target: { kind: "clip", id }, chain: c.effects, name: c.name };
+      }
+    }
+    const t = d.tracks.find((x) => x.id === ed.selectedTrack);
+    return t ? { target: { kind: "track", id: t.id }, chain: t.effects, name: t.name } : null;
+  }
+  let fxCatalog: EffectInfo[] | null = null;
+  async function addEffectFromMenu(effect: string) {
+    const at = fxTarget();
+    if (!at) return;
+    fxCatalog ??= await effectsCatalog();
+    const info = fxCatalog.find((e) => e.id === effect);
+    if (!info) return;
+    const next = addSlot(chainOf(at.chain), newSlot(info, uuid()));
+    if (!next) {
+      showNotice("That Voice Chain is full: it holds 16 effects.");
+      return;
+    }
+    const op = { op: "set_effects", target: at.target, chain: next } as const;
+    // In the Waveform editor the chain is a preview, not an edit; Apply in the panel writes it.
+    if (at.wave) await wave.apply(op);
+    else await session.edit(`Add ${info.name}`, op, sessionHistory);
+    dock.show("voice-chain");
+    showNotice(`Added ${info.name} to ${at.name}.`);
+  }
+
   const waveIsOpen = () => inWave() && waveFile.current() !== null;
   const waveFocus = () => waveIsOpen() && currentArea() !== "files" && currentArea() !== "libraries";
   const waveSel = (): [number, number] | null => {
@@ -1205,13 +1640,15 @@
     const stemName = waveName().replace(/\.[^.]+$/, "");
     let path: string | null = null;
     if (as || !savesInPlace(f)) {
-      const why = !as && !savesInPlace(f) ? `Save ${f.format || "this file"} as WAV, FLAC or MP3` : "Save Audio As";
+      const why = !as && !savesInPlace(f) ? `Save ${f.format || "this file"} as WAV, FLAC, MP3 or AAC` : "Save Audio As";
       path = await exportPickPath(stemName, folder, why, kindOfPath(f.path) ?? "wav", true);
       if (!path) return false;
       if (kindOfPath(path) === null) path = `${path}.wav`;
-      if (kindOfPath(path) === "mp3") {
-        const ok = await ask("Save as MP3?", "MP3 is lossy: fine for publishing, but keep a WAV or FLAC copy if you'll edit it again.", [
-          { label: "Save MP3", value: "yes", primary: true },
+      const lossyKind = kindOfPath(path);
+      if (lossyKind === "mp3" || lossyKind === "m4a") {
+        const name = lossyKind === "mp3" ? "MP3" : "AAC";
+        const ok = await ask(`Save as ${name}?`, `${name} is lossy: fine for publishing, but keep a WAV or FLAC copy if you'll edit it again.`, [
+          { label: `Save ${name}`, value: "yes", primary: true },
           { label: "Cancel", value: "no" },
         ]);
         if (ok !== "yes") return false;
@@ -1244,10 +1681,16 @@
       off = await listen<{ done: number; total: number }>("export-progress", (e) => {
         if (exporting) exporting = { ...exporting, progress: e.payload.total > 0 ? e.payload.done / e.payload.total : 0 };
       });
+      const markerCount = wave.current?.markers.length ?? 0;
       await saveWaveFile(path);
       const saved = waveFile.current()?.path ?? f.path;
       peaks.invalidate(saved);
-      showNotice(`Saved ${saved.split(/[\\/]/).pop()}.`);
+      const keepsMarkers = /\.wave?$/i.test(saved);
+      showNotice(
+        markerCount && !keepsMarkers
+          ? `Saved ${saved.split(/[\\/]/).pop()}. Its markers stay only while it is open: only WAV files store them.`
+          : `Saved ${saved.split(/[\\/]/).pop()}.`,
+      );
       return true;
     } catch (e) {
       showError(e);
@@ -1264,6 +1707,19 @@
     const r = waveAll();
     if (!d || !r || !db) return;
     await waveEdit(`Amplify ${db > 0 ? "+" : ""}${db.toFixed(1)} dB`, amplifyRange(d, r[0], r[1], db, uuid));
+  }
+
+  /** Writes the Waveform preview chain into the selection (or the whole file), then clears the preview. */
+  async function applyWaveChain(chain: EffectChainDoc) {
+    const d = wave.current;
+    const r = waveAll();
+    const t = d?.tracks[0];
+    if (!d || !r || !t) return;
+    const label = waveSel() ? "Apply Voice Chain to Selection" : "Apply Voice Chain";
+    const res = await waveApplyChain(chain, r[0], r[1]);
+    await waveEdit(label, replaceRange(wave.current ?? d, res.start, res.end, res.media, label, uuid));
+    await wave.apply({ op: "set_effects", target: { kind: "track", id: t.id }, chain: chainOf(null) });
+    showNotice(`${label}: done. Undo takes it back.`);
   }
 
   /** Spectral edit on the current spectral selection: turn it down by `db` (-120 removes it), or repair it. */
@@ -1285,7 +1741,10 @@
   // Recording. Multitrack: every armed track records its input into
   // its own file, from the playhead, while the session plays. Waveform
   // editor: the take goes into the file at the playhead.
-  let take: { mode: "multitrack" | "wave"; at: number } | null = null;
+  let take: { mode: "multitrack" | "wave"; at: number; plan?: RecordPlan; stopAfter?: number | null } | null = null;
+  const KEY_RECORD = "record.options";
+  const recordOptions = (): RecordOptions => sanitizeRecordOptions(prefs.raw(KEY_RECORD));
+  let recordOptionsOpen = $state(false);
   let recPoll: ReturnType<typeof setInterval> | undefined;
 
   function stamp(): string {
@@ -1331,11 +1790,14 @@
           input: t.input ?? null,
           channels: t.channels === "mono" ? 1 : 2,
           name: `${t.name} ${stamp()}`,
+          monitor: !!t.monitor_input,
         }));
-        const at = playheadNow();
+        const plan = recordPlan(playheadNow(), timeSel(), recordOptions(), doc.sample_rate);
+        const at = plan.at;
         await transport.stop();
         await recordStart(targets);
-        take = { mode: "multitrack", at };
+        take = { mode: "multitrack", at, plan, stopAfter: punchStopAfter(plan, doc.sample_rate) };
+        if (plan.punch) showNotice(`Punch-in: recording stops at the end of the time selection.`);
         liveTakes.set({ at, rate: 0, blocks: {} });
         void transport.play(at);
       }
@@ -1350,6 +1812,7 @@
 
   // Input meters: armed tracks' inputs stay open for their meters while
   // not recording, and the same poll feeds the live waveform while recording.
+  let lastMonitorNote = "";
   function startInputPoll() {
     if (recPoll) return;
     recPoll = setInterval(async () => {
@@ -1359,6 +1822,14 @@
         return;
       }
       if (st.recording) recording.set({ active: true, seconds: st.seconds, peak: st.peak });
+      if (st.monitorNote && st.monitorNote !== lastMonitorNote) showNotice(st.monitorNote);
+      lastMonitorNote = st.monitorNote ?? "";
+      // A punch-in stops by itself at the end of the selection.
+      if (st.recording && take?.stopAfter != null && st.seconds >= take.stopAfter) {
+        take = { ...take, stopAfter: null };
+        void finishRecord();
+        return;
+      }
       inputLevels.update((old) => {
         const next: Record<string, number> = {};
         for (const k of new Set([...Object.keys(old), ...Object.keys(st.live)])) {
@@ -1389,10 +1860,10 @@
   function syncMonitor(force = false) {
     if (take) return;
     const armed = (session.current?.tracks ?? []).filter((t) => t.record_armed);
-    const key = armed.map((t) => `${t.id}:${t.input ?? ""}:${t.channels}`).join("|");
+    const key = armed.map((t) => `${t.id}:${t.input ?? ""}:${t.channels}:${t.monitor_input ? 1 : 0}`).join("|");
     if (!force && key === monitorKey) return;
     monitorKey = key;
-    const targets: RecordTarget[] = armed.map((t) => ({ key: t.id, input: t.input ?? null, channels: t.channels === "mono" ? 1 : 2, name: t.name }));
+    const targets: RecordTarget[] = armed.map((t) => ({ key: t.id, input: t.input ?? null, channels: t.channels === "mono" ? 1 : 2, name: t.name, monitor: !!t.monitor_input }));
     void recordMonitor(targets).catch(() => {});
     if (targets.length) startInputPoll();
     else stopInputPoll();
@@ -1438,11 +1909,31 @@
       return;
     }
     const ops: Op[] = [];
+    const doc = session.current;
+    const opts = recordOptions();
+    const plan: RecordPlan = t.plan ?? { at: t.at, punch: null };
+    // A punch-in replaces what was in its range on each recorded track.
+    if (doc && plan.punch && opts.replace) {
+      try {
+        const { ops: cut, inside } = isolate(doc, usable.map((k) => k.key), plan.punch.start, plan.punch.end, uuid);
+        ops.push(...cut);
+        if (inside.length) ops.push({ op: "remove_clips", ids: inside });
+      } catch (e) {
+        if (e instanceof LockedError) showNotice("A locked clip is under the punch-in, so the new take was laid on top of it.");
+        else throw e;
+      }
+    }
     for (const k of usable) {
+      const placed = placeTake(plan, { length: k.length, sampleRate: k.sample_rate }, doc?.sample_rate ?? k.sample_rate, opts.offsetMs);
+      if (!placed) continue;
       const m = media(k);
       ops.push({ op: "add_media", media: m });
       const name = k.path.split(/[\\/]/).pop()?.replace(/\.wav$/i, "") ?? "Take";
-      ops.push({ op: "add_clips", track_id: k.key, clips: [{ id: uuid(), name, media_id: m.id, start: t.at, source_in: 0, source_out: k.length }] });
+      ops.push({ op: "add_clips", track_id: k.key, clips: [{ id: uuid(), name, media_id: m.id, start: placed.start, source_in: placed.sourceIn, source_out: placed.sourceOut }] });
+    }
+    if (!ops.some((o) => o.op === "add_clips")) {
+      showNotice("The take was shorter than the recording offset, so nothing was added.");
+      return;
     }
     try {
       await session.edit(usable.length === 1 ? "Record" : `Record ${usable.length} Tracks`, { op: "batch", ops }, sessionHistory);
@@ -1846,6 +2337,27 @@
         },
         label: () => "Close Audio File",
       }),
+      ov(waveIsOpen, {
+        id: "edit.marker.cue",
+        run: async () => {
+          const d = wave.current;
+          if (!d) return;
+          const m = newMarker(uuid(), nextMarkerName(d.markers), wavePlayhead());
+          await waveEdit("Add Marker", { op: "add_markers", markers: [m] });
+        },
+      }),
+      ov(waveIsOpen, {
+        id: "edit.marker.range",
+        run: async () => {
+          const d = wave.current;
+          const r = waveSel();
+          if (!d || !r) return;
+          const m = newMarker(uuid(), nextMarkerName(d.markers, "Range"), r[0], r[1] - r[0]);
+          await waveEdit("Add Range Marker", { op: "add_markers", markers: [m] });
+        },
+        enabled: () => waveSel() !== null,
+        reason: () => NEED_WAVE_SEL,
+      }),
       ov(waveIsOpen, { id: "multitrack.play-pause", run: () => waveTransport.toggle() }),
       ov(waveIsOpen, { id: "multitrack.stop", run: () => (take ? finishRecord() : waveTransport.stop()) }),
       ov(waveIsOpen, { id: "view.zoom-in", run: () => waveZoom.run?.("in") }),
@@ -2081,6 +2593,13 @@
         },
       }),
       actions.register({ id: "multitrack.add.mono", run: () => addTrack(false) }),
+      actions.register({
+        id: "multitrack.add-tracks",
+        run: () => {
+          addTracksOpen = true;
+        },
+        enabled: () => session.current !== null,
+      }),
       actions.register({ id: "multitrack.add.stereo", run: () => addTrack(true) }),
       actions.register({
         id: "multitrack.delete-track",
@@ -2279,10 +2798,33 @@
       actions.register({
         id: "file.check-loudness",
         run: () => {
-          loud = { report: null, progress: null, target: prefs.string(KEY_LOUD_TARGET, DEFAULT_TARGET), scope: "" };
+          loud = { report: null, progress: null, target: prefs.string(KEY_LOUD_TARGET, DEFAULT_TARGET), region: prefs.string(KEY_LOUD_REGION, DEFAULT_REGION), scope: "" };
           return measureLoudness();
         },
         enabled: () => exporting === null && contentEnd() > 0,
+        reason: () => "The session has no clips yet.",
+      }),
+      actions.register({
+        id: "file.export.markers",
+        run: () => {
+          const saved = prefs.string(KEY_CHAPTER_FORMAT, "timestamps");
+          markersExport = { format: CHAPTER_FORMATS.some((f) => f.id === saved) ? (saved as ChapterFormat) : "timestamps" };
+        },
+        enabled: () => (session.current?.markers.length ?? 0) > 0,
+        reason: () => "Add markers first (Edit > Markers).",
+      }),
+      ...FX_MENU.map((short) =>
+        actions.register({
+          id: `fx.add.${short}`,
+          run: () => addEffectFromMenu(`altaudio.${short}`),
+          enabled: () => fxTarget() !== null,
+          reason: () => (inWave() ? "Open a file in the Waveform editor first." : "Select a track or one clip first."),
+        }),
+      ),
+      actions.register({
+        id: "fx.loudness-match",
+        run: () => openLoudnessMatch(),
+        enabled: () => exporting === null && lm === null && (session.current?.tracks.some((t) => t.clips.length > 0) ?? false),
         reason: () => "The session has no clips yet.",
       }),
       actions.register({
@@ -2300,6 +2842,49 @@
           await session.edit("Add Marker", { op: "add_markers", markers: [m] }, sessionHistory);
         },
         enabled: () => session.current !== null,
+      }),
+      actions.register({
+        id: "edit.marker.chapter",
+        run: async () => {
+          const doc = session.current;
+          if (!doc) return;
+          const r = timeSel();
+          const m = r
+            ? newMarker(uuid(), nextMarkerName(doc.markers, "Chapter"), r.start, r.end - r.start, "chapter")
+            : newMarker(uuid(), nextMarkerName(doc.markers, "Chapter"), playheadNow(), 0, "chapter");
+          await session.edit("Add Chapter Marker", { op: "add_markers", markers: [m] }, sessionHistory);
+        },
+        enabled: () => session.current !== null,
+      }),
+      actions.register({
+        id: "edit.marker.ad-slot",
+        run: async () => {
+          const doc = session.current;
+          if (!doc) return;
+          const r = timeSel();
+          const secs = await promptText("Add Ad Slot", "Contracted length of the read (seconds)", r ? ((r.end - r.start) / doc.sample_rate).toFixed(1) : "30");
+          if (secs === null) return;
+          const len = Number(secs);
+          if (!Number.isFinite(len) || len <= 0 || len > 3600) return showNotice("Enter a length in seconds, for example 30 or 60.");
+          const contracted = Math.round(len * doc.sample_rate);
+          const m = r
+            ? newMarker(uuid(), nextMarkerName(doc.markers, "Ad"), r.start, r.end - r.start, "ad_slot")
+            : newMarker(uuid(), nextMarkerName(doc.markers, "Ad"), playheadNow(), contracted, "ad_slot");
+          await session.edit("Add Ad Slot", { op: "add_markers", markers: [{ ...m, contracted_duration: contracted }] }, sessionHistory);
+        },
+        enabled: () => session.current !== null,
+      }),
+      actions.register({
+        id: "edit.marker.social",
+        run: async () => {
+          const doc = session.current;
+          const r = timeSel();
+          if (!doc || !r) return;
+          const m = newMarker(uuid(), nextMarkerName(doc.markers, "Social Clip"), r.start, r.end - r.start, "social_clip");
+          await session.edit("Add Social Clip", { op: "add_markers", markers: [m] }, sessionHistory);
+        },
+        enabled: () => timeSel() !== null,
+        reason: () => "Select the part to share with the Time Selection tool first.",
       }),
       actions.register({
         id: "edit.marker.range",
@@ -2480,6 +3065,125 @@
         run: () => trimTo("end"),
         enabled: () => editor.current().selectedClips.size > 0,
         reason: () => "Select a clip first.",
+      }),
+      actions.register({
+        id: "fx.gen.tone",
+        run: () => {
+          generateMode = "tone";
+        },
+        enabled: () => !inWave() && session.current !== null,
+        reason: () => "Generate works in the Multitrack editor.",
+      }),
+      actions.register({
+        id: "fx.gen.noise",
+        run: () => {
+          generateMode = "noise";
+        },
+        enabled: () => !inWave() && session.current !== null,
+        reason: () => "Generate works in the Multitrack editor.",
+      }),
+      actions.register({
+        id: "fx.gen.silence",
+        run: () => {
+          generateMode = "silence";
+        },
+        enabled: () => !inWave() && (session.current?.tracks.length ?? 0) > 0,
+        reason: () => "Insert Silence works in the Multitrack editor.",
+      }),
+      actions.register({
+        id: "multitrack.insert-silence",
+        run: () => {
+          generateMode = "silence";
+        },
+        enabled: () => !inWave() && (session.current?.tracks.length ?? 0) > 0,
+        reason: () => "Insert Silence works in the Multitrack editor.",
+      }),
+      actions.register({
+        id: "multitrack.record-options",
+        run: () => {
+          recordOptionsOpen = true;
+        },
+      }),
+      ...AUDIO_TYPES.map((t) =>
+        actions.register({
+          id: `clip.type.${t.id}`,
+          run: () => editClips(`Audio Type: ${t.label}`, selectedClipDocs().map((c) => ({ id: c.id, audio_type: t.id }))),
+          enabled: () => selectedClipDocs().length > 0,
+          reason: () => "Select clips first.",
+          checked: () => {
+            const c = selectedClipDocs();
+            return c.length > 0 && c.every((x) => x.audio_type === t.id);
+          },
+        }),
+      ),
+      actions.register({
+        id: "clip.type.none",
+        run: () => editClips("Clear Audio Type", selectedClipDocs().filter((c) => c.audio_type).map((c) => ({ id: c.id, clear_audio_type: true }))),
+        enabled: () => selectedClipDocs().some((c) => !!c.audio_type),
+        reason: () => "None of the selected clips has an audio type.",
+      }),
+      ...AUDIO_TYPES.map((t) =>
+        actions.register({
+          id: `edit.select-type.${t.id}`,
+          run: () => {
+            const doc = session.current;
+            if (!doc) return;
+            const ids = doc.tracks.flatMap((tr) => tr.clips.filter((c) => c.audio_type === t.id).map((c) => c.id));
+            editor.selectClips(ids);
+            if (ids.length === 0) showNotice(`No clips are marked ${t.label}. Set a clip's type with Clip > Audio Type.`);
+          },
+          enabled: () => session.current?.tracks.some((tr) => tr.clips.some((c) => c.audio_type === t.id)) ?? false,
+          reason: () => `No clips are marked ${t.label} yet. Set one with Clip > Audio Type.`,
+        }),
+      ),
+      actions.register({
+        id: "clip.stretch",
+        run: () => {
+          const c = selectedClipDocs();
+          if (c.length === 1) stretchFor = c[0]!.id;
+        },
+        enabled: () => {
+          const c = selectedClipDocs();
+          return c.length === 1 && !c[0]!.locked && !c[0]!.looped;
+        },
+        reason: () => {
+          const c = selectedClipDocs();
+          if (c.length !== 1) return "Select one clip.";
+          if (c[0]!.locked) return "The clip is locked. Unlock it first (Clip > Lock Position).";
+          return "Looped clips cannot stretch. Turn off Loop Clip first.";
+        },
+      }),
+      actions.register({
+        id: "clip.phase-align",
+        run: () => void runPhaseAlign().catch(showError),
+        enabled: () => {
+          const d = session.current;
+          return d !== null && alignPair(d, editor.current().selectedClips) !== null;
+        },
+        reason: () => "Select two clips of the same sound on two tracks. The upper one stays put; the lower one moves.",
+      }),
+      actions.register({
+        id: "clip.music-fit",
+        run: () => {
+          const c = selectedClipDocs();
+          if (c.length === 1) fitFor = c[0]!.id;
+        },
+        enabled: () => {
+          const c = selectedClipDocs();
+          return c.length === 1 && !c[0]!.locked && !c[0]!.looped;
+        },
+        reason: () => {
+          const c = selectedClipDocs();
+          if (c.length !== 1) return "Select one music clip.";
+          if (c[0]!.locked) return "The clip is locked. Unlock it first (Clip > Lock Position).";
+          return "Turn off Loop Clip first.";
+        },
+      }),
+      actions.register({
+        id: "clip.stretch-reset",
+        run: () => removeStretch(editor.current().selectedClips),
+        enabled: () => selectedClipDocs().some((c) => !!c.stretch && !c.locked),
+        reason: () => "Select a stretched clip.",
       }),
       actions.register({
         id: "clip.loop",
@@ -2773,6 +3477,11 @@
     report={loud.report}
     progress={loud.progress}
     targetId={loud.target}
+    region={loud.region}
+    onRegion={(id) => {
+      prefs.set(KEY_LOUD_REGION, id);
+      if (loud) loud = { ...loud, region: id };
+    }}
     scope={loud.scope}
     onTarget={(id) => {
       prefs.set(KEY_LOUD_TARGET, id);
@@ -2782,6 +3491,115 @@
     onCancel={() => void exportCancel()}
     onApplyGain={(db) => void applyMasterGain(db).catch(showError)}
     onClose={() => (loud = null)}
+  />
+{/if}
+
+{#if addTracksOpen && session.current}
+  <AddTracksDialog
+    existing={session.current.tracks.map((t) => t.name)}
+    afterName={selectedTrackDoc()?.name ?? null}
+    onApply={(v) => void addTracks(v).catch(showError)}
+    onClose={() => (addTracksOpen = false)}
+  />
+{/if}
+
+{#if recordOptionsOpen}
+  <RecordOptionsDialog
+    initial={recordOptions()}
+    onApply={(o) => {
+      prefs.set(KEY_RECORD, o);
+      recordOptionsOpen = false;
+    }}
+    onClose={() => (recordOptionsOpen = false)}
+  />
+{/if}
+
+{#if generateMode}
+  {@const mode = generateMode}
+  <GenerateDialog
+    {mode}
+    initial={generateDefaults()}
+    trackName={selectedTrackDoc()?.name ?? null}
+    selection={mode === "silence" && timeSel() ? (timeSel()!.end - timeSel()!.start) / (session.current?.sample_rate ?? 48000) : null}
+    onApply={(v) => void applyGenerate(mode, v).catch(showError)}
+    onClose={() => (generateMode = null)}
+  />
+{/if}
+
+{#if fitClip && session.current}
+  {@const doc = session.current}
+  {@const sel = timeSel()}
+  {@const fm = doc.media.find((x) => x.id === fitClip.clip.media_id)}
+  <MusicFitDialog
+    clipName={fitClip.clip.name}
+    origin={fitClip.clip.source_in / (fm?.sample_rate || doc.sample_rate)}
+    current={clipEnd(fitClip.clip, mediaOf(doc), doc.sample_rate) / doc.sample_rate - fitClip.clip.start / doc.sample_rate}
+    selection={sel ? (sel.end - sel.start) / doc.sample_rate : null}
+    plan={planFit}
+    onApply={(p) => void applyFit(p).catch(showError)}
+    onClose={() => (fitFor = null)}
+  />
+{/if}
+
+{#if stretchClip && session.current}
+  {@const doc = session.current}
+  {@const m = doc.media.find((x) => x.id === stretchClip.media_id)}
+  {@const sel = timeSel()}
+  <StretchDialog
+    clipName={stretchClip.name}
+    natural={naturalLength(stretchClip, m, doc.sample_rate) / doc.sample_rate}
+    current={clipEnd(stretchClip, mediaOf(doc), doc.sample_rate) / doc.sample_rate - stretchClip.start / doc.sample_rate}
+    keepPitch={stretchClip.stretch?.keep_pitch ?? true}
+    selection={sel ? (sel.end - sel.start) / doc.sample_rate : null}
+    stretched={!!stretchClip.stretch}
+    onApply={(secs, pitch, toSel) => void applyStretch(secs, pitch, toSel).catch(showError)}
+    onReset={() => {
+      const id = stretchClip.id;
+      stretchFor = null;
+      void removeStretch([id]).catch(showError);
+    }}
+    onClose={() => (stretchFor = null)}
+  />
+{/if}
+
+{#if markersExport && session.current}
+  <ExportMarkersDialog
+    markers={session.current.markers}
+    rate={session.current.sample_rate}
+    format={markersExport.format}
+    onFormat={(f) => {
+      prefs.set(KEY_CHAPTER_FORMAT, f);
+      if (markersExport) markersExport = { format: f };
+    }}
+    onSave={(content, f) => void saveMarkers(content, f).catch(showError)}
+    onClose={() => (markersExport = null)}
+  />
+{/if}
+
+{#if lm}
+  <LoudnessMatchDialog
+    mode={lm.mode}
+    rows={lm.rows}
+    progress={lm.progress}
+    targetId={lm.target}
+    region={lm.region}
+    onTarget={(id) => {
+      prefs.set(KEY_MATCH_TARGET, id);
+      if (lm) lm = { ...lm, target: id, rows: null };
+      void measureMatch();
+    }}
+    onRegion={(id) => {
+      prefs.set(KEY_LOUD_REGION, id);
+      if (lm) lm = { ...lm, region: id, rows: null };
+      void measureMatch();
+    }}
+    onMeasure={() => void measureMatch()}
+    onCancel={() => {
+      lmStop = true;
+      void exportCancel();
+    }}
+    onApply={(rows) => void applyMatch(rows).catch(showError)}
+    onClose={() => (lm = null)}
   />
 {/if}
 
@@ -2811,6 +3629,7 @@
     initial={exportReq.initial}
     scopes={exportReq.scopes}
     source={exportReq.source}
+    chapterCount={session.current?.markers.filter((m) => m.kind === "chapter").length ?? 0}
     onBrowse={(from) => exportPickFolder(from || null, "Export To")}
     onDone={(v) => void finishExportDialog(v)}
   />

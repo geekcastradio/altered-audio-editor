@@ -3,7 +3,7 @@
 // This file is part of Altered Audio Editor.
 
 import { describe, expect, it } from "vitest";
-import { addRows, conflicts, destFor, expandTemplate, sanitizeBatch, type BatchRow } from "./batch";
+import { addRows, conflicts, destFor, effectiveTemplate, EMPTY_TAGS, expandTemplate, sanitizeBatch, sanitizeLevel, shapingFor, tagsFor, type BatchRow } from "./batch";
 
 const row = (id: string, source: string): BatchRow => ({ id, source, status: "waiting", progress: 0, error: null });
 
@@ -48,5 +48,29 @@ describe("Batch Convert", () => {
     });
     // Settings saved when the panel had Before and After boxes still work.
     expect(sanitizeBatch({ prefix: "Show_", suffix: "_v2" }).template).toBe("Show_{name}_v2");
+  });
+
+  it("fills tag fields per file and leaves blank ones out", () => {
+    const ctx = { number: 3, count: 12, date: new Date(2026, 9, 18) };
+    const t = tagsFor({ ...EMPTY_TAGS, title: "Ep {number}: {name}", artist: "  ", album: "Season 2" }, "C:\\a\\Pilot.wav", "mp3", ctx);
+    expect(t).toEqual({ title: "Ep 03: Pilot", album: "Season 2" });
+    expect(tagsFor(EMPTY_TAGS, "a.wav", "wav", ctx)).toBeNull();
+    expect(sanitizeBatch({}).copyTags).toBe(true);
+    expect(sanitizeBatch({ copyTags: false, tags: { title: 5, artist: "Me" } })).toMatchObject({ copyTags: false, tags: { title: "", artist: "Me" } });
+  });
+
+  it("names files by before-and-after text or a template", () => {
+    expect(effectiveTemplate({ naming: "affix", prefix: "GCRN_", suffix: "_final", template: "x" })).toBe("GCRN_{name}_final");
+    expect(effectiveTemplate({ naming: "template", prefix: "a", suffix: "b", template: "{number} {name}" })).toBe("{number} {name}");
+    expect(sanitizeBatch({}).naming).toBe("affix");
+    expect(sanitizeBatch({ template: "{date} {name}" }).naming).toBe("template");
+    expect(sanitizeBatch({ naming: "affix", template: "{date} {name}", process: "Podcast Voice" })).toMatchObject({ naming: "affix", process: "Podcast Voice" });
+  });
+  it("keeps level settings in range and sends them only when on", () => {
+    expect(sanitizeLevel({ normalize: true, normalizeDb: 6, fadeInMs: -5, fadeOutMs: "x" })).toEqual({ normalize: true, normalizeDb: 0, fadeInMs: 0, fadeOutMs: 0 });
+    expect(sanitizeBatch({}).level.normalize).toBe(false);
+    expect(shapingFor(sanitizeLevel({}))).toBeNull();
+    expect(shapingFor({ normalize: false, normalizeDb: -1, fadeInMs: 0, fadeOutMs: 500 })).toEqual({ normalizeDb: null, fadeInMs: 0, fadeOutMs: 500 });
+    expect(shapingFor({ normalize: true, normalizeDb: -3, fadeInMs: 0, fadeOutMs: 0 })?.normalizeDb).toBe(-3);
   });
 });

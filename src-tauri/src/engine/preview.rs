@@ -13,7 +13,7 @@
 //!   It never allocates, locks, or touches the disk.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -39,6 +39,8 @@ struct Shared {
     finished: AtomicBool,
     /// Frames sent to the device since playback started.
     played: AtomicU64,
+    /// Highest sample per channel since the last status call, as f32 bits.
+    peak: [AtomicU32; 2],
 }
 
 struct Running {
@@ -63,6 +65,8 @@ impl Running {
 #[serde(rename_all = "camelCase")]
 pub struct PreviewStatus {
     pub playing: bool,
+    /// Highest sample left and right since the last status, 0 to 1.
+    pub peak: [f32; 2],
     pub path: Option<PathBuf>,
     /// Seconds from the start of the file.
     pub position: f64,
@@ -125,6 +129,7 @@ impl PreviewPlayer {
         let Ok(mut current) = self.current.lock() else {
             return PreviewStatus {
                 playing: false,
+                peak: [0.0, 0.0],
                 path: None,
                 position: 0.0,
             };
@@ -140,12 +145,17 @@ impl PreviewPlayer {
         match current.as_ref() {
             Some(r) => PreviewStatus {
                 playing: true,
+                peak: [
+                    f32::from_bits(r.shared.peak[0].swap(0, Ordering::Relaxed)),
+                    f32::from_bits(r.shared.peak[1].swap(0, Ordering::Relaxed)),
+                ],
                 path: Some(r.path.clone()),
                 position: r.start_seconds
                     + r.shared.played.load(Ordering::Relaxed) as f64 / f64::from(r.rate.max(1)),
             },
             None => PreviewStatus {
                 playing: false,
+                peak: [0.0, 0.0],
                 path: None,
                 position: 0.0,
             },
@@ -288,15 +298,25 @@ where
     T: SizedSample + FromSample<f32>,
 {
     let mut real = 0usize;
-    for s in out.iter_mut() {
+    let mut peak = [0f32; 2];
+    let ch = channels.max(1);
+    for (i, s) in out.iter_mut().enumerate() {
         match consumer.pop() {
             Ok(v) => {
                 *s = T::from_sample(v);
                 real += 1;
+                let side = if ch == 1 { 0 } else { (i % ch).min(1) };
+                peak[side] = peak[side].max(v.abs());
             }
             Err(_) => *s = T::from_sample(0.0f32),
         }
     }
+    if ch == 1 {
+        peak[1] = peak[0];
+    }
+    // Non-negative floats order the same as their bits, so fetch_max works.
+    shared.peak[0].fetch_max(peak[0].to_bits(), Ordering::Relaxed);
+    shared.peak[1].fetch_max(peak[1].to_bits(), Ordering::Relaxed);
     shared
         .played
         .fetch_add((real / channels.max(1)) as u64, Ordering::Relaxed);
@@ -320,6 +340,8 @@ mod tests {
         fill(&mut out, &mut c, &shared, 2);
         assert_eq!(out, [0.1, 0.2, 0.3, 0.4, 0.0, 0.0]);
         assert_eq!(shared.played.load(Ordering::Relaxed), 2);
+        assert_eq!(f32::from_bits(shared.peak[0].load(Ordering::Relaxed)), 0.3);
+        assert_eq!(f32::from_bits(shared.peak[1].load(Ordering::Relaxed)), 0.4);
         assert!(!shared.finished.load(Ordering::SeqCst));
 
         shared.decoded_all.store(true, Ordering::SeqCst);

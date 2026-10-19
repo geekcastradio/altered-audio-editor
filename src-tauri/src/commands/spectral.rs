@@ -22,7 +22,7 @@ pub const MAX_VIEW_SECONDS: u64 = 20 * 60;
 
 /// Renders `from..to` (timeline samples, `from` may be negative) as
 /// stereo interleaved, with silence where there is no audio.
-fn render(session: &Session, from: i64, to: i64) -> Vec<f32> {
+pub(crate) fn render(session: &Session, from: i64, to: i64) -> Vec<f32> {
     let len = (to - from).max(0) as usize;
     let mut out = vec![0f32; len * 2];
     let a = from.max(0) as u64;
@@ -51,12 +51,69 @@ fn render(session: &Session, from: i64, to: i64) -> Vec<f32> {
     out
 }
 
-fn snapshot(wave: &State<'_, OpenWave>) -> Result<Session, String> {
+/// The open file's edit list, without the Voice Chain being previewed
+/// on it: edits see the file as it is, not as the preview sounds.
+pub(crate) fn snapshot(wave: &State<'_, OpenWave>) -> Result<Session, String> {
     let w = wave.0.lock().map_err(|e| e.to_string())?;
-    Ok(w.as_ref()
-        .ok_or("No file is open in the Waveform editor.")?
-        .session
-        .clone())
+    Ok(super::wave::without_effects(
+        w.as_ref()
+            .ok_or("No file is open in the Waveform editor.")?
+            .session
+            .clone(),
+    ))
+}
+
+/// Writes `frames` of stereo `audio` from frame `skip` to a new float
+/// WAV in `dir` (mono files fold back to one channel). The media ref
+/// for the replace op.
+pub(crate) fn write_stretch(
+    dir: &std::path::Path,
+    name: &str,
+    audio: &[f32],
+    skip: usize,
+    frames: usize,
+    rate: u32,
+    mono: bool,
+) -> Result<MediaRef, String> {
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let path = mixdown::unique_path(dir, name, "wav");
+    let channels: u16 = if mono { 1 } else { 2 };
+    let spec = hound::WavSpec {
+        channels,
+        sample_rate: rate,
+        bits_per_sample: 32,
+        sample_format: hound::SampleFormat::Float,
+    };
+    let mut w = hound::WavWriter::create(&path, spec).map_err(|e| e.to_string())?;
+    let all = audio.as_chunks::<2>().0;
+    let end = (skip + frames).min(all.len());
+    for f in &all[skip.min(end)..end] {
+        if mono {
+            w.write_sample((f[0] + f[1]) * 0.5)
+                .map_err(|e| e.to_string())?;
+        } else {
+            w.write_sample(f[0]).map_err(|e| e.to_string())?;
+            w.write_sample(f[1]).map_err(|e| e.to_string())?;
+        }
+    }
+    w.finalize().map_err(|e| e.to_string())?;
+    Ok(MediaRef {
+        id: new_id(),
+        path,
+        relative_path: None,
+        sample_rate: rate,
+        channels,
+        length: (end - skip.min(end)) as u64,
+    })
+}
+
+/// True when the open file is mono.
+pub(crate) fn is_mono(session: &Session) -> bool {
+    session
+        .tracks
+        .first()
+        .is_some_and(|t| t.channels == ChannelLayout::Mono)
+        || session.media.first().is_some_and(|m| m.channels == 1)
 }
 
 /// The spectrogram of `start..end`: `rows` rows of `columns` bytes, top

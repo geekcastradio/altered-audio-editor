@@ -9,6 +9,7 @@
   view draws the result and turns gestures into actions.
 -->
 <script lang="ts">
+  import { KIND_COLORS } from "../markers/markers";
   import type { ActionRegistry } from "../../app/actions";
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import { editor, type EditorState } from "../../stores/editor";
@@ -280,6 +281,24 @@
     }
 
     // Playhead.
+    // Markers: a flag on the ruler, a band for ranges, the name beside it.
+    for (const m of doc.markers) {
+      const mx = Math.round(xOf(m.position, view));
+      const color = m.color || css(KIND_COLORS[m.kind]) || "#c8b040";
+      if (m.duration > 0) {
+        const ex = xOf(m.position + m.duration, view);
+        if (ex >= 0 && mx <= w) {
+          g.fillStyle = color;
+          g.globalAlpha = 0.35;
+          g.fillRect(Math.max(0, mx), RULER_H - 6, Math.min(w, ex) - Math.max(0, mx), 6);
+          g.globalAlpha = 1;
+        }
+      }
+      if (mx < -60 || mx > w) continue;
+      g.fillStyle = color;
+      g.fillRect(mx, 0, 2, RULER_H);
+      g.fillText(m.name, mx + 4, 11);
+    }
     const px = xOf(playhead, view);
     if (px >= 0 && px <= w) {
       g.fillStyle = css("--playhead");

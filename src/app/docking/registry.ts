@@ -23,6 +23,7 @@ export type PanelId =
   | "drive-manager"
   | "libraries"
   | "markers"
+  | "playlist"
   | "loudness-match"
   | "properties";
 
@@ -65,7 +66,7 @@ export const PANELS: readonly PanelDef[] = [
     ],
     pending: null,
   },
-  { id: "voice-chain", title: "Voice Chain", inDefault: true, home: LEFT_TABS, pending: "Effects processing arrives in P5." },
+  { id: "voice-chain", title: "Voice Chain", inDefault: true, home: LEFT_TABS, pending: null },
   { id: "batch-convert", title: "Batch Convert", inDefault: true, home: LEFT_TABS, pending: null },
   { id: "quickpass", title: "QuickPass", inDefault: true, home: LEFT_TABS, pending: null },
   {
@@ -115,7 +116,8 @@ export const PANELS: readonly PanelDef[] = [
   { id: "history", title: "History", inDefault: false, home: LEFT_TABS, pending: null },
   { id: "drive-manager", title: "Drive Manager", inDefault: false, home: LEFT_TABS, pending: null },
   { id: "markers", title: "Markers", inDefault: false, home: LEFT_TABS, pending: null },
-  { id: "loudness-match", title: "Loudness Match", inDefault: false, home: LEFT_TABS, pending: "Not built yet." },
+  { id: "playlist", title: "Playlist", inDefault: false, home: LEFT_TABS, pending: null },
+  { id: "loudness-match", title: "Loudness Match", inDefault: false, home: LEFT_TABS, pending: "Loudness Match is in the Effects menu." },
   { id: "properties", title: "Properties", inDefault: false, home: LEFT_TABS, pending: "Not built yet." },
 ];
 

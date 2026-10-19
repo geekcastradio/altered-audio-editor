@@ -13,3 +13,15 @@ describe("trackNameFromFile", () => {
     expect(trackNameFromFile("3-.wav")).toBe("3-");
   });
 });
+
+import { newTrackNames } from "./track-names";
+
+describe("newTrackNames", () => {
+  it("continues Track N without clashing", () => {
+    expect(newTrackNames(["Track 1", "Track 2", "Track 4"], 2)).toEqual(["Track 5", "Track 6"]);
+  });
+  it("uses a base name, then numbers it", () => {
+    expect(newTrackNames(["Host"], 3, "Guest")).toEqual(["Guest", "Guest 2", "Guest 3"]);
+    expect(newTrackNames(["Guest"], 2, "Guest")).toEqual(["Guest 2", "Guest 3"]);
+  });
+});

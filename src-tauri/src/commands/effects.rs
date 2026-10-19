@@ -1,0 +1,239 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) The GeekCast Radio Network, LLC.
+// This file is part of Altered Audio Editor.
+
+//! The built-in effects, for the Voice Chain panel and the Effects menu,
+//! and learning a noise print for the Noise Print Reducer.
+
+use std::collections::BTreeMap;
+use std::sync::atomic::AtomicBool;
+
+use serde::{Deserialize, Serialize};
+use tauri::async_runtime::spawn_blocking;
+use tauri::State;
+
+use super::session::OpenSession;
+use super::wave::{without_effects, OpenWave};
+use crate::dsp::effects::print::{learn, print_params};
+use crate::dsp::effects::{build, ui_catalog, EffectInfo};
+use crate::export::mixdown::{self, MixdownRequest};
+use crate::session::model::{EffectSlot, Id, Session};
+
+#[tauri::command]
+pub fn effects_catalog() -> Vec<EffectInfo> {
+    ui_catalog()
+}
+
+/// Effects whose response is a fixed curve, so a graph means something.
+const GRAPHED: [&str; 8] = [
+    "altaudio.parametric_eq",
+    "altaudio.band_eq_10",
+    "altaudio.band_eq_20",
+    "altaudio.band_eq_30",
+    "altaudio.hum_cut",
+    "altaudio.notch",
+    "altaudio.precision_filter",
+    "altaudio.curve_eq",
+];
+
+/// The rate the graph is measured at.
+const GRAPH_RATE: u32 = 48_000;
+
+/// How `slot` changes each frequency: `points` (frequency, dB) pairs
+/// from 20 Hz to 20 kHz, evenly spaced in pitch. Measured by sending a
+/// click through the effect, so the graph is what the effect really
+/// does. Empty for effects that are not a fixed curve.
+pub fn response(slot: &EffectSlot, points: usize) -> Vec<[f64; 2]> {
+    if !GRAPHED.contains(&slot.effect.as_str()) || points < 2 {
+        return Vec::new();
+    }
+    let mut slot = slot.clone();
+    slot.enabled = true;
+    let Some(mut fx) = build(&slot, GRAPH_RATE) else {
+        return Vec::new();
+    };
+    let n = 16_384;
+    let lat = fx.latency();
+    let mut buf = vec![0f32; (lat + n) * 2];
+    buf[0] = 1.0;
+    buf[1] = 1.0;
+    fx.process(&mut buf);
+    let ir: Vec<f32> = buf.as_chunks::<2>().0[lat..].iter().map(|f| f[0]).collect();
+    // A plain DFT at just the frequencies wanted: few points, so cheap.
+    (0..points)
+        .map(|i| {
+            let f = 20.0 * 1000f64.powf(i as f64 / (points - 1) as f64);
+            let w = std::f64::consts::TAU * f / f64::from(GRAPH_RATE);
+            let (mut re, mut im) = (0.0f64, 0.0f64);
+            for (t, v) in ir.iter().enumerate() {
+                let a = w * t as f64;
+                re += f64::from(*v) * a.cos();
+                im -= f64::from(*v) * a.sin();
+            }
+            [
+                f,
+                (20.0 * (re * re + im * im).sqrt().max(1e-6).log10()).clamp(-120.0, 40.0),
+            ]
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub async fn effect_response(slot: EffectSlot, points: usize) -> Result<Vec<[f64; 2]>, String> {
+    spawn_blocking(move || response(&slot, points.clamp(2, 400)))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Where to learn a noise print from: a stretch of the Waveform
+/// editor's file, or of one track or clip in the session.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum LearnSource {
+    Wave { start: u64, end: u64 },
+    Track { id: Id, start: u64, end: u64 },
+    Clip { id: Id, start: u64, end: u64 },
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LearnedPrint {
+    /// The settings to put on the Noise Print Reducer.
+    pub params: BTreeMap<String, f64>,
+    pub seconds: f64,
+}
+
+/// Only what `keep` says (a track's clips or one clip), with no Voice
+/// Chains and at unity level, so the print is of the raw audio.
+pub(crate) fn isolate(session: &Session, track: Option<Id>, clip: Option<Id>) -> Session {
+    let mut s = without_effects(session.clone());
+    s.tracks.retain(|t| {
+        track.is_none_or(|id| t.id == id)
+            && clip.is_none_or(|id| t.clips.iter().any(|c| c.id == id))
+    });
+    for t in &mut s.tracks {
+        t.muted = false;
+        t.solo = false;
+        t.volume_db = 0.0;
+        if let Some(id) = clip {
+            t.clips.retain(|c| c.id == id);
+        }
+    }
+    s.master.volume_db = 0.0;
+    s
+}
+
+pub(crate) fn render(session: &Session, start: u64, end: u64) -> Result<Vec<f32>, String> {
+    let req = MixdownRequest {
+        range: Some((start, end)),
+        clip_only: true,
+        ..Default::default()
+    };
+    let mut audio = Vec::with_capacity(((end - start) * 2) as usize);
+    mixdown::render_mix(
+        session,
+        &req,
+        &AtomicBool::new(false),
+        |_, _| {},
+        |block| {
+            audio.extend_from_slice(block);
+            Ok(())
+        },
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(audio)
+}
+
+/// Learns a noise print from `source`. The stretch should hold only the
+/// noise to remove: a pause, the room before anyone speaks.
+#[tauri::command]
+pub async fn learn_noise_print(
+    open: State<'_, OpenSession>,
+    wave: State<'_, OpenWave>,
+    source: LearnSource,
+) -> Result<LearnedPrint, String> {
+    let (session, start, end) = match source {
+        LearnSource::Wave { start, end } => {
+            let w = wave.0.lock().map_err(|e| e.to_string())?;
+            let s = w
+                .as_ref()
+                .ok_or("No file is open in the Waveform editor.")?
+                .session
+                .clone();
+            (isolate(&s, None, None), start, end)
+        }
+        LearnSource::Track { id, start, end } => (
+            isolate(
+                &open.0.lock().map_err(|e| e.to_string())?.session,
+                Some(id),
+                None,
+            ),
+            start,
+            end,
+        ),
+        LearnSource::Clip { id, start, end } => (
+            isolate(
+                &open.0.lock().map_err(|e| e.to_string())?.session,
+                None,
+                Some(id),
+            ),
+            start,
+            end,
+        ),
+    };
+    if end <= start {
+        return Err("Select a stretch with only the noise in it, then learn.".into());
+    }
+    spawn_blocking(move || {
+        let rate = session.sample_rate;
+        let audio = render(&session, start, end)?;
+        let bands = learn(&audio, rate).ok_or("That selection is too short to learn from. Select at least half a second of the noise.")?;
+        if bands.iter().all(|v| *v <= crate::dsp::effects::print::SILENT_DB + 1.0) {
+            return Err("That selection is silent, so there is no noise to learn.".into());
+        }
+        let seconds = (end - start) as f64 / f64::from(rate);
+        Ok(LearnedPrint {
+            params: print_params(&bands, (seconds * 100.0).round() / 100.0).into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
+            seconds,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::session::model::{ChannelLayout, Track};
+
+    #[test]
+    fn graphs_an_eq_and_skips_others() {
+        let slot = |effect: &str, params: &[(&str, f64)]| EffectSlot {
+            id: crate::session::model::new_id(),
+            effect: effect.into(),
+            enabled: false,
+            params: params.iter().map(|(k, v)| ((*k).to_string(), *v)).collect(),
+            preset: None,
+        };
+        let flat = response(&slot("altaudio.curve_eq", &[]), 32);
+        assert_eq!(flat.len(), 32);
+        assert!(flat.iter().all(|p| p[1].abs() < 0.5), "{flat:?}");
+        let notch = response(&slot("altaudio.notch", &[]), 200);
+        let deepest = notch.iter().fold(0f64, |m, p| m.min(p[1]));
+        assert!(deepest < -10.0, "{deepest}");
+        assert!(response(&slot("altaudio.limiter", &[]), 32).is_empty());
+    }
+
+    #[test]
+    fn isolate_keeps_one_track_or_clip_and_drops_chains() {
+        let mut s = Session::new("t", 48_000);
+        s.tracks.push(Track::new("A", ChannelLayout::Stereo));
+        s.tracks.push(Track::new("B", ChannelLayout::Stereo));
+        s.tracks[0].effects.input_gain_db = 6.0;
+        s.tracks[0].volume_db = -12.0;
+        let a = s.tracks[0].id;
+        let only = isolate(&s, Some(a), None);
+        assert_eq!(only.tracks.len(), 1);
+        assert_eq!(only.tracks[0].effects, Default::default());
+        assert_eq!(only.tracks[0].volume_db, 0.0);
+    }
+}

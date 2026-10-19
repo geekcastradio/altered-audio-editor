@@ -5,16 +5,19 @@
 
   Markers panel: every marker in time order. Click a row to jump there,
   double-click the name to rename, change the type from the list, and
-  delete with the row's button. Every change is undoable.
+  delete with the row's button. Every change is undoable. Follows the
+  active editor: the Waveform editor's file markers when it is in front,
+  the session's otherwise.
 -->
 <script lang="ts">
+  import type { Readable } from "svelte/store";
   import type { ActionRegistry } from "../../app/actions";
   import type { CommandRunner } from "../../stores/media-pool";
   import { editor, type EditorState } from "../../stores/editor";
-  import type { MarkerDoc, MarkerKind, SessionDoc, SessionStore } from "../../stores/session";
+  import type { MarkerChange, MarkerDoc, MarkerKind, SessionDoc, SessionStore } from "../../stores/session";
   import type { TransportStore } from "../../stores/transport";
   import { formatIn } from "../editor/timeline";
-  import { KIND_COLORS, KIND_LABELS } from "./markers";
+  import { KIND_LABELS, markerCss } from "./markers";
 
   interface Props {
     session: SessionStore;
@@ -22,14 +25,32 @@
     runner: CommandRunner;
     actions: ActionRegistry;
     onError?: (e: unknown) => void;
+    /** The Waveform editor's store, history and transport, when present. */
+    wave?: SessionStore;
+    waveRunner?: CommandRunner;
+    waveTransport?: TransportStore;
+    /** The open Waveform editor file; null when it is empty. */
+    waveFile?: Readable<unknown>;
   }
 
-  const { session, transport, runner, actions, onError = console.error }: Props = $props();
+  const { session, transport, runner, actions, onError = console.error, wave, waveRunner, waveTransport, waveFile }: Props = $props();
 
-  let doc = $state<SessionDoc | null>(null);
+  let sessionDoc = $state<SessionDoc | null>(null);
   $effect(() =>
     session.subscribe((d) => {
-      doc = d;
+      sessionDoc = d;
+    }),
+  );
+  let waveDoc = $state<SessionDoc | null>(null);
+  $effect(() =>
+    wave?.subscribe((d) => {
+      waveDoc = d;
+    }),
+  );
+  let waveHasFile = $state(false);
+  $effect(() =>
+    waveFile?.subscribe((f) => {
+      waveHasFile = f !== null && f !== undefined;
     }),
   );
   let ed = $state<EditorState>(editor.current());
@@ -39,14 +60,21 @@
     }),
   );
 
+  // The Waveform editor wins while it is in front with a file open.
+  const onWave = $derived(ed.mode === "waveform" && !!wave && !!waveDoc && waveHasFile);
+  const doc = $derived(onWave ? waveDoc : sessionDoc);
+  const store = $derived(onWave && wave ? wave : session);
+  const run = $derived(onWave && waveRunner ? waveRunner : runner);
+  const tp = $derived(onWave && waveTransport ? waveTransport : transport);
+
   let renaming = $state<string | null>(null);
   const rate = $derived(doc?.sample_rate ?? 48000);
   const t = (samples: number) => formatIn(samples, rate, ed.timeFormat);
   // Kinds that can be chosen now. The others arrive with their phases.
-  const KINDS: MarkerKind[] = ["cue", "subclip"];
+  const KINDS: MarkerKind[] = ["cue", "subclip", "chapter", "ad_slot", "social_clip"];
 
-  function edit(label: string, m: MarkerDoc, change: Partial<MarkerDoc>) {
-    void session.edit(label, { op: "set_markers", changes: [{ id: m.id, ...change }] }, runner).catch(onError);
+  function edit(label: string, m: MarkerDoc, change: Omit<MarkerChange, "id">) {
+    void store.edit(label, { op: "set_markers", changes: [{ id: m.id, ...change }] }, run).catch(onError);
   }
 
   function commitRename(m: MarkerDoc, value: string) {
@@ -66,6 +94,7 @@
   {:else}
     <div class="table" role="table">
       <div class="row head" role="row">
+        <span></span>
         <span role="columnheader">Name</span>
         <span role="columnheader">Start</span>
         <span role="columnheader" class="dur">Duration</span>
@@ -74,7 +103,11 @@
       </div>
       {#each doc.markers as m (m.id)}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <div class="row" role="row" tabindex="-1" onclick={() => void transport.seek(m.position)}>
+        <div class="row" role="row" tabindex="-1" onclick={() => void tp.seek(m.position)}>
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+          <label class="swatch" title={m.color ? "Change color (right-click to go back to the type's color)" : "Pick a color for this marker"} style:background={markerCss(m)} onclick={(e) => e.stopPropagation()} oncontextmenu={(e) => { e.preventDefault(); if (m.color) edit("Marker Color", m, { color: "" }); }}>
+            <input type="color" value={m.color ?? "#c8b040"} aria-label="Marker color" onchange={(e) => edit("Marker Color", m, { color: e.currentTarget.value })} />
+          </label>
           {#if renaming === m.id}
             <!-- svelte-ignore a11y_autofocus -->
             <input
@@ -92,15 +125,19 @@
           {:else}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <span class="name" title="Double-click to rename" ondblclick={() => (renaming = m.id)}>
-              <i style:background="var({KIND_COLORS[m.kind]})"></i>{m.name}
+              {m.name}
             </span>
           {/if}
           <span class="num">{t(m.position)}</span>
-          <span class="num dur">{m.duration > 0 ? t(m.duration) : "-"}</span>
+          <span class="num dur" class:off={m.kind === "ad_slot" && m.contracted_duration !== null && Math.abs(m.duration - m.contracted_duration) > 5 * rate} title={m.kind === "ad_slot" && m.contracted_duration !== null ? `Contracted ${t(m.contracted_duration)}. Off by more than 5 seconds shows red.` : ""}>{m.duration > 0 ? t(m.duration) : "-"}</span>
           <select
             value={m.kind}
             onclick={(e) => e.stopPropagation()}
-            onchange={(e) => edit("Marker Type", m, { kind: e.currentTarget.value as MarkerKind })}
+            onchange={(e) => {
+              const kind = e.currentTarget.value as MarkerKind;
+              // Only ad slots carry a contracted length.
+              edit("Marker Type", m, kind === "ad_slot" ? { kind, contracted_duration: m.contracted_duration ?? (m.duration || 30 * rate) } : m.contracted_duration !== null ? { kind, clear_contracted: true } : { kind });
+            }}
           >
             {#each KINDS.includes(m.kind) ? KINDS : [...KINDS, m.kind] as k (k)}
               <option value={k}>{KIND_LABELS[k]}</option>
@@ -113,9 +150,26 @@
             aria-label="Delete marker"
             onclick={(e) => {
               e.stopPropagation();
-              void session.edit("Delete Marker", { op: "remove_markers", ids: [m.id] }, runner).catch(onError);
+              void store.edit("Delete Marker", { op: "remove_markers", ids: [m.id] }, run).catch(onError);
             }}>×</button
           >
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+          <div class="notes" onclick={(e) => e.stopPropagation()}>
+            <input
+              type="text"
+              placeholder="Notes"
+              aria-label="Marker notes"
+              value={m.description}
+              onkeydown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+              onblur={(e) => {
+                const v = e.currentTarget.value;
+                if (v !== m.description) edit("Marker Notes", m, { description: v });
+              }}
+            />
+          </div>
         </div>
       {/each}
     </div>
@@ -166,10 +220,10 @@
 
   .row {
     display: grid;
-    grid-template-columns: minmax(70px, 1fr) 66px 58px 76px 18px;
-    gap: 6px;
+    grid-template-columns: 10px minmax(70px, 1fr) 66px 58px 76px 18px;
+    gap: 2px 6px;
     align-items: center;
-    height: 22px;
+    min-height: 22px;
     padding: 0 6px;
     border-bottom: 1px solid var(--surface-0);
     font-size: var(--font-size-small);
@@ -178,7 +232,7 @@
 
   @container (max-width: 320px) {
     .row {
-      grid-template-columns: minmax(60px, 1fr) 62px 70px 18px;
+      grid-template-columns: 10px minmax(60px, 1fr) 62px 70px 18px;
     }
 
     .dur {
@@ -204,12 +258,47 @@
     white-space: nowrap;
   }
 
-  .name i {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    margin-right: 6px;
-    border-radius: 1px;
+  .swatch {
+    position: relative;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    cursor: pointer;
+  }
+
+  .swatch input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .dur.off {
+    color: var(--danger);
+  }
+
+  .notes {
+    grid-column: 2 / -1;
+    padding-bottom: 3px;
+  }
+
+  .notes input {
+    width: 100%;
+    height: 18px;
+    padding: 0 4px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-dim);
+    font: inherit;
+  }
+
+  .notes input:hover,
+  .notes input:focus {
+    border-color: var(--border);
+    background: var(--surface-0);
+    color: var(--text);
   }
 
   .num {

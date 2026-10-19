@@ -3,24 +3,55 @@
   Copyright (c) The GeekCast Radio Network, LLC.
   This file is part of Altered Audio Editor.
 
-  Levels panel: the session's output level, left and right, on a dB
-  scale from -60 to 0. Click a red over light to clear it.
+  Levels panel: the output level, left and right, on a dB scale from
+  -60 to 0. It follows whatever is playing: the multitrack session, the
+  Waveform editor's file, or a preview from Files, Drive Manager or
+  Libraries. Click a red over light to clear it.
 -->
 <script lang="ts">
+  import type { PreviewMeter, PreviewMeterState } from "../../stores/preview-meter";
   import { meterFraction, type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
 
   interface Props {
     transport: TransportStore;
+    /** The Waveform editor's transport. */
+    wave?: TransportStore | null;
+    preview?: PreviewMeter | null;
   }
 
-  const { transport }: Props = $props();
+  const { transport, wave = null, preview = null }: Props = $props();
 
-  let s = $state<TransportState | null>(null);
+  type Source = "multi" | "wave" | "preview";
+  let multiS = $state<TransportState | null>(null);
+  let waveS = $state<TransportState | null>(null);
+  let previewS = $state<PreviewMeterState | null>(null);
+  // Whatever played last stays on screen (with its over lights) after it stops.
+  let lastSource = $state<Source>("multi");
   $effect(() =>
     transport.subscribe((v) => {
-      s = v;
+      multiS = v;
+      if (v.playing) lastSource = "multi";
     }),
   );
+  $effect(() =>
+    wave?.subscribe((v) => {
+      waveS = v;
+      if (v.playing) lastSource = "wave";
+    }),
+  );
+  $effect(() =>
+    preview?.subscribe((v) => {
+      previewS = v;
+      if (v.playing) lastSource = "preview";
+    }),
+  );
+  const source = $derived<Source>(waveS?.playing ? "wave" : multiS?.playing ? "multi" : previewS?.playing ? "preview" : lastSource);
+  const s = $derived<{ master: [MeterLevel, MeterLevel] } | null>(source === "wave" ? waveS : source === "preview" ? previewS : multiS);
+  function clearOver() {
+    if (source === "wave") wave?.clearOver();
+    else if (source === "preview") preview?.clearOver();
+    else transport.clearOver();
+  }
 
   const TICKS = [-60, -48, -36, -24, -18, -12, -9, -6, -3, 0];
   const pos = (db: number) => ((db + 60) / 60) * 100;
@@ -54,7 +85,7 @@
         class:on={m?.over}
         title="Went over full scale. Click to clear."
         aria-label="Clear over light"
-        onclick={() => transport.clearOver()}
+        onclick={clearOver}
       ></button>
       <span class="val">{db(m)}</span>
     </div>

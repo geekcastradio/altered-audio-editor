@@ -5,8 +5,13 @@
 //! Writing audio out of a session: mixdowns now; metadata and chapters
 //! later.
 
+pub mod aac;
+pub mod adpcm;
+pub mod chapters;
 pub mod convert;
 pub mod encode;
 pub mod loudness;
+pub mod m4a_tags;
 pub mod mixdown;
 pub mod region;
+pub mod tags;

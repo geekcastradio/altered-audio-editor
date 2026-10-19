@@ -58,6 +58,9 @@ pub struct Session {
     pub buses: Vec<Bus>,
     pub master: MasterTrack,
     pub markers: Vec<Marker>,
+    /// Playlist panel: range markers in the order they play and export.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub playlist: Vec<Id>,
 
     /// Where the user left off in the editor.
     pub view: SessionView,
@@ -97,6 +100,7 @@ impl Session {
             buses: Vec::new(),
             master: MasterTrack::default(),
             markers: Vec::new(),
+            playlist: Vec::new(),
             view: SessionView::default(),
             modes: SessionModes::default(),
             libraries: Vec::new(),
@@ -336,6 +340,24 @@ pub struct Clip {
     /// repeats to fill the clip. None plays the region once.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub looped: Option<ClipLoop>,
+    /// Time stretch: the source region plays over `ratio` times its
+    /// natural length. Ignored while the clip loops.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stretch: Option<ClipStretch>,
+    /// What the clip is: dialogue, music, sound effects or ambience.
+    /// Used to select clips by kind, and later by the Audio FX Panel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_type: Option<AudioType>,
+}
+
+/// What a clip holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AudioType {
+    Dialogue,
+    Music,
+    Sfx,
+    Ambience,
 }
 
 /// How a looped clip repeats its source region.
@@ -348,18 +370,47 @@ pub struct ClipLoop {
     pub phase: u64,
 }
 
+/// How a stretched clip plays.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ClipStretch {
+    /// Timeline length over natural length: 1.25 plays 25 percent longer.
+    pub ratio: f64,
+    /// True keeps the pitch (for speech and ad fitting); false changes
+    /// pitch with speed, like a tape running faster or slower.
+    pub keep_pitch: bool,
+}
+
+/// Stretch ratios a clip can take.
+pub const STRETCH_MIN: f64 = 0.25;
+pub const STRETCH_MAX: f64 = 4.0;
+
 impl Clip {
+    /// The stretch ratio in effect: 1 when not stretched or when looping.
+    pub fn stretch_ratio(&self) -> f64 {
+        match (self.looped, self.stretch) {
+            (None, Some(s)) => s.ratio.clamp(STRETCH_MIN, STRETCH_MAX),
+            _ => 1.0,
+        }
+    }
+
     /// Length on the timeline in session samples, given the source rate.
     pub fn timeline_length(&self, source_rate: u32, session_rate: u32) -> u64 {
         if let Some(l) = self.looped {
             return l.length;
         }
         let src = self.source_out.saturating_sub(self.source_in);
-        if source_rate == session_rate || source_rate == 0 {
-            return src;
+        let natural = if source_rate == session_rate || source_rate == 0 {
+            src
+        } else {
+            ((u128::from(src) * u128::from(session_rate) + u128::from(source_rate) / 2)
+                / u128::from(source_rate)) as u64
+        };
+        let r = self.stretch_ratio();
+        if r == 1.0 {
+            natural
+        } else {
+            (natural as f64 * r).round() as u64
         }
-        ((u128::from(src) * u128::from(session_rate) + u128::from(source_rate) / 2)
-            / u128::from(source_rate)) as u64
     }
 }
 
@@ -464,6 +515,9 @@ pub struct Marker {
     /// Scaffolding (P5): contracted length of an ad slot, in session
     /// samples.
     pub contracted_duration: Option<u64>,
+    /// `#rrggbb`. None uses the color of the marker's type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
 }
 
 /// A Voice Chain: an ordered list of effect slots on a clip, track,

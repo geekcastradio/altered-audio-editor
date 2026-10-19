@@ -28,6 +28,29 @@ export interface FadeDoc {
   curve: number;
 }
 
+/** One effect in a Voice Chain. */
+export interface EffectSlotDoc {
+  id: string;
+  /** Effect id, for example `altaudio.parametric_eq`. */
+  effect: string;
+  enabled: boolean;
+  /** Values by parameter key; missing keys take the effect's default. */
+  params: Record<string, number>;
+  preset: string | null;
+}
+
+/** A Voice Chain on a clip, a track or the master. */
+export interface EffectChainDoc {
+  enabled: boolean;
+  input_gain_db: number;
+  output_gain_db: number;
+  /** 0 dry to 1 wet. */
+  mix: number;
+  slots: EffectSlotDoc[];
+}
+
+export type EffectTarget = { kind: "track"; id: string } | { kind: "clip"; id: string } | { kind: "master" };
+
 export interface ClipDoc {
   id: string;
   name: string;
@@ -46,7 +69,37 @@ export interface ClipDoc {
   envelopes?: EnvelopeDoc[];
   /** Loop Clip: the source region repeats to fill `length` session samples, starting `phase` source samples into it. */
   looped?: LoopDoc | null;
+  /** Time stretch. Ignored while the clip loops. */
+  stretch?: StretchDoc | null;
+  /** What the clip holds. */
+  audio_type?: AudioType | null;
+  effects?: EffectChainDoc;
   [key: string]: unknown;
+}
+
+export type AudioType = "dialogue" | "music" | "sfx" | "ambience";
+
+export const AUDIO_TYPES: { id: AudioType; label: string }[] = [
+  { id: "dialogue", label: "Dialogue" },
+  { id: "music", label: "Music" },
+  { id: "sfx", label: "Sound Effects" },
+  { id: "ambience", label: "Ambience" },
+];
+
+export interface StretchDoc {
+  /** Timeline length over natural length: 1.25 plays 25 percent longer. */
+  ratio: number;
+  /** True keeps the pitch; false changes pitch with speed, like tape. */
+  keep_pitch: boolean;
+}
+
+export const STRETCH_MIN = 0.25;
+export const STRETCH_MAX = 4;
+
+/** The stretch ratio in effect: 1 when not stretched or when looping. */
+export function stretchOf(clip: ClipDoc): number {
+  if (clip.looped || !clip.stretch) return 1;
+  return Math.max(STRETCH_MIN, Math.min(STRETCH_MAX, clip.stretch.ratio));
 }
 
 export interface LoopDoc {
@@ -87,6 +140,7 @@ export interface TrackDoc {
   collapsed?: boolean;
   monitor_input?: boolean;
   input?: string | null;
+  effects?: EffectChainDoc;
   clips: ClipDoc[];
   [key: string]: unknown;
 }
@@ -109,9 +163,11 @@ export interface SessionDoc {
   media: MediaRefDoc[];
   tracks: TrackDoc[];
   markers: MarkerDoc[];
+  /** Playlist panel order: ids of range markers. */
+  playlist?: string[];
   view: ViewDoc;
   libraries: string[];
-  master?: { volume_db: number; channels: string; height: number; [key: string]: unknown };
+  master?: { volume_db: number; channels: string; height: number; effects?: EffectChainDoc; [key: string]: unknown };
   [key: string]: unknown;
 }
 
@@ -128,6 +184,8 @@ export interface MarkerDoc {
   description: string;
   chapter: unknown;
   contracted_duration: number | null;
+  /** `#rrggbb`. Null or missing uses the type's color. */
+  color?: string | null;
 }
 
 export interface MarkerChange {
@@ -137,6 +195,12 @@ export interface MarkerChange {
   position?: number;
   duration?: number;
   description?: string;
+  /** `#rrggbb`, or "" for the type's color. */
+  color?: string;
+  /** Ad slots: contracted length of the read, in session samples. */
+  contracted_duration?: number;
+  /** Removes the contracted length. */
+  clear_contracted?: boolean;
 }
 
 /** Changes to one clip. Fields left out are unchanged; `track_id` moves it. */
@@ -164,6 +228,14 @@ export interface ClipChange {
   looped?: LoopDoc;
   /** Stops looping. */
   unloop?: boolean;
+  /** Stretches the clip, or changes its stretch. */
+  stretch?: StretchDoc;
+  /** Stops stretching. */
+  unstretch?: boolean;
+  /** Sets what the clip holds. */
+  audio_type?: AudioType;
+  /** Clears the audio type. */
+  clear_audio_type?: boolean;
 }
 
 export interface ClipSpec {
@@ -208,6 +280,8 @@ export type Op =
   | { op: "add_markers"; markers: MarkerDoc[] }
   | { op: "remove_markers"; ids: string[] }
   | { op: "set_markers"; changes: MarkerChange[] }
+  | { op: "set_playlist"; ids: string[] }
+  | { op: "set_effects"; target: EffectTarget; chain: EffectChainDoc }
   | { op: "set_master_volume"; volume_db: number }
   | { op: "batch"; ops: Op[] };
 
@@ -223,7 +297,9 @@ type Listener = (doc: SessionDoc | null) => void;
 export function clipLength(clip: ClipDoc, media: MediaRefDoc | undefined, sessionRate: number): number {
   if (clip.looped) return clip.looped.length;
   const srcRate = media?.sample_rate || sessionRate;
-  return Math.round(((clip.source_out - clip.source_in) * sessionRate) / srcRate);
+  const natural = Math.round(((clip.source_out - clip.source_in) * sessionRate) / srcRate);
+  const r = stretchOf(clip);
+  return r === 1 ? natural : Math.round(natural * r);
 }
 
 /** End of the last clip, in session samples. */
@@ -317,6 +393,14 @@ class OpCommand implements Command {
   /** A run of drags on one fader is one undo step back to where it started. */
   mergeWith(next: Command): boolean {
     if (!(next instanceof OpCommand)) return false;
+    // A slider dragged in the Voice Chain applies as it moves; the drag is one step.
+    if (this.op.op === "set_effects" && next.op.op === "set_effects") {
+      const a = this.op.target;
+      const b = next.op.target;
+      if (this.label !== next.label || a.kind !== b.kind || ("id" in a ? a.id : null) !== ("id" in b ? b.id : null)) return false;
+      this.op = next.op;
+      return true;
+    }
     const key = mergeKey(this.op);
     if (key === null || key !== mergeKey(next.op)) return false;
     this.op = next.op;

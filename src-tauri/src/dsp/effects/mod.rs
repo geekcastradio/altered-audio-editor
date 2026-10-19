@@ -1,0 +1,546 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) The GeekCast Radio Network, LLC.
+// This file is part of Altered Audio Editor.
+
+//! Built-in effects and the Voice Chain that runs them.
+//!
+//! Every effect is described by data ([`catalog`]): its id, name, group
+//! and parameters with ranges and defaults. The interface draws its
+//! controls from that, so adding an effect needs no interface code.
+//! Saved chains store parameter values by key; a missing key takes the
+//! default and an unknown key is ignored, so old files always open.
+//!
+//! Processing runs on the render thread, not the audio callback, so
+//! effects may keep state but must not block. Effects with look-ahead
+//! report a latency, which the renderer compensates for.
+
+mod dynamics;
+mod eq;
+mod filters;
+mod pitch;
+pub mod print;
+mod restore;
+
+use std::collections::BTreeMap;
+
+use serde::Serialize;
+
+use crate::session::model::{EffectChain, EffectSlot};
+
+pub use dynamics::{Compressor, DeEsser, Gate, Limiter, SpeechLeveler};
+pub use eq::{HumCut, ParametricEq};
+pub use restore::{find_spots, repair_spots, Spots};
+
+/// Most effects a chain holds.
+pub const MAX_SLOTS: usize = 16;
+
+/// How a parameter is shown and stored.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParamInfo {
+    pub key: &'static str,
+    pub name: &'static str,
+    /// Shown after the value: "dB", "Hz", "ms", ":1", "" ...
+    pub unit: &'static str,
+    pub min: f64,
+    pub max: f64,
+    pub default: f64,
+    pub step: f64,
+    /// Logarithmic slider (frequencies, times).
+    pub log: bool,
+    /// For a list: the label of each whole value from `min`.
+    #[serde(skip_serializing_if = "<[&str]>::is_empty")]
+    pub choices: &'static [&'static str],
+    /// An on/off switch (0 or 1).
+    pub toggle: bool,
+    /// Controls that belong together share a group name in the editor.
+    #[serde(skip_serializing_if = "str::is_empty")]
+    pub group: &'static str,
+    /// Changing it changes the effect's look-ahead, so playback restarts
+    /// to pick it up; the editor applies it on release, not while dragging.
+    pub retimes: bool,
+    /// Stored with the effect but not a control (a learned noise print).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EffectInfo {
+    pub id: &'static str,
+    pub name: &'static str,
+    /// Menu group: "Filter and EQ", "Dynamics", "Amplitude", "Restoration", "Time and Pitch".
+    pub category: &'static str,
+    pub description: &'static str,
+    pub params: Vec<ParamInfo>,
+}
+
+pub(crate) const fn num(
+    key: &'static str,
+    name: &'static str,
+    unit: &'static str,
+    min: f64,
+    max: f64,
+    default: f64,
+    step: f64,
+) -> ParamInfo {
+    ParamInfo {
+        key,
+        name,
+        unit,
+        min,
+        max,
+        default,
+        step,
+        log: false,
+        choices: &[],
+        toggle: false,
+        group: "",
+        retimes: false,
+        hidden: false,
+    }
+}
+
+impl ParamInfo {
+    pub(crate) const fn log(mut self) -> Self {
+        self.log = true;
+        self
+    }
+    pub(crate) const fn group(mut self, g: &'static str) -> Self {
+        self.group = g;
+        self
+    }
+    pub(crate) const fn hidden(mut self) -> Self {
+        self.hidden = true;
+        self
+    }
+}
+
+pub(crate) const fn toggle(key: &'static str, name: &'static str, default: bool) -> ParamInfo {
+    ParamInfo {
+        key,
+        name,
+        unit: "",
+        min: 0.0,
+        max: 1.0,
+        default: if default { 1.0 } else { 0.0 },
+        step: 1.0,
+        log: false,
+        choices: &[],
+        toggle: true,
+        group: "",
+        retimes: false,
+        hidden: false,
+    }
+}
+
+pub(crate) const fn choice(
+    key: &'static str,
+    name: &'static str,
+    choices: &'static [&'static str],
+    default: usize,
+) -> ParamInfo {
+    ParamInfo {
+        key,
+        name,
+        unit: "",
+        min: 0.0,
+        max: (choices.len() - 1) as f64,
+        default: default as f64,
+        step: 1.0,
+        log: false,
+        choices,
+        toggle: false,
+        group: "",
+        retimes: false,
+        hidden: false,
+    }
+}
+
+/// Every built-in effect, in menu order.
+pub fn catalog() -> Vec<EffectInfo> {
+    let [b10, b20, b30] = filters::band_infos();
+    vec![
+        eq::parametric_info(),
+        b10,
+        b20,
+        b30,
+        eq::hum_info(),
+        filters::notch_info(),
+        filters::precision_info(),
+        filters::curve_info(),
+        dynamics::compressor_info(),
+        dynamics::limiter_info(),
+        dynamics::gate_info(),
+        dynamics::deesser_info(),
+        dynamics::leveler_info(),
+        filters::center_info(),
+        pitch::pitch_info(),
+        restore::noise_info(),
+        print::print_info(),
+        print::eraser_info(),
+        restore::hiss_info(),
+        restore::room_info(),
+        restore::click_info(),
+        restore::clip_info(),
+        restore::dc_info(),
+        EffectInfo {
+            id: "altaudio.gain",
+            name: "Gain",
+            category: "Amplitude",
+            description: "Turns the level up or down by a fixed amount.",
+            params: vec![num("gain", "Gain", "dB", -48.0, 24.0, 0.0, 0.1)],
+        },
+    ]
+}
+
+/// The catalog for the editor, with each control marked when moving it
+/// changes the effect's look-ahead (found by building the effect at the
+/// control's lowest, default and highest values).
+pub fn ui_catalog() -> Vec<EffectInfo> {
+    let mut all = catalog();
+    for e in &mut all {
+        let id = e.id;
+        let latency = |key: &str, v: f64| {
+            let slot = EffectSlot {
+                id: crate::session::model::new_id(),
+                effect: id.to_string(),
+                enabled: true,
+                params: [(key.to_string(), v)].into_iter().collect(),
+                preset: None,
+            };
+            build(&slot, 48_000).map_or(0, |p| p.latency())
+        };
+        for p in e.params.iter_mut().filter(|p| !p.hidden) {
+            let base = latency(p.key, p.default);
+            p.retimes = latency(p.key, p.min) != base || latency(p.key, p.max) != base;
+        }
+    }
+    all
+}
+
+pub fn info(id: &str) -> Option<EffectInfo> {
+    catalog().into_iter().find(|e| e.id == id)
+}
+
+/// A slot's parameter values, each clamped to its range, with defaults
+/// for missing ones.
+#[derive(Debug, Clone)]
+pub struct Params(BTreeMap<&'static str, f64>);
+
+impl Params {
+    pub fn resolve(info: &EffectInfo, saved: &BTreeMap<String, f64>) -> Self {
+        Params(
+            info.params
+                .iter()
+                .map(|p| {
+                    let v = saved
+                        .get(p.key)
+                        .copied()
+                        .filter(|v| v.is_finite())
+                        .unwrap_or(p.default)
+                        .clamp(p.min, p.max);
+                    (p.key, v)
+                })
+                .collect(),
+        )
+    }
+
+    pub fn get(&self, key: &str) -> f64 {
+        self.0.get(key).copied().unwrap_or(0.0)
+    }
+
+    pub fn on(&self, key: &str) -> bool {
+        self.get(key) >= 0.5
+    }
+
+    pub fn index(&self, key: &str) -> usize {
+        self.get(key).round().max(0.0) as usize
+    }
+}
+
+/// One running effect. Audio is stereo interleaved, processed in place.
+pub trait Processor: Send {
+    fn process(&mut self, buf: &mut [f32]);
+    /// Frames of delay this effect adds (look-ahead).
+    fn latency(&self) -> usize {
+        0
+    }
+    /// Clears filter memory and envelopes, as after a jump.
+    fn reset(&mut self);
+}
+
+struct Gain(f32);
+
+impl Processor for Gain {
+    fn process(&mut self, buf: &mut [f32]) {
+        for s in buf {
+            *s *= self.0;
+        }
+    }
+    fn reset(&mut self) {}
+}
+
+pub(crate) fn db_to_gain(db: f64) -> f32 {
+    10f64.powf(db / 20.0) as f32
+}
+
+/// Builds the processor for one slot, or None for an unknown effect.
+pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
+    let info = info(&slot.effect)?;
+    let p = Params::resolve(&info, &slot.params);
+    Some(match info.id {
+        "altaudio.parametric_eq" => Box::new(ParametricEq::new(&p, rate)),
+        "altaudio.hum_cut" => Box::new(HumCut::new(&p, rate)),
+        "altaudio.dynamics" => Box::new(Compressor::new(&p, rate)),
+        "altaudio.limiter" => Box::new(Limiter::new(&p, rate)),
+        "altaudio.breath_gate" => Box::new(Gate::new(&p, rate)),
+        "altaudio.deesser" => Box::new(DeEsser::new(&p, rate)),
+        "altaudio.speech_leveler" => Box::new(SpeechLeveler::new(&p, rate)),
+        "altaudio.gain" => Box::new(Gain(db_to_gain(p.get("gain")))),
+        "altaudio.noise_reducer" => Box::new(restore::noise_reducer(&p, rate)),
+        "altaudio.noise_print" => Box::new(print::print_reducer(&p, rate)),
+        "altaudio.sound_eraser" => Box::new(print::sound_eraser(&p, rate)),
+        "altaudio.hiss_reducer" => Box::new(restore::hiss_reducer(&p, rate)),
+        "altaudio.room_reducer" => Box::new(restore::room_reducer(&p, rate)),
+        "altaudio.click_repair" => Box::new(restore::GapRepair::clicks(&p, rate)),
+        "altaudio.clip_repair" => Box::new(restore::GapRepair::clipping(&p, rate)),
+        "altaudio.dc_offset" => Box::new(restore::DcBlock::new(rate)),
+        "altaudio.band_eq_10" => Box::new(filters::BandEq::new(10, &p, rate)),
+        "altaudio.band_eq_20" => Box::new(filters::BandEq::new(20, &p, rate)),
+        "altaudio.band_eq_30" => Box::new(filters::BandEq::new(30, &p, rate)),
+        "altaudio.notch" => Box::new(filters::Notches::new(&p, rate)),
+        "altaudio.precision_filter" => Box::new(filters::Precision::new(&p, rate)),
+        "altaudio.curve_eq" => Box::new(filters::CurveEq::new(&p, rate)),
+        "altaudio.center_remover" => Box::new(filters::CenterRemover::new(&p, rate)),
+        "altaudio.pitch_shift" => Box::new(pitch::PitchShift::new(&p, rate)),
+        _ => return None,
+    })
+}
+
+/// A Voice Chain ready to run: input gain, each enabled effect in order,
+/// output gain, then the dry/wet mix.
+pub struct ChainProcessor {
+    stages: Vec<Box<dyn Processor>>,
+    input: f32,
+    output: f32,
+    mix: f32,
+    /// The dry signal, delayed to line up with the effects when they add
+    /// latency. Grows once to the largest block seen.
+    dry: Vec<f32>,
+    dry_delay: Vec<f32>,
+    dry_at: usize,
+    latency: usize,
+}
+
+impl ChainProcessor {
+    /// None when the chain would do nothing (off, empty, or every effect
+    /// bypassed with unity gains), so the renderer can skip it entirely.
+    pub fn new(chain: &EffectChain, rate: u32) -> Option<Self> {
+        if !chain.enabled {
+            return None;
+        }
+        let stages: Vec<Box<dyn Processor>> = chain
+            .slots
+            .iter()
+            .take(MAX_SLOTS)
+            .filter(|s| s.enabled)
+            .filter_map(|s| build(s, rate))
+            .collect();
+        let input = db_to_gain(chain.input_gain_db.clamp(-48.0, 24.0));
+        let output = db_to_gain(chain.output_gain_db.clamp(-48.0, 24.0));
+        let mix = chain.mix.clamp(0.0, 1.0) as f32;
+        if stages.is_empty() && input == 1.0 && output == 1.0 {
+            return None;
+        }
+        let latency = stages.iter().map(|s| s.latency()).sum();
+        Some(Self {
+            stages,
+            input,
+            output,
+            mix,
+            dry: Vec::new(),
+            dry_delay: vec![0.0; latency * 2],
+            dry_at: 0,
+            latency,
+        })
+    }
+
+    pub fn latency(&self) -> usize {
+        self.latency
+    }
+
+    pub fn reset(&mut self) {
+        for s in &mut self.stages {
+            s.reset();
+        }
+        self.dry_delay.fill(0.0);
+        self.dry_at = 0;
+    }
+
+    pub fn process(&mut self, buf: &mut [f32]) {
+        let blend = self.mix < 1.0;
+        if blend {
+            self.dry.clear();
+            self.dry.extend_from_slice(buf);
+            // Delay the dry copy by the chain's latency so both line up.
+            if !self.dry_delay.is_empty() {
+                let n = self.dry_delay.len();
+                for s in self.dry.iter_mut() {
+                    std::mem::swap(s, &mut self.dry_delay[self.dry_at]);
+                    self.dry_at = (self.dry_at + 1) % n;
+                }
+            }
+        }
+        if self.input != 1.0 {
+            for s in buf.iter_mut() {
+                *s *= self.input;
+            }
+        }
+        for st in &mut self.stages {
+            st.process(buf);
+        }
+        let out = self.output;
+        if blend {
+            let wet = self.mix;
+            let dry = 1.0 - wet;
+            for (s, d) in buf.iter_mut().zip(&self.dry) {
+                *s = *s * out * wet + *d * dry;
+            }
+        } else if out != 1.0 {
+            for s in buf.iter_mut() {
+                *s *= out;
+            }
+        }
+    }
+}
+
+/// A short, stable fingerprint of a chain, so playback knows when it
+/// changed.
+pub fn chain_hash(chain: &EffectChain) -> u64 {
+    let text = serde_json::to_string(chain).unwrap_or_default();
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in text.bytes() {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x0100_0000_01b3);
+    }
+    h
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn controls_that_move_the_look_ahead_are_marked() {
+        let all = ui_catalog();
+        let param = |e: &str, k: &str| {
+            all.iter()
+                .find(|x| x.id == e)
+                .unwrap()
+                .params
+                .iter()
+                .find(|p| p.key == k)
+                .unwrap()
+                .retimes
+        };
+        assert!(param("altaudio.limiter", "lookahead"));
+        assert!(!param("altaudio.limiter", "ceiling"));
+        assert!(!param("altaudio.gain", "gain"));
+    }
+    use crate::session::model::new_id;
+
+    pub(crate) fn slot(effect: &str, params: &[(&str, f64)]) -> EffectSlot {
+        EffectSlot {
+            id: new_id(),
+            effect: effect.into(),
+            enabled: true,
+            params: params.iter().map(|(k, v)| ((*k).to_string(), *v)).collect(),
+            preset: None,
+        }
+    }
+
+    #[test]
+    fn catalog_is_well_formed() {
+        let all = catalog();
+        let mut ids: Vec<&str> = all.iter().map(|e| e.id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), all.len(), "ids are unique");
+        for e in &all {
+            assert!(e.id.starts_with("altaudio."));
+            for p in &e.params {
+                assert!(
+                    p.min <= p.default && p.default <= p.max,
+                    "{} {}",
+                    e.id,
+                    p.key
+                );
+                assert!(
+                    !p.log || p.min > 0.0,
+                    "log needs a positive range: {}",
+                    p.key
+                );
+            }
+            // Every catalog entry builds.
+            assert!(build(&slot(e.id, &[]), 48_000).is_some(), "{}", e.id);
+        }
+    }
+
+    #[test]
+    fn params_take_defaults_and_clamp() {
+        let i = info("altaudio.gain").unwrap();
+        let mut saved = BTreeMap::new();
+        assert_eq!(Params::resolve(&i, &saved).get("gain"), 0.0);
+        saved.insert("gain".into(), 99.0);
+        saved.insert("unknown".into(), 1.0);
+        assert_eq!(Params::resolve(&i, &saved).get("gain"), 24.0);
+        saved.insert("gain".into(), f64::NAN);
+        assert_eq!(Params::resolve(&i, &saved).get("gain"), 0.0);
+    }
+
+    #[test]
+    fn chain_applies_gains_mix_and_skips_when_idle() {
+        let mut c = EffectChain::default();
+        assert!(
+            ChainProcessor::new(&c, 48_000).is_none(),
+            "empty chain is skipped"
+        );
+        c.slots.push(slot("altaudio.gain", &[("gain", -6.0206)]));
+        let mut p = ChainProcessor::new(&c, 48_000).unwrap();
+        let mut b = vec![1.0f32; 8];
+        p.process(&mut b);
+        assert!((b[0] - 0.5).abs() < 1e-3);
+        c.mix = 0.5;
+        let mut p = ChainProcessor::new(&c, 48_000).unwrap();
+        let mut b = vec![1.0f32; 8];
+        p.process(&mut b);
+        assert!((b[0] - 0.75).abs() < 1e-3, "{}", b[0]);
+        c.slots[0].enabled = false;
+        c.mix = 1.0;
+        assert!(ChainProcessor::new(&c, 48_000).is_none(), "all bypassed");
+        c.enabled = false;
+        c.slots[0].enabled = true;
+        assert!(ChainProcessor::new(&c, 48_000).is_none(), "chain power off");
+    }
+
+    #[test]
+    fn dry_path_is_delayed_with_the_effects() {
+        let mut c = EffectChain::default();
+        c.slots.push(slot(
+            "altaudio.limiter",
+            &[("lookahead", 1.0), ("ceiling", 0.0)],
+        ));
+        c.mix = 0.0;
+        let mut p = ChainProcessor::new(&c, 48_000).unwrap();
+        let lat = p.latency();
+        assert_eq!(lat, 48);
+        let mut b = vec![0f32; 200 * 2];
+        b[0] = 0.5;
+        b[1] = 0.5;
+        p.process(&mut b);
+        // Fully dry, but the impulse arrives after the chain's latency.
+        assert_eq!(b[lat * 2], 0.5);
+        assert_eq!(b[0], 0.0);
+    }
+}

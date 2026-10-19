@@ -11,7 +11,7 @@
  * file's own rate.
  */
 
-import { clipLength, type ClipChange, type ClipDoc, type EnvelopePointDoc, type MediaRefDoc, type Op, type SessionDoc, type TrackDoc } from "../../stores/session";
+import { clipLength, stretchOf, type ClipChange, type ClipDoc, type EnvelopePointDoc, type MediaRefDoc, type Op, type SessionDoc, type TrackDoc } from "../../stores/session";
 import { pointsOf, sliceVolume, type EnvKind } from "./envelope";
 
 /**
@@ -70,13 +70,13 @@ function cutLeft(clip: ClipDoc, m: MediaRefDoc | undefined, rate: number, d: num
     const region = Math.max(1, clip.source_out - clip.source_in);
     return { looped: { length: len - d, phase: mod(clip.looped.phase + toSource(d, m, rate), region) } };
   }
-  return { source_in: Math.max(0, clip.source_in + toSource(d, m, rate)) };
+  return { source_in: Math.max(0, clip.source_in + toSource(d, m, rate, stretchOf(clip))) };
 }
 
 /** What changes when a clip becomes `newLen` session samples long, keeping its left edge. */
 function cutRight(clip: ClipDoc, m: MediaRefDoc | undefined, rate: number, newLen: number): Pick<ClipChange, "source_out" | "looped"> {
   if (clip.looped) return { looped: { ...clip.looped, length: newLen } };
-  let out = clip.source_in + toSource(newLen, m, rate);
+  let out = clip.source_in + toSource(newLen, m, rate, stretchOf(clip));
   if (m && m.length > 0) out = Math.min(out, m.length);
   return { source_out: out };
 }
@@ -107,10 +107,10 @@ export function clipEnd(clip: ClipDoc, media: ReadonlyMap<string, MediaRefDoc>, 
   return clip.start + clipLength(clip, media.get(clip.media_id), rate);
 }
 
-/** Session samples to source samples for a clip's file. */
-function toSource(samples: number, m: MediaRefDoc | undefined, rate: number): number {
+/** Session samples to source samples for a clip's file. A stretched clip covers less source per sample. */
+function toSource(samples: number, m: MediaRefDoc | undefined, rate: number, ratio = 1): number {
   const sr = m?.sample_rate || rate;
-  return Math.round((samples * sr) / rate);
+  return Math.round((samples * sr) / rate / ratio);
 }
 
 /** Edges worth snapping to: session start, playhead, and every other clip's ends. */
@@ -217,7 +217,7 @@ export function trimClip(
     const snapped = tolerance > 0 ? nearest(at, targets, tolerance) : null;
     if (snapped !== null) at = snapped;
     // How far left the source allows (a looped clip can grow to the session start).
-    const earliest = clip.looped ? 0 : Math.max(0, clip.start - Math.floor((clip.source_in * rate) / sr));
+    const earliest = clip.looped ? 0 : Math.max(0, clip.start - Math.floor(((clip.source_in * rate) / sr) * stretchOf(clip)));
     at = Math.min(Math.max(at, earliest), end - MIN_CLIP);
     const d = at - clip.start;
     if (d === 0) return null;
@@ -233,7 +233,7 @@ export function trimClip(
   let at = end + Math.round(delta);
   const snapped = tolerance > 0 ? nearest(at, targets, tolerance) : null;
   if (snapped !== null) at = snapped;
-  const fileEnd = !clip.looped && m && m.length > 0 ? clip.start + Math.floor(((m.length - clip.source_in) * rate) / sr) : Infinity;
+  const fileEnd = !clip.looped && m && m.length > 0 ? clip.start + Math.floor((((m.length - clip.source_in) * rate) / sr) * stretchOf(clip)) : Infinity;
   at = Math.max(clip.start + MIN_CLIP, Math.min(at, fileEnd));
   if (at === end) return null;
   const fadeOut = Math.max(0, Math.min(clip.fade_out.length, at - clip.start));
@@ -278,7 +278,7 @@ export function splitClips(doc: SessionDoc, ids: Iterable<string>, at: number, n
     const leftLen = at - clip.start;
     const rightLen = end - at;
     if (!clip.looped) {
-      const cut = clip.source_in + toSource(leftLen, m, rate);
+      const cut = clip.source_in + toSource(leftLen, m, rate, stretchOf(clip));
       if (cut <= clip.source_in || cut >= clip.source_out) continue;
     }
     changes.push({
@@ -311,7 +311,8 @@ export function splitClips(doc: SessionDoc, ids: Iterable<string>, at: number, n
 export function loopChanges(doc: SessionDoc, ids: Iterable<string>): { changes: ClipChange[]; on: boolean } {
   const media = mediaOf(doc);
   const rate = doc.sample_rate;
-  const found = findClips(doc, ids).filter((f) => !f.clip.locked);
+  // A stretched clip cannot loop: remove the stretch first.
+  const found = findClips(doc, ids).filter((f) => !f.clip.locked && !f.clip.stretch);
   const on = !found.every((f) => f.clip.looped);
   const changes: ClipChange[] = [];
   for (const { clip } of found) {
@@ -439,9 +440,11 @@ export function previewTracks(doc: SessionDoc, changes: readonly ClipChange[]): 
         clips.push(c);
         continue;
       }
-      const { id: _id, track_id, volume, pan, unloop, ...rest } = ch;
+      const { id: _id, track_id, volume, pan, unloop, unstretch, clear_audio_type, ...rest } = ch;
       let next = { ...c, ...rest } as ClipDoc;
       if (unloop) next = { ...next, looped: null };
+      if (unstretch) next = { ...next, stretch: null };
+      if (clear_audio_type) next = { ...next, audio_type: null };
       if (volume) next = withEnvelope(next, "volume", volume);
       if (pan) next = withEnvelope(next, "pan", pan);
       if (track_id && track_id !== t.id) moved.set(track_id, [...(moved.get(track_id) ?? []), next]);
@@ -673,4 +676,74 @@ export function withGroups(doc: SessionDoc, ids: Iterable<string>): string[] {
   if (groups.size === 0) return [...want];
   for (const t of doc.tracks) for (const c of t.clips) if (c.group && groups.has(c.group)) want.add(c.id);
   return [...want];
+}
+
+/**
+ * Inserts `len` session samples of silence at `at` on the given tracks:
+ * clips that start at or after `at` move right, and a clip spanning `at`
+ * is split there with its right part moved. Markers after `at` move too
+ * when every track is included, so they stay with their audio. Locked
+ * clips that would move throw LockedError.
+ */
+export function insertTime(doc: SessionDoc, trackIds: Iterable<string>, at: number, len: number, newId: () => string): Op | null {
+  if (len <= 0) return null;
+  const which = new Set(trackIds);
+  const media = mediaOf(doc);
+  const rate = doc.sample_rate;
+  const ops: Op[] = [];
+  // Split clips that span the insert point first, so every piece after it moves.
+  const spanning = doc.tracks
+    .filter((t) => which.has(t.id))
+    .flatMap((t) => t.clips.filter((c) => c.start < at && clipEnd(c, media, rate) > at));
+  if (spanning.some((c) => c.locked)) throw new LockedError();
+  let cur = doc;
+  if (spanning.length) {
+    const split = splitClips(doc, spanning.map((c) => c.id), at, newId);
+    if (split) {
+      ops.push(split);
+      // The split's new right-hand pieces start exactly at `at`.
+      const added = split.op === "batch" ? split.ops.flatMap((o) => (o.op === "restore_clips" ? o.clips : [])) : [];
+      cur = {
+        ...doc,
+        tracks: doc.tracks.map((t) => {
+          const mine = added.filter(([tid]) => tid === t.id).map(([, c]) => c);
+          const changes = split.op === "batch" ? split.ops.flatMap((o) => (o.op === "set_clips" ? o.changes : [])) : [];
+          const clips = t.clips.map((c) => {
+            const ch = changes.find((x) => x.id === c.id);
+            return ch ? ({ ...c, ...ch } as ClipDoc) : c;
+          });
+          return { ...t, clips: [...clips, ...mine] };
+        }),
+      };
+    }
+  }
+  const changes: ClipChange[] = [];
+  for (const t of cur.tracks) {
+    if (!which.has(t.id)) continue;
+    for (const c of t.clips) {
+      if (c.start < at) continue;
+      if (c.locked) throw new LockedError();
+      changes.push({ id: c.id, start: c.start + len });
+    }
+  }
+  if (changes.length) ops.push({ op: "set_clips", changes });
+  const all = doc.tracks.every((t) => which.has(t.id));
+  if (all) {
+    const mk = doc.markers.filter((m) => m.position >= at).map((m) => ({ id: m.id, position: m.position + len }));
+    if (mk.length) ops.push({ op: "set_markers", changes: mk });
+  }
+  return ops.length ? { op: "batch", ops } : null;
+}
+
+/**
+ * Silences the time from `a` to `b` on the given tracks without moving
+ * anything: clips are split at both edges and the pieces inside are
+ * removed, leaving a gap of exactly that length. Locked clips that would
+ * change throw LockedError.
+ */
+export function clearRange(doc: SessionDoc, trackIds: Iterable<string>, a: number, b: number, newId: () => string): Op | null {
+  if (b <= a) return null;
+  const { ops, inside } = isolate(doc, trackIds, a, b, newId);
+  if (inside.length === 0) return null;
+  return { op: "batch", ops: [...ops, { op: "remove_clips", ids: inside }] };
 }

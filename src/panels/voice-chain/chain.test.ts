@@ -1,0 +1,137 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) The GeekCast Radio Network, LLC.
+// This file is part of Altered Audio Editor.
+
+import { describe, expect, it } from "vitest";
+import type { EffectInfo, EffectParamInfo } from "../../app/core";
+import {
+  addSlot,
+  applyPreset,
+  batchPresets,
+  BUILTIN_PRESETS,
+  chainOf,
+  clampParam,
+  formatParam,
+  fromSlider,
+  MAX_SLOTS,
+  moveSlot,
+  newSlot,
+  presetFrom,
+  removeSlot,
+  sanitizePresets,
+  setParam,
+  toSlider,
+} from "./chain";
+
+// The ids the core's catalog has (src-tauri/src/dsp/effects).
+const KNOWN = new Set([
+  "altaudio.parametric_eq",
+  "altaudio.hum_cut",
+  "altaudio.dynamics",
+  "altaudio.limiter",
+  "altaudio.breath_gate",
+  "altaudio.deesser",
+  "altaudio.speech_leveler",
+  "altaudio.gain",
+  "altaudio.noise_reducer",
+  "altaudio.noise_print",
+  "altaudio.sound_eraser",
+  "altaudio.hiss_reducer",
+  "altaudio.room_reducer",
+  "altaudio.click_repair",
+  "altaudio.clip_repair",
+  "altaudio.dc_offset",
+  "altaudio.band_eq_10",
+  "altaudio.band_eq_20",
+  "altaudio.band_eq_30",
+  "altaudio.notch",
+  "altaudio.precision_filter",
+  "altaudio.curve_eq",
+  "altaudio.center_remover",
+  "altaudio.pitch_shift",
+]);
+
+const p = (over: Partial<EffectParamInfo>): EffectParamInfo => ({ key: "k", name: "K", unit: "dB", min: -24, max: 24, default: 0, step: 0.1, log: false, toggle: false, ...over });
+const gain: EffectInfo = { id: "altaudio.gain", name: "Gain", category: "Amplitude", description: "", params: [p({ key: "gain" })] };
+
+let n = 0;
+const id = () => `s${n++}`;
+
+describe("voice chain", () => {
+  it("adds, moves, removes and caps at 16", () => {
+    let c = chainOf(undefined);
+    c = addSlot(c, newSlot(gain, "a"))!;
+    c = addSlot(c, newSlot(gain, "b"))!;
+    c = addSlot(c, newSlot(gain, "c"), 0)!;
+    expect(c.slots.map((s) => s.id)).toEqual(["c", "a", "b"]);
+    expect(moveSlot(c, "c", 1).slots.map((s) => s.id)).toEqual(["a", "c", "b"]);
+    expect(moveSlot(c, "c", -1)).toBe(c);
+    expect(removeSlot(c, "a").slots.map((s) => s.id)).toEqual(["c", "b"]);
+    for (let i = c.slots.length; i < MAX_SLOTS; i++) c = addSlot(c, newSlot(gain, id()))!;
+    expect(addSlot(c, newSlot(gain, "x"))).toBeNull();
+  });
+
+  it("snaps values and maps sliders, log ones too", () => {
+    const freq = p({ unit: "Hz", min: 20, max: 20_000, default: 1000, step: 1, log: true });
+    expect(toSlider(freq, 20)).toBe(0);
+    expect(toSlider(freq, 20_000)).toBeCloseTo(1);
+    expect(toSlider(freq, 632)).toBeCloseTo(0.5, 2);
+    expect(fromSlider(freq, 0.5)).toBe(632);
+    expect(clampParam(p({}), 0.30000000000000004)).toBe(0.3);
+    expect(clampParam(p({}), 99)).toBe(24);
+    expect(clampParam(p({}), Number.NaN)).toBe(0);
+    let c = addSlot(chainOf(null), { ...newSlot(gain, "g"), preset: "Old" })!;
+    c = setParam(c, "g", gain.params[0]!, -6.04);
+    expect(c.slots[0]).toMatchObject({ params: { gain: -6 }, preset: null });
+  });
+
+  it("formats values for the controls", () => {
+    expect(formatParam(p({}), -6)).toBe("-6.0 dB");
+    expect(formatParam(p({ unit: ":1" }), 4)).toBe("4.0:1");
+    expect(formatParam(p({ unit: "Hz", step: 1 }), 1200)).toBe("1.20 kHz");
+    expect(formatParam(p({ unit: "Hz", step: 1 }), 80)).toBe("80 Hz");
+    expect(formatParam(p({ toggle: true }), 1)).toBe("On");
+    expect(formatParam(p({ choices: ["12 dB/oct", "24 dB/oct"], min: 0 }), 1)).toBe("24 dB/oct");
+  });
+
+  it("ships presets that only use real effects, with unique names", () => {
+    const names = BUILTIN_PRESETS.map((x) => x.name);
+    expect(new Set(names).size).toBe(names.length);
+    for (const pr of BUILTIN_PRESETS) {
+      expect(pr.chain.slots.length).toBeGreaterThan(0);
+      for (const s of pr.chain.slots) expect(KNOWN.has(s.effect), `${pr.name}: ${s.effect}`).toBe(true);
+    }
+    // The limiter default the project chose: -6 dB, with a -3 dB variant.
+    const lim = (name: string) => BUILTIN_PRESETS.find((x) => x.name === name)!.chain.slots.find((s) => s.effect === "altaudio.limiter")!.params.ceiling;
+    expect(lim("Podcast Voice")).toBe(-6);
+    expect(lim("Podcast Voice 3 -3 dB")).toBe(-3);
+  });
+
+  it("voice chain presets replace; one-effect presets add", () => {
+    let c = addSlot(chainOf(null), newSlot(gain, "keep"))!;
+    const hum = BUILTIN_PRESETS.find((x) => x.name === "Hum Cut 60 Hz (US)")!;
+    const voice = BUILTIN_PRESETS.find((x) => x.name === "Podcast Voice")!;
+    c = applyPreset(c, hum, KNOWN, id)!;
+    expect(c.slots.map((s) => s.effect)).toEqual(["altaudio.gain", "altaudio.hum_cut"]);
+    expect(c.slots[1]!.preset).toBe("Hum Cut 60 Hz (US)");
+    c = applyPreset(c, voice, KNOWN, id)!;
+    expect(c.slots.some((s) => s.id === "keep")).toBe(false);
+    // Unknown effects in a preset are skipped, never sent to the core.
+    expect(applyPreset(c, voice, new Set(["altaudio.limiter"]), id)!.slots).toHaveLength(1);
+  });
+
+  it("keeps per-voice track chains out of Batch Convert", () => {
+    const names = batchPresets(BUILTIN_PRESETS).map((p) => p.name);
+    for (const n of ["Podcast Voice", "Podcast Voice 4 -3 dB", "Radio Announcer Voice", "Voice Over", "Remote Guest Cleanup"]) expect(names).not.toContain(n);
+    for (const n of ["Voice Leveler and Noise Gate", "DeEss and Limit Male Voice Over", "Hard Limit to -0.1 dB", "Remove Vocals", "Remove Clicks"]) expect(names).toContain(n);
+  });
+
+  it("saves and reloads user presets safely", () => {
+    const c = addSlot(chainOf(null), newSlot(gain, "g"))!;
+    const saved = JSON.parse(JSON.stringify([presetFrom("Mine", { ...c, output_gain_db: -2 })]));
+    const back = sanitizePresets([...saved, null, { name: "" }, { name: "Bad", chain: { slots: "x" } }]);
+    expect(back).toHaveLength(1);
+    expect(back[0]).toMatchObject({ name: "Mine", chain: { output_gain_db: -2, slots: [{ effect: "altaudio.gain" }] } });
+    expect(sanitizePresets("nope")).toEqual([]);
+  });
+});

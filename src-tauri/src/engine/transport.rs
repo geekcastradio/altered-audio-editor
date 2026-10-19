@@ -12,8 +12,12 @@
 //!   gains (atomics), writes the output, and records peak meters.
 //!
 //! Fader, pan, mute and solo changes take effect on the next audio
-//! buffer. Edits that move audio in time restart playback in place.
+//! buffer. Voice Chain edits swap into the render thread without a
+//! restart (heard once the audio already rendered ahead has played,
+//! about half a second), unless a chain's look-ahead changes. Edits
+//! that move audio in time restart playback in place.
 
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -26,8 +30,16 @@ use rtrb::{Consumer, Producer, RingBuffer};
 use serde::Serialize;
 
 use super::plan::{self, Plan};
-use super::render::Renderer;
-use crate::session::model::{Id, Session};
+use super::render::{ChainUpdate, Renderer};
+use crate::dsp::effects::ChainProcessor;
+use crate::session::model::{EffectChain, Id, Session};
+
+/// Chain meter readings kept for the status call, at most.
+const METER_QUEUE: usize = 512;
+
+/// Each track chain's peaks for a stretch of rendered audio, tagged
+/// with the rendered frame count at its end.
+type ChainPeaks = (u64, Vec<Option<[f32; 4]>>);
 
 /// Audio rendered ahead of the device, per track.
 const AHEAD_SECONDS: f64 = 0.5;
@@ -54,6 +66,10 @@ struct Shared {
     meters: Vec<[AtomicU32; 2]>,
     master_meter: [AtomicU32; 2],
     underruns: AtomicU64,
+    /// Chains edited during playback, waiting for the render thread.
+    chains: Mutex<Option<ChainUpdate>>,
+    /// Chain meters, oldest first, released as the device plays them.
+    chain_meters: Mutex<VecDeque<ChainPeaks>>,
 }
 
 impl Shared {
@@ -76,7 +92,66 @@ impl Shared {
                 .collect(),
             master_meter: [AtomicU32::new(0), AtomicU32::new(0)],
             underruns: AtomicU64::new(0),
+            chains: Mutex::new(None),
+            chain_meters: Mutex::new(VecDeque::new()),
         }
+    }
+
+    /// Queues edited chains for the render thread, merged with any it
+    /// has not picked up yet.
+    fn send_chains(&self, update: ChainUpdate) {
+        let Ok(mut g) = self.chains.lock() else {
+            return;
+        };
+        let pending = g.get_or_insert_with(ChainUpdate::default);
+        for (id, c) in update.tracks {
+            pending.tracks.retain(|(i, _)| *i != id);
+            pending.tracks.push((id, c));
+        }
+        for (id, c) in update.clips {
+            pending.clips.retain(|(i, _)| *i != id);
+            pending.clips.push((id, c));
+        }
+    }
+
+    /// The render thread's side: swaps in waiting chains, if any.
+    fn take_chains(&self) -> Option<ChainUpdate> {
+        self.chains.try_lock().ok().and_then(|mut g| g.take())
+    }
+
+    fn push_meters(&self, renderer: &mut Renderer) {
+        let peaks = renderer.take_chain_peaks();
+        if peaks.iter().all(Option::is_none) {
+            return;
+        }
+        if let Ok(mut q) = self.chain_meters.lock() {
+            q.push_back((renderer.rendered(), peaks));
+            while q.len() > METER_QUEUE {
+                q.pop_front();
+            }
+        }
+    }
+
+    /// Chain peaks for the audio the device has played since the last
+    /// call, per track.
+    fn played_chain_meters(&self, tracks: usize) -> Vec<Option<[f32; 4]>> {
+        let played = self.played.load(Ordering::Relaxed);
+        let mut out = vec![None; tracks];
+        let Ok(mut q) = self.chain_meters.lock() else {
+            return out;
+        };
+        while q.front().is_some_and(|(at, _)| *at <= played) {
+            let (_, peaks) = q.pop_front().expect("checked");
+            for (o, p) in out.iter_mut().zip(peaks) {
+                if let Some(p) = p {
+                    let o = o.get_or_insert([0.0; 4]);
+                    for (a, b) in o.iter_mut().zip(p) {
+                        *a = a.max(b);
+                    }
+                }
+            }
+        }
+        out
     }
 
     fn set_gains(&self, gains: &[[f32; 2]], master: f32) {
@@ -141,6 +216,9 @@ struct Running {
     out_rate: u32,
     layout: plan::Layout,
     track_ids: Vec<Id>,
+    /// Fingerprints of the chains playing, and the chains themselves.
+    chains: plan::Chains,
+    chain_docs: HashMap<Id, EffectChain>,
 }
 
 impl Running {
@@ -172,6 +250,10 @@ pub struct TransportStatus {
     pub meters: Vec<[f32; 2]>,
     pub master: [f32; 2],
     pub underruns: u64,
+    /// Per track, its Voice Chain's peaks in and out (left in, right
+    /// in, left out, right out) for the audio just heard; null for a
+    /// track whose chain does nothing.
+    pub chain_meters: Vec<Option<[f32; 4]>>,
 }
 
 #[derive(Default)]
@@ -212,6 +294,7 @@ impl Transport {
             meters: Vec::new(),
             master: [0.0, 0.0],
             underruns: 0,
+            chain_meters: Vec::new(),
         };
         let Ok(cur) = self.current.lock() else {
             return idle;
@@ -235,11 +318,13 @@ impl Transport {
                 take(&r.shared.master_meter[1]),
             ],
             underruns: r.shared.underruns.load(Ordering::Relaxed),
+            chain_meters: r.shared.played_chain_meters(r.track_ids.len()),
         }
     }
 
     /// Brings playback in line with an edited session: new gains apply
-    /// at once; changes that move audio restart from the same spot.
+    /// at once, edited chains swap in; changes that move audio, or a
+    /// chain's look-ahead, restart from the same spot.
     pub fn sync(&self, session: &Session) -> Result<(), String> {
         let mut cur = self.current.lock().map_err(|e| e.to_string())?;
         let Some(r) = cur.as_mut() else {
@@ -248,7 +333,18 @@ impl Transport {
         if r.layout == plan::layout(session) && r.session_rate == session.sample_rate {
             r.shared
                 .set_gains(&plan::gains(session), plan::master_gain(session));
-            return Ok(());
+            let now = plan::chains(session);
+            if now == r.chains {
+                return Ok(());
+            }
+            if let Some(update) = chain_update(r, session, &now) {
+                for (id, c) in update.tracks.iter().chain(&update.clips) {
+                    r.chain_docs.insert(*id, c.clone());
+                }
+                r.shared.send_chains(update);
+                r.chains = now;
+                return Ok(());
+            }
         }
         let mut pos = r.position();
         if r.session_rate != session.sample_rate {
@@ -260,6 +356,42 @@ impl Transport {
         *cur = Some(start(session.clone(), pos, jump)?);
         Ok(())
     }
+}
+
+/// The chains that changed, when every one keeps its look-ahead (so it
+/// can swap in while playing). None means playback must restart.
+fn chain_update(r: &Running, session: &Session, now: &plan::Chains) -> Option<ChainUpdate> {
+    let latency = |c: &EffectChain| ChainProcessor::new(c, r.out_rate).map_or(0, |p| p.latency());
+    let empty = EffectChain::default();
+    let mut update = ChainUpdate::default();
+    for &(id, track, hash) in now {
+        if r.chains.iter().any(|&(i, _, h)| i == id && h == hash) {
+            continue;
+        }
+        let new = plan::chain_of(session, id, track)?;
+        let old = r.chain_docs.get(&id).unwrap_or(&empty);
+        if latency(old) != latency(new) {
+            return None;
+        }
+        let list = if track {
+            &mut update.tracks
+        } else {
+            &mut update.clips
+        };
+        list.push((id, new.clone()));
+    }
+    Some(update)
+}
+
+fn chain_docs(session: &Session) -> HashMap<Id, EffectChain> {
+    let mut m = HashMap::new();
+    for t in &session.tracks {
+        m.insert(t.id, t.effects.clone());
+        for c in &t.clips {
+            m.insert(c.id, c.effects.clone());
+        }
+    }
+    m
 }
 
 impl Drop for Transport {
@@ -274,6 +406,8 @@ fn start(session: Session, from: u64, jump: Option<Jump>) -> Result<Running, Str
     let gains = plan::gains(&session);
     let master = plan::master_gain(&session);
     let layout = plan::layout(&session);
+    let chains = plan::chains(&session);
+    let docs = chain_docs(&session);
     let track_ids: Vec<Id> = session.tracks.iter().map(|t| t.id).collect();
     let session_rate = session.sample_rate;
     let tracks = track_ids.len().max(1);
@@ -305,6 +439,8 @@ fn start(session: Session, from: u64, jump: Option<Jump>) -> Result<Running, Str
         out_rate,
         layout,
         track_ids,
+        chains,
+        chain_docs: docs,
     })
 }
 
@@ -338,6 +474,7 @@ fn run(
         p.tracks.push(plan::TrackPlan {
             id: crate::session::model::new_id(),
             clips: Vec::new(),
+            effects: Default::default(),
         });
     }
     let tracks = p.tracks.len();
@@ -362,6 +499,7 @@ fn run(
     while producers.iter().all(|p| p.slots() >= BLOCK * 2) {
         renderer.render(BLOCK, &mut blocks);
         push_all(&mut producers, &blocks);
+        shared.push_meters(&mut renderer);
     }
 
     let render_shared = shared.clone();
@@ -415,9 +553,14 @@ fn render_loop(
     shared: Arc<Shared>,
 ) {
     while !shared.stop.load(Ordering::SeqCst) {
+        if let Some(update) = shared.take_chains() {
+            // Checked by the caller: every chain here keeps its look-ahead.
+            renderer.set_chains(&update);
+        }
         if producers.iter().all(|p| p.slots() >= BLOCK * 2) {
             renderer.render(BLOCK, &mut blocks);
             push_all(&mut producers, &blocks);
+            shared.push_meters(&mut renderer);
         } else {
             thread::sleep(Duration::from_millis(5));
         }
@@ -623,6 +766,58 @@ mod tests {
             &mut [[0.0; 2]],
         );
         assert_eq!(out, [0.3, 0.6, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn chain_meters_wait_for_the_device_to_play_them() {
+        let shared = Shared::new(2, &[[1.0, 1.0], [1.0, 1.0]], 1.0);
+        shared.chain_meters.lock().unwrap().extend([
+            (100, vec![Some([0.5, 0.4, 0.2, 0.1]), None]),
+            (200, vec![Some([0.9, 0.9, 0.3, 0.3]), None]),
+        ]);
+        assert_eq!(
+            shared.played_chain_meters(2),
+            vec![None, None],
+            "nothing played yet"
+        );
+        shared.played.store(150, Ordering::Relaxed);
+        assert_eq!(
+            shared.played_chain_meters(2),
+            vec![Some([0.5, 0.4, 0.2, 0.1]), None]
+        );
+        shared.played.store(400, Ordering::Relaxed);
+        assert_eq!(shared.played_chain_meters(2)[0], Some([0.9, 0.9, 0.3, 0.3]));
+        assert_eq!(
+            shared.played_chain_meters(2)[0],
+            None,
+            "each reading is used once"
+        );
+    }
+
+    #[test]
+    fn chain_updates_merge_until_picked_up() {
+        let shared = Shared::new(1, &[[1.0, 1.0]], 1.0);
+        let id = crate::session::model::new_id();
+        let a = EffectChain {
+            input_gain_db: 1.0,
+            ..Default::default()
+        };
+        let b = EffectChain {
+            input_gain_db: 2.0,
+            ..Default::default()
+        };
+        shared.send_chains(ChainUpdate {
+            tracks: vec![(id, a)],
+            clips: vec![],
+        });
+        shared.send_chains(ChainUpdate {
+            tracks: vec![(id, b.clone())],
+            clips: vec![],
+        });
+        let got = shared.take_chains().unwrap();
+        assert_eq!(got.tracks.len(), 1);
+        assert_eq!(got.tracks[0].1.input_gain_db, 2.0);
+        assert!(shared.take_chains().is_none());
     }
 
     #[test]

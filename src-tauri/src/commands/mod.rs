@@ -5,15 +5,19 @@
 //! Tauri command handlers. Keep these thin: parse input, call into the
 //! core modules, return plain data.
 
+pub mod align;
 pub mod app;
 pub mod batch;
 pub mod browse;
 pub mod devices;
+pub mod effects;
 pub mod export;
+pub mod generate;
 pub mod keymap;
 pub mod library;
 pub mod links;
 pub mod media;
+pub mod musicfit;
 pub mod peaks;
 pub mod preferences;
 pub mod quickpass;
@@ -23,4 +27,5 @@ pub mod spectral;
 pub mod template;
 pub mod transport;
 pub mod wave;
+pub mod wave_fx;
 pub mod workspace;

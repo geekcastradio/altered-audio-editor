@@ -11,7 +11,7 @@
   Fix, and every change can be undone.
 -->
 <script lang="ts">
-  import { quickpassLevels, type ClipLevels } from "../../app/core";
+  import { quickpassLevels, quickpassSpots, type ClipLevels, type SpotsRequest } from "../../app/core";
   import { editor } from "../../stores/editor";
   import type { CommandRunner } from "../../stores/media-pool";
   import type { Preferences } from "../../stores/preferences";
@@ -23,16 +23,22 @@
     clipsOn,
     cutRange,
     DEFAULTS,
-    findSilences,
+    duckOp,
+    findAll,
+    scanInfo,
+    SCAN_TYPES,
     markersFor,
     removeOp,
     sanitizeSettings,
     shiftFindings,
     splitOp,
+    spotFindings,
+    spotsRequest,
     suggestLevels,
     type Finding,
     type Preset,
     type QuickPassSettings,
+    type ScanType,
   } from "./quickpass";
 
   interface Props {
@@ -41,16 +47,18 @@
     runner: CommandRunner;
     prefs: Preferences;
     ask: (title: string, label: string, value: string) => Promise<string | null>;
+    /** Writes repaired copies for the findings' clips; returns the ids of findings it fixed. */
+    onRepair: (spots: SpotsRequest, list: Finding[]) => Promise<string[]>;
     onNotice: (text: string) => void;
     onError: (e: unknown) => void;
   }
 
-  const { session, transport, runner, prefs, ask, onNotice, onError }: Props = $props();
+  const { session, transport, runner, prefs, ask, onRepair, onNotice, onError }: Props = $props();
 
   const KEY = "quickpass.settings";
   const PRESETS_KEY = "quickpass.presets";
   const WINDOW_MS = 10;
-  const VERB = { remove: "Remove", split: "Split", mark: "Mark" } as const;
+  const VERB = { repair: "Repair", remove: "Remove", duck: "Turn Down", split: "Split", mark: "Mark" } as const;
 
   let s = $state<QuickPassSettings>({ ...DEFAULTS });
   let mine = $state<Preset[]>([]);
@@ -81,8 +89,31 @@
   });
 
   const allPresets = $derived([...BUILTIN_PRESETS, ...mine]);
+  // The preset list shows the presets for the chosen scan type.
+  const shownPresets = $derived(allPresets.filter((p) => p.settings.scan === s.scan));
+  const info = $derived(scanInfo(s.scan));
+  const one = $derived(info.noun[0]);
+  const many = $derived(info.noun[1]);
+  const ACTION_TEXT = {
+    repair: "Repairing it (the clip gets a repaired copy of its audio)",
+    remove: "Removing it",
+    duck: "Turning it down (clips stay whole)",
+    split: "Splitting at it",
+    mark: "Marking it",
+  } as const;
+
+  function chooseScan(scan: ScanType) {
+    if (scan === s.scan) return;
+    // Switch to that type's first preset, so the settings make sense for it.
+    const first = BUILTIN_PRESETS.find((p) => p.settings.scan === scan);
+    if (first) choosePreset(first.name);
+    else s = sanitizeSettings({ ...s, scan });
+    found = [];
+    done = {};
+    scanned = false;
+  }
   const isBuiltin = $derived(BUILTIN_PRESETS.some((p) => p.name === preset));
-  const known = $derived(allPresets.some((p) => p.name === preset));
+  const known = $derived(allPresets.some((p) => p.name === preset && p.settings.scan === s.scan));
 
   let doc = $state<SessionDoc | null>(null);
   $effect(() =>
@@ -97,7 +128,7 @@
     }),
   );
 
-  type Done = "removed" | "split" | "marked";
+  type Done = "repaired" | "removed" | "ducked" | "split" | "marked";
   let view = $state<"scan" | "settings">("scan");
   let found = $state<Finding[]>([]);
   let done = $state<Record<string, Done>>({});
@@ -154,7 +185,14 @@
     const { ids, info } = targets();
     if (ids.length === 0) return onNotice("There are no clips to scan.");
     try {
-      found = findSilences(await measure(ids), info, s, rate);
+      if (s.scan === "clicks" || s.scan === "clipping") {
+        busy = true;
+        try {
+          found = spotFindings(await quickpassSpots(ids, spotsRequest(s)), info, s.scan);
+        } finally {
+          busy = false;
+        }
+      } else found = findAll(await measure(ids), info, s, rate);
       done = {};
       picked = new Set();
       scanned = true;
@@ -182,24 +220,38 @@
   async function fix(list: Finding[]) {
     if (!doc || list.length === 0) return;
     try {
-      if (s.action === "remove") {
+      if (s.action === "repair") {
+        busy = true;
+        let fixed: string[] = [];
+        try {
+          fixed = await onRepair(spotsRequest(s), list);
+        } finally {
+          busy = false;
+        }
+        done = { ...done, ...Object.fromEntries(fixed.map((id) => [id, "repaired" as const])) };
+      } else if (s.action === "remove") {
         const op = removeOp(doc, list, s, uuid);
-        if (!op) return onNotice("Nothing to remove there. The silences are shorter than the pause you keep.");
-        await session.edit(list.length === 1 ? "Remove Silence" : "Remove Silences", op, runner);
+        if (!op) return onNotice(`Nothing to remove there. The ${many} are shorter than the pause you keep.`);
+        await session.edit(`Remove ${cap(list.length === 1 ? one : many)}`, op, runner);
         let rest = found.filter((f) => !list.includes(f));
         for (const g of [...list].sort((a, b) => b.start - a.start)) rest = shiftFindings(rest, g, s.ripple, s.keepMs, rate);
         const next: Record<string, Done> = {};
         for (const f of list) next[f.id] = "removed";
         found = [...rest, ...list].sort((a, b) => a.start - b.start);
         done = { ...done, ...next };
+      } else if (s.action === "duck") {
+        const op = duckOp(doc, list, s.duckDb);
+        if (!op) return onNotice("Nothing to turn down there. Locked clips are left alone.");
+        await session.edit(`Turn Down ${cap(list.length === 1 ? one : many)}`, op, runner);
+        done = { ...done, ...Object.fromEntries(list.map((f) => [f.id, "ducked" as const])) };
       } else if (s.action === "split") {
         const op = splitOp(doc, list, uuid);
         if (!op) return onNotice("Nothing to split there. Locked clips are left alone.");
-        await session.edit("Split at Silences", op, runner);
+        await session.edit(`Split at ${cap(many)}`, op, runner);
         if (session.current) editor.selectClips(clipsOn(session.current, list));
         done = { ...done, ...Object.fromEntries(list.map((f) => [f.id, "split" as const])) };
       } else {
-        await session.edit(list.length === 1 ? "Mark Silence" : "Mark Silences", { op: "add_markers", markers: markersFor(doc, list, uuid) }, runner);
+        await session.edit(`Mark ${cap(list.length === 1 ? one : many)}`, { op: "add_markers", markers: markersFor(doc, list, uuid, cap(one)) }, runner);
         done = { ...done, ...Object.fromEntries(list.map((f) => [f.id, "marked" as const])) };
       }
       picked = new Set();
@@ -223,25 +275,24 @@
     void transport.seek(f.start);
   }
 
+  const cap = (w: string) => w.replace(/(^|\s)\S/g, (c) => c.toUpperCase());
   const field = (e: Event) => Number((e.currentTarget as HTMLInputElement).value);
   const set = (patch: Partial<QuickPassSettings>) => (s = sanitizeSettings({ ...s, ...patch }));
-  const doneLabel = { removed: "Removed", split: "Split", marked: "Marked" } as const;
+  const doneLabel = { repaired: "Repaired", removed: "Removed", ducked: "Lowered", split: "Split", marked: "Marked" } as const;
 </script>
 
 <section class="qp" aria-label="QuickPass">
   <div class="top">
     <label class="line">Scan for
-      <select aria-label="What to scan for">
-        <option>Silence</option>
-        <option disabled>Clicks and pops (not built yet)</option>
-        <option disabled>Clipping (not built yet)</option>
+      <select aria-label="What to scan for" value={s.scan} onchange={(e) => chooseScan(e.currentTarget.value as ScanType)}>
+        {#each SCAN_TYPES as t (t.id)}<option value={t.id}>{t.label}</option>{/each}
       </select>
     </label>
     <div class="line">
       <label class="grow" for="qp-preset">Preset</label>
       <select id="qp-preset" value={known ? preset : ""} onchange={(e) => choosePreset(e.currentTarget.value)}>
         {#if !known}<option value="" disabled>Custom</option>{/if}
-        {#each allPresets as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
+        {#each shownPresets as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
       </select>
       <button type="button" class="icon" title="Save the current settings as a preset" aria-label="Save preset" onclick={() => void savePreset()}>
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.5h8l2.5 2.5v8.5h-10.5zM5.5 2.5v3.5h4v-3.5M5.5 13.5v-4h5v4" fill="none" stroke="currentColor" stroke-width="1.2" /></svg>
@@ -258,34 +309,59 @@
 
   {#if view === "settings"}
     <div class="body settings">
-      <fieldset>
-        <legend>Define silence as</legend>
-        <label>Level below <input type="number" step="1" min="-100" max="-1" value={s.quietDb} onchange={(e) => set({ quietDb: field(e) })} /> dB</label>
-        <label>For more than <input type="number" step="10" min="5" max="60000" value={Math.round(s.minQuietSec * 1000)} onchange={(e) => set({ minQuietSec: field(e) / 1000 })} /> ms</label>
-      </fieldset>
-      <fieldset>
-        <legend>Define sound as</legend>
-        <label>Level above <input type="number" step="1" min="-100" max="0" value={s.contentDb} onchange={(e) => set({ contentDb: field(e) })} /> dB</label>
-        <label>For more than <input type="number" step="10" min="10" max="10000" value={Math.round(s.minContentSec * 1000)} onchange={(e) => set({ minContentSec: field(e) / 1000 })} /> ms</label>
-      </fieldset>
-      <button type="button" class="wide" disabled={busy} onclick={findLevels} title="Measure the clips and set both levels to suit them.">Find Levels</button>
+      {#if s.scan === "clicks"}
+        <fieldset>
+          <legend>Define a click as</legend>
+          <label title="Higher finds fainter clicks. Too high can catch sharp consonants; listen to a few before fixing all.">Sensitivity <input type="number" step="5" min="0" max="100" value={s.clickSensitivity} onchange={(e) => set({ clickSensitivity: field(e) })} /> %</label>
+          <label>No longer than <input type="number" step="0.1" min="0.1" max="3" value={s.clickWidthMs} onchange={(e) => set({ clickWidthMs: field(e) })} /> ms</label>
+        </fieldset>
+        <p class="hint">Each click is filled from the sound on either side. Repair writes a copy of the clip's audio with the chosen clicks fixed; the original file is never changed, and undo puts the clip back.</p>
+      {:else if s.scan === "silence" || s.scan === "audio"}
+        <fieldset>
+          <legend>Define silence as</legend>
+          <label>Level below <input type="number" step="1" min="-100" max="-1" value={s.quietDb} onchange={(e) => set({ quietDb: field(e) })} /> dB</label>
+          <label>For more than <input type="number" step="10" min="5" max="60000" value={Math.round(s.minQuietSec * 1000)} onchange={(e) => set({ minQuietSec: field(e) / 1000 })} /> ms</label>
+        </fieldset>
+        <fieldset>
+          <legend>Define sound as</legend>
+          <label>Level above <input type="number" step="1" min="-100" max="0" value={s.contentDb} onchange={(e) => set({ contentDb: field(e) })} /> dB</label>
+          <label title="Sound shorter than this inside a silence, such as a cough, bump or click, is treated as part of the silence and goes with it.">For more than <input type="number" step="10" min="10" max="10000" value={Math.round(s.minContentSec * 1000)} onchange={(e) => set({ minContentSec: field(e) / 1000 })} /> ms</label>
+        </fieldset>
+        <button type="button" class="wide" disabled={busy} onclick={findLevels} title="Measure the clips and set both levels to suit them.">Find Levels</button>
+      {:else if s.scan === "noise"}
+        <fieldset>
+          <legend>Define a short noise as</legend>
+          <label>Louder than <input type="number" step="1" min="-100" max="-1" value={s.quietDb} onchange={(e) => set({ quietDb: field(e) })} /> dB</label>
+          <label>Lasting no more than <input type="number" step="10" min="20" max="2000" value={Math.round(s.maxBurstSec * 1000)} onchange={(e) => set({ maxBurstSec: field(e) / 1000 })} /> ms</label>
+          <label title="Quiet needed before and after, so short words next to other speech are never caught.">With quiet either side of <input type="number" step="10" min="50" max="5000" value={Math.round(s.guardSec * 1000)} onchange={(e) => set({ guardSec: field(e) / 1000 })} /> ms</label>
+        </fieldset>
+        <button type="button" class="wide" disabled={busy} onclick={findLevels} title="Measure the clips and set the level to sit just above their background noise.">Find Levels</button>
+      {:else}
+        <fieldset>
+          <legend>Define clipping as</legend>
+          <label>Samples at or above <input type="number" step="0.1" min="-12" max="0" value={s.clipDb} onchange={(e) => set({ clipDb: field(e) })} /> dBFS</label>
+          <label title="Longer flat runs are left alone: they are usually loud sound, not clipping.">Flat for no more than <input type="number" step="0.5" min="0.1" max="10" value={s.clipLongestMs} onchange={(e) => set({ clipLongestMs: field(e) })} /> ms</label>
+        </fieldset>
+        <p class="hint">Repair rebuilds each flattened peak from the shape on either side, in a copy of the clip's audio. Rebuilt peaks can go above full scale, so lower the clip gain a little or add a Limiter afterward.</p>
+      {/if}
       <fieldset>
         <legend>Fix by</legend>
         <label>Action
           <select value={s.action} onchange={(e) => set({ action: e.currentTarget.value as QuickPassSettings["action"] })}>
-            <option value="remove">Removing the silence</option>
-            <option value="split">Splitting at the silence</option>
-            <option value="mark">Marking the silence</option>
+            {#each info.actions as a (a)}<option value={a}>{ACTION_TEXT[a]}</option>{/each}
           </select>
         </label>
         {#if s.action === "remove"}
-          <label title="Leave this much of each silence so speech does not run together.">Keep a pause of <input type="number" step="10" min="0" max="5000" value={s.keepMs} onchange={(e) => set({ keepMs: field(e) })} /> ms</label>
+          <label title="Leave this much in place so speech does not run together. Use 0 for noises.">Keep a pause of <input type="number" step="10" min="0" max="5000" value={s.keepMs} onchange={(e) => set({ keepMs: field(e) })} /> ms</label>
           <label title="Where the gap closes. This track only leaves other tracks where they are.">Close the gap on
             <select value={s.ripple} onchange={(e) => set({ ripple: e.currentTarget.value === "all" ? "all" : "track" })}>
               <option value="track">this track only</option>
               <option value="all">all tracks</option>
             </select>
           </label>
+        {/if}
+        {#if s.action === "duck"}
+          <label title="How far each one is lowered, using the clip's volume envelope. Adjust any dip afterward like any envelope point.">Lower by <input type="number" step="1" min="-60" max="-1" value={s.duckDb} onchange={(e) => set({ duckDb: field(e) })} /> dB</label>
         {/if}
       </fieldset>
     </div>
@@ -297,12 +373,12 @@
       <button type="button" disabled={waiting.length === 0} onclick={() => void fix(waiting)}>{VERB[s.action]} All</button>
       <button type="button" disabled={Object.keys(done).length === 0} onclick={clearFixed}>Clear Fixed</button>
     </div>
-    <div class="body table" role="table" aria-label="Silences found">
+    <div class="body table" role="table" aria-label="Findings">
       <div class="head" role="row"><span>Fixed</span><span>Start</span><span>Length</span><span>Clip</span></div>
       {#if !scanned}
-        <p class="empty">Scans {scope}. Press Scan to list the silences. Nothing changes until you fix them.</p>
+        <p class="empty">Scans {scope}. Press Scan to list the {many}. Nothing changes until you fix them.</p>
       {:else if found.length === 0}
-        <p class="empty">No silences found. Try a higher silence level or a shorter time in Settings.</p>
+        <p class="empty">No {many} found. Try adjusting the levels or times in Settings.</p>
       {:else}
         {#each found as f (f.id)}
           <button type="button" role="row" class="row" class:picked={picked.has(f.id)} class:fixed={!!done[f.id]} disabled={!!done[f.id]} onclick={(e) => pick(f, e)}>
@@ -315,7 +391,7 @@
       {/if}
     </div>
     <p class="status" aria-live="polite">
-      {#if !scanned}Ready.{:else}{waiting.length} {waiting.length === 1 ? "silence" : "silences"} to fix{#if Object.keys(done).length > 0}, {Object.keys(done).length} fixed{/if}.{/if}
+      {#if !scanned}Ready.{:else}{waiting.length} {waiting.length === 1 ? one : many} to fix{#if Object.keys(done).length > 0}, {Object.keys(done).length} fixed{/if}.{/if}
     </p>
   {/if}
 </section>
@@ -384,15 +460,19 @@
   .tabs {
     display: grid;
     grid-template-columns: 1fr 1fr;
+    height: 20px;
     border: 1px solid var(--border-strong);
-    border-radius: 3px;
+    border-radius: 2px;
     overflow: hidden;
   }
   .tabs button {
-    padding: 3px 0;
+    padding: 0;
     border: none;
     background: var(--surface-0);
     color: var(--text-dim);
+    font: inherit;
+    font-size: 11px;
+    line-height: 18px;
   }
   .tabs button.on {
     background: var(--accent);
@@ -430,14 +510,38 @@
   .wide {
     justify-self: start;
   }
+  .hint {
+    margin: 0;
+    color: var(--text-dim);
+  }
   .bar {
     display: flex;
-    gap: 4px;
+    flex-wrap: wrap;
+    gap: 3px;
     align-items: center;
-    padding: 4px 8px;
+    padding: 3px 6px;
     border-bottom: 1px solid var(--border);
   }
-  .go {
+  .bar button {
+    height: 20px;
+    padding: 0 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--surface-0);
+    color: var(--text);
+    font: inherit;
+    font-size: 11px;
+    line-height: 18px;
+    white-space: nowrap;
+  }
+  .bar button:disabled {
+    color: var(--text-faint);
+    opacity: 0.6;
+  }
+  .bar button:hover:not(:disabled) {
+    background: var(--surface-2);
+  }
+  .bar .go {
     border-color: var(--accent);
   }
   .table {

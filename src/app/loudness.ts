@@ -7,7 +7,8 @@
  *
  * Podcast targets follow common platform guidance: -16 LUFS integrated
  * for stereo, -19 LUFS for mono, true peaks at or below -1 dBTP. Spotify
- * normalizes podcasts nearer -14 LUFS; broadcast (EBU R128) uses -23.
+ * normalizes podcasts nearer -14 LUFS. Broadcast depends on the region:
+ * the US default is -24 LKFS with true peaks at -2 dBTP; Europe uses -23.
  * Mastering louder than the target only gets turned down by the player
  * and costs dynamic range.
  */
@@ -32,17 +33,49 @@ export interface LoudnessTarget {
   peak: number;
 }
 
-export const TARGETS: readonly LoudnessTarget[] = [
-  { id: "podcast-stereo", name: "Podcast, stereo (-16 LUFS)", lufs: -16, mono: false, peak: -1 },
-  { id: "podcast-mono", name: "Podcast, mono (-19 LUFS)", lufs: -19, mono: true, peak: -1 },
-  { id: "spotify", name: "Louder platforms (-14 LUFS)", lufs: -14, mono: false, peak: -1 },
-  { id: "broadcast", name: "Broadcast, EBU R128 (-23 LUFS)", lufs: -23, mono: false, peak: -1 },
+/** Broadcast loudness rules by region. The US is the default. */
+export interface BroadcastRegion {
+  id: string;
+  name: string;
+  /** The standard's name, shown next to the region. */
+  standard: string;
+  lufs: number;
+  peak: number;
+}
+
+export const BROADCAST_REGIONS: readonly BroadcastRegion[] = [
+  { id: "us", name: "United States", standard: "ATSC A/85", lufs: -24, peak: -2 },
+  { id: "canada", name: "Canada", standard: "ATSC A/85", lufs: -24, peak: -2 },
+  { id: "europe", name: "Europe", standard: "EBU R128", lufs: -23, peak: -1 },
+  { id: "uk", name: "United Kingdom", standard: "EBU R128", lufs: -23, peak: -1 },
+  { id: "australia", name: "Australia and New Zealand", standard: "OP-59", lufs: -24, peak: -2 },
+  { id: "japan", name: "Japan", standard: "ARIB TR-B32", lufs: -24, peak: -1 },
 ];
+
+export const DEFAULT_REGION = "us";
+
+export function regionById(id: string | null | undefined): BroadcastRegion {
+  return BROADCAST_REGIONS.find((r) => r.id === id) ?? BROADCAST_REGIONS[0]!;
+}
+
+/** The targets, with broadcast set by the chosen region. */
+export function targetsFor(regionId: string = DEFAULT_REGION): LoudnessTarget[] {
+  const r = regionById(regionId);
+  return [
+    { id: "podcast-stereo", name: "Podcast, stereo (-16 LUFS)", lufs: -16, mono: false, peak: -1 },
+    { id: "podcast-mono", name: "Podcast, mono (-19 LUFS)", lufs: -19, mono: true, peak: -1 },
+    { id: "spotify", name: "Louder platforms (-14 LUFS)", lufs: -14, mono: false, peak: -1 },
+    { id: "broadcast", name: `Broadcast, ${r.name} (${r.lufs} LUFS)`, lufs: r.lufs, mono: false, peak: r.peak },
+  ];
+}
+
+export const TARGETS: readonly LoudnessTarget[] = targetsFor(DEFAULT_REGION);
 
 export const DEFAULT_TARGET = "podcast-stereo";
 
-export function targetById(id: string): LoudnessTarget {
-  return TARGETS.find((t) => t.id === id) ?? TARGETS[0]!;
+export function targetById(id: string, regionId: string = DEFAULT_REGION): LoudnessTarget {
+  const list = targetsFor(regionId);
+  return list.find((t) => t.id === id) ?? list[0]!;
 }
 
 /** Within this many LU of the target passes; within twice it is close. */

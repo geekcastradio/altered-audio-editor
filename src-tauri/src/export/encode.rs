@@ -12,7 +12,8 @@
 //!
 //! FLAC uses the pure-Rust `flacenc` crate (Apache-2.0). MP3 uses LAME
 //! (LGPL) through `mp3lame-encoder`; MP3 is lossy, so the app warns
-//! before saving over an original with it.
+//! before saving over an original with it. AAC (M4A) uses the encoder
+//! built into the operating system; see `aac.rs`.
 
 use std::fs::File;
 use std::io::{BufWriter, Seek, SeekFrom, Write};
@@ -33,6 +34,8 @@ pub enum FormatKind {
     Wav,
     Flac,
     Mp3,
+    /// AAC in an M4A file.
+    M4a,
 }
 
 impl FormatKind {
@@ -41,6 +44,7 @@ impl FormatKind {
             FormatKind::Wav => "wav",
             FormatKind::Flac => "flac",
             FormatKind::Mp3 => "mp3",
+            FormatKind::M4a => "m4a",
         }
     }
 
@@ -50,6 +54,7 @@ impl FormatKind {
             "wav" | "wave" => Some(FormatKind::Wav),
             "flac" => Some(FormatKind::Flac),
             "mp3" => Some(FormatKind::Mp3),
+            "m4a" => Some(FormatKind::M4a),
             _ => None,
         }
     }
@@ -80,6 +85,14 @@ pub struct OutputFormat {
     pub mp3_bitrate: u16,
     /// 0 (best) to 9 for variable bit rate.
     pub mp3_quality: u8,
+    /// AAC bit rate in kbps: 96, 128, 160 or 192.
+    pub aac_bitrate: u16,
+    /// Dither when writing fewer bits than the audio has. On unless turned off.
+    pub dither: bool,
+    /// Going from stereo to mono: how much of the left and right goes in,
+    /// 0 to 1 each.
+    pub mix_left: f32,
+    pub mix_right: f32,
 }
 
 impl Default for OutputFormat {
@@ -92,6 +105,10 @@ impl Default for OutputFormat {
             mp3_mode: Mp3Mode::Cbr,
             mp3_bitrate: 192,
             mp3_quality: 2,
+            aac_bitrate: 128,
+            dither: true,
+            mix_left: 0.5,
+            mix_right: 0.5,
         }
     }
 }
@@ -115,6 +132,10 @@ pub struct Resolved {
     pub mp3_mode: Mp3Mode,
     pub mp3_bitrate: u16,
     pub mp3_quality: u8,
+    pub aac_bitrate: u16,
+    pub dither: bool,
+    /// Left and right weights for a stereo-to-mono fold.
+    pub mix: [f32; 2],
 }
 
 #[derive(Debug, Error)]
@@ -141,22 +162,26 @@ impl OutputFormat {
         let mut rate = self.sample_rate.unwrap_or(src_rate);
         let mut channels = self.channels.unwrap_or(src_channels).max(1);
         let bits = match self.kind {
-            FormatKind::Wav => match self.bit_depth.unwrap_or(src_bits) {
-                0..=16 => 16,
-                17..=24 => 24,
-                _ => 32,
+            FormatKind::Wav => match self.bit_depth {
+                // Chosen outright: 4 (ADPCM) and 8 only ever come from here.
+                Some(b) => b,
+                None => match src_bits {
+                    0..=16 => 16,
+                    17..=24 => 24,
+                    _ => 32,
+                },
             },
             FormatKind::Flac => match self.bit_depth.unwrap_or(src_bits) {
                 0..=16 => 16,
                 _ => 24,
             },
-            FormatKind::Mp3 => 16,
+            FormatKind::Mp3 | FormatKind::M4a => 16,
         };
         if let Some(b) = self.bit_depth {
             let ok = match self.kind {
-                FormatKind::Wav => [16, 24, 32].contains(&b),
+                FormatKind::Wav => [4, 8, 16, 24, 32].contains(&b),
                 FormatKind::Flac => [16, 24].contains(&b),
-                FormatKind::Mp3 => true,
+                FormatKind::Mp3 | FormatKind::M4a => true,
             };
             if !ok {
                 return Err(EncodeError::Settings(format!(
@@ -183,6 +208,13 @@ impl OutputFormat {
                 )));
             }
         }
+        if self.kind == FormatKind::M4a {
+            if !super::aac::AVAILABLE {
+                return Err(EncodeError::Settings(super::aac::UNAVAILABLE.into()));
+            }
+            channels = channels.min(2);
+            rate = super::aac::pick_rate(rate);
+        }
         if !(1..=8).contains(&channels) {
             return Err(EncodeError::Settings(
                 "Channels must be between 1 and 8.".into(),
@@ -201,6 +233,12 @@ impl OutputFormat {
             mp3_mode: self.mp3_mode,
             mp3_bitrate: self.mp3_bitrate,
             mp3_quality: self.mp3_quality.min(9),
+            aac_bitrate: super::aac::nearest_bitrate(self.aac_bitrate),
+            dither: self.dither,
+            mix: [
+                self.mix_left.clamp(0.0, 1.0),
+                self.mix_right.clamp(0.0, 1.0),
+            ],
         })
     }
 }
@@ -221,11 +259,15 @@ impl Resolved {
                     self.mp3_quality, self.rate
                 ),
             },
+            FormatKind::Wav if self.bits == 4 => {
+                format!("WAV 4-bit IMA ADPCM, {} Hz {ch}", self.rate)
+            }
             FormatKind::Wav if self.bits == 32 => {
                 format!("WAV 32-bit float, {} Hz {ch}", self.rate)
             }
             FormatKind::Wav => format!("WAV {}-bit, {} Hz {ch}", self.bits, self.rate),
             FormatKind::Flac => format!("FLAC {}-bit, {} Hz {ch}", self.bits, self.rate),
+            FormatKind::M4a => format!("AAC {} kbps, {} Hz {ch}", self.aac_bitrate, self.rate),
         }
     }
 }
@@ -237,9 +279,10 @@ pub(crate) struct Dither {
 }
 
 impl Dither {
-    pub(crate) fn new(bits: u16) -> Self {
+    /// Dither that can be turned off; float output never dithers.
+    pub(crate) fn with(bits: u16, on: bool) -> Self {
         Self {
-            on: bits < 32,
+            on: on && bits < 32,
             state: 0x1234_5678,
         }
     }
@@ -262,9 +305,13 @@ impl Dither {
         }
     }
 
-    /// One float sample as a dithered integer at `bits` (16 or 24).
+    /// One float sample as a dithered integer at `bits` (8, 16 or 24).
     pub(crate) fn int(&mut self, v: f32, bits: u16) -> i32 {
-        let max = if bits == 16 { 32_767.0 } else { 8_388_607.0 };
+        let max = match bits {
+            8 => 127.0,
+            16 => 32_767.0,
+            _ => 8_388_607.0,
+        };
         (v * max + self.next()).round().clamp(-max - 1.0, max) as i32
     }
 }
@@ -342,6 +389,16 @@ impl Resample {
 }
 
 enum Inner {
+    Aac {
+        w: super::aac::AacWriter,
+        dither: Dither,
+        buf: Vec<i16>,
+    },
+    Adpcm {
+        w: super::adpcm::AdpcmWriter,
+        dither: Dither,
+        buf: Vec<i16>,
+    },
     Wav {
         w: hound::WavWriter<BufWriter<File>>,
         bits: u16,
@@ -408,6 +465,7 @@ pub struct Writer {
     inner: Inner,
     in_ch: usize,
     out_ch: usize,
+    mix: [f32; 2],
     resample: Option<Resample>,
     mapped: Vec<f32>,
     converted: Vec<f32>,
@@ -424,6 +482,17 @@ impl Writer {
     ) -> Result<Self, EncodeError> {
         let out_ch = usize::from(fmt.channels);
         let inner = match fmt.kind {
+            FormatKind::M4a => Inner::Aac {
+                w: super::aac::AacWriter::create(path, fmt.rate, fmt.channels, fmt.aac_bitrate)
+                    .map_err(EncodeError::Write)?,
+                dither: Dither::with(16, fmt.dither),
+                buf: Vec::new(),
+            },
+            FormatKind::Wav if fmt.bits == 4 => Inner::Adpcm {
+                w: super::adpcm::AdpcmWriter::create(path, fmt.rate, fmt.channels).map_err(werr)?,
+                dither: Dither::with(16, fmt.dither),
+                buf: Vec::new(),
+            },
             FormatKind::Wav => {
                 let spec = hound::WavSpec {
                     channels: fmt.channels,
@@ -438,7 +507,7 @@ impl Writer {
                 Inner::Wav {
                     w: hound::WavWriter::create(path, spec).map_err(werr)?,
                     bits: fmt.bits,
-                    dither: Dither::new(fmt.bits),
+                    dither: Dither::with(fmt.bits, fmt.dither),
                 }
             }
             FormatKind::Flac => {
@@ -468,7 +537,7 @@ impl Writer {
                     frame: 0,
                     ch: out_ch,
                     bits: fmt.bits,
-                    dither: Dither::new(fmt.bits),
+                    dither: Dither::with(fmt.bits, fmt.dither),
                 }))
             }
             FormatKind::Mp3 => {
@@ -548,6 +617,7 @@ impl Writer {
             inner,
             in_ch: usize::from(in_ch.max(1)),
             out_ch,
+            mix: fmt.mix,
             resample,
             mapped: Vec::new(),
             converted: Vec::new(),
@@ -560,6 +630,15 @@ impl Writer {
         self.mapped.clear();
         let mapped: &[f32] = if self.in_ch == self.out_ch {
             interleaved
+        } else if self.out_ch == 1 && self.in_ch >= 2 {
+            // Stereo to mono with the chosen left and right amounts.
+            let [l, r] = self.mix;
+            self.mapped.extend(
+                interleaved
+                    .chunks_exact(self.in_ch)
+                    .map(|f| f[0] * l + f[1] * r),
+            );
+            &self.mapped
         } else {
             map_channels(interleaved, self.in_ch, self.out_ch, &mut self.mapped);
             &self.mapped
@@ -586,6 +665,16 @@ impl Writer {
         }
         self.frames += (data.len() / self.out_ch) as u64;
         match &mut self.inner {
+            Inner::Aac { w, dither, buf } => {
+                buf.clear();
+                buf.extend(data.iter().map(|v| dither.int(*v, 16) as i16));
+                w.write(buf).map_err(EncodeError::Write)?;
+            }
+            Inner::Adpcm { w, dither, buf } => {
+                buf.clear();
+                buf.extend(data.iter().map(|v| dither.int(*v, 16) as i16));
+                w.write(buf).map_err(werr)?;
+            }
             Inner::Wav { w, bits, dither } => {
                 if *bits == 32 {
                     for v in data {
@@ -594,7 +683,9 @@ impl Writer {
                 } else {
                     for v in data {
                         let x = dither.int(*v, *bits);
-                        if *bits == 16 {
+                        if *bits == 8 {
+                            w.write_sample(x as i8).map_err(werr)?;
+                        } else if *bits == 16 {
                             w.write_sample(x as i16).map_err(werr)?;
                         } else {
                             w.write_sample(x).map_err(werr)?;
@@ -646,6 +737,8 @@ impl Writer {
             self.encode(&out)?;
         }
         match self.inner {
+            Inner::Aac { w, .. } => w.finish().map_err(EncodeError::Write)?,
+            Inner::Adpcm { w, .. } => w.finish().map_err(werr)?,
             Inner::Wav { w, .. } => w.finalize().map_err(werr)?,
             Inner::Flac(mut f) => {
                 if !f.pending.is_empty() {
@@ -825,5 +918,59 @@ mod tests {
         .is_err());
         let w = OutputFormat::default().resolve(44_100, 1, 32).unwrap();
         assert_eq!(w.describe(), "WAV 32-bit float, 44100 Hz mono");
+    }
+
+    #[test]
+    fn eight_bit_and_adpcm_wav_read_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = sine(44_100, 2, 1.0);
+        for bits in [8u16, 4] {
+            let path = dir.path().join(format!("t{bits}.wav"));
+            let fmt = OutputFormat {
+                kind: FormatKind::Wav,
+                bit_depth: Some(bits),
+                ..Default::default()
+            };
+            let frames = write(&path, fmt, 44_100, 2, &data);
+            assert_eq!(frames, 44_100);
+            let (rate, ch, back) = read_all(&path);
+            assert_eq!((rate, ch), (44_100, 2));
+            // ADPCM pads its last block; the decoder may return the padding.
+            let n = back.len() / 2;
+            assert!(
+                (44_100..44_100 + 2_100).contains(&n),
+                "{bits}-bit: {n} frames"
+            );
+            let err = data
+                .iter()
+                .zip(&back)
+                .skip(2_000)
+                .map(|(a, b)| (a - b).abs())
+                .fold(0.0f32, f32::max);
+            assert!(err < 0.05, "{bits}-bit: worst error {err}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod aac_tests {
+    use super::*;
+
+    #[test]
+    fn aac_settings_resolve_to_what_the_encoder_takes() {
+        let fmt = OutputFormat {
+            kind: FormatKind::M4a,
+            aac_bitrate: 256,
+            ..Default::default()
+        };
+        let r = fmt.resolve(96_000, 6, 24);
+        if super::super::aac::AVAILABLE {
+            let r = r.unwrap();
+            assert_eq!((r.rate, r.channels, r.aac_bitrate), (48_000, 2, 192));
+            assert_eq!(r.describe(), "AAC 192 kbps, 48000 Hz stereo");
+        } else {
+            assert!(r.is_err(), "says plainly that AAC is not available here");
+        }
+        assert_eq!(FormatKind::from_extension("M4A"), Some(FormatKind::M4a));
     }
 }

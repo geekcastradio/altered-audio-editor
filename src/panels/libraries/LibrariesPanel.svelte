@@ -305,11 +305,21 @@
       canvas.height = Math.round(h * dpr);
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.clearRect(0, 0, w, h);
+      // A failed waveform says why on hover instead of staying blank.
+      canvas.title = e.status === "error" ? `No waveform: ${e.error ?? "unknown error"}` : "";
+      if (e.status === "error") {
+        g.fillStyle = getComputedStyle(canvas).getPropertyValue("--danger") || "#d55";
+        g.fillRect(0, h / 2 - 1, w, 2);
+        return;
+      }
       if (e.status !== "ready" || !e.summary) return;
       const ch = e.summary.channels;
       const total = e.summary.length;
       const level = pickLevel(e.levels, total / w);
-      if (!level || total <= 0) return;
+      if (!level || total <= 0 || level.data.length === 0) {
+        canvas.title = `No waveform data (${e.levels.length} levels, length ${total})`;
+        return;
+      }
       g.fillStyle = getComputedStyle(canvas).color;
       for (let x = 0; x < w; x++) {
         const s0 = (x * total) / w;

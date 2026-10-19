@@ -50,6 +50,7 @@ pub async fn export_pick_path(
         FormatKind::Wav => "WAV audio",
         FormatKind::Flac => "FLAC audio",
         FormatKind::Mp3 => "MP3 audio",
+        FormatKind::M4a => "AAC audio (M4A)",
     };
     spawn_blocking(move || {
         let mut d = app
@@ -59,7 +60,12 @@ pub async fn export_pick_path(
             .set_file_name(format!("{name}.{ext}"))
             .add_filter(label(kind), &[ext]);
         if all == Some(true) {
-            for k in [FormatKind::Wav, FormatKind::Flac, FormatKind::Mp3] {
+            for k in [
+                FormatKind::Wav,
+                FormatKind::Flac,
+                FormatKind::Mp3,
+                FormatKind::M4a,
+            ] {
                 if k != kind {
                     d = d.add_filter(label(k), &[k.extension()]);
                 }
@@ -83,6 +89,56 @@ pub async fn export_pick_path(
     })
     .await
     .map_err(|e| e.to_string())
+}
+
+/// Asks where to save a text file (chapters, marker lists) and writes it.
+/// Only the path the user picked is written. Returns it, or None when the
+/// dialog was cancelled.
+#[tauri::command]
+pub async fn export_text(
+    app: AppHandle,
+    name: String,
+    folder: Option<PathBuf>,
+    title: String,
+    filter: String,
+    ext: String,
+    content: String,
+) -> Result<Option<PathBuf>, String> {
+    let parent = app.get_webview_window("main");
+    let ext: String = ext.chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+    if ext.is_empty() {
+        return Err("No file type given.".into());
+    }
+    spawn_blocking(move || {
+        let mut d = app
+            .dialog()
+            .file()
+            .set_title(title)
+            .set_file_name(format!("{name}.{ext}"))
+            .add_filter(filter, &[ext.as_str()]);
+        if let Some(f) = folder.filter(|f| f.is_dir()) {
+            d = d.set_directory(f);
+        }
+        if let Some(w) = parent.as_ref() {
+            d = d.set_parent(w);
+        }
+        let Some(path) = d
+            .blocking_save_file()
+            .and_then(|f| f.as_path().map(|p| p.to_path_buf()))
+        else {
+            return Ok(None);
+        };
+        let path = if path.extension().is_none() {
+            path.with_extension(&ext)
+        } else {
+            path
+        };
+        std::fs::write(&path, content.as_bytes())
+            .map_err(|e| format!("Could not write the file: {e}"))?;
+        Ok(Some(path))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Folder dialog for track stems. `folder` is where it opens, when known.
@@ -238,4 +294,29 @@ pub async fn loudness_check(
 #[tauri::command]
 pub fn export_cancel(cancel: State<'_, ExportCancel>) {
     cancel.0.store(true, Ordering::Relaxed);
+}
+
+/// Writes chapter markers into an exported MP3 (ID3 chapters) or FLAC
+/// (Vorbis comments). Other formats are left as they are.
+#[tauri::command]
+pub async fn export_embed_chapters(
+    path: PathBuf,
+    chapters: Vec<crate::export::chapters::Chapter>,
+    total_ms: u64,
+) -> Result<bool, String> {
+    spawn_blocking(move || {
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let r = match ext.as_str() {
+            "mp3" => crate::export::chapters::embed_mp3(&path, &chapters, total_ms).map(|_| true),
+            "flac" => crate::export::chapters::embed_flac(&path, &chapters).map(|_| true),
+            _ => Ok(false),
+        };
+        r.map_err(|e| format!("Could not add chapters: {e}"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

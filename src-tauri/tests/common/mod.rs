@@ -107,6 +107,8 @@ pub fn clip() -> Clip {
         effects: EffectChain::default(),
         group: None,
         looped: None,
+        stretch: None,
+        audio_type: None,
     }
 }
 
@@ -174,6 +176,7 @@ pub fn marker() -> Marker {
             image: Some("art/segment2.png".into()),
         }),
         contracted_duration: None,
+        color: None,
     }
 }
 
@@ -227,6 +230,7 @@ pub fn session() -> Session {
                 description: String::new(),
                 chapter: None,
                 contracted_duration: None,
+                color: None,
             },
             Marker {
                 id: id(502),
@@ -237,6 +241,7 @@ pub fn session() -> Session {
                 description: String::new(),
                 chapter: None,
                 contracted_duration: Some(2_880_000),
+                color: None,
             },
             Marker {
                 id: id(503),
@@ -247,8 +252,10 @@ pub fn session() -> Session {
                 description: String::new(),
                 chapter: None,
                 contracted_duration: None,
+                color: None,
             },
         ],
+        playlist: Vec::new(),
         view: SessionView {
             samples_per_pixel: 512.5,
             scroll: 96_000,

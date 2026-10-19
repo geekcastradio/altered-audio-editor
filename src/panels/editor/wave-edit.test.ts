@@ -196,3 +196,37 @@ describe("Waveform editor edits", () => {
     expect(sessionEnd(doc)).toBe(11_000);
   });
 });
+
+import { markersAfterCrop, markersAfterCut, markersAfterInsert } from "./wave-edit";
+import { newMarker } from "../markers/markers";
+
+describe("markers follow Waveform edits", () => {
+  const withMarks = (d: Parameters<typeof markersAfterCut>[0]) => ({
+    ...d,
+    markers: [newMarker("before", "b", 100), newMarker("inside", "i", 1_500), newMarker("after", "a", 5_000), newMarker("range", "r", 500, 2_000)],
+  });
+  it("a cut moves later markers left and keeps markers that were inside", () => {
+    const [op] = markersAfterCut(withMarks(file()), 1_000, 2_000) as unknown as [{ changes: { id: string; position: number; duration?: number }[] }];
+    expect(op.changes).toEqual([
+      { id: "inside", position: 1_000, duration: 0 },
+      { id: "after", position: 4_000, duration: 0 },
+      { id: "range", position: 500, duration: 1_000 },
+    ]);
+  });
+  it("an insert moves later markers right and grows ranges across it", () => {
+    const [op] = markersAfterInsert(withMarks(file()), 1_000, 300) as unknown as [{ changes: object[] }];
+    expect(op.changes).toEqual([
+      { id: "inside", position: 1_800 },
+      { id: "after", position: 5_300 },
+      { id: "range", duration: 2_300 },
+    ]);
+  });
+  it("a crop drops markers outside and moves the rest", () => {
+    const ops = markersAfterCrop(withMarks(file()), 1_000, 3_000) as unknown as { op: string; ids?: string[]; changes?: object[] }[];
+    expect(ops[0]).toEqual({ op: "remove_markers", ids: ["before", "after"] });
+    expect(ops[1]!.changes).toEqual([
+      { id: "inside", position: 500, duration: 0 },
+      { id: "range", position: 0, duration: 1_500 },
+    ]);
+  });
+});
