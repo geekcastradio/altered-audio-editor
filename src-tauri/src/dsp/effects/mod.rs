@@ -17,6 +17,7 @@
 mod dynamics;
 mod eq;
 mod filters;
+mod phase;
 mod pitch;
 pub mod print;
 mod restore;
@@ -25,7 +26,7 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-use crate::session::model::{EffectChain, EffectSlot};
+use crate::session::model::{EffectChain, EffectSlot, Id};
 
 pub use dynamics::{Compressor, DeEsser, Gate, Limiter, SpeechLeveler};
 pub use eq::{HumCut, ParametricEq};
@@ -169,6 +170,7 @@ pub fn catalog() -> Vec<EffectInfo> {
         filters::notch_info(),
         filters::precision_info(),
         filters::curve_info(),
+        phase::phase_info(),
         dynamics::compressor_info(),
         dynamics::limiter_info(),
         dynamics::gate_info(),
@@ -268,6 +270,11 @@ pub trait Processor: Send {
     }
     /// Clears filter memory and envelopes, as after a jump.
     fn reset(&mut self);
+    /// Takes new settings while playing, keeping its state, for
+    /// automation. False when the effect cannot; the chain then rebuilds it.
+    fn update(&mut self, _p: &Params) -> bool {
+        false
+    }
 }
 
 struct Gain(f32);
@@ -279,6 +286,10 @@ impl Processor for Gain {
         }
     }
     fn reset(&mut self) {}
+    fn update(&mut self, p: &Params) -> bool {
+        self.0 = db_to_gain(p.get("gain"));
+        true
+    }
 }
 
 pub(crate) fn db_to_gain(db: f64) -> f32 {
@@ -314,6 +325,7 @@ pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
         "altaudio.curve_eq" => Box::new(filters::CurveEq::new(&p, rate)),
         "altaudio.center_remover" => Box::new(filters::CenterRemover::new(&p, rate)),
         "altaudio.pitch_shift" => Box::new(pitch::PitchShift::new(&p, rate)),
+        "altaudio.phase_rotate" => Box::new(phase::PhaseRotate::new(&p, rate)),
         _ => return None,
     })
 }
@@ -322,6 +334,10 @@ pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
 /// output gain, then the dry/wet mix.
 pub struct ChainProcessor {
     stages: Vec<Box<dyn Processor>>,
+    /// Per stage: its slot id, what it is and its current settings, so
+    /// automation can change one setting while it plays.
+    slots: Vec<(Id, EffectInfo, BTreeMap<String, f64>)>,
+    rate: u32,
     input: f32,
     output: f32,
     mix: f32,
@@ -340,13 +356,14 @@ impl ChainProcessor {
         if !chain.enabled {
             return None;
         }
-        let stages: Vec<Box<dyn Processor>> = chain
-            .slots
-            .iter()
-            .take(MAX_SLOTS)
-            .filter(|s| s.enabled)
-            .filter_map(|s| build(s, rate))
-            .collect();
+        let mut stages: Vec<Box<dyn Processor>> = Vec::new();
+        let mut slots = Vec::new();
+        for s in chain.slots.iter().take(MAX_SLOTS).filter(|s| s.enabled) {
+            if let (Some(p), Some(i)) = (build(s, rate), info(&s.effect)) {
+                stages.push(p);
+                slots.push((s.id, i, s.params.clone()));
+            }
+        }
         let input = db_to_gain(chain.input_gain_db.clamp(-48.0, 24.0));
         let output = db_to_gain(chain.output_gain_db.clamp(-48.0, 24.0));
         let mix = chain.mix.clamp(0.0, 1.0) as f32;
@@ -356,6 +373,8 @@ impl ChainProcessor {
         let latency = stages.iter().map(|s| s.latency()).sum();
         Some(Self {
             stages,
+            slots,
+            rate,
             input,
             output,
             mix,
@@ -368,6 +387,36 @@ impl ChainProcessor {
 
     pub fn latency(&self) -> usize {
         self.latency
+    }
+
+    /// Changes one setting of one effect while it plays (automation). An
+    /// effect that cannot take it in place is rebuilt, unless that would
+    /// change the chain's look-ahead.
+    pub fn set_param(&mut self, slot: Id, key: &str, value: f64) {
+        let Some(i) = self.slots.iter().position(|s| s.0 == slot) else {
+            return;
+        };
+        let (id, info, params) = &mut self.slots[i];
+        if params.get(key).is_some_and(|v| (v - value).abs() < 1e-6) {
+            return;
+        }
+        params.insert(key.to_string(), value);
+        let p = Params::resolve(info, params);
+        if self.stages[i].update(&p) {
+            return;
+        }
+        let slot = EffectSlot {
+            id: *id,
+            effect: info.id.to_string(),
+            enabled: true,
+            params: params.clone(),
+            preset: None,
+        };
+        if let Some(fresh) = build(&slot, self.rate) {
+            if fresh.latency() == self.stages[i].latency() {
+                self.stages[i] = fresh;
+            }
+        }
     }
 
     pub fn reset(&mut self) {

@@ -4,7 +4,8 @@
   This file is part of Altered Audio Editor.
 
   Time Info: where the playhead is, the span of the selected clips, and
-  the session's length, format and mixdown size.
+  the session's length, format and mixdown size. In the Waveform editor it
+  shows the open file and its playback instead.
 -->
 <script lang="ts">
   import { editor, type EditorState } from "../../stores/editor";
@@ -17,20 +18,35 @@
   interface Props {
     session: SessionStore;
     transport: TransportStore;
+    /** The Waveform editor's file and transport, shown while that editor is in front. */
+    wave?: SessionStore;
+    waveTransport?: TransportStore;
   }
 
-  const { session, transport }: Props = $props();
+  const { session, transport, wave, waveTransport }: Props = $props();
 
-  let doc = $state<SessionDoc | null>(null);
+  let sessionDoc = $state<SessionDoc | null>(null);
   $effect(() =>
     session.subscribe((d) => {
-      doc = d;
+      sessionDoc = d;
     }),
   );
-  let tp = $state<TransportState | null>(null);
+  let sessionTp = $state<TransportState | null>(null);
   $effect(() =>
     transport.subscribe((t) => {
-      tp = t;
+      sessionTp = t;
+    }),
+  );
+  let waveDoc = $state<SessionDoc | null>(null);
+  $effect(() =>
+    wave?.subscribe((d) => {
+      waveDoc = d;
+    }),
+  );
+  let waveTp = $state<TransportState | null>(null);
+  $effect(() =>
+    waveTransport?.subscribe((t) => {
+      waveTp = t;
     }),
   );
   let ed = $state<EditorState>(editor.current());
@@ -39,6 +55,9 @@
       ed = e;
     }),
   );
+  const inWave = $derived(ed.mode === "waveform" && waveDoc !== null);
+  const doc = $derived(inWave ? waveDoc : sessionDoc);
+  const tp = $derived(inWave ? waveTp : sessionTp);
 
   const rate = $derived(doc?.sample_rate ?? 48000);
   const t = (samples: number) => formatIn(samples, rate, ed.timeFormat);
@@ -46,7 +65,7 @@
   /** The time selection if there is one, otherwise the span of the selected clips. */
   const span = $derived.by(() => {
     if (doc?.view.selection) return doc.view.selection;
-    if (!doc || ed.selectedClips.size === 0) return null;
+    if (!doc || inWave || ed.selectedClips.size === 0) return null;
     const media = new Map(doc.media.map((m) => [m.id, m]));
     let start = Infinity;
     let end = 0;

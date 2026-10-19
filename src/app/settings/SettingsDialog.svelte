@@ -10,7 +10,7 @@
 -->
 <script lang="ts">
   import { cacheInfo, cacheClearPeaks, openSoundSettings, type CacheInfo } from "../core";
-  import { audioOutputs } from "../core";
+  import { audioDriver, audioInputs, audioOutputs, type AudioDriver, type AudioInput } from "../core";
   import { BROADCAST_REGIONS, targetsFor } from "../loudness";
   import { DEFAULT_SETTINGS, NO_COLORS, TIMECODE_RATES, type AppColors } from "../../stores/settings";
   import { cleanDraft, LATER_PAGES, PAGES, sizeText, type Page, type SettingsDraft } from "./pages";
@@ -26,18 +26,29 @@
   const { initial, page: startPage = "General", onApply, onNotice = () => {}, onClose }: Props = $props();
 
   // svelte-ignore state_referenced_locally
-  let d = $state<SettingsDraft>(structuredClone(initial));
+  let d = $state<SettingsDraft>($state.snapshot(initial) as SettingsDraft);
   // svelte-ignore state_referenced_locally
   let page = $state<Page>(startPage);
 
   let outputs = $state<{ name: string; isDefault: boolean }[] | null>(null);
+  let inputs = $state<AudioInput[] | null>(null);
+  let driver = $state<AudioDriver | null>(null);
+  const systemDriverName = () => (navigator.userAgent.includes("Windows") ? "WASAPI" : navigator.userAgent.includes("Mac") ? "Core Audio" : "ALSA");
   let cache = $state<CacheInfo | null>(null);
   let busy = $state(false);
   $effect(() => {
     if (page === "Audio Devices" && outputs === null)
-      void audioOutputs()
+      void audioOutputs(d.app.driver === "asio")
         .then((o) => (outputs = o))
         .catch(() => (outputs = []));
+    if (page === "Audio Devices" && driver === null)
+      void audioDriver()
+        .then((v) => (driver = v))
+        .catch(() => (driver = { asioBuilt: false, asio: false, drivers: [] }));
+    if (page === "Audio Devices" && inputs === null)
+      void audioInputs(d.app.driver === "asio")
+        .then((i) => (inputs = i))
+        .catch(() => (inputs = []));
     if (page === "Cache and Files" && cache === null) void refreshCache();
   });
   async function refreshCache() {
@@ -73,7 +84,7 @@
   }
   function resetPage() {
     const def = DEFAULT_SETTINGS;
-    if (page === "General") Object.assign(d.app, { zoomStep: def.zoomStep, wheelAnchor: def.wheelAnchor, fadeShape: def.fadeShape, spaceAction: def.spaceAction });
+    if (page === "General") Object.assign(d.app, { zoomStep: def.zoomStep, wheelAnchor: def.wheelAnchor, wheelZooms: def.wheelZooms, fadeShape: def.fadeShape, spaceAction: def.spaceAction });
     else if (page === "Appearance") d.app.colors = { ...NO_COLORS };
     else if (page === "Autosave") Object.assign(d.app, { autosave: def.autosave, autosaveMinutes: def.autosaveMinutes, backups: def.backups, backupCount: def.backupCount });
     else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb });
@@ -106,9 +117,10 @@
         {/if}
 
         {#if page === "General"}
-          <label class="row">Ctrl + wheel zooms by <input type="number" min="5" max="100" step="5" bind:value={d.app.zoomStep} /> % a step</label>
+          <label><input type="checkbox" bind:checked={d.app.wheelZooms} /> The mouse wheel over the timeline zooms (off: it scrolls; Ctrl + wheel always zooms)</label>
+          <label class="row">Each wheel step zooms by <input type="number" min="5" max="100" step="5" bind:value={d.app.zoomStep} /> % a step</label>
           <fieldset>
-            <legend>Ctrl + wheel zooms around</legend>
+            <legend>Wheel zoom centers on</legend>
             <label><input type="radio" bind:group={d.app.wheelAnchor} value="mouse" /> The mouse pointer</label>
             <label><input type="radio" bind:group={d.app.wheelAnchor} value="playhead" /> The playhead</label>
           </fieldset>
@@ -144,9 +156,48 @@
             </select>
           </label>
           <p class="note">Used for playback, file previews and input monitoring from the next time they start. If it is unplugged, the system default plays instead.</p>
-          <label class="off"><select disabled><option>Picked per track</option></select> Recording input <span class="why">Each track picks its own input in its track header.</span></label>
-          <label class="off"><select disabled><option>Automatic</option></select> Buffer size <span class="why">Set by the system for now; a choice arrives with ASIO.</span></label>
-          <label class="off"><select disabled><option>Shared (WASAPI)</option></select> Driver type <span class="why">ASIO arrives with per-channel routing.</span></label>
+          <label class="row">
+            Waveform editor records from
+            <select class="grow" value={d.app.waveInput ?? ""} onchange={(e) => (d.app.waveInput = e.currentTarget.value || null)}>
+              <option value="">System default input</option>
+              {#each inputs ?? [] as dev (dev.name)}
+                <optgroup label={dev.name}>
+                  {#each Array.from({ length: dev.channels }, (_, i) => i + 1) as c (c)}<option value={`Mono: ${dev.name} ${c}`}>Mono, channel {c}</option>{/each}
+                  {#each Array.from({ length: Math.floor(dev.channels / 2) }, (_, i) => i * 2 + 1) as c (c)}<option value={`Stereo: ${dev.name} ${c}-${c + 1}`}>Stereo, channels {c}-{c + 1}</option>{/each}
+                </optgroup>
+              {/each}
+              {#if d.app.waveInput && inputs && !inputs.some((dev) => d.app.waveInput?.includes(dev.name))}<option value={d.app.waveInput}>{d.app.waveInput} (not connected)</option>{/if}
+            </select>
+          </label>
+          <p class="note">In the multitrack view, each track picks its own input in its track header.</p>
+          <label class="row" class:off={!driver?.asioBuilt}>
+            Driver
+            <select
+              class="grow"
+              value={d.app.driver}
+              disabled={!driver?.asioBuilt}
+              onchange={(e) => {
+                d.app.driver = e.currentTarget.value === "asio" ? "asio" : "system";
+                // Device names differ between drivers, so the output goes back to the default.
+                d.app.output = null;
+                d.app.waveInput = null;
+                outputs = null;
+                inputs = null;
+              }}
+            >
+              <option value="system">System ({systemDriverName()})</option>
+              <option value="asio">ASIO</option>
+            </select>
+          </label>
+          {#if !driver?.asioBuilt}
+            <p class="note">ASIO is in the Windows release builds. This build uses the system driver.</p>
+          {:else if d.app.driver === "asio"}
+            <p class="note">
+              {driver.drivers.length ? `ASIO drivers found: ${driver.drivers.join(", ")}.` : "No ASIO drivers found. Install your interface's ASIO driver."}
+              Sample rate and buffer size are set in the driver's own control panel. Takes effect from the next playback or recording. If the ASIO driver can't open, the system driver plays instead.
+            </p>
+          {/if}
+          <p class="note">ASIO is a trademark of Steinberg Media Technologies GmbH.</p>
           <div><button type="button" onclick={() => void openSoundSettings()}>Open System Sound Settings</button></div>
         {:else if page === "Channel Routing"}
           <label class="off"><select disabled><option>1 and 2</option></select> Input channels for stereo tracks</label>
@@ -161,8 +212,6 @@
             <label class="row" class:dim={!d.app.backups}>Keep the newest <input type="number" min="1" max="50" step="1" bind:value={d.app.backupCount} disabled={!d.app.backups} /> copies</label>
             <p class="note">Each save first copies the previous file into a Backups folder beside the session, named with the date and time.</p>
           </fieldset>
-        {:else if page === "Controllers"}
-          <label class="off"><button type="button" disabled>Add Controller...</button></label>
         {:else if page === "Editing"}
           <label class="off"><input type="checkbox" disabled /> Crossfade the edges of cuts and deletes in the Waveform editor <span class="why">Planned with the next Waveform editor batch.</span></label>
           <label class="off"><input type="number" disabled value="1" /> Files processed at once in Batch Convert <span class="why">One at a time for now.</span></label>

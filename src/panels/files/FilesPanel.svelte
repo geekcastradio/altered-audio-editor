@@ -28,6 +28,8 @@
   import { previewPlay, previewStatus, previewStop } from "../../app/core";
   import { prefs } from "../../stores/prefs";
   import { onDestroy, untrack } from "svelte";
+  import type { Readable } from "svelte/store";
+  import { sessionDuration, type SessionRow } from "./session-row";
 
   interface Props {
     pool: MediaPool;
@@ -38,9 +40,20 @@
     /** Double-click: open the file in the Waveform editor. */
     onOpen?: (path: string) => void;
     shortcutFor?: (id: string) => string | undefined;
+    /** The open multitrack session, listed first. */
+    session?: Readable<SessionRow | null>;
+    /** Double-click on the session row: show it in the Multitrack view. */
+    onOpenSession?: () => void;
   }
 
-  const { pool, actions, drop, onDropPaths, onOpen = () => {}, shortcutFor = () => undefined }: Props = $props();
+  const { pool, actions, drop, onDropPaths, onOpen = () => {}, shortcutFor = () => undefined, session, onOpenSession = () => {} }: Props = $props();
+
+  let sessionRow = $state<SessionRow | null>(null);
+  $effect(() =>
+    session?.subscribe((r) => {
+      sessionRow = r;
+    }),
+  );
 
   let snap = $state<MediaPoolState | null>(null);
   $effect(() =>
@@ -378,6 +391,24 @@
     onkeydown={onListKey}
     onpointerdown={onBlankPointer}
   >
+    {#if sessionRow}
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <div
+        class="row session"
+        class:active={sessionRow.active}
+        role="option"
+        tabindex="-1"
+        aria-selected="false"
+        title="The open multitrack session. Double-click to show it in the Multitrack view."
+        ondblclick={() => onOpenSession()}
+      >
+        <span class="col name"><span class="sicon" aria-hidden="true">▤</span>{sessionRow.name}{sessionRow.dirty ? " *" : ""}</span>
+        <span class="col status ready"><span class="dot" aria-hidden="true"></span>Session</span>
+        <span class="col num duration">{sessionDuration(sessionRow.seconds)}</span>
+        <span class="col num rate">{formatRate(sessionRow.sampleRate)}</span>
+        <span class="col channels"></span>
+      </div>
+    {/if}
     {#each visible as it (it.id)}
       <div
         class="row"
@@ -463,6 +494,16 @@
 {/if}
 
 <style>
+  .row.session .name {
+    font-weight: 600;
+  }
+  .row.session.active .name {
+    color: var(--accent);
+  }
+  .sicon {
+    margin-right: 5px;
+    color: var(--text-dim);
+  }
   .panel {
     position: relative;
     display: grid;

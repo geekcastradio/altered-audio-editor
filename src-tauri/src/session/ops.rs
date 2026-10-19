@@ -20,6 +20,14 @@ use super::model::{
     STRETCH_MAX, STRETCH_MIN,
 };
 
+/// Points for one effect setting's envelope on a clip.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct EffectPoints {
+    pub slot_id: Id,
+    pub param: String,
+    pub points: Vec<EnvelopePoint>,
+}
+
 /// A clip to create.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ClipSpec {
@@ -134,6 +142,10 @@ pub struct ClipChange {
     /// right). Empty removes the envelope.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pan: Option<Vec<EnvelopePoint>>,
+    /// Replaces the points of effect settings' envelopes (automation of
+    /// the clip's Voice Chain). Empty points remove that envelope.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effect_points: Option<Vec<EffectPoints>>,
     /// Loops the clip, or changes its loop length or phase.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub looped: Option<ClipLoop>,
@@ -224,6 +236,16 @@ pub enum Op {
     },
     RemoveMedia {
         id: Id,
+    },
+    /// Replaces a media reference after its file changed on disk (for
+    /// example a Waveform editor save that made it longer). Without
+    /// `clip_outs`, clips that ended at the old end follow the new end and
+    /// clips past a shorter end are trimmed to it. With `clip_outs`, those
+    /// clips get exactly these source ends (the inverse uses this).
+    SetMedia {
+        media: MediaRef,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        clip_outs: Option<Vec<(Id, u64)>>,
     },
     AddClips {
         track_id: Id,
@@ -473,6 +495,51 @@ pub fn apply(s: &mut Session, op: &Op) -> Result<Op, OpError> {
                 .ok_or(OpError::NoMedia(*id))?;
             let media = s.media.remove(i);
             Ok(Op::AddMedia { media })
+        }
+        Op::SetMedia { media, clip_outs } => {
+            let mi = s
+                .media
+                .iter()
+                .position(|m| m.id == media.id)
+                .ok_or(OpError::NoMedia(media.id))?;
+            let old = s.media[mi].clone();
+            let mut new_outs: Vec<(Id, u64)> = Vec::new();
+            for t in &s.tracks {
+                for c in t.clips.iter().filter(|c| c.media_id == media.id) {
+                    let to = match clip_outs {
+                        Some(list) => match list.iter().find(|(id, _)| *id == c.id) {
+                            Some((_, v)) => *v,
+                            None => continue,
+                        },
+                        None if c.looped.is_some() => continue,
+                        None if media.length > old.length && c.source_out == old.length => {
+                            media.length
+                        }
+                        None if media.length > 0 && c.source_out > media.length => media.length,
+                        None => continue,
+                    };
+                    if to <= c.source_in || (media.length > 0 && to > media.length) {
+                        return Err(OpError::EmptyClip);
+                    }
+                    if to != c.source_out {
+                        new_outs.push((c.id, to));
+                    }
+                }
+            }
+            let mut old_outs = Vec::with_capacity(new_outs.len());
+            for t in &mut s.tracks {
+                for c in &mut t.clips {
+                    if let Some((_, to)) = new_outs.iter().find(|(id, _)| *id == c.id) {
+                        old_outs.push((c.id, c.source_out));
+                        c.source_out = *to;
+                    }
+                }
+            }
+            s.media[mi] = media.clone();
+            Ok(Op::SetMedia {
+                media: old,
+                clip_outs: Some(old_outs),
+            })
         }
         Op::AddClips { track_id, clips } => {
             let ti = track_index(s, *track_id)?;
@@ -782,6 +849,22 @@ fn set_clip(s: &mut Session, ch: &ClipChange) -> Result<ClipChange, OpError> {
     if let Some(points) = &ch.pan {
         inv.pan = Some(set_points(c, EnvelopeTarget::Pan, points));
     }
+    if let Some(list) = &ch.effect_points {
+        let mut old = Vec::with_capacity(list.len());
+        for ep in list {
+            let target = EnvelopeTarget::EffectParam {
+                slot_id: ep.slot_id,
+                param: ep.param.clone(),
+            };
+            old.push(EffectPoints {
+                slot_id: ep.slot_id,
+                param: ep.param.clone(),
+                points: set_points(c, target, &ep.points),
+            });
+        }
+        old.reverse();
+        inv.effect_points = Some(old);
+    }
     if let Some(col) = &ch.color {
         let new = if col.is_empty() {
             None
@@ -829,20 +912,36 @@ pub const PAN_MAX: f64 = 100.0;
 pub fn envelope_id(clip_id: Id, target: &EnvelopeTarget) -> Id {
     match target {
         EnvelopeTarget::Pan => Uuid::from_u128(clip_id.as_u128() ^ 1),
+        EnvelopeTarget::EffectParam { slot_id, param } => {
+            let mut h: u128 = 0x6c62_272e_07bb_0142_62b8_2175_6295_c58d;
+            for b in param.bytes() {
+                h = (h ^ u128::from(b)).wrapping_mul(0x0000_0000_0100_0000_0000_0000_0000_013b);
+            }
+            Uuid::from_u128(clip_id.as_u128() ^ slot_id.as_u128() ^ h ^ 2)
+        }
         _ => clip_id,
     }
 }
 
-/// Sets a clip's points for a volume or pan envelope and returns the
+/// Sets a clip's points for a volume, pan or effect envelope and returns the
 /// old ones. Values are clamped to the target's range.
 fn set_points(
     c: &mut Clip,
     target: EnvelopeTarget,
     points: &[EnvelopePoint],
 ) -> Vec<EnvelopePoint> {
-    let (lo, hi) = match target {
+    let (lo, hi) = match &target {
         EnvelopeTarget::Pan => (PAN_MIN, PAN_MAX),
-        _ => (VOLUME_DB_MIN, VOLUME_DB_MAX),
+        EnvelopeTarget::Volume => (VOLUME_DB_MIN, VOLUME_DB_MAX),
+        // An effect setting keeps to that control's range.
+        EnvelopeTarget::EffectParam { slot_id, param } => c
+            .effects
+            .slots
+            .iter()
+            .find(|s| s.id == *slot_id)
+            .and_then(|s| crate::dsp::effects::info(&s.effect))
+            .and_then(|i| i.params.into_iter().find(|p| p.key == param.as_str()))
+            .map_or((f64::MIN, f64::MAX), |p| (p.min, p.max)),
     };
     let i = c.envelopes.iter().position(|e| e.target == target);
     let old = i.map(|i| c.envelopes[i].points.clone()).unwrap_or_default();
@@ -1616,5 +1715,134 @@ mod tests {
             },
         );
         assert!(s.tracks[0].clips[0].stretch.is_none());
+    }
+
+    #[test]
+    fn set_media_follows_a_longer_file_and_undoes() {
+        let mut s = Session::new("Test", 48_000);
+        let (t, m, whole, part) = (new_id(), new_id(), new_id(), new_id());
+        let clip = |id, out| ClipSpec {
+            id,
+            name: "take".into(),
+            media_id: m,
+            start: 0,
+            source_in: 0,
+            source_out: out,
+        };
+        apply(
+            &mut s,
+            &Op::Batch {
+                ops: vec![
+                    Op::AddTrack {
+                        id: t,
+                        name: "Host".into(),
+                        stereo: true,
+                        index: 0,
+                    },
+                    Op::AddMedia { media: media(m) },
+                    Op::AddClips {
+                        track_id: t,
+                        clips: vec![clip(whole, 480_000), clip(part, 1_000)],
+                    },
+                ],
+            },
+        )
+        .unwrap();
+        let longer = MediaRef {
+            length: 960_000,
+            ..media(m)
+        };
+        roundtrip(
+            &mut s,
+            Op::SetMedia {
+                media: longer.clone(),
+                clip_outs: None,
+            },
+        );
+        apply(
+            &mut s,
+            &Op::SetMedia {
+                media: longer,
+                clip_outs: None,
+            },
+        )
+        .unwrap();
+        let outs: Vec<u64> = s.tracks[0].clips.iter().map(|c| c.source_out).collect();
+        assert_eq!(outs, vec![960_000, 1_000], "the whole-file clip follows");
+        roundtrip(
+            &mut s,
+            Op::SetMedia {
+                media: MediaRef {
+                    length: 2_000,
+                    ..media(m)
+                },
+                clip_outs: None,
+            },
+        );
+    }
+
+    #[test]
+    fn effect_envelopes_set_clamp_and_undo() {
+        let mut s = Session::new("Test", 48_000);
+        let (t, m, c) = (new_id(), new_id(), new_id());
+        apply(
+            &mut s,
+            &Op::Batch {
+                ops: vec![
+                    Op::AddTrack {
+                        id: t,
+                        name: "Music".into(),
+                        stereo: true,
+                        index: 0,
+                    },
+                    Op::AddMedia { media: media(m) },
+                    Op::AddClips {
+                        track_id: t,
+                        clips: vec![ClipSpec {
+                            id: c,
+                            name: "song".into(),
+                            media_id: m,
+                            start: 0,
+                            source_in: 0,
+                            source_out: 480_000,
+                        }],
+                    },
+                ],
+            },
+        )
+        .unwrap();
+        let slot = new_id();
+        s.tracks[0].clips[0]
+            .effects
+            .slots
+            .push(crate::session::model::EffectSlot {
+                id: slot,
+                effect: "altaudio.phase_rotate".into(),
+                enabled: true,
+                params: Default::default(),
+                preset: None,
+            });
+        let pt = |position, value| EnvelopePoint {
+            position,
+            value,
+            curve: Default::default(),
+        };
+        let change = |points| Op::SetClips {
+            changes: vec![ClipChange {
+                id: c,
+                effect_points: Some(vec![EffectPoints {
+                    slot_id: slot,
+                    param: "angle".into(),
+                    points,
+                }]),
+                ..ClipChange::default()
+            }],
+        };
+        roundtrip(&mut s, change(vec![pt(0, 0.0), pt(48_000, 400.0)]));
+        apply(&mut s, &change(vec![pt(0, 0.0), pt(48_000, 400.0)])).unwrap();
+        let e = &s.tracks[0].clips[0].envelopes[0];
+        assert_eq!(e.points[1].value, 180.0, "kept to the control's range");
+        apply(&mut s, &change(vec![])).unwrap();
+        assert!(s.tracks[0].clips[0].envelopes.is_empty());
     }
 }

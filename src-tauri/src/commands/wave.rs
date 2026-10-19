@@ -36,6 +36,11 @@ pub struct WaveState {
 #[derive(Default)]
 pub struct OpenWave(pub Mutex<Option<WaveState>>);
 
+/// Files set aside when another file is opened in the Waveform editor,
+/// with their unsaved edits, so switching files never asks to save.
+#[derive(Default)]
+pub struct ParkedWaves(pub Mutex<Vec<WaveState>>);
+
 /// Which document the transport is playing, so an edit in one editor
 /// never restarts playback of the other.
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
@@ -217,6 +222,54 @@ pub async fn wave_open(
         untitled: false,
     });
     Ok(doc_of(w.as_ref().expect("just set")))
+}
+
+/// Sets the open file aside (edits kept in memory) and leaves the editor empty.
+#[tauri::command]
+pub fn wave_park(
+    wave: State<'_, OpenWave>,
+    parked: State<'_, ParkedWaves>,
+    transport: State<'_, Transport>,
+    playing: State<'_, Playing>,
+) -> Result<(), String> {
+    if playing.is(PlayingDoc::Wave) {
+        transport.stop();
+    }
+    let Some(state) = wave.0.lock().map_err(|e| e.to_string())?.take() else {
+        return Ok(());
+    };
+    let mut p = parked.0.lock().map_err(|e| e.to_string())?;
+    p.retain(|w| w.path != state.path);
+    p.push(state);
+    Ok(())
+}
+
+/// Brings back a set-aside file, if `path` is one. None means open it from disk.
+#[tauri::command]
+pub fn wave_resume(
+    wave: State<'_, OpenWave>,
+    parked: State<'_, ParkedWaves>,
+    path: PathBuf,
+) -> Result<Option<WaveDoc>, String> {
+    let mut p = parked.0.lock().map_err(|e| e.to_string())?;
+    let Some(i) = p.iter().position(|w| w.path == path) else {
+        return Ok(None);
+    };
+    let state = p.remove(i);
+    let doc = doc_of(&state);
+    *wave.0.lock().map_err(|e| e.to_string())? = Some(state);
+    Ok(Some(doc))
+}
+
+/// Drops a set-aside file and its unsaved edits.
+#[tauri::command]
+pub fn wave_forget(parked: State<'_, ParkedWaves>, path: PathBuf) -> Result<(), String> {
+    parked
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .retain(|w| w.path != path);
+    Ok(())
 }
 
 #[tauri::command]

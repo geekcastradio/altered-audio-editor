@@ -241,7 +241,7 @@ export class SessionFiles {
   }
 }
 
-const AUDIO_EXTENSIONS = new Set(["wav", "wave", "aif", "aiff", "aifc", "mp3", "flac", "m4a", "mp4", "aac", "ogg", "oga"]);
+const AUDIO_EXTENSIONS = new Set(["wav", "wave", "aif", "aiff", "aifc", "mp3", "flac", "m4a", "mp4", "aac", "ogg", "oga", "opus"]);
 
 export interface OpenPlan {
   /** Session to open (.altaudio). Only the first one picked is opened. */

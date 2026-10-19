@@ -492,7 +492,7 @@ pub const SYSTEM_AUDIO_PREFIX: &str = "System audio: ";
 
 /// The device for `name`, and whether it captures system audio.
 fn find_device(name: Option<&str>) -> Result<(cpal::Device, bool), String> {
-    let host = cpal::default_host();
+    let host = crate::engine::host::host();
     match name {
         None => host
             .default_input_device()
@@ -703,7 +703,7 @@ fn run(
 /// Opens the default output at the input's rate for monitoring. Returns
 /// the ring that feeds it (stereo frames) and the running stream.
 fn open_monitor(rate: u32) -> Result<(Producer<f32>, cpal::Stream), String> {
-    let host = cpal::default_host();
+    let host = crate::engine::host::host();
     let dev = super::output::output_device(&host)
         .ok_or("Input monitoring needs an output: no speakers or headphones found.")?;
     let mut best: Option<cpal::SupportedStreamConfig> = None;

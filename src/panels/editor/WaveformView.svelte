@@ -106,12 +106,21 @@
     });
   }
 
-  // A newly opened file fits the window.
+  // A newly opened file fits the window. The panel can still be growing
+  // when the file opens (switching from the Multitrack view), so it fits
+  // again while the width changes, until the user zooms or scrolls.
   let fittedFor = "";
+  let fittedSpp = 0;
+  let fittedWidth = 0;
   $effect(() => {
-    if (!doc || !file || width <= 0 || fittedFor === file.path + doc.id) return;
-    fittedFor = file.path + doc.id;
+    if (!doc || !file || width <= 0) return;
+    const key = file.path + doc.id;
+    const untouched = fittedFor === key && doc.view.samples_per_pixel === fittedSpp && doc.view.scroll === 0;
+    if (fittedFor === key && !(untouched && width !== fittedWidth)) return;
+    fittedFor = key;
     const f = fit(total, width);
+    fittedSpp = f.spp;
+    fittedWidth = width;
     setView({ spp: f.spp, scroll: 0 });
   });
 
@@ -437,7 +446,7 @@
     if (e.altKey) {
       e.preventDefault();
       zoom(e.deltaY < 0 ? "amp-in" : "amp-out");
-    } else if (e.ctrlKey) {
+    } else if (e.ctrlKey || (settings.current.wheelZooms && !e.shiftKey && Math.abs(e.deltaY) >= Math.abs(e.deltaX))) {
       e.preventDefault();
       const r = zoomRatios();
       const at = settings.current.wheelAnchor === "playhead" ? Math.max(0, Math.min(width, xOf(playhead, view))) : x;

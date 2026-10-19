@@ -51,6 +51,56 @@ pub struct ClipPlan {
     pub keep_pitch: bool,
     /// Clip Voice Chain, run after the clip's gain and fades.
     pub effects: EffectChain,
+    /// Automation of the clip chain's effect settings, over time.
+    pub automation: Vec<ParamLane>,
+}
+
+/// One effect setting moving over time: (frame from the clip start,
+/// value), sorted. The value holds flat before the first point and
+/// after the last, and moves in straight lines between them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParamLane {
+    pub slot: Id,
+    pub param: String,
+    pub points: Vec<(u64, f32)>,
+}
+
+impl ParamLane {
+    pub fn value_at(&self, rel: u64) -> f32 {
+        let pts = &self.points;
+        let Some(first) = pts.first() else { return 0.0 };
+        if rel <= first.0 {
+            return first.1;
+        }
+        let last = pts[pts.len() - 1];
+        if rel >= last.0 {
+            return last.1;
+        }
+        let i = pts.partition_point(|p| p.0 <= rel);
+        let (a, b) = (pts[i - 1], pts[i]);
+        let t = (rel - a.0) as f32 / (b.0 - a.0).max(1) as f32;
+        a.1 + (b.1 - a.1) * t
+    }
+}
+
+/// A clip's effect-setting envelopes, in output frames.
+fn param_lanes(c: &Clip, session_rate: u32, out_rate: u32) -> Vec<ParamLane> {
+    c.envelopes
+        .iter()
+        .filter(|e| e.enabled && !e.points.is_empty())
+        .filter_map(|e| match &e.target {
+            EnvelopeTarget::EffectParam { slot_id, param } => Some(ParamLane {
+                slot: *slot_id,
+                param: param.clone(),
+                points: e
+                    .points
+                    .iter()
+                    .map(|p| (convert(p.position, session_rate, out_rate), p.value as f32))
+                    .collect(),
+            }),
+            _ => None,
+        })
+        .collect()
 }
 
 impl ClipPlan {
@@ -74,6 +124,7 @@ impl ClipPlan {
             stretch: 1.0,
             keep_pitch: true,
             effects: EffectChain::default(),
+            automation: Vec::new(),
         }
     }
 
@@ -301,6 +352,7 @@ pub fn build(session: &Session, out_rate: u32) -> Plan {
                         stretch: c.stretch_ratio(),
                         keep_pitch: c.stretch.is_none_or(|s| s.keep_pitch),
                         effects: c.effects.clone(),
+                        automation: param_lanes(c, session.sample_rate, out_rate),
                     })
                 })
                 .collect(),

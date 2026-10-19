@@ -282,6 +282,21 @@ export function waveClose(): Promise<void> {
   return invoke<void>("wave_close");
 }
 
+/** Sets the open Waveform file aside, unsaved edits kept in memory. */
+export function wavePark(): Promise<void> {
+  return invoke<void>("wave_park");
+}
+
+/** Brings back a set-aside file; null when `path` was not set aside. */
+export function waveResume<S>(path: string): Promise<WaveDocRaw<S> | null> {
+  return invoke<WaveDocRaw<S> | null>("wave_resume", { path });
+}
+
+/** Drops a set-aside file and its unsaved edits. */
+export function waveForget(path: string): Promise<void> {
+  return invoke<void>("wave_forget", { path });
+}
+
 export function waveApply<O, T>(op: O): Promise<{ session: T; inverse: O }> {
   return invoke<{ session: T; inverse: O }>("wave_apply", { op });
 }
@@ -586,8 +601,8 @@ export interface AudioInput {
 }
 
 /** The computer's audio inputs, for the track input picker. Names only; nothing is opened. */
-export async function audioInputs(): Promise<AudioInput[]> {
-  const raw = await invoke<{ name: string; channels: number; is_default: boolean }[]>("audio_inputs");
+export async function audioInputs(asio?: boolean): Promise<AudioInput[]> {
+  const raw = await invoke<{ name: string; channels: number; is_default: boolean }[]>("audio_inputs", { asio: asio ?? null });
   return raw.map((d) => ({ name: d.name, channels: d.channels, isDefault: d.is_default }));
 }
 
@@ -674,11 +689,29 @@ export function recordStatus(): Promise<RecordStatus> {
 }
 
 /** The speakers and headphones, the system default first. */
-export function audioOutputs(): Promise<{ name: string; isDefault: boolean }[]> {
-  return invoke("audio_outputs");
+export function audioOutputs(asio?: boolean): Promise<{ name: string; isDefault: boolean }[]> {
+  return invoke("audio_outputs", { asio: asio ?? null });
 }
 
 /** Plays through `name` from the next time playback starts; null uses the system default. */
+export interface AudioDriver {
+  /** This build can use ASIO (Windows release builds). */
+  asioBuilt: boolean;
+  /** ASIO is in use now. */
+  asio: boolean;
+  /** Installed ASIO drivers. */
+  drivers: string[];
+}
+
+export function audioDriver(): Promise<AudioDriver> {
+  return invoke<AudioDriver>("audio_driver");
+}
+
+/** ASIO (true) or the system driver (false), from the next stream opened. */
+export function setAudioDriver(asio: boolean): Promise<void> {
+  return invoke<void>("set_audio_driver", { asio });
+}
+
 export function setAudioOutput(name: string | null): Promise<void> {
   return invoke<void>("set_audio_output", { name });
 }
@@ -868,4 +901,18 @@ export function quickpassSpots(clipIds: string[], spots: SpotsRequest): Promise<
 /** Writes a copy of source frames `from..to` with `spans` (frames from `from`) repaired. Returns its path. */
 export function quickpassRepairCopy(source: string, from: number, to: number, folder: string, name: string, spots: SpotsRequest, spans: [number, number][]): Promise<string> {
   return invoke<string>("quickpass_repair_copy", { source, from, to, folder, name, spots, spans });
+}
+
+export interface SesxExportReport {
+  tracks: number;
+  clips: number;
+  chainsLeftOut: number;
+  envelopesLeftOut: number;
+  clipsSimplified: number;
+  markersLeftOut: number;
+}
+
+/** File > Export > Multitrack Session (.sesx). Null when cancelled. */
+export function sessionExportSesx(): Promise<{ path: string; report: SesxExportReport } | null> {
+  return invoke<{ path: string; report: SesxExportReport } | null>("session_export_sesx");
 }

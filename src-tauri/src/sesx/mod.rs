@@ -14,6 +14,8 @@
 //! only parses the documented-by-example XML structure; nothing from the
 //! other application is reused.
 
+pub mod export;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 

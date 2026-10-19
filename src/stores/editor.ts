@@ -34,6 +34,10 @@ export interface EditorState {
   showVolume: boolean;
   /** Clip pan envelopes are shown and editable. */
   showPan: boolean;
+  /** Clip effect-setting envelopes (Voice Chain automation) are shown and editable. */
+  showFx: boolean;
+  /** Which effect setting each clip shows, by clip id. Not saved. */
+  fxLanes: Record<string, { slot: string; param: string }>;
   /** Which editor the Editor panel shows. */
   mode: EditorMode;
   /** What a drag or click in the multitrack does. */
@@ -79,6 +83,8 @@ const initial: EditorState = {
   autoCrossfade: true,
   showVolume: false,
   showPan: false,
+  showFx: false,
+  fxLanes: {},
   mode: "multitrack",
   tool: "move",
   playMode: "normal",
@@ -102,6 +108,8 @@ export const editor: Readable<EditorState> & {
   setAutoCrossfade(on: boolean): void;
   setShowVolume(on: boolean): void;
   setShowPan(on: boolean): void;
+  setShowFx(on: boolean): void;
+  pickFxLane(clipId: string, lane: { slot: string; param: string }): void;
   setMode(mode: EditorMode): void;
   setTool(tool: EditorTool): void;
   /** Turns a play mode on, or back to normal if it was already on. */
@@ -121,6 +129,8 @@ export const editor: Readable<EditorState> & {
   setAutoCrossfade: (on) => state.update((s) => ({ ...s, autoCrossfade: on })),
   setShowVolume: (on) => state.update((s) => ({ ...s, showVolume: on })),
   setShowPan: (on) => state.update((s) => ({ ...s, showPan: on })),
+  setShowFx: (on) => state.update((s) => ({ ...s, showFx: on })),
+  pickFxLane: (clipId, lane) => state.update((s) => ({ ...s, showFx: true, fxLanes: { ...s.fxLanes, [clipId]: lane } })),
   setMode: (mode) => state.update((s) => (s.mode === mode ? s : { ...s, mode })),
   setTool: (tool) => state.update((s) => (s.tool === tool ? s : { ...s, tool })),
   togglePlayMode: (mode) => state.update((s) => ({ ...s, playMode: s.playMode === mode ? "normal" : mode })),

@@ -3,8 +3,8 @@
 // This file is part of Altered Audio Editor.
 
 import { describe, expect, it } from "vitest";
-import type { EnvelopePointDoc } from "../../stores/session";
-import { addPoint, dbToY, formatValue, levelAt, movePoint, sliceVolume, valueToY, yToDb, yToValue } from "./envelope";
+import type { ClipDoc, EnvelopePointDoc } from "../../stores/session";
+import { addPoint, dbToY, envChange, formatValue, fxChoices, fxLaneOf, levelAt, movePoint, pointsOf, rangeOf, restValue, setFxCatalog, sliceVolume, valueToY, yToDb, yToValue } from "./envelope";
 
 const pt = (position: number, value: number): EnvelopePointDoc => ({ position, value, curve: "linear" });
 
@@ -68,5 +68,36 @@ describe("pan envelope", () => {
     expect(formatValue("pan", 25.4)).toBe("R 25");
     expect(formatValue("volume", 3)).toBe("+3.0 dB");
     expect(formatValue("volume", -6)).toBe("-6.0 dB");
+  });
+});
+
+describe("effect envelopes", () => {
+  const info = {
+    id: "altaudio.phase_rotate",
+    name: "Phase Rotate",
+    category: "Filter and EQ",
+    description: "",
+    params: [
+      { key: "angle", name: "Angle", unit: "°", min: -180, max: 180, default: 0, step: 1, log: false, toggle: false },
+      { key: "printlen", name: "Hidden", unit: "", min: 0, max: 1, default: 0, step: 1, log: false, toggle: false, hidden: true },
+    ],
+  };
+  const clip = {
+    id: "c1",
+    effects: { enabled: true, input_gain_db: 0, output_gain_db: 0, mix: 1, slots: [{ id: "s1", effect: info.id, enabled: true, params: { angle: 45 }, preset: null }] },
+    envelopes: [{ id: "e", target: { type: "effect_param", slot_id: "s1", param: "angle" }, enabled: true, points: [{ position: 0, value: 90, curve: "linear" }] }],
+  } as unknown as ClipDoc;
+
+  it("lists the settings that can move and finds the clip's lane", () => {
+    setFxCatalog([info]);
+    expect(fxChoices(clip).map((c) => c.label)).toEqual(["Phase Rotate: Angle"]);
+    const lane = fxLaneOf(clip, {});
+    expect(lane).toEqual({ slot: "s1", param: "angle" });
+    expect(rangeOf("fx", clip, lane)).toEqual({ top: 180, bottom: -180, step: 1 });
+    expect(pointsOf(clip, "fx", lane).map((p) => p.value)).toEqual([90]);
+    expect(restValue("fx", clip, lane)).toBe(45);
+    expect(envChange(clip, "fx", [], lane)).toEqual({ id: "c1", effect_points: [{ slot_id: "s1", param: "angle", points: [] }] });
+    expect(valueToY("fx", 180, 0, 100, rangeOf("fx", clip, lane))).toBe(0);
+    expect(formatValue("fx", 12.345, "°")).toBe("12.3 °");
   });
 });

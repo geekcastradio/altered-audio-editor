@@ -78,7 +78,7 @@ Decision:
 - Files panel: Play/Stop Preview, Loop Preview and Auto-Play (preview a file when selected) under the list. Loop and Auto-Play are saved. No Space shortcut was added to the Files list, because new shortcuts need the project lead's approval; Libraries already has one.
 - Voice Chain items (Clip vs Track Effects, the presets row, input and output trim) are logged for P5, not built now.
 - App icon: `npx tauri icon brand/icon/icon-1024.png` for every size, then `brand/icon/icon.ico` copied over `src-tauri/icons/icon.ico` to keep the simpler glyph at small sizes. The About dialog shows the logo.
-- README: the logo (light and dark), two preview images of the app from a demo session made of generated audio (no real show audio), feature and privacy highlights, and the donation link.
+- README: the logo (light and dark), two preview images of the app from a demo session made of generated audio (no real show audio), feature and privacy highlights, and the support link.
 
 Reason: in a busy session tracks blurred together and the selected track did not stand out. Loop, skip and the full zoom row are part of a common podcast editing workflow. Placeholders follow the existing rule: unbuilt items are visible but disabled with the reason, never fake.
 
@@ -140,7 +140,7 @@ Reason: track settings still apply to the merged clip, so baking them would appl
 ## 2026-10-14: Public repo prep
 
 Decision:
-- Donation: Help > Support Altered Audio Editor opens https://paypal.me/scp21. `paypal.me` joins the link allow list. Nowhere else in the app.
+- Support link: Help > Support Altered Audio Editor opens https://paypal.me/scp21. `paypal.me` joins the link allow list. Nowhere else in the app.
 - License stays `GPL-3.0-or-later`.
 - The project's private host profiles and personal presets moved to `CLAUDE.local.md`, which is gitignored. Public built-ins are generic: Host, Co-host, Guest profiles; Breath Gate - Low (-14 dB, 2/50/200 ms) and Breath Gate - Medium (-20 dB, same timing). The host profile test fixture is `host.alhost`.
 - Test data uses generic names (Host, Show) instead of real people and shows.
@@ -164,7 +164,7 @@ Reason: loudness is the most common podcast delivery mistake, and measuring the 
 
 ## 2026-10-14: Privacy, Help links, security hardening
 
-Decision: zero logins, telemetry, tracking or network calls, written into CLAUDE.md, `PRIVACY.md` and the About dialog. Help menu gains "Book: Altered Audio, Podcasting Demystified" (Barnes & Noble) and "Support Altered Audio Editor..." (disabled until `LINKS.donate` is set). `scripts/check-privacy.mjs` runs in `npm run check` and fails the build on network APIs, tracking libraries, HTTP or telemetry crates, sockets in Rust, or a CSP looser than self. CI gains a security job: the privacy guard, `npm audit`, `cargo audit`. Library Clean Up now dry-runs and confirms, refuses folders that aren't the library's own, skips symlinks and non-audio files. Added `SECURITY.md`, `CONTRIBUTING.md`, issue and PR templates.
+Decision: zero logins, telemetry, tracking or network calls, written into CLAUDE.md, `PRIVACY.md` and the About dialog. Help menu gains "Book: Altered Audio, Podcasting Demystified" (Barnes & Noble) and "Support Altered Audio Editor..." (disabled until `LINKS.support` is set). `scripts/check-privacy.mjs` runs in `npm run check` and fails the build on network APIs, tracking libraries, HTTP or telemetry crates, sockets in Rust, or a CSP looser than self. CI gains a security job: the privacy guard, `npm audit`, `cargo audit`. Library Clean Up now dry-runs and confirms, refuses folders that aren't the library's own, skips symlinks and non-audio files. Added `SECURITY.md`, `CONTRIBUTING.md`, issue and PR templates.
 
 Reason: trust is the product for a free tool. A guard in the build keeps the promise true as contributors arrive, instead of relying on review.
 
@@ -771,9 +771,9 @@ The project lead asked to start the effects phase, with three pages of public he
 ## 2026-10-18: Edit > Settings
 
 - **Asked for by the project lead** with screenshots of a settings dialog as the behavior reference. Same idea (a page list on the left, one page of settings at a time, OK and Cancel), our own page names, wording, grouping and look. Pages that do not fit this app were left out (another product's memory sharing, video).
-- **Pages:** General, Appearance, Audio Devices, Channel Routing, Autosave, Controllers, Editing, Effects, Cache and Files, Markers, Multitrack, Clips, Playback and Recording, Spectrum Views, Time Display, plus two of our own: Loudness and Privacy.
+- **Pages:** General, Appearance, Audio Devices, Channel Routing, Autosave, Editing, Effects, Cache and Files, Markers, Multitrack, Clips, Playback and Recording, Spectrum Views, Time Display, plus two of our own: Loudness and Privacy.
 - **What works now:** Ctrl+wheel zoom step and whether it zooms around the mouse or the playhead; the shape new fades start with; what the space bar does while playing (pause, or stop and go back); color overrides for the waveform, playhead, accent and selected lane; the output device for playback, previews and monitoring (falls back to the system default when unplugged); autosave on or off and its interval; showing the Voice Chain when adding from the Effects menu; exclusive solo (one undoable step); clip auto-crossfade; follow playhead; meter yellow and red levels; the recording latency offset, punch-in and pre-roll; time format; loudness region and target; cache sizes and clearing the waveform drawings (rebuilt on demand).
-- **Shown greyed out with the reason**, per the rule for unbuilt controls: channel routing and driver type (with ASIO), buffer size, controllers, numbered session backups, edge crossfades in the Waveform editor, pan law (with buses), spectrum detail and range, timecode frame rate, scrubbing, the record countdown, the weekly update check (after the first public release, off by default).
+- **Shown greyed out with the reason**, per the rule for unbuilt controls: channel routing and driver type (with ASIO), buffer size, numbered session backups, edge crossfades in the Waveform editor, pan law (with buses), spectrum detail and range, timecode frame rate, scrubbing, the record countdown, the weekly update check (after the first public release, off by default).
 - **One draft.** The dialog edits everything as one draft: OK applies it all, Cancel drops it. Settings that already lived in other places (the editor's time format and crossfade switch, Recording Options, the loudness region) are edited in the same draft and stored where they were, so nothing moved.
 - **Cache clearing is limited to waveform drawings.** Edit results, untitled Waveform files and unsaved recordings may still be in use by an open file or session, so Settings shows their size but does not delete them.
 
@@ -784,3 +784,70 @@ The project lead asked to start the effects phase, with three pages of public he
 - **Settings items that went live:** numbered session backups (each save first copies the previous file into a Backups folder beside the session, named with the date and time, keeping the newest 1 to 50; only our own timestamped names are ever pruned), a 3 or 5 second count-in before recording (press Record again to cancel), the name new markers start with, and the timecode frame rate (24, 25, 30, 50 or 60).
 - **Master chain and buses held back, with a reason.** The fader choice for 0.1.3 was "instant faders, chains before them, the master chain hearing the mix after the faders." Building it showed the last part cannot hold together: faders are instant because the audio thread applies them, and effects can only run on the render thread, half a second ahead (the audio thread must never allocate or wait, and several effects allocate). So a chain that hears the faded mix necessarily hears fader moves half a second late. The real choices go back to the project lead: (a) when the master or a bus has a chain, the mix moves to the render thread and track faders lag half a second while it is on, with the master fader staying instant after the chain; or (b) master and bus chains run before their own faders only, and never hear track fader moves live (export would then also ignore track fader moves for those chains, so playback still matches export).
 - **Still greyed out:** Waveform editor edge crossfades (the delete op needs the split pieces' ids to overlap them; planned with the next Waveform batch), scrubbing, spectrum detail and range, pan law (with buses), channel routing and driver type (ASIO), controllers, the update check, a light theme, moving the cache.
+
+## 2026-10-19: fixes found while retaking the README screenshots
+
+- **Edit > Settings did not open.** The dialog copied its starting values with `structuredClone`, which fails on the reactive object Svelte hands it, so the click did nothing. It now takes a plain snapshot first. Checked by opening every Settings page and pressing OK in a browser run of the interface.
+- **Batch Convert's Normalize and Fade row took the file list's space.** The panel's grid had one row too few after the row was added, so the list was squeezed and the row stretched. The row now has its own grid row, wraps in two groups (Normalize, then the fades) in the narrow left column, and the panel can no longer grow wider than its column.
+- **README screenshots retaken** on the current build with a demo session (generic HOST and CO-HOST names, no real host names): multitrack with the Voice Chain, the Waveform editor previewing a chain with the EQ graph, the spectrum view, Settings, Batch Convert and Export Mixdown. The old per-speaker shot is retired.
+
+## 2026-10-19: Design principles, wording, Settings trim
+
+- **Design principles written down** in `docs/design-principles.md`: keep conventions, make the expression ours; no AI unless the user turns it on; no "clone" or "alternative" wording in public.
+- **"Donate" is gone from the code.** The Help item, link setting and action id are now "support" (`help.support`, `LINKS.support`).
+- **Settings: Controllers page removed.** Settings only holds things this app has or plans. Channel Routing stays because ASIO is planned.
+
+## 2026-10-19: Experimental Linux and macOS builds
+
+- **Why:** a user asked for Mac and Linux. Windows stays the main target and the only tested one.
+- **Linux:** CI job (clippy and tests) plus AppImage and deb on tagged releases. Marked experimental until someone confirms audio on real Linux.
+- **macOS:** Apple silicon dmg on tagged releases, ad hoc signed only (no Apple developer account, no cost). Users open it with right-click Open. Experimental, untested by us. Cmd-for-Ctrl and Mac-specific audio checks are still later work.
+- **Both** are separate release jobs that add files to the same draft and cannot fail the Windows release.
+- **Workflows are delivered as `ci-linux-mac.zip`** because `.github/workflows` is a protected path.
+
+## 2026-10-19: Waveform editor Save includes the Voice Chain
+
+- **Bug report:** "effects and pitch changes did not carry over." In the Waveform editor, effects from the Effects menu (Pitch Shift included) were a preview, and Save left them out without saying so.
+- **Decision (project lead):** the chain is on by default and Save writes it into the file, with no question. To save without it, bypass the chain first. Multitrack already worked this way: chains are saved in the session file and included in exports.
+- **How:** Save and Save As apply the enabled chain to the whole file right before writing, as one undoable step ("Apply Voice Chain"), then clear the chain so it is not heard twice. A bypassed chain is left out. Cancelling the save dialog changes nothing.
+
+## 2026-10-19: Experimental Linux and macOS builds
+
+- **Why:** a user asked for Mac and Linux. Windows stays the main target and the only tested one.
+- **Linux:** CI job (clippy and tests) plus AppImage and deb on tagged releases. Marked experimental until someone confirms audio on real Linux.
+- **macOS:** Apple silicon dmg on tagged releases, ad hoc signed only (no Apple developer account, no cost). Users open it with right-click Open. Experimental, untested by us. Cmd-for-Ctrl and Mac-specific audio checks are still later work.
+- **Both** are separate release jobs that add files to the same draft and cannot fail the Windows release.
+- **Workflows are delivered as `ci-linux-mac.zip`** because `.github/workflows` is a protected path.
+
+## 2026-10-19: Waveform editor warns before dropping a preview chain
+
+- **Bug report:** "effects and pitch changes did not carry over." In the Waveform editor, effects from the Effects menu (Pitch Shift included) go into a preview chain, and Save left them out without saying so. They only reach the file through Apply in the Voice Chain panel.
+- **Fix:** Save and Save As now ask "Apply the Voice Chain first?" (Apply and Save, Save Without Effects, Cancel) when the preview chain has an enabled effect. The notice after adding an effect says it is a preview and to press Apply.
+- **Still open:** whether Effects menu items in the Waveform editor should apply immediately instead of previewing. Previewing lets you hear and tweak before committing, but it is easy to miss. Left for the project lead to decide.
+
+## 2026-10-19: 0.1.4 user report fixes
+
+A user report on 0.1.3 listed five problems. All five are addressed in 0.1.4.
+
+- **Input picker was one long list.** Track inputs are now grouped: the default input and None first, then Mono and Stereo submenus, each split by device, with channels listed inside. The stored value did not change, so existing sessions keep their inputs.
+- **Recording more in the Waveform editor was lost to the session.** The session kept the file's old length, so a clip could never reach the new audio. Now, when the Waveform editor saves a file the session uses, the session reads the file's new length (`set_media`, one undoable step called Update Changed File). Clips that ran to the old end run to the new end; clips past a shorter end are trimmed to it.
+- **Effect settings opened below the slot list.** They now open in a floating window (see backlog).
+- **Opus.** File > Open ignored `.opus` (the interface's list of audio types missed it), and importing was slow because the `opus-decoder` crate computed one FFT as a direct DFT. A patched copy in `src-tauri/vendor/opus-decoder` uses `rustfft` instead: a 7 minute mono file went from about 89 s to about 1.2 s to decode in our test build. A small `tone.opus` test file checks the length, level and pitch of the decoded tone.
+- **Opening another file in the Waveform editor asked to save.** The file open now is set aside with its unsaved edits and undo history, and comes back as it was when opened again. Nothing is written to disk until you save. Quitting with set-aside unsaved files asks before discarding them.
+
+## 2026-10-19: More 0.1.4 report fixes
+
+- **Mouse wheel over the multitrack lanes zoomed nothing.** Plain wheel only scrolled the tracks; zoom needed Ctrl. Now the wheel over the lanes and the Waveform editor zooms (around the pointer or the playhead, per Settings), the wheel over the track headers scrolls the tracks, Shift + wheel scrolls sideways, and Ctrl + wheel always zooms. Edit > Settings > General can turn plain-wheel zoom off.
+- **Loop Playback with no time selection played on into silence.** It now loops the whole session, from the start to the end of the last clip. With a time selection it loops the selection, as before.
+- **The open session was missing from the Files panel.** It is now the first row (name, unsaved star, length, sample rate). Double-click shows it in the Multitrack view.
+- **No way to pick the Waveform editor's recording input.** Edit > Settings > Audio Devices now has "Waveform editor records from" (system default, or any mono channel or stereo pair). Multitrack tracks still pick inputs in their headers. Edit > Settings itself did not open in 0.1.3; that was already fixed for 0.1.4.
+- **Time Info did not follow Waveform editor playback.** It only ever showed the multitrack session. It now shows the open file, its selection and its playback while the Waveform editor is in front.
+- **ASIO** was asked for again. Still planned with per-channel routing; it needs a real ASIO interface to build and test, and the ASIO SDK's license has to be checked against GPLv3 before it goes in.
+
+## 2026-10-19: 0.1.5: Phase Rotate, effect automation, .sesx export, ASIO
+
+- **Phase Rotate** (Effects > Stereo and Channels): turns the phase of every frequency by -180 to 180 degrees (one channel or both), flips either channel's polarity, and adds a 0 to 20 ms delay. It works on the spectrum with 75% overlapped frames (about 43 ms latency, compensated like every look-ahead). Asked for to fix music that sits partly out of phase.
+- **Effect automation on clips.** Any setting of an effect in a clip's Voice Chain can change over time. The file format already had `EnvelopeTarget::EffectParam`; now playback reads it (every 256 frames the chain gets the new values). Effects that can take a new value in place (Phase Rotate, Gain) glide; others are rebuilt at the new value, which can click on fast moves, so Phase Rotate is the one to automate for now. In the lanes: the clip's envelope chip > Effect Setting picks which setting to draw (View > Envelopes > Clip Effect Settings shows them). Points move with the audio on split and trim. Track-level automation is later. Settings that change the look-ahead are not offered.
+- **Export as .sesx, not save as .sesx.** Our file stays `.altaudio`, because a `.sesx` cannot hold Voice Chains, envelopes, loops, stretch or markers, and saving to it would quietly lose them. File > Export > Multitrack Session (.sesx) writes a copy with tracks, clips, levels, pan, mute, solo, lock and fades, and says what it left out. Our own importer reads it back the same (tested). Not yet checked by opening it in the other editor; the project lead will try it.
+- **ASIO.** The ASIO SDK is dual licensed by Steinberg, proprietary or GPLv3; we use the GPLv3 option, so it fits our license. It is a Cargo feature (`asio`, off by default) because building it needs LLVM and the SDK, which cpal's build script downloads. Release builds turn it on, and fall back to a build without it if that fails. A separate CI job checks the ASIO build. Settings > Audio Devices picks System or ASIO; device lists follow the picked driver. Sample rate and buffer size come from the driver's own control panel. If the ASIO driver cannot open, the system driver plays. We use the name ASIO only to say what is supported, never the logo, per Steinberg's trademark rules. Not tested on real ASIO hardware yet.
+- **The 3:17 FLAC that looked 15 minutes long in the Waveform editor.** Probing the file gives the right length (checked with 44.1 and 96 kHz FLAC). The likely cause: the Waveform editor fitted the file to the panel's width while the panel was still narrow, right after switching from Multitrack, so the view showed several times the file's length. It now fits again while the width settles, until you zoom or scroll. Waiting on the reporter to confirm.

@@ -97,6 +97,14 @@ fn ogg_vorbis() {
 }
 
 #[test]
+fn ogg_opus() {
+    let i = info("tone.opus");
+    assert_eq!(i.codec.as_str(), "Opus");
+    assert_eq!((i.sample_rate, i.channels), (48_000, 1));
+    assert_about_half_second(&i, 0.06);
+}
+
+#[test]
 fn truncated_file_is_reported_not_crashed() {
     let dir = tempfile::tempdir().unwrap();
     let cut = dir.path().join("cut.flac");
@@ -150,12 +158,36 @@ mod reader {
 
     #[test]
     fn decodes_every_lossy_format() {
-        for name in ["tone.mp3", "tone.m4a", "tone.ogg", "tone.flac", "tone.aiff"] {
+        for name in [
+            "tone.mp3",
+            "tone.m4a",
+            "tone.ogg",
+            "tone.opus",
+            "tone.flac",
+            "tone.aiff",
+        ] {
             let mut r = AudioReader::open(&media(name), 2, Some(48_000)).unwrap();
             let samples = read_all(&mut r);
             let secs = samples.len() as f64 / 2.0 / 48_000.0;
             assert!(secs > 0.45 && secs < 0.7, "{name}: {secs} s");
         }
+    }
+
+    /// Opus decodes to the right tone (440 Hz at 1/16 scale, as made by
+    /// ffmpeg's sine source at half volume), not just the right length.
+    #[test]
+    fn opus_decodes_the_tone() {
+        let mut r = AudioReader::open(&media("tone.opus"), 1, None).unwrap();
+        let s = read_all(&mut r);
+        let mid = &s[4_800..19_200];
+        let rms = (mid.iter().map(|v| v * v).sum::<f32>() / mid.len() as f32).sqrt();
+        assert!((rms - 0.0442).abs() < 0.004, "rms {rms}");
+        let crossings = mid
+            .windows(2)
+            .filter(|w| (w[0] < 0.0) != (w[1] < 0.0))
+            .count();
+        // 0.3 s of 440 Hz crosses zero 264 times.
+        assert!((250..=280).contains(&crossings), "{crossings} crossings");
     }
 
     #[test]

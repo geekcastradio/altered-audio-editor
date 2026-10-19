@@ -145,6 +145,7 @@
     waveApplyChain,
     phaseAlign,
     setAudioOutput,
+    setAudioDriver,
     recordStart,
     recordStatus,
     recordStop,
@@ -157,6 +158,8 @@
     type RecordTarget,
     type Recoverable,
     previewStatus,
+    probeMedia,
+    sessionExportSesx,
   } from "./core";
   import { isTauri } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -164,6 +167,8 @@
   import PendingPanel from "../panels/PendingPanel.svelte";
   import VoiceChainPanel from "../panels/voice-chain/VoiceChainPanel.svelte";
   import { addSlot, chainOf, newSlot } from "../panels/voice-chain/chain";
+  import { effectWindowRequest } from "../panels/voice-chain/effect-window";
+  import { setFxCatalog } from "../panels/editor/envelope";
   import type { Finding } from "../panels/quickpass/quickpass";
   import FilesPanel from "../panels/files/FilesPanel.svelte";
   import DriveManagerPanel from "../panels/drive-manager/DriveManagerPanel.svelte";
@@ -177,8 +182,9 @@
   import ToolStrip from "./ToolStrip.svelte";
   import NewAudioFileDialog, { type NewAudioSettings } from "./NewAudioFileDialog.svelte";
   import NewSessionDialog, { type NewSessionSettings } from "./NewSessionDialog.svelte";
-  import { closeWaveFile, newEmptyWaveFile, newWaveFromClips, openWaveFile, saveWaveFile, savesInPlace, spectralSelection, wave, waveFile, waveHistory, waveTransport, waveZoom } from "../stores/wave";
-  import { get } from "svelte/store";
+  import { closeWaveFile, forgetParked, newEmptyWaveFile, parkedUnsaved, newWaveFromClips, openWaveFile, saveWaveFile, savesInPlace, spectralSelection, wave, waveFile, waveHistory, waveTransport, waveZoom } from "../stores/wave";
+  import { get, writable } from "svelte/store";
+  import type { SessionRow } from "../panels/files/session-row";
   import { rasterize } from "../panels/editor/spectrum";
   import { inputLevels, liveTakes, recordControl, recording } from "../stores/record";
   import { amplifyRange, clampRange, copyRange, cropTo, deleteRange, fadeRange, insertFile, mixPasteAt, pasteAt, replaceRange, silenceRange, type WaveBoard } from "../panels/editor/wave-edit";
@@ -1319,7 +1325,21 @@
     const what = inWave() && f ? (f.path.split(/[\\/]/).pop() ?? "") : files.name;
     dock.setTitle("editor", what ? `Editor - ${what}${inWave() ? "" : files.dirty ? " *" : ""}` : "Editor");
   }
+  /** The open session as a row at the top of the Files panel. */
+  const sessionRow = writable<SessionRow | null>(null);
+  function updateSessionRow() {
+    const d = session.current;
+    if (!d) {
+      sessionRow.set(null);
+      return;
+    }
+    const seconds = sessionEnd(d) / Math.max(1, d.sample_rate);
+    const row: SessionRow = { name: files.name, dirty: files.dirty, seconds, sampleRate: d.sample_rate, active: !inWave() };
+    const cur = get(sessionRow);
+    if (!cur || cur.name !== row.name || cur.dirty !== row.dirty || cur.seconds !== row.seconds || cur.sampleRate !== row.sampleRate || cur.active !== row.active) sessionRow.set(row);
+  }
   function updateTitle() {
+    updateSessionRow();
     updateEditorTitle();
     const t = files.title();
     if (t !== lastTitle) {
@@ -1331,6 +1351,19 @@
   async function exitSafely() {
     if (!(await files.confirmDiscard())) return;
     if (!(await confirmWaveDiscard())) return;
+    const others = parkedUnsaved();
+    if (others.length) {
+      const v = await ask(
+        "Other files have unsaved edits",
+        `${others.join(", ")} ${others.length === 1 ? "has" : "have"} unsaved edits in the Waveform editor. Open ${others.length === 1 ? "it" : "each one"} from the Files panel to save, or quit without saving.`,
+        [
+          { label: "Cancel", value: "cancel", primary: true },
+          { label: "Quit Without Saving", value: "quit" },
+        ],
+      );
+      if (v !== "quit") return;
+      await forgetParked();
+    }
     files.stopAutosave();
     await prefs.flush();
     await exitApp();
@@ -1357,6 +1390,8 @@
             shortcutFor,
             onDropPaths: (paths: string[]) => void importPaths(paths).catch(showError),
             onOpen: (path: string) => void openInWaveform(path),
+            session: sessionRow,
+            onOpenSession: () => void actions.run("view.editor.multitrack"),
           },
         };
       case "drive-manager":
@@ -1375,7 +1410,7 @@
           props: { session, transport, runner: sessionHistory, onError: showError },
         };
       case "time-info":
-        return { component: asComponent(TimeInfoPanel), props: { session, transport } };
+        return { component: asComponent(TimeInfoPanel), props: { session, transport, wave, waveTransport } };
       case "levels":
         return { component: asComponent(LevelsPanel), props: { transport, wave: waveTransport, preview: previewMeter } };
       case "batch-convert":
@@ -1574,6 +1609,7 @@
     "notch",
     "pitch_shift",
     "center_remover",
+    "phase_rotate",
   ];
   function fxTarget(): { target: EffectTarget; chain: EffectChainDoc | undefined; name: string; wave?: boolean } | null {
     if (inWave()) {
@@ -1600,7 +1636,8 @@
     fxCatalog ??= await effectsCatalog();
     const info = fxCatalog.find((e) => e.id === effect);
     if (!info) return;
-    const next = addSlot(chainOf(at.chain), newSlot(info, uuid()));
+    const slot = newSlot(info, uuid());
+    const next = addSlot(chainOf(at.chain), slot);
     if (!next) {
       showNotice("That Voice Chain is full: it holds 16 effects.");
       return;
@@ -1610,7 +1647,8 @@
     if (at.wave) await wave.apply(op);
     else await session.edit(`Add ${info.name}`, op, sessionHistory);
     if (settings.current.openChainOnAdd) dock.show("voice-chain");
-    showNotice(`Added ${info.name} to ${at.name}.`);
+    effectWindowRequest.set(slot.id);
+    showNotice(at.wave ? `Added ${info.name}. Save writes it into the file; bypass the chain to save without it.` : `Added ${info.name} to ${at.name}.`);
   }
 
   const waveIsOpen = () => inWave() && waveFile.current() !== null;
@@ -1661,7 +1699,7 @@
 
   /** Opens a file in the Waveform editor and shows it. */
   async function openInWaveform(path: string) {
-    if (!(await confirmWaveDiscard())) return;
+    // The file open now is set aside with its edits, not closed.
     await transport.stop();
     try {
       await openWaveFile(path);
@@ -1718,6 +1756,17 @@
       );
       if (ok !== "yes") return false;
     }
+    // Save writes the Voice Chain into the file, unless the chain is bypassed.
+    // One undo step takes the applied chain back out.
+    const pending = chainOf(wave.current?.tracks[0]?.effects);
+    if (pending.enabled && pending.slots.some((x) => x.enabled)) {
+      try {
+        await applyWaveChain(pending, true);
+      } catch (e) {
+        showError(e);
+        return false;
+      }
+    }
     exporting = { title: "Saving audio", progress: 0 };
     let off: (() => void) | null = null;
     try {
@@ -1728,6 +1777,7 @@
       await saveWaveFile(path);
       const saved = waveFile.current()?.path ?? f.path;
       peaks.invalidate(saved);
+      await syncSessionMedia(saved);
       const keepsMarkers = /\.wave?$/i.test(saved);
       showNotice(
         markerCount && !keepsMarkers
@@ -1745,6 +1795,32 @@
     }
   }
 
+  /**
+   * After the Waveform editor saves a file the session also uses, the
+   * session learns its new length (for example after recording more in the
+   * Waveform editor), and clips that ran to the old end run to the new one.
+   */
+  async function syncSessionMedia(path: string) {
+    const doc = session.current;
+    if (!doc) return;
+    const key = (p: string) => p.replace(/\\/g, "/").toLowerCase();
+    const used = doc.media.filter((m) => key(m.path) === key(path));
+    if (!used.length) return;
+    try {
+      const info = await probeMedia(path);
+      for (const m of used) {
+        if (m.length === info.length && m.sample_rate === info.sampleRate && m.channels === info.channels) continue;
+        await session.edit(
+          "Update Changed File",
+          { op: "set_media", media: { ...m, length: info.length, sample_rate: info.sampleRate, channels: info.channels } },
+          sessionHistory,
+        );
+      }
+    } catch (e) {
+      showError(e);
+    }
+  }
+
   async function waveAmplify(db: number) {
     const d = wave.current;
     const r = waveAll();
@@ -1753,16 +1829,16 @@
   }
 
   /** Writes the Waveform preview chain into the selection (or the whole file), then clears the preview. */
-  async function applyWaveChain(chain: EffectChainDoc) {
+  async function applyWaveChain(chain: EffectChainDoc, wholeFile = false) {
     const d = wave.current;
-    const r = waveAll();
+    const r = wholeFile && d ? clampRange(d, 0, sessionEnd(d)) : waveAll();
     const t = d?.tracks[0];
     if (!d || !r || !t) return;
-    const label = waveSel() ? "Apply Voice Chain to Selection" : "Apply Voice Chain";
+    const label = !wholeFile && waveSel() ? "Apply Voice Chain to Selection" : "Apply Voice Chain";
     const res = await waveApplyChain(chain, r[0], r[1]);
     await waveEdit(label, replaceRange(wave.current ?? d, res.start, res.end, res.media, label, uuid));
     await wave.apply({ op: "set_effects", target: { kind: "track", id: t.id }, chain: chainOf(null) });
-    showNotice(`${label}: done. Undo takes it back.`);
+    if (!wholeFile) showNotice(`${label}: done. Undo takes it back.`);
   }
 
   /** Spectral edit on the current spectral selection: turn it down by `db` (-120 removes it), or repair it. */
@@ -1813,7 +1889,12 @@
     for (const [k, v] of Object.entries(colorVars(s.colors))) root.setProperty(k, v);
     root.setProperty("--meter-yellow", `${meterPercent(s.meterYellowDb)}%`);
     root.setProperty("--meter-red", `${meterPercent(s.meterRedDb)}%`);
-    if (isTauri()) void setAudioOutput(s.output).catch(showError);
+    if (isTauri()) {
+      // Driver first, so the output name is looked up on the right one.
+      void setAudioDriver(s.driver === "asio")
+        .then(() => setAudioOutput(s.output))
+        .catch(showError);
+    }
     if (autosave) restartAutosave();
   }
   function restartAutosave() {
@@ -1877,7 +1958,7 @@
         const base = f.path.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ?? "Take";
         const channels = Math.min(2, Math.max(1, d.media[0]?.channels ?? 1));
         const at = wavePlayhead();
-        await recordStart([{ key: "wave", input: null, channels, name: `${base} take ${stamp()}` }]);
+        await recordStart([{ key: "wave", input: settings.current.waveInput, channels, name: `${base} take ${stamp()}` }]);
         take = { mode: "wave", at };
       } else {
         const doc = session.current;
@@ -2102,7 +2183,6 @@
   }
   async function makeNewAudio(v: NewAudioSettings) {
     prefs.set(KEY_NEW_AUDIO, { sampleRate: v.sampleRate, channels: v.channels, bitDepth: v.bitDepth });
-    if (!(await confirmWaveDiscard())) return;
     try {
       await newEmptyWaveFile(v.name, v.sampleRate, v.channels, v.bitDepth);
       newAudioCount += 1;
@@ -2176,7 +2256,6 @@
 
   /** Paste to New File: the Waveform clipboard in the Waveform editor, otherwise the copied clips. */
   async function pasteToNewFile() {
-    if (!(await confirmWaveDiscard())) return;
     try {
       if (inWave() && waveBoard) {
         await newWaveFromClips(waveBoard.rate, waveBoard.clips, waveBoard.media);
@@ -2808,6 +2887,11 @@
         checked: () => editor.current().showVolume,
       }),
       actions.register({
+        id: "view.env.fx",
+        run: () => editor.setShowFx(!editor.current().showFx),
+        checked: () => editor.current().showFx,
+      }),
+      actions.register({
         id: "view.env.pan",
         run: () => editor.setShowPan(!editor.current().showPan),
         checked: () => editor.current().showPan,
@@ -2911,6 +2995,27 @@
         },
         enabled: () => exporting === null && contentEnd() > 0,
         reason: () => "The session has no clips yet.",
+      }),
+      actions.register({
+        id: "file.export.sesx",
+        run: async () => {
+          try {
+            const done = await sessionExportSesx();
+            if (!done) return;
+            const r = done.report;
+            const left: string[] = [];
+            if (r.chainsLeftOut) left.push(`${r.chainsLeftOut} Voice ${r.chainsLeftOut === 1 ? "Chain" : "Chains"}`);
+            if (r.envelopesLeftOut) left.push(`envelopes on ${r.envelopesLeftOut} ${r.envelopesLeftOut === 1 ? "clip" : "clips"}`);
+            if (r.clipsSimplified) left.push(`${r.clipsSimplified} looped or stretched ${r.clipsSimplified === 1 ? "clip" : "clips"} (written as plain clips)`);
+            if (r.markersLeftOut) left.push(`${r.markersLeftOut} ${r.markersLeftOut === 1 ? "marker" : "markers"}`);
+            const name = done.path.split(/[\\/]/).pop();
+            showNotice(`Exported ${name}: ${r.tracks} tracks, ${r.clips} clips.${left.length ? ` Left out: ${left.join(", ")}.` : ""} Keep saving your work as .altaudio.`);
+          } catch (e) {
+            showError(e);
+          }
+        },
+        enabled: () => (session.current?.tracks.length ?? 0) > 0,
+        reason: () => "The session has no tracks.",
       }),
       actions.register({
         id: "file.export.markers",
@@ -3454,8 +3559,8 @@
     }
     const pluginsUrl = LINKS.plugins;
     if (pluginsUrl) offs.push(actions.register({ id: "help.plugins", run: () => openLink(pluginsUrl) }));
-    const donateUrl = LINKS.donate;
-    if (donateUrl) offs.push(actions.register({ id: "help.donate", run: () => openLink(donateUrl) }));
+    const supportUrl = LINKS.support;
+    if (supportUrl) offs.push(actions.register({ id: "help.support", run: () => openLink(supportUrl) }));
     for (const p of PANELS) {
       offs.push(
         actions.register({
@@ -3469,6 +3574,13 @@
   }
 
   onMount(() => {
+    // Effect envelopes need each control's range.
+    void effectsCatalog()
+      .then((c) => {
+        fxCatalog = c;
+        setFxCatalog(c);
+      })
+      .catch(() => {});
     void prefs
       .load()
       .then(() => libraries.restore())
@@ -3524,7 +3636,7 @@
     offs.push(sessionHistory.subscribe(updateTitle));
     offs.push(session.subscribe(updateTitle));
     offs.push(session.subscribe(() => syncMonitor()));
-    offs.push(editor.subscribe(() => updateEditorTitle()));
+    offs.push(editor.subscribe(() => (updateEditorTitle(), updateSessionRow())));
     offs.push(wave.subscribe(() => updateEditorTitle()));
     if (isTauri()) {
       let stopClose: (() => void) | null = null;

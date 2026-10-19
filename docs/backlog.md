@@ -210,8 +210,16 @@ Still open, and why:
 
 ## Settings (built 2026-10-18)
 
-Edit > Settings with every page; see decisions.md. Greyed-out items waiting on other work: channel routing and driver type (ASIO), buffer size, controllers, numbered session backups, Waveform edge crossfades, pan law (buses), spectrum detail and range, timecode frame rate, scrubbing, record countdown, weekly update check, a light theme, moving the cache folder.
+Edit > Settings with every page; see decisions.md. Greyed-out items waiting on other work: channel routing and driver type (ASIO), buffer size, numbered session backups, Waveform edge crossfades, pan law (buses), spectrum detail and range, timecode frame rate, scrubbing, record countdown, weekly update check, a light theme, moving the cache folder.
 
 ## Built for 0.1.3 (2026-10-19)
 
 Speaker Balance, host profiles with Guest track mode, session backups, record count-in, new-marker name, timecode frame rate. Next: the master chain and bus decision (see decisions.md), then Pitch Tune, Pitch Curve, Pitch Draw and formant keeping, then Waveform editor edge crossfades and scrubbing.
+
+## Voice Chain effect windows (built for 0.1.4, first step)
+
+Built: adding an effect, clicking its name or its gear button opens its controls in a floating, movable window inside the app (one at a time), with the response graph and Learn button, an On/Off button, and the track and slot number. Esc or the close button hides it. Still to do: several windows open at once, remembering where each window was, and separate system windows for a second monitor.
+
+## Optional AI connections (idea, not approved)
+
+Spitballed by the project lead: off by default, never required. Local first (a local language model, local text-to-speech, local speech-to-speech), and cloud services only with the user's own key. Needs a decision entry, a privacy review and a privacy-check change before any code. See docs/design-principles.md.

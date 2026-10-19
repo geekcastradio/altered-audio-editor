@@ -39,6 +39,15 @@ export class NestedCommandError extends Error {
  * Implements the Svelte store contract, so components can read
  * `$stack` directly.
  */
+/** A history taken out with `stash`. Opaque outside this file. */
+export interface StashedHistory {
+  readonly entries: readonly unknown[];
+  readonly position: number;
+  readonly savedId: number;
+  readonly baseLabel: string;
+  readonly baseShifted: boolean;
+}
+
 export class UndoStack {
   private entries: Entry[] = [];
   private position = 0;
@@ -148,6 +157,37 @@ export class UndoStack {
       this.savedId = 0;
       this.baseShifted = false;
       if (baseLabel !== undefined) this.baseLabel = baseLabel;
+    });
+  }
+
+  /**
+   * Takes the whole history out (for a file set aside) and leaves this
+   * stack empty. `restore` puts it back exactly, dirty state included.
+   */
+  stash(): Promise<StashedHistory> {
+    return this.enqueue(async () => {
+      const st: StashedHistory = {
+        entries: this.entries,
+        position: this.position,
+        savedId: this.savedId,
+        baseLabel: this.baseLabel,
+        baseShifted: this.baseShifted,
+      };
+      this.entries = [];
+      this.position = 0;
+      this.savedId = 0;
+      this.baseShifted = false;
+      return st;
+    });
+  }
+
+  restore(st: StashedHistory): Promise<void> {
+    return this.enqueue(async () => {
+      this.entries = st.entries as Entry[];
+      this.position = st.position;
+      this.savedId = st.savedId;
+      this.baseLabel = st.baseLabel;
+      this.baseShifted = st.baseShifted;
     });
   }
 

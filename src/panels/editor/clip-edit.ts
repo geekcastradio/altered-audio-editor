@@ -19,14 +19,14 @@ import { pointsOf, sliceVolume, type EnvKind } from "./envelope";
  * The id a clip's envelope uses, as in the core: the clip id for
  * volume, and the clip id with its lowest bit flipped for pan.
  */
-export function envelopeId(clipId: string, kind: EnvKind): string {
+export function envelopeId(clipId: string, kind: "volume" | "pan"): string {
   if (kind === "volume") return clipId;
   const last = parseInt(clipId.slice(-1), 16) ^ 1;
   return clipId.slice(0, -1) + last.toString(16);
 }
 
 /** A copy of a clip with one envelope's points replaced. Empty removes it. */
-export function withEnvelope(clip: ClipDoc, kind: EnvKind, points: EnvelopePointDoc[]): ClipDoc {
+export function withEnvelope(clip: ClipDoc, kind: "volume" | "pan", points: EnvelopePointDoc[]): ClipDoc {
   const others = (clip.envelopes ?? []).filter((e) => e.target.type !== kind);
   return {
     ...clip,
@@ -38,7 +38,7 @@ export function withVolume(clip: ClipDoc, points: EnvelopePointDoc[]): ClipDoc {
   return withEnvelope(clip, "volume", points);
 }
 
-type Slices = { volume?: EnvelopePointDoc[]; pan?: EnvelopePointDoc[] };
+type Slices = { volume?: EnvelopePointDoc[]; pan?: EnvelopePointDoc[]; effect_points?: { slot_id: string; param: string; points: EnvelopePointDoc[] }[] };
 
 /** Envelope points for the piece of `clip` from `from` to `to`; only envelopes it has. */
 function sliceOf(clip: ClipDoc, from: number, to: number): Slices {
@@ -47,6 +47,13 @@ function sliceOf(clip: ClipDoc, from: number, to: number): Slices {
     const pts = pointsOf(clip, kind);
     if (pts.length) out[kind] = sliceVolume(pts, from, to);
   }
+  // Effect settings over time move with the audio too.
+  const fx = (clip.envelopes ?? []).flatMap((e) =>
+    e.target.type === "effect_param" && e.enabled && e.points.length
+      ? [{ slot_id: e.target.slot_id, param: e.target.param, points: sliceVolume(e.points, from, to) }]
+      : [],
+  );
+  if (fx.length) out.effect_points = fx;
   return out;
 }
 
@@ -55,6 +62,14 @@ function withSlices(clip: ClipDoc, slices: Slices): ClipDoc {
   let c = clip;
   if (slices.volume) c = withEnvelope(c, "volume", slices.volume);
   if (slices.pan) c = withEnvelope(c, "pan", slices.pan);
+  for (const f of slices.effect_points ?? []) {
+    c = {
+      ...c,
+      envelopes: (c.envelopes ?? []).map((e) =>
+        e.target.type === "effect_param" && e.target.slot_id === f.slot_id && e.target.param === f.param ? { ...e, points: f.points } : e,
+      ),
+    };
+  }
   return c;
 }
 

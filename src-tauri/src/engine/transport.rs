@@ -451,7 +451,7 @@ fn run(
     shared: Arc<Shared>,
     ready: mpsc::Sender<Result<u32, String>>,
 ) {
-    let host = cpal::default_host();
+    let host = crate::engine::host::host();
     let Some(device) = super::output::output_device(&host) else {
         let _ = ready.send(Err("No audio output device found.".into()));
         return;

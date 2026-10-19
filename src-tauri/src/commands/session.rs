@@ -519,6 +519,61 @@ pub async fn session_import_sesx(app: AppHandle, path: PathBuf) -> Result<SesxIm
     })
 }
 
+#[derive(Debug, Serialize)]
+pub struct SesxExported {
+    pub path: PathBuf,
+    pub report: crate::sesx::export::SesxExportReport,
+}
+
+/// File > Export > Multitrack Session (.sesx): asks where, then writes a
+/// copy of the open session in that format. The session itself is not
+/// changed and stays tied to its own file. None when cancelled.
+#[tauri::command]
+pub async fn session_export_sesx(
+    app: AppHandle,
+    open: State<'_, OpenSession>,
+) -> Result<Option<SesxExported>, String> {
+    let (session, folder) = {
+        let s = open.0.lock().map_err(|e| e.to_string())?;
+        (
+            s.session.clone(),
+            s.path.as_ref().and_then(|p| p.parent()).map(PathBuf::from),
+        )
+    };
+    let parent = app.get_webview_window("main");
+    let name = session.name.clone();
+    spawn_blocking(move || {
+        let mut d = app
+            .dialog()
+            .file()
+            .set_title("Export Multitrack Session (.sesx)")
+            .set_file_name(format!("{name}.sesx"))
+            .add_filter("Multitrack session (.sesx)", &["sesx"]);
+        if let Some(f) = folder.filter(|f| f.is_dir()) {
+            d = d.set_directory(f);
+        }
+        if let Some(w) = parent.as_ref() {
+            d = d.set_parent(w);
+        }
+        let Some(path) = d
+            .blocking_save_file()
+            .and_then(|f| f.as_path().map(|p| p.to_path_buf()))
+        else {
+            return Ok(None);
+        };
+        let path = if path.extension().is_none() {
+            path.with_extension("sesx")
+        } else {
+            path
+        };
+        let report = crate::sesx::export::export(&session, &path)
+            .map_err(|e| format!("Could not write the file: {e}"))?;
+        Ok(Some(SesxExported { path, report }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

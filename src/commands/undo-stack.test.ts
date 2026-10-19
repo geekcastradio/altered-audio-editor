@@ -46,6 +46,24 @@ class SetVolume implements Command {
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe("UndoStack", () => {
+  it("stashes a history and restores it exactly", async () => {
+    const doc = makeDoc();
+    const stack = new UndoStack();
+    await stack.execute(doc.add("a"));
+    await stack.markSaved();
+    await stack.execute(doc.add("b"));
+    expect(stack.current.dirty).toBe(true);
+    const kept = await stack.stash();
+    expect(stack.current.canUndo).toBe(false);
+    expect(stack.current.dirty).toBe(false);
+    await stack.restore(kept);
+    expect(stack.current.dirty).toBe(true);
+    expect(stack.current.undoLabel).toBe("Add b");
+    await stack.undo();
+    expect(doc.items).toEqual(["a"]);
+    expect(stack.current.dirty).toBe(false);
+  });
+
   it("runs, undoes and redoes commands", async () => {
     const doc = makeDoc();
     const stack = new UndoStack();

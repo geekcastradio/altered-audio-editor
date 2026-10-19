@@ -11,7 +11,7 @@
   import { clipLength, stretchOf, type ClipDoc, type FadeDoc, type MediaRefDoc, type TrackDoc } from "../../stores/session";
   import { LIVE_BLOCK } from "../../app/core";
   import { defaultTrackColor, trackHeight, peakRange, pickLevel, xOf, type Viewport, TRACK_GAP } from "./timeline";
-  import { chipBox, chipLabel, pointsOf, valueToY, type EnvKind } from "./envelope";
+  import { chipBox, chipLabel, fxLaneOf, pointsOf, rangeOf, restValue, valueToY, type EnvKind, type FxLane } from "./envelope";
 
   interface Props {
     track: TrackDoc;
@@ -35,9 +35,12 @@
     showVolume?: boolean;
     /** Draw clip pan envelopes. */
     showPan?: boolean;
+    /** Effect-setting envelopes, and which setting each clip shows. */
+    showFx?: boolean;
+    fxLanes?: Record<string, FxLane>;
   }
 
-  const { track, media, sessionRate, view, width, playhead, selectedClips, trackSelected, index = 0, ampZoom = 1, liveTake = null, peaks, peakTick, showVolume = false, showPan = false }: Props = $props();
+  const { track, media, sessionRate, view, width, playhead, selectedClips, trackSelected, index = 0, ampZoom = 1, liveTake = null, peaks, peakTick, showVolume = false, showPan = false, showFx = false, fxLanes = {} }: Props = $props();
 
   let canvas = $state<HTMLCanvasElement | null>(null);
 
@@ -243,7 +246,7 @@
         }
       }
       // Envelope chip: which envelope lines show; click it to change.
-      const chip = chipBox(x0, x1, chipLabel(showVolume, showPan));
+      const chip = chipBox(x0, x1, chipLabel(showVolume, showPan, showFx));
       let tagRight = right - 14;
       if (chip && chip.x >= left && chip.x + chip.w <= right) {
         g.fillStyle = "rgba(14, 14, 16, 0.55)";
@@ -253,7 +256,7 @@
         g.fillStyle = "#f2f2f2";
         g.font = `10px ${css("--font-ui")}`;
         g.textBaseline = "middle";
-        g.fillText(`${chipLabel(showVolume, showPan)} \u25BE`, chip.x + 6, 1 + titleH / 2);
+        g.fillText(`${chipLabel(showVolume, showPan, showFx)} \u25BE`, chip.x + 6, 1 + titleH / 2);
         tagRight = chip.x - 6;
       }
       if (clip.locked || clip.gain_db !== 0 || clip.group || clip.looped) {
@@ -276,12 +279,17 @@
 
       // Envelopes: a line across the body with a handle per point.
       // Volume is yellow, pan is blue (full left at the top).
+      // An effect setting is violet, its top the control's highest value.
+      const fxLane = showFx ? fxLaneOf(clip, fxLanes) : null;
       const shown: [EnvKind, string][] = [];
       if (showVolume) shown.push(["volume", "255, 215, 94"]);
       if (showPan) shown.push(["pan", "120, 235, 255"]);
+      if (fxLane) shown.push(["fx", "205, 150, 255"]);
       for (const [kind, rgb] of shown) {
-        const pts = pointsOf(clip, kind);
-        const yAt = (v: number) => valueToY(kind, v, body.top + 2, body.height - 4);
+        const pts = pointsOf(clip, kind, fxLane);
+        const range = rangeOf(kind, clip, fxLane);
+        const rest = restValue(kind, clip, fxLane);
+        const yAt = (v: number) => valueToY(kind, v, body.top + 2, body.height - 4, range);
         g.save();
         g.beginPath();
         g.rect(left, body.top, right - left, body.height);
@@ -290,8 +298,8 @@
         g.lineWidth = 1.5;
         g.beginPath();
         if (pts.length === 0) {
-          g.moveTo(x0, yAt(0));
-          g.lineTo(x1, yAt(0));
+          g.moveTo(x0, yAt(rest));
+          g.lineTo(x1, yAt(rest));
         } else {
           g.moveTo(x0, yAt(pts[0]!.value));
           for (const p of pts) g.lineTo(xOf(clip.start + p.position, view), yAt(p.value));

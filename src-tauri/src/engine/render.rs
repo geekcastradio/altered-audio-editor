@@ -20,7 +20,7 @@
 
 use std::collections::HashMap;
 
-use super::plan::{ClipPlan, Plan, TrackPlan};
+use super::plan::{ClipPlan, ParamLane, Plan, TrackPlan};
 use crate::codecs::AudioReader;
 use crate::dsp::effects::ChainProcessor;
 use crate::dsp::stretch::Stretcher;
@@ -79,6 +79,26 @@ impl Fx {
         self.chain.reset();
         self.primed = false;
         self.hist.clear();
+    }
+
+    /// Runs the chain over `buf`, whose first frame is `at` frames into
+    /// the clip, moving automated settings every 256 frames.
+    fn run_at(&mut self, buf: &mut [f32], at: u64, lanes: &[ParamLane]) {
+        if lanes.is_empty() {
+            self.run(buf);
+            return;
+        }
+        const STEP: usize = 256;
+        let mut done = 0;
+        for chunk in buf.chunks_mut(STEP * 2) {
+            let pos = at + done as u64;
+            for l in lanes {
+                self.chain
+                    .set_param(l.slot, &l.param, f64::from(l.value_at(pos)));
+            }
+            self.run(chunk);
+            done += chunk.len() / 2;
+        }
     }
 
     /// Runs the chain over `buf` in place, keeping the input history
@@ -201,7 +221,7 @@ impl Active {
                 self.mix_into(&mut fx.buf, n, clip, rel);
             }
             let mut b = std::mem::take(&mut fx.buf);
-            fx.run(&mut b);
+            fx.run_at(&mut b, rel, &clip.automation);
             fx.buf = b;
             fx.primed = true;
         }
@@ -213,7 +233,7 @@ impl Active {
         if n > 0 {
             self.mix_into(&mut b, n, clip, from);
         }
-        fx.run(&mut b);
+        fx.run_at(&mut b, from, &clip.automation);
         for (o, s) in out.iter_mut().zip(&b) {
             *o += *s;
         }
@@ -894,6 +914,43 @@ mod tests {
         }
         w.finalize().unwrap();
         path
+    }
+
+    /// A clip's Gain effect automated from 0 dB down to -24 dB over the
+    /// clip turns the tone down smoothly, without restarting anything.
+    #[test]
+    fn automation_moves_an_effect_setting_over_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = tone_file(dir.path());
+        let gain = chain("altaudio.gain", &[("gain", 0.0)]);
+        let slot = gain.slots[0].id;
+        let mut clip = ClipPlan::plain(new_id(), path, 0, 48_000, 0.0);
+        clip.effects = gain;
+        clip.automation = vec![ParamLane {
+            slot,
+            param: "gain".into(),
+            points: vec![(0, 0.0), (48_000, -24.0)],
+        }];
+        let plan = Plan {
+            out_rate: 48_000,
+            session_rate: 48_000,
+            tracks: vec![TrackPlan {
+                effects: crate::session::model::EffectChain::default(),
+                id: new_id(),
+                clips: vec![clip],
+            }],
+        };
+        let all = render_all(plan, 48_000);
+        let peak = |from: usize| {
+            all[from * 2..(from + 2_400) * 2]
+                .iter()
+                .fold(0f32, |m, s| m.max(s.abs()))
+        };
+        assert!((peak(0) - 0.5).abs() < 0.03, "start {}", peak(0));
+        // Halfway: -12 dB, about a quarter of the level.
+        let mid = peak(22_800);
+        assert!((mid - 0.5 * 0.251).abs() < 0.02, "middle {mid}");
+        assert!(peak(45_000) < 0.05, "end {}", peak(45_000));
     }
 
     fn render_all(plan: Plan, frames: usize) -> Vec<f32> {

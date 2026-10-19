@@ -271,6 +271,7 @@ fn codec_label(short_name: &str, bits: Option<u32>) -> String {
     match lower.as_str() {
         "mp3" | "mp2" | "mp1" | "flac" | "aac" | "alac" => short_name.to_ascii_uppercase(),
         "vorbis" => "Vorbis".into(),
+        "opus" => "Opus".into(),
         _ => short_name.to_string(),
     }
 }
@@ -291,7 +292,8 @@ mod tests {
     fn labels_codecs() {
         assert_eq!(codec_label("pcm_s24le", Some(24)), "PCM 24-bit");
         assert_eq!(codec_label("pcm_f32le", Some(32)), "PCM 32-bit float");
-        assert_eq!(codec_label("mp3", None), "MP3");
+        assert_eq!(codec_label("vorbis", None), "Vorbis");
+        assert_eq!(codec_label("opus", None), "Opus");
         assert_eq!(codec_label("vorbis", None), "Vorbis");
     }
 

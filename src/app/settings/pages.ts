@@ -27,7 +27,6 @@ export const PAGES = [
   "Audio Devices",
   "Channel Routing",
   "Autosave",
-  "Controllers",
   "Editing",
   "Effects",
   "Cache and Files",
@@ -46,7 +45,6 @@ export type Page = (typeof PAGES)[number];
 /** Pages with nothing that works yet: shown, but marked as later. */
 export const LATER_PAGES: Partial<Record<Page, string>> = {
   "Channel Routing": "Arrives with ASIO and per-channel routing, which needs real multichannel hardware to build and test.",
-  Controllers: "Hardware controllers (faders, transport buttons) are planned after VST3 hosting.",
 };
 
 /** The draft as it should be saved: every value checked and in range. */

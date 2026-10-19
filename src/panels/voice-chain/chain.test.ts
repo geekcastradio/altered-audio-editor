@@ -49,6 +49,7 @@ const KNOWN = new Set([
   "altaudio.curve_eq",
   "altaudio.center_remover",
   "altaudio.pitch_shift",
+  "altaudio.phase_rotate",
 ]);
 
 const p = (over: Partial<EffectParamInfo>): EffectParamInfo => ({ key: "k", name: "K", unit: "dB", min: -24, max: 24, default: 0, step: 0.1, log: false, toggle: false, ...over });

@@ -225,6 +225,8 @@ export interface ClipChange {
   volume?: EnvelopePointDoc[];
   /** Replaces the pan envelope points (-100 left to 100 right). Empty removes the envelope. */
   pan?: EnvelopePointDoc[];
+  /** Replaces the points of one effect setting's envelope. Empty removes it. */
+  effect_points?: { slot_id: string; param: string; points: EnvelopePointDoc[] }[];
   /** Loops the clip, or changes its loop. */
   looped?: LoopDoc;
   /** Stops looping. */
@@ -275,6 +277,7 @@ export type Op =
   | { op: "set_track"; id: string; changes: TrackChanges }
   | { op: "add_media"; media: MediaRefDoc }
   | { op: "remove_media"; id: string }
+  | { op: "set_media"; media: MediaRefDoc; clip_outs?: [string, number][] }
   | { op: "add_clips"; track_id: string; clips: ClipSpec[] }
   | { op: "restore_clips"; clips: [string, ClipDoc][] }
   | { op: "remove_clips"; ids: string[] }

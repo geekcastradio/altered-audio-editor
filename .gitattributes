@@ -8,3 +8,4 @@
 *.flac binary
 *.m4a binary
 *.ogg binary
+*.opus binary

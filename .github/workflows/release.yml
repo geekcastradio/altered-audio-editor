@@ -5,6 +5,9 @@
 # Builds the Windows installer and a portable zip when a version tag is
 # pushed (git tag v0.1.0 && git push origin v0.1.0). It makes a DRAFT
 # release, so nothing is public until you review and publish it.
+# Linux and macOS builds are experimental: they are added to the same
+# draft afterwards, and if one fails the Windows files are still there.
+# The macOS build is not signed or notarized (no Apple developer account).
 
 name: Release
 
@@ -38,7 +41,18 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build installer
+      # ASIO needs LLVM (preinstalled on the runner) and the ASIO SDK,
+      # which cpal's build script downloads. If that build fails, the
+      # release still ships without ASIO.
+      - name: Build installer (with ASIO)
+        id: asio
+        continue-on-error: true
+        env:
+          LIBCLANG_PATH: C:\Program Files\LLVM\bin
+        run: npm run tauri build -- --features asio
+
+      - name: Build installer (without ASIO)
+        if: steps.asio.outcome != 'success'
         run: npm run tauri build
 
       - name: Package
@@ -67,3 +81,87 @@ jobs:
           $pre = @()
           if ($tag -like "v0.*") { $pre = @("--prerelease") }
           gh release create $tag --draft @pre --title "Altered Audio Editor $tag" --generate-notes (Get-ChildItem out/* | ForEach-Object FullName)
+
+  linux:
+    name: Linux AppImage and deb (experimental)
+    needs: windows
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev patchelf
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run tauri build -- --bundles appimage,deb
+
+      - name: Add to the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ github.ref_name }}"
+          mkdir out
+          cp src-tauri/target/release/bundle/appimage/*.AppImage "out/Altered-Audio-Editor-$tag-linux-x86_64.AppImage"
+          cp src-tauri/target/release/bundle/deb/*.deb "out/Altered-Audio-Editor-$tag-linux-amd64.deb"
+          (cd out && sha256sum * > SHA256SUMS-linux.txt)
+          gh release upload "$tag" out/* --clobber
+
+  macos:
+    name: macOS Apple silicon (experimental, unsigned)
+    needs: windows
+    runs-on: macos-latest
+    continue-on-error: true
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # "-" means an ad hoc signature: no Apple account, no notarization.
+      # Apple silicon needs at least this to run the app at all.
+      - name: Build
+        env:
+          APPLE_SIGNING_IDENTITY: "-"
+        run: npm run tauri build -- --bundles app,dmg
+
+      - name: Add to the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ github.ref_name }}"
+          mkdir out
+          cp src-tauri/target/release/bundle/dmg/*.dmg "out/Altered-Audio-Editor-$tag-macos-arm64.dmg"
+          (cd out && shasum -a 256 * > SHA256SUMS-macos.txt)
+          gh release upload "$tag" out/* --clobber

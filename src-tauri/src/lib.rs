@@ -28,6 +28,7 @@ pub fn run() {
         .manage(commands::export::ExportCancel::default())
         .manage(commands::batch::BatchCancel::default())
         .manage(commands::wave::OpenWave::default())
+        .manage(commands::wave::ParkedWaves::default())
         .manage(commands::wave::Playing::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -67,6 +68,8 @@ pub fn run() {
             commands::devices::audio_inputs,
             commands::devices::audio_outputs,
             commands::devices::set_audio_output,
+            commands::devices::audio_driver,
+            commands::devices::set_audio_driver,
             commands::cache::cache_info,
             commands::cache::cache_clear_peaks,
             commands::devices::open_sound_settings,
@@ -116,6 +119,9 @@ pub fn run() {
             commands::wave::wave_open,
             commands::wave::wave_get,
             commands::wave::wave_close,
+            commands::wave::wave_park,
+            commands::wave::wave_resume,
+            commands::wave::wave_forget,
             commands::wave::wave_apply,
             commands::wave::wave_set_view,
             commands::wave::wave_play,
@@ -132,6 +138,7 @@ pub fn run() {
             commands::workspace::workspace_put,
             commands::workspace::workspace_delete,
             commands::session::session_import_sesx,
+            commands::session::session_export_sesx,
             commands::app::app_set_title,
             commands::workspace::workspace_load,
             commands::workspace::workspace_save,

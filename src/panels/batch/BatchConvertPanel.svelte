@@ -237,15 +237,18 @@
     </select>
   </label>
   <div class="process level" title="After the preset: bring every file to the same peak, and fade the ends">
-    <label class="check"><input type="checkbox" checked={s.level.normalize} disabled={running} onchange={(e) => (s.level.normalize = e.currentTarget.checked)} /> Normalize to</label>
-    <input type="number" class="num" min="-30" max="0" step="0.1" value={s.level.normalizeDb} disabled={running || !s.level.normalize} aria-label="Normalize peak, dB" onchange={(e) => (s.level.normalizeDb = sanitizeLevel({ ...s.level, normalizeDb: Number(e.currentTarget.value) }).normalizeDb)} />
-    <span>dB</span>
-    <span class="sep"></span>
-    <span>Fade in</span>
-    <input type="number" class="num" min="0" max="60000" step="10" value={s.level.fadeInMs} disabled={running} aria-label="Fade in, ms" onchange={(e) => (s.level.fadeInMs = sanitizeLevel({ ...s.level, fadeInMs: Number(e.currentTarget.value) }).fadeInMs)} />
-    <span>out</span>
-    <input type="number" class="num" min="0" max="60000" step="10" value={s.level.fadeOutMs} disabled={running} aria-label="Fade out, ms" onchange={(e) => (s.level.fadeOutMs = sanitizeLevel({ ...s.level, fadeOutMs: Number(e.currentTarget.value) }).fadeOutMs)} />
-    <span>ms</span>
+    <span class="grp">
+      <label class="check"><input type="checkbox" checked={s.level.normalize} disabled={running} onchange={(e) => (s.level.normalize = e.currentTarget.checked)} /> Normalize to</label>
+      <input type="number" class="num" min="-30" max="0" step="0.1" value={s.level.normalizeDb} disabled={running || !s.level.normalize} aria-label="Normalize peak, dB" onchange={(e) => (s.level.normalizeDb = sanitizeLevel({ ...s.level, normalizeDb: Number(e.currentTarget.value) }).normalizeDb)} />
+      <span>dB</span>
+    </span>
+    <span class="grp">
+      <span>Fade in</span>
+      <input type="number" class="num" min="0" max="60000" step="10" value={s.level.fadeInMs} disabled={running} aria-label="Fade in, ms" onchange={(e) => (s.level.fadeInMs = sanitizeLevel({ ...s.level, fadeInMs: Number(e.currentTarget.value) }).fadeInMs)} />
+      <span>out</span>
+      <input type="number" class="num" min="0" max="60000" step="10" value={s.level.fadeOutMs} disabled={running} aria-label="Fade out, ms" onchange={(e) => (s.level.fadeOutMs = sanitizeLevel({ ...s.level, fadeOutMs: Number(e.currentTarget.value) }).fadeOutMs)} />
+      <span>ms</span>
+    </span>
   </div>
 
   <div class="list" role="listbox" aria-label="Files to convert" aria-multiselectable="true">
@@ -305,7 +308,8 @@
 <style>
   .panel {
     display: grid;
-    grid-template-rows: auto auto minmax(70px, 1fr) auto;
+    grid-template-rows: auto auto auto minmax(70px, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
     height: 100%;
     min-height: 0;
     overflow: hidden;
@@ -362,8 +366,15 @@
     font: inherit;
     font-size: 11px;
   }
-  .level .sep {
-    width: 8px;
+  .level {
+    row-gap: 4px;
+    column-gap: 12px;
+  }
+  .level .grp {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    white-space: nowrap;
   }
 
   .tool {

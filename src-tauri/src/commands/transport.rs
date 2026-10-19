@@ -24,12 +24,19 @@ pub enum PlayMode {
 }
 
 /// The jump `mode` asks for, from the session's time selection.
+/// Loop Playback with no time selection loops the whole session, so it
+/// stops at the end of the audio instead of playing on into silence.
 pub fn jump_for(session: &Session, mode: Option<PlayMode>) -> Option<Jump> {
-    let sel = session.view.selection.as_ref()?;
-    if sel.end <= sel.start {
-        return None;
-    }
-    match mode.unwrap_or_default() {
+    let mode = mode.unwrap_or_default();
+    let sel = match session.view.selection.as_ref() {
+        Some(sel) if sel.end > sel.start => *sel,
+        _ if mode == PlayMode::Loop => {
+            let end = crate::export::mixdown::session_end(session);
+            return (end > 0).then_some(Jump::Loop { start: 0, end });
+        }
+        _ => return None,
+    };
+    match mode {
         PlayMode::Normal => None,
         PlayMode::Loop => Some(Jump::Loop {
             start: sel.start,

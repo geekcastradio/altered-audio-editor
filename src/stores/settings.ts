@@ -27,6 +27,8 @@ export interface AppSettings {
   /** How much one Ctrl+wheel step zooms, in percent. */
   zoomStep: number;
   wheelAnchor: WheelAnchor;
+  /** The plain mouse wheel over the timeline zooms. Off: it scrolls. Ctrl + wheel always zooms. */
+  wheelZooms: boolean;
   /** Shape a new fade starts with. */
   fadeShape: FadeShape;
   /** What the space bar does to a playing session. */
@@ -34,6 +36,10 @@ export interface AppSettings {
   colors: AppColors;
   /** System name of the output; null is the system default. */
   output: string | null;
+  /** Audio driver: the system's own, or ASIO (Windows release builds). */
+  driver: "system" | "asio";
+  /** Input the Waveform editor records from, as a track input ("Mono: ..." or "Stereo: ..."); null is the system default. */
+  waveInput: string | null;
   autosave: boolean;
   autosaveMinutes: number;
   /** Show the Voice Chain when an effect is added from the Effects menu. */
@@ -61,10 +67,13 @@ export const NO_COLORS: AppColors = { wave: "", playhead: "", accent: "", laneSe
 export const DEFAULT_SETTINGS: AppSettings = {
   zoomStep: 25,
   wheelAnchor: "mouse",
+  wheelZooms: true,
   fadeShape: "cosine",
   spaceAction: "pause",
   colors: { ...NO_COLORS },
   output: null,
+  waveInput: null,
+  driver: "system",
   autosave: true,
   autosaveMinutes: 2,
   openChainOnAdd: true,
@@ -92,10 +101,13 @@ export function sanitizeSettings(raw: unknown): AppSettings {
   return {
     zoomStep: Math.round(num(o.zoomStep, 5, 100, d.zoomStep)),
     wheelAnchor: o.wheelAnchor === "playhead" ? "playhead" : "mouse",
+    wheelZooms: bool(o.wheelZooms, d.wheelZooms),
     fadeShape: o.fadeShape === "linear" || o.fadeShape === "logarithmic" ? o.fadeShape : "cosine",
     spaceAction: o.spaceAction === "stop" ? "stop" : "pause",
     colors: { wave: color(c.wave), playhead: color(c.playhead), accent: color(c.accent), laneSelected: color(c.laneSelected) },
     output: typeof o.output === "string" && o.output.trim() ? o.output : null,
+    driver: o.driver === "asio" ? "asio" : "system",
+    waveInput: typeof o.waveInput === "string" && /^(Mono|Stereo): /.test(o.waveInput) ? o.waveInput : null,
     autosave: bool(o.autosave, d.autosave),
     autosaveMinutes: Math.round(num(o.autosaveMinutes, 1, 60, d.autosaveMinutes)),
     openChainOnAdd: bool(o.openChainOnAdd, d.openChainOnAdd),

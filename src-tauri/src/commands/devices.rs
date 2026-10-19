@@ -21,8 +21,8 @@ pub struct AudioInput {
     pub is_default: bool,
 }
 
-fn list() -> Vec<AudioInput> {
-    let host = cpal::default_host();
+fn list(asio: Option<bool>) -> Vec<AudioInput> {
+    let host = crate::engine::host::host_for(asio.unwrap_or_else(crate::engine::host::asio));
     let default = host
         .default_input_device()
         .and_then(|d| d.description().ok())
@@ -71,8 +71,8 @@ pub struct AudioOutput {
     pub is_default: bool,
 }
 
-fn outputs() -> Vec<AudioOutput> {
-    let host = cpal::default_host();
+fn outputs(asio: Option<bool>) -> Vec<AudioOutput> {
+    let host = crate::engine::host::host_for(asio.unwrap_or_else(crate::engine::host::asio));
     let default = host
         .default_output_device()
         .and_then(|d| d.description().ok())
@@ -97,8 +97,10 @@ fn outputs() -> Vec<AudioOutput> {
 
 /// The speakers and headphones available now, the system default first.
 #[tauri::command]
-pub async fn audio_outputs() -> Result<Vec<AudioOutput>, String> {
-    spawn_blocking(outputs).await.map_err(|e| e.to_string())
+pub async fn audio_outputs(asio: Option<bool>) -> Result<Vec<AudioOutput>, String> {
+    spawn_blocking(move || outputs(asio))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Plays through `name` from the next time playback starts; None (or a
@@ -108,10 +110,42 @@ pub fn set_audio_output(name: Option<String>) {
     crate::engine::output::set_choice(name);
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioDriver {
+    /// This build can use ASIO.
+    pub asio_built: bool,
+    /// ASIO is in use now.
+    pub asio: bool,
+    /// Installed ASIO drivers.
+    pub drivers: Vec<String>,
+}
+
+/// Which driver is in use, and the ASIO drivers installed.
+#[tauri::command]
+pub async fn audio_driver() -> Result<AudioDriver, String> {
+    spawn_blocking(|| AudioDriver {
+        asio_built: crate::engine::host::ASIO_BUILT,
+        asio: crate::engine::host::asio(),
+        drivers: crate::engine::host::asio_drivers(),
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Uses ASIO (true) or the system driver (false) from the next time
+/// playback, recording or a preview starts.
+#[tauri::command]
+pub fn set_audio_driver(asio: bool) {
+    crate::engine::host::set_asio(asio);
+}
+
 /// The audio inputs available now. Empty when there are none.
 #[tauri::command]
-pub async fn audio_inputs() -> Result<Vec<AudioInput>, String> {
-    spawn_blocking(list).await.map_err(|e| e.to_string())
+pub async fn audio_inputs(asio: Option<bool>) -> Result<Vec<AudioInput>, String> {
+    spawn_blocking(move || list(asio))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Opens the system's own sound settings, where inputs are set up.

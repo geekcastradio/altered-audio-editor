@@ -44,6 +44,7 @@
   } from "./chain";
   import ResponseGraph from "./ResponseGraph.svelte";
   import { GRAPHED } from "./graph";
+  import { clampBox, effectWindowRequest, portal, type WindowBox } from "./effect-window";
 
   interface Props {
     session: SessionStore;
@@ -148,6 +149,46 @@
   const slot = $derived(chain.slots.find((s) => s.id === selectedSlot) ?? chain.slots[0] ?? null);
   const slotInfo = $derived(slot ? byId.get(slot.effect) : undefined);
 
+  // Effect settings open in a floating window, one effect at a time.
+  let winOpen = $state(false);
+  let winBox = $state<WindowBox>({ x: 340, y: 140 });
+  let winEl = $state<HTMLElement | null>(null);
+  const winSlot = $derived(winOpen ? (chain.slots.find((s) => s.id === selectedSlot) ?? null) : null);
+  const winInfo = $derived(winSlot ? byId.get(winSlot.effect) : undefined);
+  const winIndex = $derived(winSlot ? chain.slots.indexOf(winSlot) : -1);
+  function openWindow(id: string) {
+    selectedSlot = id;
+    winOpen = true;
+  }
+  // Effects added from the Effects menu open here too.
+  $effect(() => {
+    const id = $effectWindowRequest;
+    if (!id) return;
+    if (!chain.slots.some((x) => x.id === id) && !inWave) {
+      if (clip?.effects?.slots.some((x) => x.id === id) && tab !== "clip") setTab("clip");
+      else if (track?.effects?.slots.some((x) => x.id === id) && tab !== "track") setTab("track");
+      else return;
+    }
+    effectWindowRequest.set(null);
+    openWindow(id);
+  });
+  function dragWindow(e: PointerEvent) {
+    if ((e.target as HTMLElement).closest("button")) return;
+    e.preventDefault();
+    const sx = e.clientX - winBox.x;
+    const sy = e.clientY - winBox.y;
+    const move = (m: PointerEvent) => {
+      const r = winEl?.getBoundingClientRect();
+      winBox = clampBox({ x: m.clientX - sx, y: m.clientY - sy }, r?.width ?? 360, r?.height ?? 300, window.innerWidth, window.innerHeight);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
   function commit(what: string, next: EffectChainDoc | null) {
     if (!target) return;
     if (!next) {
@@ -178,8 +219,8 @@
     const info = byId.get(id);
     if (!info) return;
     const s = newSlot(info, crypto.randomUUID());
-    selectedSlot = s.id;
     commit(`Add ${info.name}`, addSlot(chain, s));
+    openWindow(s.id);
   }
 
   function choosePreset(name: string) {
@@ -416,13 +457,14 @@
           <span class="n">{i + 1}</span>
           {#if s}
             <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-            <span class="name" onclick={() => (selectedSlot = s.id)} title={info?.description ?? "Not a built-in effect: kept in the file, skipped on playback."}>
+            <span class="name" onclick={() => openWindow(s.id)} title={info?.description ?? "Not a built-in effect: kept in the file, skipped on playback."}>
               <span class="badge" style:background={info ? (CATEGORY_COLORS[info.category] ?? "#888") : "#666"}></span>
               {info?.name ?? s.effect}
             </span>
             <button type="button" class="mini" class:on={s.enabled} title={s.enabled ? "Bypass" : "Turn on"} aria-pressed={s.enabled} onclick={() => commit(s.enabled ? "Bypass Effect" : "Turn On Effect", setSlot(chain, s.id, { enabled: !s.enabled }))}>
               {s.enabled ? "On" : "Off"}
             </button>
+            <button type="button" class="mini" title="Open its settings" aria-label="Open its settings" onclick={() => openWindow(s.id)}>⚙</button>
             <button type="button" class="mini" title="Move up" aria-label="Move up" disabled={i === 0} onclick={() => commit("Move Effect", moveSlot(chain, s.id, -1))}>▲</button>
             <button type="button" class="mini" title="Move down" aria-label="Move down" disabled={i === chain.slots.length - 1} onclick={() => commit("Move Effect", moveSlot(chain, s.id, 1))}>▼</button>
             <button type="button" class="mini" title="Remove" aria-label="Remove" onclick={() => commit(`Remove ${info?.name ?? "Effect"}`, removeSlot(chain, s.id))}>✕</button>
@@ -450,17 +492,28 @@
       {/each}
     </ol>
 
-    <div class="editor">
-      {#if slot && slotInfo}
-        <h2>{slotInfo.name}{slot.preset ? ` · ${slot.preset}` : ""}</h2>
-        {#if GRAPHED.has(slot.effect)}
-          <ResponseGraph {slot} info={slotInfo} onPoint={(pf, f, pg, g, done) => dragPoint(slot, pf, f, pg, g, done)} />
+    {#if chain.slots.length === 0}
+      <p class="hint pad">Add an effect or pick a preset. Effects run top to bottom. Each effect opens in its own window.</p>
+    {/if}
+    {#if winSlot}
+      <div class="fxwin" use:portal bind:this={winEl} style:left="{winBox.x}px" style:top="{winBox.y}px" role="dialog" aria-label="{winInfo?.name ?? winSlot.effect} settings" tabindex="-1" onkeydown={(e) => e.key === "Escape" && (winOpen = false)}>
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <header onpointerdown={dragWindow}>
+          <span class="badge" style:background={winInfo ? (CATEGORY_COLORS[winInfo.category] ?? "#888") : "#666"}></span>
+          <span class="wtitle">{winInfo?.name ?? winSlot.effect}{winSlot.preset ? ` · ${winSlot.preset}` : ""}</span>
+          <button type="button" class="mini" class:on={winSlot.enabled} title={winSlot.enabled ? "Bypass" : "Turn on"} aria-pressed={winSlot.enabled} onclick={() => commit(winSlot.enabled ? "Bypass Effect" : "Turn On Effect", setSlot(chain, winSlot.id, { enabled: !winSlot.enabled }))}>{winSlot.enabled ? "On" : "Off"}</button>
+          <button type="button" class="mini" title="Close (Esc)" aria-label="Close" onclick={() => (winOpen = false)}>✕</button>
+        </header>
+        <div class="editor">
+      {#if winSlot && winInfo}
+                {#if GRAPHED.has(winSlot.effect)}
+          <ResponseGraph slot={winSlot} info={winInfo} onPoint={(pf, f, pg, g, done) => dragPoint(winSlot, pf, f, pg, g, done)} />
         {/if}
-        {#if LEARNS.has(slot.effect)}
-          {@const len = slot.params.printlen ?? 0}
-          {@const what = slot.effect === "altaudio.sound_eraser" ? "sound" : "noise"}
+        {#if LEARNS.has(winSlot.effect)}
+          {@const len = winSlot.params.printlen ?? 0}
+          {@const what = winSlot.effect === "altaudio.sound_eraser" ? "sound" : "noise"}
           <div class="learn">
-            <button type="button" disabled={!learnSel || learning} title={learnSel ? `Learn the ${what} in the time selection` : `Select a stretch with only the ${what} in it first`} onclick={() => void learnPrint(slot)}>
+            <button type="button" disabled={!learnSel || learning} title={learnSel ? `Learn the ${what} in the time selection` : `Select a stretch with only the ${what} in it first`} onclick={() => void learnPrint(winSlot)}>
               {learning ? "Learning…" : "Learn from Selection"}
             </button>
             <span class="hint">
@@ -468,16 +521,16 @@
             </span>
           </div>
         {/if}
-        {#each groups(slotInfo) as g (g.name)}
+        {#each groups(winInfo) as g (g.name)}
           {#if g.name}<h3>{g.name}</h3>{/if}
           {#each g.params as p (p.key)}
-            {@const v = shown(slot, p)}
+            {@const v = shown(winSlot, p)}
             <label class="param">
               <span class="pname">{p.name}</span>
               {#if p.toggle}
-                <input type="checkbox" checked={v >= 0.5} onchange={(e) => setValue(slot, p, e.currentTarget.checked ? 1 : 0)} />
+                <input type="checkbox" checked={v >= 0.5} onchange={(e) => setValue(winSlot, p, e.currentTarget.checked ? 1 : 0)} />
               {:else if p.choices?.length}
-                <select value={String(Math.round(v))} onchange={(e) => setValue(slot, p, Number(e.currentTarget.value))}>
+                <select value={String(Math.round(v))} onchange={(e) => setValue(winSlot, p, Number(e.currentTarget.value))}>
                   {#each p.choices as c, ci (c)}<option value={String(p.min + ci)}>{c}</option>{/each}
                 </select>
               {:else}
@@ -487,9 +540,9 @@
                   max="1"
                   step="0.001"
                   value={toSlider(p, v)}
-                  oninput={(e) => drag(slot, p, fromSlider(p, Number(e.currentTarget.value)))}
-                  onchange={(e) => setValue(slot, p, fromSlider(p, Number(e.currentTarget.value)))}
-                  ondblclick={() => setValue(slot, p, p.default)}
+                  oninput={(e) => drag(winSlot, p, fromSlider(p, Number(e.currentTarget.value)))}
+                  onchange={(e) => setValue(winSlot, p, fromSlider(p, Number(e.currentTarget.value)))}
+                  ondblclick={() => setValue(winSlot, p, p.default)}
                   title="Double-click for the default"
                 />
               {/if}
@@ -497,12 +550,14 @@
             </label>
           {/each}
         {/each}
-      {:else if slot}
-        <p class="hint">This effect is not built in. It stays in the file and is skipped on playback.</p>
       {:else}
-        <p class="hint">Add an effect or pick a preset. Effects run top to bottom.</p>
+        <p class="hint">This effect is not built in. It stays in the file and is skipped on playback.</p>
       {/if}
-    </div>
+          {#if !winInfo}<p class="hint">This effect is not built in. It stays in the file and is skipped on playback.</p>{/if}
+        </div>
+        <footer>{label} · Slot {winIndex + 1}</footer>
+      </div>
+    {/if}
 
     <div class="bottom">
       {#each [GAIN("input_gain_db", "Input"), GAIN("output_gain_db", "Output")] as p (p.key)}
@@ -720,6 +775,49 @@
   .mini.on {
     color: var(--accent);
   }
+  .fxwin {
+    position: fixed;
+    z-index: 900;
+    width: 380px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 40px);
+    display: flex;
+    flex-direction: column;
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    font-size: 12px;
+  }
+  .fxwin header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 6px 5px 10px;
+    border-bottom: 1px solid var(--border);
+    cursor: move;
+    user-select: none;
+  }
+  .fxwin .wtitle {
+    flex: 1;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .fxwin .editor {
+    overflow: auto;
+  }
+  .fxwin footer {
+    padding: 4px 10px;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 11px;
+  }
+  .pad {
+    padding: 6px 8px;
+  }
   .editor,
   .bottom {
     display: grid;
@@ -729,7 +827,6 @@
   .bottom {
     border-top: 1px solid var(--border);
   }
-  h2,
   h3 {
     margin: 4px 0 0;
     font-size: 12px;

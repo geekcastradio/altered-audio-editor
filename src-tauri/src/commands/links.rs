@@ -13,7 +13,7 @@ use tauri_plugin_opener::OpenerExt;
 
 /// Hosts the app may open: the GCRN site, the store page for the
 /// project lead's book, Altered Audio: Podcasting Demystified, and the
-/// donation page.
+/// support page.
 const ALLOWED_HOSTS: &[&str] = &[
     "thegcrn.com",
     "www.thegcrn.com",

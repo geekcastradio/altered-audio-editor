@@ -11,17 +11,20 @@
 
 It follows the editing workflow that experienced audio editors already know, with its own original design, then adds tools built for podcast production.
 
-> Status: in active development (phase P3, editing). Editing, playback, recording, conversion and mixdown work today. Effects and the Podcast mode tools are still to come. Not ready for production use yet.
+> Status: in active development (phase P5, effects). Editing, playback, recording, the Voice Chain effects, conversion and mixdown work today. Podcast mode tools (transcripts, publishing) are still to come. Pre-release: keep backups of your recordings.
 
-![Multitrack editor with a four-track episode: themes, two hosts and a promo, with fades, a volume envelope and cue markers](docs/images/multitrack.png)
+![Multitrack editor with a four-track episode: themes, a host and a co-host with the Podcast Voice chain on the host track, a promo, fades, a volume envelope and chapter markers](docs/images/multitrack.png)
 
-![Waveform editor showing one host recording](docs/images/waveform.png)
+![Waveform editor previewing a Voice Chain on one recording, with the Parametric EQ's response graph in the panel and a selection ready to apply to](docs/images/waveform.png)
 
-![Spectrum view with a whistle selected for removal](docs/images/spectrum.png)
+![Spectrum view with a whistle boxed for removal](docs/images/spectrum.png)
 
-![A three-speaker call recording inserted as one track per speaker, with Batch Convert in the left column](docs/images/per-speaker.png)
+<p>
+  <img src="docs/images/settings.png" alt="Edit &gt; Settings on the General page" width="520">
+  <img src="docs/images/batch.png" alt="Batch Convert with five files saved, normalize to -1 dB and fades on" width="270">
+</p>
 
-![Export Mixdown dialog set to a 192 kbps MP3](docs/images/export.png)
+![Export Mixdown dialog set to a 192 kbps MP3 with chapter markers written into the file](docs/images/export.png)
 
 ## Download
 
@@ -33,6 +36,10 @@ Windows 10 and 11 (64-bit). Get the latest build from the [Releases page](https:
 
 The app is not code signed yet, so Windows SmartScreen may say it does not recognize it. Choose More info, then Run anyway. Builds are made by GitHub Actions from the tagged source, so what you download matches what is in this repository.
 
+A few antivirus scanners may flag the installer with a low-confidence guess. That is common for new, unsigned installers and goes away as the file builds a reputation. To check your copy, compare its SHA-256 with `SHA256SUMS.txt` (in PowerShell: `Get-FileHash <file>`).
+
+**Linux and macOS (experimental).** Releases also carry a Linux AppImage and `.deb`, and a macOS `.dmg` for Apple silicon Macs. They are built from the same source but not tested by us yet, so reports are welcome. The macOS app is not notarized: the first time, right-click it and choose Open. AAC export works on Windows only for now.
+
 Early versions are pre-releases. Expect rough edges and keep backups of your recordings.
 
 ## What it does today
@@ -41,11 +48,12 @@ Early versions are pre-releases. Expect rough edges and keep backups of your rec
 - **Waveform editor:** open any file on its own to cut, silence, amplify and fade it, try a Voice Chain on it as a live preview and apply it to the selection or the whole file (undoable), then save it in place as WAV, FLAC or MP3, or as a new file.
 - **Opens what call recorders export:** WAV (including 8-bit and ADPCM), FLAC, MP3, AAC/M4A, ALAC, Ogg Vorbis, Ogg FLAC and Opus. Insert Files as Tracks puts each speaker's file on its own track, straight from the downloaded zip.
 - **Spectrum and pitch views:** see frequencies over time, select an unwanted sound (a whistle, a buzz, a chair squeak) with a box, lasso or brush and reduce, remove or repair just that, leaving the voice under it alone. Spot Repair fills a painted click or cough from the audio around it.
+- **Audio drivers:** the system driver everywhere, and ASIO on Windows (release builds), with every input channel of an interface pickable per track.
 - **Recording:** arm tracks, pick each one's input, and record them to their own files while the session plays. Punch in over a time selection with pre-roll, and set a latency offset so takes line up. On Windows, a "System audio" input records what the computer plays, such as a call, next to your mics.
-- **Voice Chain:** up to 16 effects on any clip or track, heard live and included in every export: Parametric EQ, Hum Cut, Dynamics, Limiter, Breath Gate, De-Esser, Speech Leveler, Gain, Noise Reducer, Noise Print Reducer and Sound Eraser (both learn from a selection), Hiss Reducer, Room Reducer, Click Repair, Clip Repair, DC Offset Fix, Band EQ (10, 20 or 30 bands), Curve EQ (drag its points on the graph), Notch Filter, Precision Filter (Butterworth, Chebyshev, Bessel or Elliptic), Center Remover and Pitch Shift. Sliders change the sound as you drag, without stopping playback, and meters show the track chain's level in and out. EQs and filters draw their response. Start from presets like Podcast Voice or Voice Over and save your own.
+- **Voice Chain:** up to 16 effects on any clip or track, heard live and included in every export: Parametric EQ, Hum Cut, Dynamics, Limiter, Breath Gate, De-Esser, Speech Leveler, Gain, Noise Reducer, Noise Print Reducer and Sound Eraser (both learn from a selection), Hiss Reducer, Room Reducer, Click Repair, Clip Repair, DC Offset Fix, Band EQ (10, 20 or 30 bands), Curve EQ (drag its points on the graph), Notch Filter, Precision Filter (Butterworth, Chebyshev, Bessel or Elliptic), Center Remover, Phase Rotate (phase angle, per-channel polarity and a fine delay, to line up tracks that partly cancel) and Pitch Shift. Each effect's settings open in their own movable window, and any setting can move over time: draw its points on the clip, like a volume envelope. Sliders change the sound as you drag, without stopping playback, and meters show the track chain's level in and out. EQs and filters draw their response. Start from presets like Podcast Voice or Voice Over and save your own.
 - **Playback:** live mixing with per-track volume, pan, mute, solo and polarity; Loop Playback and Skip Selection; stereo meters on every track with peak hold and clip lights.
 - **Libraries:** keep your show's intros, outros, promos and ads in one place and drag them straight onto tracks.
-- **Mixdown and stems:** export the session, a selection or each track as WAV (4-bit ADPCM, 8, 16, 24 or 32-bit float), FLAC MP3 (constant or variable bit rate) or AAC/M4A (on Windows) at any sample rate, with a loudness check (LUFS and true peak).
+- **Mixdown and stems:** export the session, a selection or each track as WAV (4-bit ADPCM, 8, 16, 24 or 32-bit float), FLAC MP3 (constant or variable bit rate) or AAC/M4A (on Windows) at any sample rate, with a loudness check (LUFS and true peak). File > Export > Multitrack Session (.sesx) writes a copy for editors that read that format (tracks, clips, levels and fades; effects stay behind).
 - **Loudness Match:** set each clip or track to a podcast, platform or broadcast target in one step. Broadcast targets follow your region (US by default).
 - **QuickPass:** scan for silences, short noises, clicks, clipping or the parts with sound. Remove silences (keeping a short natural pause), turn them down, split or mark them; repair clicks and clipped peaks into a copy of the clip's audio so the original is never touched. Comes with presets and saves your own.
 - **Time stretch:** fit a clip to an exact length (a 15, 30 or 60 second ad slot, or a time selection) keeping the pitch, or change speed and pitch together like tape.
@@ -115,6 +123,7 @@ Every file the app writes is versioned JSON with a `format` and `schema_version`
 
 - [CLAUDE.md](CLAUDE.md): scope, phase plan, architecture and clean-room rules.
 - [docs/decisions.md](docs/decisions.md): architecture decisions log.
+- [docs/design-principles.md](docs/design-principles.md): what stays familiar, what is our own, and the no-AI-unless-you-turn-it-on rule.
 - [ATTRIBUTION.md](ATTRIBUTION.md): credits for any adapted third-party code.
 
 ## License

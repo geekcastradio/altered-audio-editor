@@ -20,7 +20,7 @@
   import { clipLength, stretchOf, type ClipChange, type ClipDoc, type SessionDoc, type SessionStore, type TrackChanges, type TrackDoc } from "../../stores/session";
   import { stretchTo } from "./stretch";
   import { clipsAt, fadeClip, LockedError, MIN_CLIP, moveClips, nearest, previewTracks, snapTargets, splitClips, trimClip, withCrossfades, withGroups } from "./clip-edit";
-  import { addPoint, chipBox, chipLabel, formatValue, levelAt, movePoint, pointsOf, valueToY, yToValue, type EnvKind } from "./envelope";
+  import { addPoint, chipBox, chipLabel, envChange, envName, formatValue, fxChoices, fxLaneOf, fxParam, levelAt, movePoint, pointsOf, rangeOf, restValue, valueToY, yToValue, type EnvKind } from "./envelope";
   import LaneCanvas from "./LaneCanvas.svelte";
   import Dial from "./Dial.svelte";
   import TrackMeter from "./TrackMeter.svelte";
@@ -363,7 +363,9 @@
       // Same as the Waveform editor: Alt + wheel scales the waveforms.
       e.preventDefault();
       onZoom(e.deltaY < 0 ? "amp-in" : "amp-out");
-    } else if (e.ctrlKey) {
+    } else if (e.ctrlKey || (settings.current.wheelZooms && !e.shiftKey && e.clientX >= left && Math.abs(e.deltaY) >= Math.abs(e.deltaX))) {
+      // Over the lanes the wheel zooms (Settings can turn that off); over
+      // the track headers it scrolls the tracks.
       e.preventDefault();
       const r = zoomRatios();
       const mouse = Math.max(0, e.clientX - left);
@@ -456,19 +458,24 @@
     }
     if (y > TITLE_H && !clip.locked) {
       const box = envBox(trackHeight(track));
+      const lane = fxLaneOf(clip, ed.fxLanes);
       const kinds: EnvKind[] = [];
       if (ed.showVolume) kinds.push("volume");
       if (ed.showPan) kinds.push("pan");
+      if (ed.showFx && lane) kinds.push("fx");
       // Points win over lines, so a point sitting on the other line stays reachable.
       for (const env of kinds) {
-        const pts = pointsOf(clip, env);
+        const pts = pointsOf(clip, env, lane);
+        const range = rangeOf(env, clip, lane);
         const hit = pts.findIndex(
-          (p) => Math.abs(xOf(clip.start + p.position, view) - x) <= 5 && Math.abs(valueToY(env, p.value, box.top, box.height) - y) <= 5,
+          (p) => Math.abs(xOf(clip.start + p.position, view) - x) <= 5 && Math.abs(valueToY(env, p.value, box.top, box.height, range) - y) <= 5,
         );
         if (hit >= 0) return { kind: "env-point", clip, index: hit, env };
       }
       for (const env of kinds) {
-        const lineY = valueToY(env, levelAt(pointsOf(clip, env), sampleAt(x, view) - clip.start), box.top, box.height);
+        const pts = pointsOf(clip, env, lane);
+        const v = pts.length ? levelAt(pts, sampleAt(x, view) - clip.start) : restValue(env, clip, lane);
+        const lineY = valueToY(env, v, box.top, box.height, rangeOf(env, clip, lane));
         if (Math.abs(lineY - y) <= 4) return { kind: "env-line", clip, env };
       }
     }
@@ -575,17 +582,34 @@
     if (!clip) return null;
     const x0 = xOf(clip.start, view);
     const x1 = xOf(clip.start + clipLength(clip, mediaMap.get(clip.media_id), rate), view);
-    const box = chipBox(x0, x1, chipLabel(ed.showVolume, ed.showPan));
+    const box = chipBox(x0, x1, chipLabel(ed.showVolume, ed.showPan, ed.showFx));
     return box && x >= box.x && x <= box.x + box.w ? clip : null;
   }
 
-  function openChipMenu(e: PointerEvent) {
+  function openChipMenu(e: PointerEvent, clip: ClipDoc) {
+    const current = fxLaneOf(clip, ed.fxLanes);
+    const choices = fxChoices(clip);
+    const fx: ContextItem[] = choices.length
+      ? [
+          { kind: "item", label: "Hide Effect Envelopes", checked: !ed.showFx, run: () => editor.setShowFx(false) },
+          { kind: "sep" },
+          ...choices.map(
+            (c): ContextItem => ({
+              kind: "item",
+              label: c.label,
+              checked: ed.showFx && !!current && current.slot === c.lane.slot && current.param === c.lane.param,
+              run: () => editor.pickFxLane(clip.id, c.lane),
+            }),
+          ),
+        ]
+      : [{ kind: "item", label: "Add an effect to this clip's Voice Chain first", disabled: true, run: () => {} }];
     menu = {
       x: e.clientX,
       y: e.clientY + 8,
       items: [
         { kind: "item", label: "Volume", checked: ed.showVolume, run: () => run("view.env.volume") },
         { kind: "item", label: "Pan", checked: ed.showPan, run: () => run("view.env.pan") },
+        { kind: "sub", label: "Effect Setting", items: fx },
       ],
     };
   }
@@ -604,9 +628,10 @@
   function onLanePointer(e: PointerEvent, track: TrackDoc) {
     if (e.button !== 0 && e.button !== 2) return;
     const { x, y } = laneXY(e, e.currentTarget as HTMLElement);
-    if (e.button === 0 && chipAt(track, x, y)) {
+    const chipClip = e.button === 0 ? chipAt(track, x, y) : null;
+    if (chipClip) {
       e.preventDefault();
-      openChipMenu(e);
+      openChipMenu(e, chipClip);
       return;
     }
     if (e.button === 0 && ed.tool === "time") {
@@ -668,10 +693,13 @@
     const box = envBox(trackHeight(track));
     const len = clipLength(clip, mediaMap.get(clip.media_id), rate);
     const posAt = (cx: number) => sampleAt(cx - lane.left, v) - clip.start;
-    const valAt = (cy: number) => yToValue(env, cy - lane.top, box.top, box.height);
-    const name = env === "volume" ? "Volume" : "Pan";
-    const change = (pts: typeof points): ClipChange => (env === "volume" ? { id: clip.id, volume: pts } : { id: clip.id, pan: pts });
-    let points = pointsOf(clip, env);
+    const fxLane = env === "fx" ? fxLaneOf(clip, ed.fxLanes) : null;
+    const range = rangeOf(env, clip, fxLane);
+    const unit = fxParam(clip, fxLane)?.param.unit ?? "";
+    const valAt = (cy: number) => yToValue(env, cy - lane.top, box.top, box.height, range);
+    const name = envName(env, clip, fxLane);
+    const change = (pts: typeof points): ClipChange => envChange(clip, env, pts, fxLane);
+    let points = pointsOf(clip, env, fxLane);
     let i = index;
     let added = false;
     if (i === null) {
@@ -687,9 +715,9 @@
     const move = (ev: PointerEvent) => {
       moved = true;
       const pos = ev.shiftKey ? startPos : posAt(ev.clientX);
-      points = movePoint(points, at, pos, valAt(ev.clientY), len, env);
+      points = movePoint(points, at, pos, valAt(ev.clientY), len, env, range);
       preview = [change(points)];
-      envTip = { x: ev.clientX + 14, y: ev.clientY - 22, text: `${name} ${formatValue(env, points[at]!.value)}` };
+      envTip = { x: ev.clientX + 14, y: ev.clientY - 22, text: `${name} ${formatValue(env, points[at]!.value, unit)}` };
     };
     const up = () => {
       window.removeEventListener("pointermove", move, true);
@@ -895,12 +923,11 @@
     if (z && (z.kind === "env-point" || z.kind === "env-line")) {
       const clip = z.clip;
       const env = z.env ?? "volume";
-      const name = env === "volume" ? "Volume" : "Pan";
-      const pts = pointsOf(clip, env);
+      const fxLane = env === "fx" ? fxLaneOf(clip, ed.fxLanes) : null;
+      const name = envName(env, clip, fxLane);
+      const pts = pointsOf(clip, env, fxLane);
       const setPts = (label: string, next: typeof pts) =>
-        void session
-          .edit(label, { op: "set_clips", changes: [env === "volume" ? { id: clip.id, volume: next } : { id: clip.id, pan: next }] }, runner)
-          .catch(onError);
+        void session.edit(label, { op: "set_clips", changes: [envChange(clip, env, next, fxLane)] }, runner).catch(onError);
       if (z.kind === "env-point" && z.index !== undefined) {
         const idx = z.index;
         items.push({ kind: "item", label: `Delete ${name} Point`, run: () => setPts(`Delete ${name} Point`, pts.filter((_, k) => k !== idx)) });
@@ -1134,7 +1161,7 @@
     return track.channels === "mono" ? "Default Mono Input" : "Default Stereo Input";
   }
 
-  /** Input picker: None, each mono channel and stereo pair of every input device. */
+  /** Input picker: default, None, then Mono and Stereo submenus, each grouped by device. */
   async function openInputMenu(e: MouseEvent, track: TrackDoc) {
     e.stopPropagation();
     const x = e.clientX;
@@ -1153,19 +1180,20 @@
     });
     const items: ContextItem[] = [pick(null, track.channels === "mono" ? "Default Mono Input" : "Default Stereo Input"), pick("none", "None"), { kind: "sep" }];
     if (inputs.length === 0) items.push({ kind: "item", label: "No audio inputs found", run: () => {}, disabled: true });
+    // Grouped as Mono and Stereo, then by device, so a system with many
+    // devices stays readable. The stored value is unchanged.
+    const mono: ContextItem[] = [];
+    const stereo: ContextItem[] = [];
     for (const d of inputs) {
-      for (let c = 1; c <= d.channels; c++) {
-        const v = `Mono: ${d.name} ${c}`;
-        items.push(pick(v, v));
-      }
+      const m: ContextItem[] = [];
+      for (let c = 1; c <= d.channels; c++) m.push({ ...pick(`Mono: ${d.name} ${c}`, `Channel ${c}`) });
+      if (m.length) mono.push({ kind: "sub", label: d.name, items: m });
+      const st: ContextItem[] = [];
+      for (let c = 1; c + 1 <= d.channels; c += 2) st.push(pick(`Stereo: ${d.name} ${c}-${c + 1}`, `Channels ${c}-${c + 1}`));
+      if (st.length) stereo.push({ kind: "sub", label: d.name, items: st });
     }
-    if (inputs.some((d) => d.channels >= 2)) items.push({ kind: "sep" });
-    for (const d of inputs) {
-      for (let c = 1; c + 1 <= d.channels; c += 2) {
-        const v = `Stereo: ${d.name} ${c}-${c + 1}`;
-        items.push(pick(v, v));
-      }
-    }
+    if (mono.length) items.push({ kind: "sub", label: "Mono", items: mono });
+    if (stereo.length) items.push({ kind: "sub", label: "Stereo", items: stereo });
     items.push({ kind: "sep" }, { kind: "item", label: "Audio Hardware...", run: () => void openSoundSettings().catch(onError) });
     menu = { x, y, items };
   }
@@ -1553,6 +1581,8 @@
                 {peakTick}
                 showVolume={ed.showVolume}
                 showPan={ed.showPan}
+                showFx={ed.showFx}
+                fxLanes={ed.fxLanes}
               />
             </div>
           {/each}

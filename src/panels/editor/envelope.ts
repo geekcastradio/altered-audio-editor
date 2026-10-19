@@ -10,25 +10,116 @@
  * playback.
  */
 
-import type { ClipDoc, EnvelopePointDoc } from "../../stores/session";
+import type { ClipChange, ClipDoc, EnvelopePointDoc } from "../../stores/session";
+import type { EffectInfo, EffectParamInfo } from "../../app/core";
 
 export const DB_MIN = -60;
 export const DB_MAX = 12;
 
-/** Which clip envelope. */
-export type EnvKind = "volume" | "pan";
+/** Which clip envelope. "fx" is one setting of an effect in the clip's Voice Chain. */
+export type EnvKind = "volume" | "pan" | "fx";
+
+export interface EnvRange {
+  top: number;
+  bottom: number;
+  step: number;
+}
 
 /**
  * Range of each envelope. `top` is the value drawn at the top of the
  * lane: +12 dB for volume, full left for pan.
  */
-export const RANGE: Record<EnvKind, { top: number; bottom: number; step: number }> = {
+export const RANGE: Record<"volume" | "pan", EnvRange> = {
   volume: { top: DB_MAX, bottom: DB_MIN, step: 0.1 },
   pan: { top: -100, bottom: 100, step: 1 },
 };
 
-export function pointsOf(clip: ClipDoc, kind: EnvKind): EnvelopePointDoc[] {
+// --- Effect settings over time ---
+
+/** One effect setting on a clip that can have an envelope. */
+export interface FxLane {
+  slot: string;
+  param: string;
+}
+
+let fxCatalog = new Map<string, EffectInfo>();
+
+/** The effect catalog, so effect envelopes know each control's range. */
+export function setFxCatalog(list: readonly EffectInfo[]): void {
+  fxCatalog = new Map(list.map((e) => [e.id, e]));
+}
+
+/** The control behind `lane` on `clip`, if that effect is still in its chain. */
+export function fxParam(clip: ClipDoc, lane: FxLane | null): { info: EffectInfo; param: EffectParamInfo; value: number } | null {
+  if (!lane) return null;
+  const slot = clip.effects?.slots.find((s) => s.id === lane.slot);
+  const info = slot ? fxCatalog.get(slot.effect) : undefined;
+  const param = info?.params.find((p) => p.key === lane.param && !p.hidden);
+  if (!slot || !info || !param) return null;
+  return { info, param, value: slot.params[param.key] ?? param.default };
+}
+
+/** Effect settings of a clip's chain that can move over time. */
+export function fxChoices(clip: ClipDoc): { lane: FxLane; label: string }[] {
+  const out: { lane: FxLane; label: string }[] = [];
+  for (const slot of clip.effects?.slots ?? []) {
+    const info = fxCatalog.get(slot.effect);
+    for (const p of info?.params ?? []) {
+      if (p.hidden || p.retimes) continue;
+      out.push({ lane: { slot: slot.id, param: p.key }, label: `${info!.name}: ${p.name}` });
+    }
+  }
+  return out;
+}
+
+/**
+ * The effect envelope shown on `clip`: the one picked for it, else the
+ * first one it has.
+ */
+export function fxLaneOf(clip: ClipDoc, picked: Readonly<Record<string, FxLane>>): FxLane | null {
+  const p = picked[clip.id];
+  if (p && fxParam(clip, p)) return p;
+  const e = clip.envelopes?.find((x) => x.target.type === "effect_param" && x.enabled);
+  return e && e.target.type === "effect_param" ? { slot: e.target.slot_id, param: e.target.param } : null;
+}
+
+/** Range of an envelope; effect envelopes take the control's range (high at the top). */
+export function rangeOf(kind: EnvKind, clip?: ClipDoc, lane?: FxLane | null): EnvRange {
+  if (kind !== "fx") return RANGE[kind];
+  const fp = clip ? fxParam(clip, lane ?? null) : null;
+  if (!fp) return { top: 1, bottom: 0, step: 0.01 };
+  return { top: fp.param.max, bottom: fp.param.min, step: fp.param.step > 0 ? fp.param.step : 0.01 };
+}
+
+export function pointsOf(clip: ClipDoc, kind: EnvKind, lane?: FxLane | null): EnvelopePointDoc[] {
+  if (kind === "fx") {
+    if (!lane) return [];
+    return (
+      clip.envelopes?.find((e) => e.target.type === "effect_param" && e.target.slot_id === lane.slot && e.target.param === lane.param && e.enabled)?.points ?? []
+    );
+  }
   return clip.envelopes?.find((e) => e.target.type === kind && e.enabled)?.points ?? [];
+}
+
+/** The value a line with no points sits at: 0 dB, centered, or the effect's own setting. */
+export function restValue(kind: EnvKind, clip?: ClipDoc, lane?: FxLane | null): number {
+  if (kind !== "fx" || !clip) return 0;
+  return fxParam(clip, lane ?? null)?.value ?? 0;
+}
+
+/** The clip change that sets an envelope's points. */
+export function envChange(clip: ClipDoc, kind: EnvKind, points: EnvelopePointDoc[], lane?: FxLane | null): ClipChange {
+  if (kind === "volume") return { id: clip.id, volume: points };
+  if (kind === "pan") return { id: clip.id, pan: points };
+  return { id: clip.id, effect_points: [{ slot_id: lane!.slot, param: lane!.param, points }] };
+}
+
+/** Name of an envelope for menus and undo. */
+export function envName(kind: EnvKind, clip?: ClipDoc, lane?: FxLane | null): string {
+  if (kind === "volume") return "Volume";
+  if (kind === "pan") return "Pan";
+  const fp = clip ? fxParam(clip, lane ?? null) : null;
+  return fp ? `${fp.info.name} ${fp.param.name}` : "Effect";
 }
 
 export function volumePoints(clip: ClipDoc): EnvelopePointDoc[] {
@@ -36,8 +127,8 @@ export function volumePoints(clip: ClipDoc): EnvelopePointDoc[] {
 }
 
 /** Value to a y position in a box `top` to `top + height`. */
-export function valueToY(kind: EnvKind, v: number, top: number, height: number): number {
-  const r = RANGE[kind];
+export function valueToY(kind: EnvKind, v: number, top: number, height: number, range: EnvRange = rangeOf(kind)): number {
+  const r = range;
   const lo = Math.min(r.top, r.bottom);
   const hi = Math.max(r.top, r.bottom);
   const c = Math.max(lo, Math.min(hi, v));
@@ -45,21 +136,25 @@ export function valueToY(kind: EnvKind, v: number, top: number, height: number):
 }
 
 /** A y position to a value, rounded to the envelope's step. */
-export function yToValue(kind: EnvKind, y: number, top: number, height: number): number {
-  const r = RANGE[kind];
+export function yToValue(kind: EnvKind, y: number, top: number, height: number, range: EnvRange = rangeOf(kind)): number {
+  const r = range;
   const f = Math.max(0, Math.min(1, (y - top) / Math.max(1, height)));
   const v = r.top + f * (r.bottom - r.top);
   return Math.round(v / r.step) * r.step;
 }
 
 /** Clamps a value to the envelope's range. */
-export function clampValue(kind: EnvKind, v: number): number {
-  const r = RANGE[kind];
+export function clampValue(kind: EnvKind, v: number, range: EnvRange = rangeOf(kind)): number {
+  const r = range;
   return Math.max(Math.min(r.top, r.bottom), Math.min(Math.max(r.top, r.bottom), v));
 }
 
-/** "L 40", "C", "R 25" for pan; "-6.0 dB" for volume. */
-export function formatValue(kind: EnvKind, v: number): string {
+/** "L 40", "C", "R 25" for pan; "-6.0 dB" for volume; the value and unit for an effect. */
+export function formatValue(kind: EnvKind, v: number, unit = ""): string {
+  if (kind === "fx") {
+    const t = Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2);
+    return unit ? `${t} ${unit}` : t;
+  }
   if (kind === "volume") return `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`;
   const p = Math.round(v);
   return p === 0 ? "C" : p < 0 ? `L ${-p}` : `R ${p}`;
@@ -126,19 +221,22 @@ export function movePoint(
   value: number,
   len: number,
   kind: EnvKind = "volume",
+  range: EnvRange = rangeOf(kind),
 ): EnvelopePointDoc[] {
   const lo = i > 0 ? points[i - 1]!.position + 1 : 0;
   const hi = i < points.length - 1 ? points[i + 1]!.position - 1 : len;
   const next = points.map((p) => ({ ...p }));
-  next[i] = { ...next[i]!, position: Math.round(Math.max(lo, Math.min(hi, pos))), value: clampValue(kind, value) };
+  next[i] = { ...next[i]!, position: Math.round(Math.max(lo, Math.min(hi, pos))), value: clampValue(kind, value, range) };
   return next;
 }
 
 /** Label of the envelope chip in a clip's title bar. */
-export function chipLabel(showVolume: boolean, showPan: boolean): string {
-  if (showVolume && showPan) return "Vol + Pan";
+export function chipLabel(showVolume: boolean, showPan: boolean, showFx = false): string {
+  const on = [showVolume && "Vol", showPan && "Pan", showFx && "FX"].filter(Boolean) as string[];
+  if (on.length > 1) return on.join(" + ");
   if (showVolume) return "Volume";
   if (showPan) return "Pan";
+  if (showFx) return "Effect";
   return "Envelopes";
 }
 

@@ -17,7 +17,7 @@ Everything the app saves stays in folders on your own computer:
 
 ## The only time the app touches the web
 
-The Help menu has links (The GCRN website, the book, and an optional PayPal donation page). They open in your own web browser only when you pick them. The app itself only opens https links on a short allow list, kept in `src-tauri/src/commands/links.rs`.
+The Help menu has links (The GCRN website, the book, and an optional PayPal page to support the project). They open in your own web browser only when you pick them. The app itself only opens https links on a short allow list, kept in `src-tauri/src/commands/links.rs`.
 
 ## For contributors
 

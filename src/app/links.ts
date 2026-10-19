@@ -14,8 +14,8 @@ export const LINKS = {
   website: "https://thegcrn.com/",
   /** Plugins page. Not live yet. */
   plugins: null as string | null,
-  /** Optional donation page (Help > Support Altered Audio Editor). Never shown anywhere else. */
-  donate: "https://paypal.me/scp21" as string | null,
+  /** Optional support page (Help > Support Altered Audio Editor). Never shown anywhere else. */
+  support: "https://paypal.me/scp21" as string | null,
   /** The project lead's book, Altered Audio: Podcasting Demystified. */
   book: "https://www.barnesandnoble.com/w/altered-audio-steve-phillips/1147888459",
 } as const;
