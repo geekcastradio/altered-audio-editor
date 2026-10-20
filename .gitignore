@@ -18,4 +18,9 @@ CLAUDE.local.md
 # Private project history. Never committed.
 /private/
 
+# File sync tool state. Never committed.
 SyncToy_*.dat
+
+# Local release packaging leftovers. Never committed.
+/out/
+/portable/

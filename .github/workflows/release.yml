@@ -5,9 +5,12 @@
 # Builds the Windows installer and a portable zip when a version tag is
 # pushed (git tag v0.1.0 && git push origin v0.1.0). It makes a DRAFT
 # release, so nothing is public until you review and publish it.
-# Linux and macOS builds are experimental: they are added to the same
-# draft afterwards, and if one fails the Windows files are still there.
-# The macOS build is not signed or notarized (no Apple developer account).
+# Each platform builds in its own job and hands its files over as a build
+# artifact; the last job makes the draft with everything that built.
+# Linux and macOS are experimental: if one fails, the draft still gets
+# the Windows files. The macOS build is not signed or notarized (no Apple
+# developer account). Files are staged in the runner's temp folder, never
+# in the repository, so nothing old from the checkout can slip in.
 
 name: Release
 
@@ -22,8 +25,6 @@ jobs:
   windows:
     name: Windows installer and portable zip
     runs-on: windows-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v5
 
@@ -59,36 +60,26 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
-          New-Item -ItemType Directory -Force -Path out, portable | Out-Null
+          $out = Join-Path $env:RUNNER_TEMP "release"
+          $portable = Join-Path $env:RUNNER_TEMP "portable"
+          New-Item -ItemType Directory -Force -Path $out, $portable | Out-Null
           $setup = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
-          Copy-Item $setup.FullName "out/Altered-Audio-Editor-$tag-setup.exe"
-          Copy-Item src-tauri/target/release/altered-audio-editor.exe "portable/Altered Audio Editor.exe"
-          Copy-Item LICENSE, README.md portable/
-          Compress-Archive -Path portable/* -DestinationPath "out/Altered-Audio-Editor-$tag-portable.zip"
-          Push-Location out
-          Get-ChildItem | ForEach-Object {
-            $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
-            "$h  $($_.Name)"
-          } | Set-Content SHA256SUMS.txt
-          Pop-Location
+          Copy-Item $setup.FullName (Join-Path $out "Altered-Audio-Editor-$tag-setup.exe")
+          Copy-Item src-tauri/target/release/altered-audio-editor.exe (Join-Path $portable "Altered Audio Editor.exe")
+          Copy-Item LICENSE, README.md $portable
+          Compress-Archive -Path (Join-Path $portable "*") -DestinationPath (Join-Path $out "Altered-Audio-Editor-$tag-portable.zip")
+          if ("${{ steps.asio.outcome }}" -ne "success") { "ASIO build failed; this installer has no ASIO." | Set-Content (Join-Path $out "NO-ASIO.txt") }
 
-      - name: Draft release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $tag = "${{ github.ref_name }}"
-          $pre = @()
-          if ($tag -like "v0.*") { $pre = @("--prerelease") }
-          gh release create $tag --draft @pre --title "Altered Audio Editor $tag" --generate-notes (Get-ChildItem out/* | ForEach-Object FullName)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: ${{ runner.temp }}/release/*
+          if-no-files-found: error
 
   linux:
     name: Linux AppImage and deb (experimental)
-    needs: windows
     runs-on: ubuntu-latest
     continue-on-error: true
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v5
 
@@ -114,24 +105,24 @@ jobs:
       - name: Build
         run: npm run tauri build -- --bundles appimage,deb
 
-      - name: Add to the draft release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Package
         run: |
           tag="${{ github.ref_name }}"
-          mkdir out
-          cp src-tauri/target/release/bundle/appimage/*.AppImage "out/Altered-Audio-Editor-$tag-linux-x86_64.AppImage"
-          cp src-tauri/target/release/bundle/deb/*.deb "out/Altered-Audio-Editor-$tag-linux-amd64.deb"
-          (cd out && sha256sum * > SHA256SUMS-linux.txt)
-          gh release upload "$tag" out/* --clobber
+          out="$RUNNER_TEMP/release"
+          mkdir -p "$out"
+          cp src-tauri/target/release/bundle/appimage/*.AppImage "$out/Altered-Audio-Editor-$tag-linux-x86_64.AppImage"
+          cp src-tauri/target/release/bundle/deb/*.deb "$out/Altered-Audio-Editor-$tag-linux-amd64.deb"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: ${{ runner.temp }}/release/*
+          if-no-files-found: error
 
   macos:
     name: macOS Apple silicon (experimental, unsigned)
-    needs: windows
     runs-on: macos-latest
     continue-on-error: true
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v5
 
@@ -156,12 +147,43 @@ jobs:
           APPLE_SIGNING_IDENTITY: "-"
         run: npm run tauri build -- --bundles app,dmg
 
-      - name: Add to the draft release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Package
         run: |
           tag="${{ github.ref_name }}"
-          mkdir out
-          cp src-tauri/target/release/bundle/dmg/*.dmg "out/Altered-Audio-Editor-$tag-macos-arm64.dmg"
-          (cd out && shasum -a 256 * > SHA256SUMS-macos.txt)
-          gh release upload "$tag" out/* --clobber
+          out="$RUNNER_TEMP/release"
+          mkdir -p "$out"
+          cp src-tauri/target/release/bundle/dmg/*.dmg "$out/Altered-Audio-Editor-$tag-macos-arm64.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: ${{ runner.temp }}/release/*
+          if-no-files-found: error
+
+  draft:
+    name: Draft release
+    needs: [windows, linux, macos]
+    # Runs when Windows built, whatever happened to Linux and macOS.
+    if: always() && needs.windows.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: files
+          merge-multiple: true
+
+      - name: Checksums and draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="${{ github.ref_name }}"
+          cd files
+          if [ -f NO-ASIO.txt ]; then echo "::warning::The ASIO build failed; the Windows installer has no ASIO."; rm NO-ASIO.txt; fi
+          sha256sum * > SHA256SUMS.txt
+          ls -la
+          pre=""
+          case "$tag" in v0.*) pre="--prerelease" ;; esac
+          gh release create "$tag" --draft $pre --title "Altered Audio Editor $tag" --generate-notes ./*
