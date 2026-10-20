@@ -51,9 +51,13 @@
     onRepair: (spots: SpotsRequest, list: Finding[]) => Promise<string[]>;
     onNotice: (text: string) => void;
     onError: (e: unknown) => void;
+    /** The Waveform editor's file, its transport and its undo history: scanned while that editor is in front. */
+    wave?: SessionStore;
+    waveTransport?: TransportStore;
+    waveRunner?: CommandRunner;
   }
 
-  const { session, transport, runner, prefs, ask, onRepair, onNotice, onError }: Props = $props();
+  const { session, transport, runner, prefs, ask, onRepair, onNotice, onError, wave, waveTransport, waveRunner }: Props = $props();
 
   const KEY = "quickpass.settings";
   const PRESETS_KEY = "quickpass.presets";
@@ -115,18 +119,33 @@
   const isBuiltin = $derived(BUILTIN_PRESETS.some((p) => p.name === preset));
   const known = $derived(allPresets.some((p) => p.name === preset && p.settings.scan === s.scan));
 
-  let doc = $state<SessionDoc | null>(null);
+  let sessionDoc = $state<SessionDoc | null>(null);
   $effect(() =>
     session.subscribe((d) => {
-      doc = d;
+      sessionDoc = d;
     }),
   );
-  let chosen = $state<ReadonlySet<string>>(new Set());
+  let waveDoc = $state<SessionDoc | null>(null);
+  $effect(() =>
+    wave?.subscribe((d) => {
+      waveDoc = d;
+    }),
+  );
+  let selectedClips = $state<ReadonlySet<string>>(new Set());
+  let waveMode = $state(false);
   $effect(() =>
     editor.subscribe((e) => {
-      chosen = e.selectedClips;
+      selectedClips = e.selectedClips;
+      waveMode = e.mode === "waveform";
     }),
   );
+  // In the Waveform editor, QuickPass scans the open file.
+  const inWave = $derived(waveMode && !!wave && waveDoc !== null);
+  const doc = $derived(inWave ? waveDoc : sessionDoc);
+  const chosen = $derived<ReadonlySet<string>>(inWave ? new Set() : selectedClips);
+  const store = () => (inWave && wave ? wave : session);
+  const run = () => (inWave && waveRunner ? waveRunner : runner);
+  const tport = () => (inWave && waveTransport ? waveTransport : transport);
 
   type Done = "repaired" | "removed" | "ducked" | "split" | "marked";
   let view = $state<"scan" | "settings">("scan");
@@ -170,12 +189,12 @@
     }
     return { ids: [...info.keys()], info };
   }
-  const scope = $derived(chosen.size > 0 ? `${chosen.size} selected ${chosen.size === 1 ? "clip" : "clips"}` : "all clips on tracks that play");
+  const scope = $derived(inWave ? "the open file" : chosen.size > 0 ? `${chosen.size} selected ${chosen.size === 1 ? "clip" : "clips"}` : "all clips on tracks that play");
 
   async function measure(ids: string[]): Promise<ClipLevels[]> {
     busy = true;
     try {
-      return await quickpassLevels(ids, WINDOW_MS);
+      return await quickpassLevels(ids, WINDOW_MS, inWave);
     } finally {
       busy = false;
     }
@@ -188,7 +207,7 @@
       if (s.scan === "clicks" || s.scan === "clipping") {
         busy = true;
         try {
-          found = spotFindings(await quickpassSpots(ids, spotsRequest(s)), info, s.scan);
+          found = spotFindings(await quickpassSpots(ids, spotsRequest(s), inWave), info, s.scan);
         } finally {
           busy = false;
         }
@@ -220,7 +239,9 @@
   async function fix(list: Finding[]) {
     if (!doc || list.length === 0) return;
     try {
-      if (s.action === "repair") {
+      if (s.action === "repair" && inWave) {
+        return onNotice("Repair in QuickPass works in the Multitrack view. In the Waveform editor, use Effects > Noise and Repair > Click Repair or Clip Repair.");
+      } else if (s.action === "repair") {
         busy = true;
         let fixed: string[] = [];
         try {
@@ -232,7 +253,7 @@
       } else if (s.action === "remove") {
         const op = removeOp(doc, list, s, uuid);
         if (!op) return onNotice(`Nothing to remove there. The ${many} are shorter than the pause you keep.`);
-        await session.edit(`Remove ${cap(list.length === 1 ? one : many)}`, op, runner);
+        await store().edit(`Remove ${cap(list.length === 1 ? one : many)}`, op, run());
         let rest = found.filter((f) => !list.includes(f));
         for (const g of [...list].sort((a, b) => b.start - a.start)) rest = shiftFindings(rest, g, s.ripple, s.keepMs, rate);
         const next: Record<string, Done> = {};
@@ -242,16 +263,16 @@
       } else if (s.action === "duck") {
         const op = duckOp(doc, list, s.duckDb);
         if (!op) return onNotice("Nothing to turn down there. Locked clips are left alone.");
-        await session.edit(`Turn Down ${cap(list.length === 1 ? one : many)}`, op, runner);
+        await store().edit(`Turn Down ${cap(list.length === 1 ? one : many)}`, op, run());
         done = { ...done, ...Object.fromEntries(list.map((f) => [f.id, "ducked" as const])) };
       } else if (s.action === "split") {
         const op = splitOp(doc, list, uuid);
         if (!op) return onNotice("Nothing to split there. Locked clips are left alone.");
-        await session.edit(`Split at ${cap(many)}`, op, runner);
-        if (session.current) editor.selectClips(clipsOn(session.current, list));
+        await store().edit(`Split at ${cap(many)}`, op, run());
+        if (!inWave && session.current) editor.selectClips(clipsOn(session.current, list));
         done = { ...done, ...Object.fromEntries(list.map((f) => [f.id, "split" as const])) };
       } else {
-        await session.edit(`Mark ${cap(list.length === 1 ? one : many)}`, { op: "add_markers", markers: markersFor(doc, list, uuid, cap(one)) }, runner);
+        await store().edit(`Mark ${cap(list.length === 1 ? one : many)}`, { op: "add_markers", markers: markersFor(doc, list, uuid, cap(one)) }, run());
         done = { ...done, ...Object.fromEntries(list.map((f) => [f.id, "marked" as const])) };
       }
       picked = new Set();
@@ -272,7 +293,7 @@
       else next.add(f.id);
     } else next.add(f.id);
     picked = next;
-    void transport.seek(f.start);
+    void tport().seek(f.start);
   }
 
   const cap = (w: string) => w.replace(/(^|\s)\S/g, (c) => c.toUpperCase());

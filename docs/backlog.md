@@ -223,3 +223,14 @@ Built: adding an effect, clicking its name or its gear button opens its controls
 ## Optional AI connections (idea, not approved)
 
 Spitballed by the project lead: off by default, never required. Local first (a local language model, local text-to-speech, local speech-to-speech), and cloud services only with the user's own key. Needs a decision entry, a privacy review and a privacy-check change before any code. See docs/design-principles.md.
+
+## From the 0.1.6 tester reports (not built yet)
+
+- Master track in the multitrack view, and buses (waiting on the master chain and fader decision).
+- A per-track Mono button (hear and meter a track summed to mono).
+- Crossfade options for overlapping clips (how the fade weighs each clip) and more fade shapes with adjustable curve in the clip's fade handles.
+- Clip Properties dialog.
+- Wheel over the track headers: today it scrolls the tracks; a tester wanted it to zoom.
+- A sound that turned strange after about five hours in a session (fixed by re-adding the file). Needs a way to reproduce.
+- Default shortcuts Alt+Up and Alt+Down for Move to Track Above and Below, if approved.
+- Pitch Shift needs a short how-to (its controls and what Semitones and Cents do).

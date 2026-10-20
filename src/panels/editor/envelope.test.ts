@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { ClipDoc, EnvelopePointDoc } from "../../stores/session";
-import { addPoint, dbToY, envChange, formatValue, fxChoices, fxLaneOf, levelAt, movePoint, pointsOf, rangeOf, restValue, setFxCatalog, sliceVolume, valueToY, yToDb, yToValue } from "./envelope";
+import { addPoint, dbToY, envChange, formatValue, fxChoices, fxLaneOf, levelAt, movePoint, pointsOf, rangeOf, restValue, setFxCatalog, snapValue, sliceVolume, valueToY, yToDb, yToValue } from "./envelope";
 
 const pt = (position: number, value: number): EnvelopePointDoc => ({ position, value, curve: "linear" });
 
@@ -99,5 +99,15 @@ describe("effect envelopes", () => {
     expect(envChange(clip, "fx", [], lane)).toEqual({ id: "c1", effect_points: [{ slot_id: "s1", param: "angle", points: [] }] });
     expect(valueToY("fx", 180, 0, 100, rangeOf("fx", clip, lane))).toBe(0);
     expect(formatValue("fx", 12.345, "°")).toBe("12.3 °");
+  });
+});
+
+describe("snapping", () => {
+  it("pulls volume to 0 dB and pan to center when close", () => {
+    expect(snapValue("volume", 0.5)).toBe(0);
+    expect(snapValue("volume", -1.2)).toBe(-1.2);
+    expect(snapValue("pan", -3)).toBe(0);
+    expect(snapValue("pan", 10)).toBe(10);
+    expect(snapValue("fx", 0.1)).toBe(0.1);
   });
 });

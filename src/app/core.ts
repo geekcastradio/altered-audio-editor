@@ -624,6 +624,11 @@ export function waveSpectralEdit(mask: SpectralMask, mode: "gain" | "repair", ga
 }
 
 /** Renders `start..end` of the Waveform editor's file through `chain` into a new file, for replaceRange. */
+/** Waveform editor Stretch: `start..end` made `frames` long, pitch kept. */
+export function waveStretch(start: number, end: number, frames: number): Promise<SpectralResult> {
+  return invoke<SpectralResult>("wave_stretch", { start, end, frames });
+}
+
 export function waveApplyChain(chain: import("../stores/session").EffectChainDoc, start: number, end: number): Promise<SpectralResult> {
   return invoke<SpectralResult>("wave_apply_chain", { chain, start, end });
 }
@@ -807,8 +812,8 @@ export interface ClipLevels {
   peak: number[];
 }
 
-export function quickpassLevels(clipIds: string[], windowMs: number): Promise<ClipLevels[]> {
-  return invoke("quickpass_levels", { clipIds, windowMs });
+export function quickpassLevels(clipIds: string[], windowMs: number, wave = false): Promise<ClipLevels[]> {
+  return invoke("quickpass_levels", { clipIds, windowMs, wave });
 }
 
 export interface GenerateRequest {
@@ -894,8 +899,8 @@ export interface ClipSpots {
 export type SpotsRequest = { kind: "clicks"; sensitivity: number; widthMs: number } | { kind: "clipping"; levelDb: number; longestMs: number };
 
 /** Finds clicks or clipping in clips as they play. */
-export function quickpassSpots(clipIds: string[], spots: SpotsRequest): Promise<ClipSpots[]> {
-  return invoke<ClipSpots[]>("quickpass_spots", { clipIds, spots });
+export function quickpassSpots(clipIds: string[], spots: SpotsRequest, wave = false): Promise<ClipSpots[]> {
+  return invoke<ClipSpots[]>("quickpass_spots", { clipIds, spots, wave });
 }
 
 /** Writes a copy of source frames `from..to` with `spans` (frames from `from`) repaired. Returns its path. */

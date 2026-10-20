@@ -131,14 +131,35 @@ pub struct ClipSpots {
     pub spans: Vec<[u64; 2]>,
 }
 
+/// The session to scan: the multitrack one, or the Waveform editor's file
+/// (as a one-track session) when `wave`.
+fn pick_session(
+    open: &State<'_, OpenSession>,
+    wave_doc: &State<'_, super::wave::OpenWave>,
+    wave: bool,
+) -> Result<crate::session::model::Session, String> {
+    if wave {
+        return wave_doc
+            .0
+            .lock()
+            .map_err(|e| e.to_string())?
+            .as_ref()
+            .map(|w| w.session.clone())
+            .ok_or_else(|| "No file is open in the Waveform editor.".to_string());
+    }
+    Ok(open.0.lock().map_err(|e| e.to_string())?.session.clone())
+}
+
 /// Finds clicks or clipping in the given clips, as they play.
 #[tauri::command]
 pub async fn quickpass_spots(
     open: State<'_, OpenSession>,
+    wave_doc: State<'_, super::wave::OpenWave>,
+    wave: Option<bool>,
     clip_ids: Vec<Id>,
     spots: Spots,
 ) -> Result<Vec<ClipSpots>, String> {
-    let session = open.0.lock().map_err(|e| e.to_string())?.session.clone();
+    let session = pick_session(&open, &wave_doc, wave.unwrap_or(false))?;
     let wanted: HashSet<Id> = clip_ids.into_iter().collect();
     spawn_blocking(move || {
         let rate = session.sample_rate;
@@ -214,10 +235,12 @@ pub async fn quickpass_repair_copy(
 #[tauri::command]
 pub async fn quickpass_levels(
     open: State<'_, OpenSession>,
+    wave_doc: State<'_, super::wave::OpenWave>,
+    wave: Option<bool>,
     clip_ids: Vec<Id>,
     window_ms: u32,
 ) -> Result<Vec<ClipLevels>, String> {
-    let session = open.0.lock().map_err(|e| e.to_string())?.session.clone();
+    let session = pick_session(&open, &wave_doc, wave.unwrap_or(false))?;
     let wanted: HashSet<Id> = clip_ids.into_iter().collect();
     spawn_blocking(move || {
         let window_ms = window_ms.clamp(5, 500);

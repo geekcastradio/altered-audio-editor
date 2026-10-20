@@ -375,7 +375,22 @@ export class SessionStore {
     this.doc = { ...this.doc, view };
     for (const fn of this.listeners) fn(this.doc);
     clearTimeout(this.viewTimer);
-    this.viewTimer = setTimeout(() => void this.backend.setView(view).catch(console.error), 300);
+    this.viewTimer = setTimeout(() => {
+      this.viewTimer = undefined;
+      void this.backend.setView(view).catch(console.error);
+    }, 300);
+  }
+
+  /**
+   * Sends a view change still waiting on the timer now. Playback reads the
+   * time selection from the core, so a loop over a selection made a moment
+   * ago needs it there first.
+   */
+  async flushView(): Promise<void> {
+    if (this.viewTimer === undefined || !this.doc) return;
+    clearTimeout(this.viewTimer);
+    this.viewTimer = undefined;
+    await this.backend.setView(this.doc.view).catch(console.error);
   }
 }
 

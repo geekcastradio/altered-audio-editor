@@ -856,3 +856,20 @@ A user report on 0.1.3 listed five problems. All five are addressed in 0.1.4.
 
 - **Old v0.1.1 files showed up in the v0.1.5 draft**, and Linux and macOS files never arrived. The `out/` and `portable/` folders from an earlier local packaging run were committed, and the workflow packaged into `out/` in the checkout, so it picked them up. Separately, the Linux and macOS jobs tried to add files to a draft by tag, which can fail silently for drafts.
 - **Fix:** every platform builds in its own job, stages files in the runner's temp folder (never the checkout) and hands them over as build artifacts. A last job makes the draft from whatever built, with one `SHA256SUMS.txt` for all files, and warns when the installer was built without ASIO. `out/` and `portable/` are gitignored and removed from the repository.
+
+## 2026-10-20: 0.1.6 tester report fixes
+
+- **Only the first recorded take got the effects.** Not the chain: the Noise Reducer (and Hiss and Room Reducer, which share its noise tracker) learned the background from the digital silence between clips, decided the noise was zero, and stopped working from the second clip on. They now ignore digital silence and keep what they learned. A test renders three clips with gaps through Gain, Limiter and Noise Reducer and checks every clip is processed.
+- **Waveform playback ran on past the end.** Playback in both editors now stops at the end of the last clip (not while looping, and never while recording).
+- **Loop over a time selection did nothing.** The selection reached the core up to 300 ms late (view changes are batched), so pressing Play right after selecting looped nothing. Play now sends any waiting view change first.
+- **The quick level box in the Waveform editor** only responded on its small dial. The whole box is the handle now, and up or right turns it up.
+- **QuickPass in the Waveform editor** said there were no clips: it only looked at the multitrack session. It now scans the open file (Repair stays a multitrack action; the Waveform editor has the Click and Clip Repair effects).
+- **Files panel right-click** gains Edit File and Insert into Multitrack (at the playhead on the selected track, or as new tracks) and Remove Unused Files.
+- **Right-click menus:** a disabled row in a submenu closed the whole submenu, so a menu seemed to vanish over unbuilt items. It now stays open. The space below the last track gets the session menu too.
+- **Envelope points** snap to 0 dB and center (hold Alt to place them freely).
+- **Custom loudness target** (Settings > Loudness): your own LUFS and true peak, offered as Custom in Check Loudness and Loudness Match.
+- **Meter response** (Settings > Playback and Recording): Fast, Medium or Slow. The peak marker always shows the true peak.
+- **Blocky waveforms when zoomed in on short files.** The finest waveform drawing was one value per 256 samples. Files up to 10 minutes now get a 32-sample level, up to an hour a 64-sample level (about 22 MB at most). Cache format version 2; old caches rebuild by themselves.
+- **Stretch in the Waveform editor** (Effects > Pitch and Time, or Clip > Time Stretch while the Waveform editor is in front): type the new length of the selection or file (30, 14.99, 1:02.5) and it is re-timed with the pitch kept, and what follows moves up or back. For spots that must hit an exact length.
+- **Clip > Move to Track Above / Below.** Asked for as Alt+Up and Alt+Down; they have no default shortcut until the project lead approves one (Edit > Keyboard Shortcuts can set them now).
+- **CI:** Linux jobs pinned to ubuntu-24.04 (ubuntu-latest moves to 26.04), and the Linux release build gets the extra packages and the extract-and-run setting the AppImage tools need without FUSE.

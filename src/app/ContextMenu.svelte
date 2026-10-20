@@ -53,6 +53,15 @@
 
   const usable = (it: ContextItem) => it.kind !== "sep" && !it.disabled;
 
+  /**
+   * The trail when the pointer is on a disabled row at `depth`: nothing
+   * highlighted there, but the submenu it sits in stays open (it used to
+   * close, so a disabled row in a submenu made the whole submenu vanish).
+   */
+  function keepOpen(depth: number): number[] {
+    return depth === 0 ? [] : [...trail.slice(0, depth), -1];
+  }
+
   function choose(it: ContextItem) {
     if (it.kind !== "item" || it.disabled) return;
     onClose();
@@ -132,7 +141,7 @@
           class:active={trail[depth] === i}
           disabled={it.disabled}
           title={it.disabled && it.reason ? it.reason : undefined}
-          onpointerenter={() => (it.disabled ? (trail = trail.slice(0, depth)) : openSub(depth, i))}
+          onpointerenter={() => (it.disabled ? (trail = keepOpen(depth)) : openSub(depth, i))}
           onclick={() => openSub(depth, i)}
         >
           <span class="label">{it.label}</span>
@@ -152,7 +161,7 @@
         class:active={trail[depth] === i}
         disabled={it.disabled}
         title={it.disabled && it.reason ? it.reason : undefined}
-        onpointerenter={() => (trail = it.disabled ? trail.slice(0, depth) : [...trail.slice(0, depth), i])}
+        onpointerenter={() => (trail = it.disabled ? keepOpen(depth) : [...trail.slice(0, depth), i])}
         onclick={() => choose(it)}
       >
         {#if it.checked !== undefined}<span class="check" aria-hidden="true">{it.checked ? "✓" : ""}</span>{/if}

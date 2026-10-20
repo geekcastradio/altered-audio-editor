@@ -58,14 +58,28 @@ export function regionById(id: string | null | undefined): BroadcastRegion {
   return BROADCAST_REGIONS.find((r) => r.id === id) ?? BROADCAST_REGIONS[0]!;
 }
 
-/** The targets, with broadcast set by the chosen region. */
-export function targetsFor(regionId: string = DEFAULT_REGION): LoudnessTarget[] {
+/** A target of the user's own (Settings > Loudness). */
+export interface CustomLoudness {
+  lufs: number;
+  peak: number;
+}
+
+let customTarget: CustomLoudness = { lufs: -18, peak: -1 };
+
+/** Sets the custom target, from Settings. */
+export function setCustomTarget(c: CustomLoudness): void {
+  customTarget = { ...c };
+}
+
+/** The targets, with broadcast set by the chosen region, and the user's own last. */
+export function targetsFor(regionId: string = DEFAULT_REGION, custom: CustomLoudness = customTarget): LoudnessTarget[] {
   const r = regionById(regionId);
   return [
     { id: "podcast-stereo", name: "Podcast, stereo (-16 LUFS)", lufs: -16, mono: false, peak: -1 },
     { id: "podcast-mono", name: "Podcast, mono (-19 LUFS)", lufs: -19, mono: true, peak: -1 },
     { id: "spotify", name: "Louder platforms (-14 LUFS)", lufs: -14, mono: false, peak: -1 },
     { id: "broadcast", name: `Broadcast, ${r.name} (${r.lufs} LUFS)`, lufs: r.lufs, mono: false, peak: r.peak },
+    { id: "custom", name: `Custom (${custom.lufs} LUFS, ${custom.peak} dBTP)`, lufs: custom.lufs, mono: false, peak: custom.peak },
   ];
 }
 

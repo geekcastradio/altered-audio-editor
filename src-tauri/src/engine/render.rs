@@ -916,6 +916,67 @@ mod tests {
         path
     }
 
+    /// A track chain runs over every clip on the track, not just the first
+    /// (a report said only the first recorded take got the effects).
+    #[test]
+    fn track_chain_reaches_every_clip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = tone_file(dir.path());
+        for fx in [
+            chain("altaudio.gain", &[("gain", -12.0)]),
+            chain(
+                "altaudio.limiter",
+                &[("ceiling", -12.0), ("lookahead", 5.0)],
+            ),
+            chain("altaudio.noise_reducer", &[]),
+        ] {
+            let clips = vec![
+                ClipPlan::plain(new_id(), path.clone(), 0, 12_000, 0.0),
+                ClipPlan::plain(new_id(), path.clone(), 30_000, 12_000, 0.0),
+                ClipPlan::plain(new_id(), path.clone(), 60_000, 12_000, 0.0),
+            ];
+            let plan = Plan {
+                out_rate: 48_000,
+                session_rate: 48_000,
+                tracks: vec![TrackPlan {
+                    effects: fx.clone(),
+                    id: new_id(),
+                    clips,
+                }],
+            };
+            let all = render_all(plan, 80_000);
+            let peak = |from: usize, to: usize| {
+                all[from * 2..to * 2]
+                    .iter()
+                    .fold(0f32, |m, s| m.max(s.abs()))
+            };
+            let (a, b, c) = (
+                peak(4_000, 11_000),
+                peak(34_000, 41_000),
+                peak(64_000, 71_000),
+            );
+            if fx.slots[0].effect == "altaudio.noise_reducer" {
+                // It keeps learning (a steady tone looks like noise), but no
+                // clip comes through untouched after the silent gaps.
+                assert!(
+                    a < 0.48 && b < 0.48 && c < 0.48,
+                    "noise reducer: {a} {b} {c}"
+                );
+            } else {
+                assert!(
+                    (a - b).abs() < 0.03 && (a - c).abs() < 0.03,
+                    "{}: {a} {b} {c}",
+                    fx.slots[0].effect
+                );
+                assert!(
+                    a < 0.35,
+                    "{}: first clip {a} not processed",
+                    fx.slots[0].effect
+                );
+            }
+        }
+    }
+
     /// A clip's Gain effect automated from 0 dB down to -24 dB over the
     /// clip turns the tone down smoothly, without restarting anything.
     #[test]

@@ -84,6 +84,7 @@ pub fn run() {
             commands::spectral::wave_spectrogram,
             commands::spectral::wave_spectral_edit,
             commands::wave_fx::wave_apply_chain,
+            commands::wave_fx::wave_stretch,
             commands::spectral::wave_pitch,
             commands::session::session_get,
             commands::session::session_apply,

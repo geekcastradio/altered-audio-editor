@@ -87,7 +87,7 @@
     if (page === "General") Object.assign(d.app, { zoomStep: def.zoomStep, wheelAnchor: def.wheelAnchor, wheelZooms: def.wheelZooms, fadeShape: def.fadeShape, spaceAction: def.spaceAction });
     else if (page === "Appearance") d.app.colors = { ...NO_COLORS };
     else if (page === "Autosave") Object.assign(d.app, { autosave: def.autosave, autosaveMinutes: def.autosaveMinutes, backups: def.backups, backupCount: def.backupCount });
-    else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb });
+    else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb, meterSpeed: def.meterSpeed });
   }
   const resettable = $derived(["General", "Appearance", "Autosave", "Playback and Recording"].includes(page));
 </script>
@@ -266,6 +266,14 @@
             <label class="row">Yellow from <input type="number" min="-40" max="-1" step="1" bind:value={d.app.meterYellowDb} /> dBFS</label>
             <label class="row">Red from <input type="number" min="-39" max="0" step="1" bind:value={d.app.meterRedDb} /> dBFS</label>
           </fieldset>
+          <label class="row">
+            Meter response
+            <select bind:value={d.app.meterSpeed}>
+              <option value="fast">Fast (every peak)</option>
+              <option value="medium">Medium</option>
+              <option value="slow">Slow (steady, easier to read)</option>
+            </select>
+          </label>
           <fieldset>
             <legend>Recording</legend>
             <label class="row">Trim from each take <input type="number" min="0" max="1000" step="1" bind:value={d.record.offsetMs} /> ms (latency offset)</label>
@@ -310,9 +318,14 @@
           <label class="row">
             Target in Check Loudness
             <select bind:value={d.loudness.target}>
-              {#each targetsFor(d.loudness.region) as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
+              {#each targetsFor(d.loudness.region, { lufs: d.app.customLufs, peak: d.app.customPeak }) as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
             </select>
           </label>
+          <fieldset>
+            <legend>Custom target (pick Custom above, or in Check Loudness and Loudness Match)</legend>
+            <label class="row">Loudness <input type="number" min="-40" max="-5" step="0.5" bind:value={d.app.customLufs} /> LUFS</label>
+            <label class="row">True peak at or below <input type="number" min="-10" max="0" step="0.1" bind:value={d.app.customPeak} /> dBTP</label>
+          </fieldset>
           <p class="note">Podcast targets follow published podcast guidance (stereo -16 LUFS, mono -19 LUFS, true peak at or below -1 dBTP). Broadcast targets follow the region.</p>
         {:else if page === "Privacy"}
           <p class="note">Altered Audio Editor never goes online by itself. No account, no sign-in, no tracking, no usage data, no crash reports, no update checks. Everything stays on this computer.</p>

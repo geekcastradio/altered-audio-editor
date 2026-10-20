@@ -12,12 +12,14 @@
  */
 
 import type { TransportStatus } from "../app/core";
-import type { SessionStore } from "./session";
+import { sessionEnd, type SessionStore } from "./session";
 
 export interface TransportBackend {
   play(from: number): Promise<void>;
   stop(): Promise<number | null>;
   status(): Promise<TransportStatus>;
+  /** True when playback should stop by itself at the end of the audio (not while looping). */
+  stopAtEnd?: () => boolean;
 }
 
 /** Meter level with a slow fall and a held peak, in 0..1 (above 1 means over). */
@@ -38,22 +40,35 @@ export interface TransportState {
   chains: Record<string, [MeterLevel, MeterLevel, MeterLevel, MeterLevel]>;
 }
 
-const FALL_PER_TICK = 0.86;
-const PEAK_HOLD_TICKS = 30;
+/** How lively the level meters are: Settings > Playback and Recording. */
+export type MeterSpeed = "fast" | "medium" | "slow";
+const BALLISTICS: Record<MeterSpeed, { fall: number; rise: number; hold: number }> = {
+  // Fall per tick (about 30 a second), share of a rise taken per tick, peak hold in ticks.
+  fast: { fall: 0.86, rise: 1, hold: 30 },
+  medium: { fall: 0.93, rise: 0.6, hold: 45 },
+  slow: { fall: 0.965, rise: 0.3, hold: 60 },
+};
+let ballistics = BALLISTICS.fast;
+export function setMeterSpeed(speed: MeterSpeed): void {
+  ballistics = BALLISTICS[speed] ?? BALLISTICS.fast;
+}
 
 const quiet = (): MeterLevel => ({ level: 0, peak: 0, over: false });
 
 /** One meter reading folded into the last: slow fall, held peak. `hold` counts ticks left. */
 export function foldMeter(prev: MeterLevel, reading: number, hold: number): { meter: MeterLevel; hold: number } {
-  const level = Math.max(reading, prev.level * FALL_PER_TICK);
+  const b = ballistics;
+  const risen = reading > prev.level ? prev.level + (reading - prev.level) * b.rise : reading;
+  const level = Math.max(risen, prev.level * b.fall);
   let peak = prev.peak;
+  // The peak marker always shows the true peak, whatever the speed.
   if (reading >= peak) {
     peak = reading;
-    hold = PEAK_HOLD_TICKS;
+    hold = b.hold;
   } else if (hold > 0) {
     hold--;
   } else {
-    peak = Math.max(level, peak * FALL_PER_TICK);
+    peak = Math.max(level, peak * b.fall);
   }
   return { meter: { level, peak, over: prev.over || reading > 1 }, hold };
 }
@@ -67,6 +82,8 @@ export class TransportStore {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private holds = new Map<string, number>();
   private busy: Promise<unknown> = Promise.resolve();
+  /** Set while recording, so playback never stops at the end of the old audio. */
+  holdAtEnd = false;
 
   constructor(
     private readonly backend: TransportBackend,
@@ -91,6 +108,7 @@ export class TransportStore {
   play(from?: number): Promise<void> {
     return this.serial(async () => {
       const at = Math.max(0, Math.round(from ?? this.session.current?.view.playhead ?? 0));
+      await this.session.flushView?.();
       await this.backend.play(at);
       if (!this.state.playing) this.startedAt = at;
       this.set({ playing: true, position: at });
@@ -159,6 +177,14 @@ export class TransportStore {
         if (!this.state.playing) return;
         if (!s.playing) {
           this.halt(this.state.position);
+          return;
+        }
+        // Stop at the end of the last clip instead of playing on into silence.
+        const doc = this.session.current;
+        const end = doc ? sessionEnd(doc) : 0;
+        if (end > 0 && !this.holdAtEnd && this.backend.stopAtEnd?.() && s.position >= end && this.startedAt < end) {
+          await this.backend.stop();
+          this.halt(end);
           return;
         }
         this.applyStatus(s);

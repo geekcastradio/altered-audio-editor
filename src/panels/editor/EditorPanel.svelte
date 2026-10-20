@@ -20,7 +20,7 @@
   import { clipLength, stretchOf, type ClipChange, type ClipDoc, type SessionDoc, type SessionStore, type TrackChanges, type TrackDoc } from "../../stores/session";
   import { stretchTo } from "./stretch";
   import { clipsAt, fadeClip, LockedError, MIN_CLIP, moveClips, nearest, previewTracks, snapTargets, splitClips, trimClip, withCrossfades, withGroups } from "./clip-edit";
-  import { addPoint, chipBox, chipLabel, envChange, envName, formatValue, fxChoices, fxLaneOf, fxParam, levelAt, movePoint, pointsOf, rangeOf, restValue, valueToY, yToValue, type EnvKind } from "./envelope";
+  import { addPoint, chipBox, chipLabel, envChange, envName, formatValue, fxChoices, fxLaneOf, fxParam, levelAt, movePoint, pointsOf, rangeOf, restValue, snapValue, valueToY, yToValue, type EnvKind } from "./envelope";
   import LaneCanvas from "./LaneCanvas.svelte";
   import Dial from "./Dial.svelte";
   import TrackMeter from "./TrackMeter.svelte";
@@ -696,7 +696,10 @@
     const fxLane = env === "fx" ? fxLaneOf(clip, ed.fxLanes) : null;
     const range = rangeOf(env, clip, fxLane);
     const unit = fxParam(clip, fxLane)?.param.unit ?? "";
-    const valAt = (cy: number) => yToValue(env, cy - lane.top, box.top, box.height, range);
+    const valAt = (cy: number, free = false) => {
+      const v = yToValue(env, cy - lane.top, box.top, box.height, range);
+      return free ? v : snapValue(env, v);
+    };
     const name = envName(env, clip, fxLane);
     const change = (pts: typeof points): ClipChange => envChange(clip, env, pts, fxLane);
     let points = pointsOf(clip, env, fxLane);
@@ -715,7 +718,7 @@
     const move = (ev: PointerEvent) => {
       moved = true;
       const pos = ev.shiftKey ? startPos : posAt(ev.clientX);
-      points = movePoint(points, at, pos, valAt(ev.clientY), len, env, range);
+      points = movePoint(points, at, pos, valAt(ev.clientY, ev.altKey), len, env, range);
       preview = [change(points)];
       envTip = { x: ev.clientX + 14, y: ev.clientY - 22, text: `${name} ${formatValue(env, points[at]!.value, unit)}` };
     };
@@ -1417,7 +1420,18 @@
   </div>
 
   <div class="vwrap">
-  <div class="scroller" bind:this={scroller} onwheel={onWheel} onscroll={syncVbar} bind:clientHeight={scrollerH}>
+  <div
+    class="scroller"
+    bind:this={scroller}
+    onwheel={onWheel}
+    onscroll={syncVbar}
+    bind:clientHeight={scrollerH}
+    oncontextmenu={(e) => {
+      // Space below the last track gets the session menu too.
+      e.preventDefault();
+      if (doc) menu = { x: e.clientX, y: e.clientY, items: emptyLaneItems() };
+    }}
+  >
     <div class="rows" bind:clientHeight={rowsH}>
       <div class="headers" style:width="{HEADER_W}px">
         {#each doc?.tracks ?? [] as track, i (track.id)}

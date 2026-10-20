@@ -33,9 +33,25 @@ use thiserror::Error;
 use crate::codecs::{AudioReader, ProbeError};
 
 const MAGIC: &[u8; 4] = b"ALPK";
-const VERSION: u32 = 1;
+/// 2: shorter files get a finer first level, so zooming in stays smooth.
+const VERSION: u32 = 2;
 /// Frames per block at each level, finest first.
 pub const LEVELS: [u32; 3] = [256, 4096, 65536];
+
+/// The levels for a file of `length` frames at `rate`: the standard three,
+/// with a finer one in front for files short enough that it stays small
+/// (32 frames up to 10 minutes, 64 up to an hour; about 22 MB at most).
+pub fn levels_for(length: u64, rate: u32) -> Vec<u32> {
+    let minutes = length as f64 / f64::from(rate.max(1)) / 60.0;
+    let mut v = Vec::with_capacity(4);
+    if length > 0 && minutes <= 10.0 {
+        v.push(32);
+    } else if length > 0 && minutes <= 60.0 {
+        v.push(64);
+    }
+    v.extend_from_slice(&LEVELS);
+    v
+}
 
 #[derive(Debug, Error)]
 pub enum PeakError {
@@ -136,7 +152,8 @@ fn build(
     let info = crate::codecs::probe(source)?;
     let channels = usize::from(info.channels).clamp(1, 2);
     let mut reader = AudioReader::open(source, channels, None)?;
-    let block0 = LEVELS[0] as usize;
+    let blocks = levels_for(info.length, info.sample_rate);
+    let block0 = blocks[0] as usize;
 
     // Level 0, built while streaming.
     let mut level0: Vec<i16> =
@@ -186,7 +203,7 @@ fn build(
     }
 
     let mut levels: Vec<Vec<i16>> = vec![level0];
-    for w in LEVELS.windows(2) {
+    for w in blocks.windows(2) {
         let factor = (w[1] / w[0]) as usize;
         let prev = levels.last().expect("level 0 exists");
         levels.push(merge(prev, channels, factor));
@@ -201,7 +218,7 @@ fn build(
         } else {
             frames_done
         },
-        levels: LEVELS
+        levels: blocks
             .iter()
             .zip(&levels)
             .map(|(b, d)| LevelInfo {
@@ -360,6 +377,19 @@ mod tests {
     }
 
     #[test]
+    fn finer_levels_only_for_shorter_files() {
+        assert_eq!(levels_for(48_000 * 60, 48_000), vec![32, 256, 4096, 65536]);
+        assert_eq!(
+            levels_for(48_000 * 60 * 30, 48_000),
+            vec![64, 256, 4096, 65536]
+        );
+        assert_eq!(
+            levels_for(48_000 * 60 * 120, 48_000),
+            vec![256, 4096, 65536]
+        );
+    }
+
+    #[test]
     fn builds_reads_and_reuses_the_cache() {
         let dir = tempfile::tempdir().unwrap();
         let src = media("stereo_48k_16.wav");
@@ -370,17 +400,25 @@ mod tests {
         })
         .unwrap();
         assert_eq!((s.sample_rate, s.channels, s.length), (48_000, 2, 24_000));
+        // A short file starts with the fine 32-frame level.
         assert_eq!(
             s.levels[0],
+            LevelInfo {
+                block: 32,
+                count: 750
+            }
+        );
+        assert_eq!(
+            s.levels[1],
             LevelInfo {
                 block: 256,
                 count: 94
             }
         );
-        assert_eq!(s.levels[1].count, 6);
-        assert_eq!(s.levels[2].count, 1);
+        assert_eq!(s.levels[2].count, 6);
+        assert_eq!(s.levels[3].count, 1);
 
-        let bytes = read_level(dir.path(), &src, 0).unwrap();
+        let bytes = read_level(dir.path(), &src, 1).unwrap();
         assert_eq!(bytes.len(), 94 * 2 * 4);
         let vals: Vec<i16> = bytes
             .as_chunks::<2>()

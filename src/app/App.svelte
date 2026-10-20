@@ -67,12 +67,12 @@
   import { HOST_PROFILES, profileById, profileOp } from "./host-profiles";
   import type { SettingsDraft } from "./settings/pages";
   import { colorVars, meterPercent, sanitizeSettings, settings, type AppSettings } from "../stores/settings";
-  import type { TransportStore } from "../stores/transport";
+  import { setMeterSpeed, type TransportStore } from "../stores/transport";
   import GenerateDialog, { type GenerateMode, type GenerateValues } from "./GenerateDialog.svelte";
   import { naturalLength, stretchTo, unstretch } from "../panels/editor/stretch";
   import { CHAPTER_FORMATS, embedList, type ChapterFormat } from "../panels/markers/chapters";
   import { matchChanges, matchItems, matchRow, type MatchItem, type MatchRow } from "./loudness-match";
-  import { DEFAULT_REGION, DEFAULT_TARGET, targetById, type LoudnessReport } from "./loudness";
+  import { DEFAULT_REGION, DEFAULT_TARGET, setCustomTarget, targetById, type LoudnessReport } from "./loudness";
   import ClipColorDialog from "./ClipColorDialog.svelte";
   import MarkersPanel from "../panels/markers/MarkersPanel.svelte";
   import PlaylistPanel from "../panels/playlist/PlaylistPanel.svelte";
@@ -160,6 +160,7 @@
     previewStatus,
     probeMedia,
     sessionExportSesx,
+    waveStretch,
   } from "./core";
   import { isTauri } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -187,7 +188,7 @@
   import type { SessionRow } from "../panels/files/session-row";
   import { rasterize } from "../panels/editor/spectrum";
   import { inputLevels, liveTakes, recordControl, recording } from "../stores/record";
-  import { amplifyRange, clampRange, copyRange, cropTo, deleteRange, fadeRange, insertFile, mixPasteAt, pasteAt, replaceRange, silenceRange, type WaveBoard } from "../panels/editor/wave-edit";
+  import { stretchRange, amplifyRange, clampRange, copyRange, cropTo, deleteRange, fadeRange, insertFile, mixPasteAt, pasteAt, replaceRange, silenceRange, type WaveBoard } from "../panels/editor/wave-edit";
 
   let info = $state<AppInfo | null>(null);
   let coreError = $state<string | null>(null);
@@ -1426,7 +1427,7 @@
       case "quickpass":
         return {
           component: asComponent(QuickPassPanel),
-          props: { session, transport, runner: sessionHistory, prefs, ask: promptText, onRepair: repairSpots, onNotice: showNotice, onError: showError },
+          props: { session, transport, runner: sessionHistory, prefs, ask: promptText, onRepair: repairSpots, onNotice: showNotice, onError: showError, wave, waveTransport, waveRunner: waveHistory },
         };
       case "libraries":
         return {
@@ -1821,6 +1822,64 @@
     }
   }
 
+  /** Selected clips moved one track up (-1) or down (1), or null when they can't all move. */
+  function clipsTrackMove(dir: -1 | 1): ClipChange[] | null {
+    const d = session.current;
+    const sel = editor.current().selectedClips;
+    if (!d || sel.size === 0) return null;
+    const changes: ClipChange[] = [];
+    for (let i = 0; i < d.tracks.length; i++) {
+      for (const c of d.tracks[i]!.clips) {
+        if (!sel.has(c.id)) continue;
+        const to = d.tracks[i + dir];
+        if (!to || c.locked) return null;
+        changes.push({ id: c.id, track_id: to.id });
+      }
+    }
+    return changes.length ? changes : null;
+  }
+  async function moveClipsToTrack(dir: -1 | 1) {
+    const changes = clipsTrackMove(dir);
+    const d = session.current;
+    if (!changes || !d) return;
+    await session.edit(dir < 0 ? "Move to Track Above" : "Move to Track Below", { op: "set_clips", changes }, sessionHistory);
+    const first = d.tracks.findIndex((t) => t.clips.some((c) => c.id === changes[0]!.id));
+    const target = d.tracks[first + dir];
+    if (target) editor.selectClips(editor.current().selectedClips, target.id);
+  }
+
+  /** "30", "30.5", "0:30.5" or "1:02:03.5" as seconds; null when it is not a time. */
+  function parseSeconds(text: string): number | null {
+    const parts = text.trim().split(":").map((p) => p.trim());
+    if (parts.length === 0 || parts.length > 3 || parts.some((p) => p === "" || !/^\d*\.?\d+$/.test(p))) return null;
+    return parts.reduce((acc, p) => acc * 60 + Number(p), 0);
+  }
+
+  /** Effects > Pitch and Time > Stretch (Waveform editor): the selection, or the whole file, to a new length. */
+  async function waveStretchTo() {
+    const d = wave.current;
+    const r = waveAll();
+    if (!d || !r) return;
+    const rate = d.sample_rate;
+    const now = (r[1] - r[0]) / rate;
+    const what = waveSel() ? "the selection" : "the whole file";
+    const answer = await promptText("Stretch", `New length for ${what}, now ${now.toFixed(3)} s. Seconds, or minutes:seconds. The pitch stays the same.`, now.toFixed(3));
+    if (answer === null) return;
+    const secs = parseSeconds(answer);
+    if (secs === null || secs <= 0) return showNotice("Type a length like 30, 14.99 or 1:02.5.");
+    const frames = Math.round(secs * rate);
+    if (frames === r[1] - r[0]) return;
+    try {
+      const res = await waveStretch(r[0], r[1], frames);
+      const label = `Stretch to ${secs.toFixed(3)} s`;
+      const op = stretchRange(wave.current ?? d, res.start, res.end, res.media, label, uuid);
+      if (op) await waveEdit(label, op);
+      showNotice(`${label}: ${now.toFixed(3)} s became ${secs.toFixed(3)} s (${((secs / now) * 100).toFixed(1)}%). Changes past about 25% can sound processed.`);
+    } catch (e) {
+      showError(e);
+    }
+  }
+
   async function waveAmplify(db: number) {
     const d = wave.current;
     const r = waveAll();
@@ -1889,6 +1948,8 @@
     for (const [k, v] of Object.entries(colorVars(s.colors))) root.setProperty(k, v);
     root.setProperty("--meter-yellow", `${meterPercent(s.meterYellowDb)}%`);
     root.setProperty("--meter-red", `${meterPercent(s.meterRedDb)}%`);
+    setCustomTarget({ lufs: s.customLufs, peak: s.customPeak });
+    setMeterSpeed(s.meterSpeed);
     if (isTauri()) {
       // Driver first, so the output name is looked up on the right one.
       void setAudioDriver(s.driver === "asio")
@@ -1910,6 +1971,11 @@
   // its own file, from the playhead, while the session plays. Waveform
   // editor: the take goes into the file at the playhead.
   let take: { mode: "multitrack" | "wave"; at: number; plan?: RecordPlan; stopAfter?: number | null } | null = null;
+  /** While recording, playback keeps going past the end of the old audio. */
+  function holdEnd(on: boolean) {
+    transport.holdAtEnd = on;
+    waveTransport.holdAtEnd = on;
+  }
   const KEY_RECORD = "record.options";
   const recordOptions = (): RecordOptions => sanitizeRecordOptions(prefs.raw(KEY_RECORD));
   let recordOptionsOpen = $state(false);
@@ -1960,6 +2026,7 @@
         const at = wavePlayhead();
         await recordStart([{ key: "wave", input: settings.current.waveInput, channels, name: `${base} take ${stamp()}` }]);
         take = { mode: "wave", at };
+        holdEnd(true);
       } else {
         const doc = session.current;
         if (!doc) return;
@@ -1985,6 +2052,7 @@
         await transport.stop();
         await recordStart(targets);
         take = { mode: "multitrack", at, plan, stopAfter: punchStopAfter(plan, doc.sample_rate) };
+        holdEnd(true);
         if (plan.punch) showNotice(`Punch-in: recording stops at the end of the time selection.`);
         liveTakes.set({ at, rate: 0, blocks: {} });
         void transport.play(at);
@@ -1993,6 +2061,7 @@
       startInputPoll();
     } catch (e) {
       take = null;
+      holdEnd(false);
       liveTakes.set(null);
       showError(e);
     }
@@ -2060,6 +2129,7 @@
   async function finishRecord() {
     const t = take;
     take = null;
+    holdEnd(false);
     stopInputPoll();
     liveTakes.set(null);
     recording.set({ active: false, seconds: 0, peak: 0 });
@@ -2499,6 +2569,7 @@
         },
       }),
       ov(waveIsOpen, { id: "fx.normalize", run: () => waveNormalize() }),
+      ov(waveIsOpen, { id: "clip.stretch", run: () => waveStretchTo(), label: () => "Stretch Selection or File..." }),
       ...(
         [
           ["fx.spectrum.reduce-12", "gain", -12, "Spectral Reduce 12 dB"],
@@ -2842,6 +2913,27 @@
         },
         enabled: () => session.current !== null,
         reason: () => "Open or create a session first.",
+      }),
+      // Files panel right-click.
+      actions.register({
+        id: "files.edit",
+        run: () => {
+          const it = mediaPool.selectedItems().find((x) => x.status === "ready");
+          if (it) void openInWaveform(it.path);
+        },
+        enabled: () => mediaPool.selectedItems().some((x) => x.status === "ready"),
+        reason: () => "Select a file that has finished reading.",
+      }),
+      actions.register({
+        id: "files.insert-at-playhead",
+        run: async () => {
+          const paths = mediaPool.selectedItems().filter((x) => x.status === "ready").map((x) => x.path);
+          if (!paths.length) return;
+          if (inWave()) editor.setMode("multitrack");
+          await placeFiles(paths, editor.current().selectedTrack, view()?.playhead ?? 0);
+        },
+        enabled: () => session.current !== null && mediaPool.selectedItems().some((x) => x.status === "ready"),
+        reason: () => (session.current ? "Select files in the Files panel first." : "Open or create a session first."),
       }),
       actions.register({
         id: "multitrack.insert-selected-tracks",
@@ -3265,6 +3357,14 @@
         checked: () => editor.current().snap.playhead,
         enabled: () => editor.current().snap.on,
       }),
+      ...([-1, 1] as const).map((dir) =>
+        actions.register({
+          id: dir < 0 ? "clip.to-track-above" : "clip.to-track-below",
+          run: () => moveClipsToTrack(dir),
+          enabled: () => clipsTrackMove(dir) !== null,
+          reason: () => (editor.current().selectedClips.size === 0 ? "Select clips first." : dir < 0 ? "The clips are already on the top track, or one is locked." : "The clips are already on the bottom track, or one is locked."),
+        }),
+      ),
       actions.register({ id: "clip.split", run: () => split(false), enabled: () => (session.current?.tracks.some((t) => t.clips.length > 0) ?? false) }),
       actions.register({ id: "clip.split-all", run: () => split(true), enabled: () => (session.current?.tracks.some((t) => t.clips.length > 0) ?? false) }),
       actions.register({

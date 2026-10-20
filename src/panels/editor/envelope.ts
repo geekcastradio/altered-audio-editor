@@ -143,6 +143,17 @@ export function yToValue(kind: EnvKind, y: number, top: number, height: number, 
   return Math.round(v / r.step) * r.step;
 }
 
+/** Volume points snap to 0 dB within this, pan points to center within this. */
+export const SNAP_DB = 0.75;
+export const SNAP_PAN = 4;
+
+/** A dragged value pulled onto 0 dB or center when close (hold Alt to place it freely). */
+export function snapValue(kind: EnvKind, v: number): number {
+  if (kind === "volume" && Math.abs(v) <= SNAP_DB) return 0;
+  if (kind === "pan" && Math.abs(v) <= SNAP_PAN) return 0;
+  return v;
+}
+
 /** Clamps a value to the envelope's range. */
 export function clampValue(kind: EnvKind, v: number, range: EnvRange = rangeOf(kind)): number {
   const r = range;

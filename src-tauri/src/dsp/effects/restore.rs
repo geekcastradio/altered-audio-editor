@@ -97,6 +97,10 @@ pub fn dc_info() -> EffectInfo {
 
 // --- Spectral reducers ---
 
+/// Mean bin power below this is digital silence, not background noise
+/// (far below any recorder's noise floor).
+const DIGITAL_SILENCE: f32 = 1e-14;
+
 /// How far the average noise sits above its tracked minimum.
 const MIN_BIAS: f32 = 2.5;
 
@@ -147,6 +151,15 @@ impl NoiseMask {
 
 impl Mask for NoiseMask {
     fn mask(&mut self, power: &[f32], gains: &mut [f32]) {
+        // Digital silence (the gaps between clips, a muted stretch) says
+        // nothing about the background noise. Learning from it would
+        // drop the noise estimate to zero and switch the reducer off for
+        // every clip after the first gap, so the estimate holds still.
+        let mean = power.iter().sum::<f32>() / power.len().max(1) as f32;
+        if mean < DIGITAL_SILENCE {
+            gains.copy_from_slice(&self.last);
+            return;
+        }
         self.frames = self.frames.saturating_add(1);
         let a = self.power_smooth;
         let first = self.frames == 1;

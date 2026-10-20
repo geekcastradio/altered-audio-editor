@@ -36,6 +36,11 @@ export interface AppSettings {
   colors: AppColors;
   /** System name of the output; null is the system default. */
   output: string | null;
+  /** How lively the level meters are. */
+  meterSpeed: "fast" | "medium" | "slow";
+  /** The custom loudness target: integrated LUFS and true peak ceiling. */
+  customLufs: number;
+  customPeak: number;
   /** Audio driver: the system's own, or ASIO (Windows release builds). */
   driver: "system" | "asio";
   /** Input the Waveform editor records from, as a track input ("Mono: ..." or "Stereo: ..."); null is the system default. */
@@ -74,6 +79,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   output: null,
   waveInput: null,
   driver: "system",
+  meterSpeed: "fast",
+  customLufs: -18,
+  customPeak: -1,
   autosave: true,
   autosaveMinutes: 2,
   openChainOnAdd: true,
@@ -107,6 +115,9 @@ export function sanitizeSettings(raw: unknown): AppSettings {
     colors: { wave: color(c.wave), playhead: color(c.playhead), accent: color(c.accent), laneSelected: color(c.laneSelected) },
     output: typeof o.output === "string" && o.output.trim() ? o.output : null,
     driver: o.driver === "asio" ? "asio" : "system",
+    meterSpeed: o.meterSpeed === "medium" || o.meterSpeed === "slow" ? o.meterSpeed : "fast",
+    customLufs: Math.round(num(o.customLufs, -40, -5, d.customLufs) * 10) / 10,
+    customPeak: Math.round(num(o.customPeak, -10, 0, d.customPeak) * 10) / 10,
     waveInput: typeof o.waveInput === "string" && /^(Mono|Stereo): /.test(o.waveInput) ? o.waveInput : null,
     autosave: bool(o.autosave, d.autosave),
     autosaveMinutes: Math.round(num(o.autosaveMinutes, 1, 60, d.autosaveMinutes)),

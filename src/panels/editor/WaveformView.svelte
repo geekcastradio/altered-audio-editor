@@ -507,10 +507,13 @@
   function onLevelPointer(e: PointerEvent) {
     e.preventDefault();
     const x0 = e.clientX;
+    const y0 = e.clientY;
     levelDrag = true;
     const move = (ev: PointerEvent) => {
       const step = ev.shiftKey ? 0.02 : 0.1;
-      level = Math.round(Math.max(-30, Math.min(20, (ev.clientX - x0) * step)) * 10) / 10;
+      // Right or up turns it up; left or down turns it down.
+      const d = ev.clientX - x0 - (ev.clientY - y0);
+      level = Math.round(Math.max(-30, Math.min(20, d * step)) * 10) / 10;
     };
     const up = () => {
       window.removeEventListener("pointermove", move, true);
@@ -591,9 +594,9 @@
     <div class="area" bind:this={area} bind:clientHeight={height} onwheel={onWheel} oncontextmenu={onMenu}>
       <div class="measure" bind:clientWidth={width} style:right="{SCALE_W}px"></div>
       <canvas bind:this={canvas} onpointerdown={onPointer} ondblclick={() => run("edit.select-all")}></canvas>
-      <div class="hud" class:active={levelDrag} title="Drag left or right to change the level of the selection (or the whole file). Shift for fine steps.">
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <span class="knob" onpointerdown={onLevelPointer}>
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="hud" class:active={levelDrag} onpointerdown={onLevelPointer} title="Drag right or up to turn the selection (or the whole file) up, left or down to turn it down. Release to apply. Shift for fine steps.">
+        <span class="knob">
           <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M8 8l{3.5 * Math.sin((level / 30) * 2.4)} {-3.5 * Math.cos((level / 30) * 2.4)}" stroke="currentColor" stroke-width="1.6" /></svg>
         </span>
         <span class="val">{level > 0 ? "+" : ""}{level.toFixed(1)} dB</span>
@@ -755,6 +758,11 @@
 
   .hud.active {
     border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .hud {
+    cursor: ew-resize;
   }
 
   .knob {

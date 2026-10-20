@@ -255,6 +255,39 @@ export function replaceRange(doc: SessionDoc, a: number, b: number, media: Media
   return { op: "batch", ops: out };
 }
 
+/**
+ * Stretch: puts `media` (the range re-timed) in place of `a..b` and moves
+ * everything after `b` by the change in length, so nothing overlaps or
+ * leaves a gap. Markers after the range move with it; markers inside are
+ * spaced out (or in) to match.
+ */
+export function stretchRange(doc: SessionDoc, a: number, b: number, media: MediaRefDoc, name: string, newId: () => string): Op | null {
+  const track = doc.tracks[0];
+  if (!track || b <= a || media.length <= 0) return null;
+  const length = Math.round((media.length * doc.sample_rate) / media.sample_rate);
+  const delta = length - (b - a);
+  const { ops, inside } = isolate(doc, trackIds(doc), a, b, newId);
+  const out: Op[] = [...ops];
+  if (inside.length) out.push({ op: "remove_clips", ids: inside });
+  const gone = new Set(inside);
+  const clips = afterSplit(doc, ops);
+  const shift: ClipChange[] = [];
+  for (const c of clips.values()) if (!gone.has(c.id) && c.start >= b && delta !== 0) shift.push({ id: c.id, start: c.start + delta });
+  // Moving right, the furthest clip goes first; moving left, the nearest.
+  shift.sort((x, y) => (delta > 0 ? y.start! - x.start! : x.start! - y.start!));
+  if (shift.length) out.push({ op: "set_clips", changes: shift });
+  out.push({ op: "add_media", media });
+  out.push({ op: "add_clips", track_id: track.id, clips: [{ id: newId(), name, media_id: media.id, start: a, source_in: 0, source_out: media.length }] });
+  const ratio = length / (b - a);
+  const markers = doc.markers.flatMap((m): MarkerChange[] => {
+    if (m.position >= b) return delta ? [{ id: m.id, position: m.position + delta }] : [];
+    if (m.position >= a) return [{ id: m.id, position: a + Math.round((m.position - a) * ratio), duration: Math.round(m.duration * ratio) }];
+    return [];
+  });
+  if (markers.length) out.push({ op: "set_markers", changes: markers });
+  return { op: "batch", ops: out };
+}
+
 /** Insert: puts a whole file (a recorded take) in at `at`, moving what follows to the right. */
 export function insertFile(doc: SessionDoc, at: number, media: MediaRefDoc, name: string, newId: () => string): { op: Op; length: number } | null {
   const track = doc.tracks[0];

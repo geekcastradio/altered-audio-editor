@@ -174,6 +174,8 @@ describe("menu model", () => {
       "fx.add.center_remover",
       "fx.add.phase_rotate",
       "file.export.sesx",
+      "clip.to-track-above",
+      "clip.to-track-below",
       "file.export.markers",
       "edit.marker.chapter",
       "clip.stretch",

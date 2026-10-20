@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { sessionEnd, type ClipDoc, type Op, type SessionDoc } from "../../stores/session";
 import { previewTracks } from "./clip-edit";
 import { pointsOf } from "./envelope";
-import { amplifyRange, clampRange, copyRange, cropTo, deleteRange, fadeDb, fadeRange, insertFile, mixPasteAt, pasteAt, replaceRange, silenceRange } from "./wave-edit";
+import { amplifyRange, clampRange, copyRange, cropTo, deleteRange, fadeDb, fadeRange, insertFile, mixPasteAt, pasteAt, replaceRange, silenceRange, stretchRange } from "./wave-edit";
 
 const fade = () => ({ length: 0, shape: "linear" as const, curve: 0 });
 
@@ -228,5 +228,23 @@ describe("markers follow Waveform edits", () => {
       { id: "inside", position: 500, duration: 0 },
       { id: "range", position: 0, duration: 1_500 },
     ]);
+  });
+});
+
+describe("stretchRange", () => {
+  const media = (length: number) => ({ id: "st", path: "st.wav", relative_path: null, sample_rate: 1_000, channels: 1, length });
+  it("puts the stretched range in and moves what follows by the change", () => {
+    const after = apply(file(), stretchRange(file(), 2_000, 5_000, media(2_000), "Stretch", id));
+    const clips = after.tracks[0]!.clips.slice().sort((a, b) => a.start - b.start);
+    expect(clips.map((c) => [c.start, c.source_in, c.source_out, c.media_id])).toEqual([
+      [0, 0, 2_000, "m"],
+      [2_000, 0, 2_000, "st"],
+      [4_000, 5_000, 10_000, "m"],
+    ]);
+    expect(sessionEnd(after)).toBe(9_000);
+  });
+  it("makes room when the range gets longer", () => {
+    const after = apply(file(), stretchRange(file(), 2_000, 5_000, media(4_000), "Stretch", id));
+    expect(sessionEnd(after)).toBe(11_000);
   });
 });

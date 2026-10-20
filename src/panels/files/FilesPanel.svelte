@@ -212,10 +212,18 @@
       shortcut: shortcutFor(id),
     });
     const out: ContextItem[] = [
+      item("files.edit", "Edit File"),
+      {
+        kind: "sub",
+        label: "Insert into Multitrack",
+        items: [item("files.insert-at-playhead", "At the Playhead on the Selected Track"), item("multitrack.insert-selected-tracks", "As New Tracks")],
+      },
+      { kind: "sep" },
       item("file.import-files", "Import Files..."),
       item("file.import-folder", "Import Folder..."),
       { kind: "sep" },
       item("edit.delete", selected.length > 1 ? `Remove ${selected.length} Files` : "Remove from Session"),
+      item("file.close-unused", "Remove Unused Files"),
       item("file.reveal", revealLabel()),
     ];
     if (failed.length > 0) {

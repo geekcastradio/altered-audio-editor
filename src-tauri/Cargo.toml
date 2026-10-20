@@ -4,7 +4,7 @@
 
 [package]
 name = "altered-audio-editor"
-version = "0.1.5"
+version = "0.1.6"
 description = "Free, open-source multitrack audio editor for podcasters and voiceover."
 authors = ["The GeekCast Radio Network, LLC"]
 license = "GPL-3.0-or-later"

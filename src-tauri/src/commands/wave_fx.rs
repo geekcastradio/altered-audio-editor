@@ -109,6 +109,71 @@ pub async fn wave_apply_chain(
     .map_err(|e| e.to_string())?
 }
 
+/// Stretches `audio` (stereo interleaved) to exactly `frames` frames,
+/// keeping its pitch.
+pub fn stretch_to(audio: &[f32], frames: usize, rate: u32) -> Vec<f32> {
+    let have = audio.len() / 2;
+    if have == 0 || frames == 0 {
+        return vec![0.0; frames * 2];
+    }
+    let ratio = frames as f64 / have as f64;
+    let mut st = crate::dsp::stretch::Stretcher::new(ratio, rate);
+    let mut out = Vec::with_capacity(frames * 2 + 8192);
+    for block in audio.chunks(8192 * 2) {
+        st.push(block);
+        st.pull(&mut out);
+    }
+    st.finish();
+    st.pull(&mut out);
+    out.resize(frames * 2, 0.0);
+    out
+}
+
+/// Waveform editor Stretch: makes `start..end` of the open file last
+/// `frames` frames, keeping its pitch (a 31.3 second spot read in 30).
+/// The interface swaps the result in and moves what follows.
+#[tauri::command]
+pub async fn wave_stretch(
+    app: AppHandle,
+    wave: State<'_, OpenWave>,
+    start: u64,
+    end: u64,
+    frames: u64,
+) -> Result<SpectralResult, String> {
+    let session = snapshot(&wave)?;
+    let dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| e.to_string())?
+        .join("wave-fx");
+    spawn_blocking(move || -> Result<SpectralResult, String> {
+        let rate = session.sample_rate;
+        let end = end.min(mixdown::session_end(&session));
+        if end <= start {
+            return Err("Select some audio first, or stretch the whole file.".into());
+        }
+        let len = end - start;
+        let ratio = frames as f64 / len as f64;
+        if !(0.25..=4.0).contains(&ratio) {
+            return Err("Stretch works from a quarter to four times the length.".into());
+        }
+        let audio = render(&session, start as i64, end as i64);
+        let out = stretch_to(&audio, frames as usize, rate);
+        let media = write_stretch(
+            &dir,
+            "stretch",
+            &out,
+            0,
+            frames as usize,
+            rate,
+            is_mono(&session),
+        )?;
+        Ok(SpectralResult { media, start, end })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,6 +189,28 @@ mod tests {
             preset: None,
         });
         c
+    }
+
+    #[test]
+    fn stretch_to_hits_the_length_and_keeps_the_pitch() {
+        let rate = 48_000;
+        let tone: Vec<f32> = (0..rate as usize)
+            .flat_map(|i| {
+                let v = (std::f32::consts::TAU * 220.0 * i as f32 / rate as f32).sin() * 0.5;
+                [v, v]
+            })
+            .collect();
+        let out = stretch_to(&tone, 45_600, rate);
+        assert_eq!(out.len(), 45_600 * 2);
+        let mid = &out[10_000 * 2..30_000 * 2];
+        let crossings = mid
+            .chunks(2)
+            .collect::<Vec<_>>()
+            .windows(2)
+            .filter(|w| (w[0][0] < 0.0) != (w[1][0] < 0.0))
+            .count();
+        // 20,000 frames of 220 Hz cross zero about 183 times, stretched or not.
+        assert!((170..=196).contains(&crossings), "{crossings}");
     }
 
     #[test]
