@@ -232,7 +232,7 @@ fn build(
     Ok(summary)
 }
 
-fn to_i16(v: f32) -> i16 {
+pub(crate) fn to_i16(v: f32) -> i16 {
     if v == f32::MAX || v == f32::MIN {
         return 0;
     }

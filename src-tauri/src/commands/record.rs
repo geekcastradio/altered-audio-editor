@@ -7,7 +7,7 @@
 
 use std::path::PathBuf;
 
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
 use super::session::OpenSession;
 use crate::engine::{PreviewPlayer, RecordStatus, RecordTarget, Recorder, Take};
@@ -16,11 +16,7 @@ fn take_dir(app: &AppHandle, open: &State<'_, OpenSession>) -> Result<PathBuf, S
     let saved = open.0.lock().map_err(|e| e.to_string())?.path.clone();
     match saved.as_ref().and_then(|p| p.parent()) {
         Some(dir) => Ok(dir.join("Recordings")),
-        None => Ok(app
-            .path()
-            .app_cache_dir()
-            .map_err(|e| e.to_string())?
-            .join("recordings")),
+        None => Ok(crate::commands::cache::cache_root(app)?.join("recordings")),
     }
 }
 

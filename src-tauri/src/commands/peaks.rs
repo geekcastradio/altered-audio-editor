@@ -10,16 +10,12 @@ use std::path::PathBuf;
 use serde::Serialize;
 use tauri::async_runtime::spawn_blocking;
 use tauri::ipc::Response;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 
 use crate::peaks::{self, PeakSummary};
 
 fn cache_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(app
-        .path()
-        .app_cache_dir()
-        .map_err(|e| e.to_string())?
-        .join("peaks"))
+    Ok(crate::commands::cache::cache_root(app)?.join("peaks"))
 }
 
 #[derive(Clone, Serialize)]

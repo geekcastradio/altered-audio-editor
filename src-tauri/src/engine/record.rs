@@ -177,21 +177,35 @@ impl TakeWriter {
     }
 }
 
-/// Frames per live waveform block.
-pub const LIVE_BLOCK: usize = 1024;
+/// Frames per live waveform block. Same as the finest level of the
+/// finished file's peak cache, so what is drawn while recording is the
+/// data the finished waveform will use.
+pub const LIVE_BLOCK: usize = 32;
 
 /// Live level and waveform for one target, filled by the disk thread.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct Live {
     /// Peak since the last status call, 0 to 1.
     pub peak: f32,
-    /// Min and max of each block of [`LIVE_BLOCK`] frames since the last call.
-    pub blocks: Vec<[f32; 2]>,
+    /// Channels per block (1 or 2).
+    pub channels: usize,
+    /// Per block of [`LIVE_BLOCK`] frames since the last call, per channel:
+    /// min then max as 16-bit values, scaled and rounded as the peak cache does.
+    pub blocks: Vec<i16>,
+}
+
+/// One target's running block: its device channels and each channel's min and max so far.
+struct Tap {
+    key: String,
+    chans: Vec<usize>,
+    lo: Vec<f32>,
+    hi: Vec<f32>,
+    count: usize,
 }
 
 /// Measures each target's channels for meters and the live waveform.
 pub struct LiveTap {
-    taps: Vec<(String, Vec<usize>, f32, f32, usize)>,
+    taps: Vec<Tap>,
     device_channels: usize,
 }
 
@@ -200,7 +214,13 @@ impl LiveTap {
         Self {
             taps: targets
                 .iter()
-                .map(|(t, c)| (t.key.clone(), c.clone(), 0.0, 0.0, 0))
+                .map(|(t, c)| Tap {
+                    key: t.key.clone(),
+                    chans: c.iter().copied().take(2).collect(),
+                    lo: vec![f32::MAX; c.len().min(2)],
+                    hi: vec![f32::MIN; c.len().min(2)],
+                    count: 0,
+                })
                 .collect(),
             device_channels: device_channels.max(1),
         }
@@ -209,21 +229,25 @@ impl LiveTap {
     /// Adds whole frames; finished blocks and peaks go into `live`.
     pub fn push(&mut self, interleaved: &[f32], live: &mut HashMap<String, Live>) {
         let n = self.device_channels;
-        for (key, chans, lo, hi, count) in &mut self.taps {
-            let entry = live.entry(key.clone()).or_default();
+        for tap in &mut self.taps {
+            let entry = live.entry(tap.key.clone()).or_default();
+            entry.channels = tap.chans.len();
             for frame in interleaved.chunks_exact(n) {
-                for &c in chans.iter() {
+                for (k, &c) in tap.chans.iter().enumerate() {
                     let v = frame.get(c).copied().unwrap_or(0.0);
-                    *lo = lo.min(v);
-                    *hi = hi.max(v);
+                    tap.lo[k] = tap.lo[k].min(v);
+                    tap.hi[k] = tap.hi[k].max(v);
                     entry.peak = entry.peak.max(v.abs());
                 }
-                *count += 1;
-                if *count == LIVE_BLOCK {
-                    entry.blocks.push([*lo, *hi]);
-                    *lo = 0.0;
-                    *hi = 0.0;
-                    *count = 0;
+                tap.count += 1;
+                if tap.count == LIVE_BLOCK {
+                    for k in 0..tap.chans.len() {
+                        entry.blocks.push(crate::peaks::to_i16(tap.lo[k]));
+                        entry.blocks.push(crate::peaks::to_i16(tap.hi[k]));
+                        tap.lo[k] = f32::MAX;
+                        tap.hi[k] = f32::MIN;
+                    }
+                    tap.count = 0;
                 }
             }
         }
@@ -899,8 +923,10 @@ mod tests {
         }
         tap.push(&frames, &mut live);
         assert!((live["a"].peak - 0.8).abs() < 1e-6);
-        assert_eq!(live["a"].blocks, vec![[0.0, 0.8]]);
-        assert_eq!(live["b"].blocks, vec![[-0.25, 0.0]]);
+        // One block of 32 frames per channel (min, max), as the peak cache would store it.
+        assert_eq!(live["a"].channels, 1);
+        assert_eq!(live["a"].blocks, vec![3277, 26214]);
+        assert_eq!(live["b"].blocks, vec![-8192, -8192]);
     }
 
     #[test]

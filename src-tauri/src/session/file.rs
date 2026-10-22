@@ -114,6 +114,29 @@ pub struct RecoveryNote {
     /// The session's real file, if it had been saved.
     pub original_path: Option<PathBuf>,
     pub saved_at: DateTime<Utc>,
+    /// Process that wrote the autosave. Older notes have none.
+    #[serde(default)]
+    pub owner_pid: Option<u32>,
+}
+
+/// A running copy of the app touches `running-<pid>.lock` in the autosave
+/// folder each time it autosaves. Autosaves from a copy whose lock is this
+/// fresh belong to a live window, not a crash, so recovery skips them.
+const LOCK_FRESH_SECS: u64 = 150;
+
+fn lock_path(dir: &Path, pid: u32) -> PathBuf {
+    dir.join(format!("running-{pid}.lock"))
+}
+
+fn owner_is_running(dir: &Path, pid: u32) -> bool {
+    if pid == std::process::id() {
+        return true;
+    }
+    fs::metadata(lock_path(dir, pid))
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .is_some_and(|age| age.as_secs() < LOCK_FRESH_SECS)
 }
 
 /// An autosave found at startup.
@@ -155,7 +178,10 @@ pub fn autosave(
         name: session.name.clone(),
         original_path: original.map(Path::to_path_buf),
         saved_at: Utc::now(),
+        owner_pid: Some(std::process::id()),
     };
+    // Best effort: a missing lock only means a second copy might offer this autosave.
+    let _ = fs::write(lock_path(dir, std::process::id()), Utc::now().to_rfc3339());
     let text = serde_json::to_string_pretty(&note)?;
     fs::write(&note_path, text).map_err(|source| DocumentError::Io {
         path: note_path,
@@ -188,6 +214,9 @@ pub fn find_recoverable(dir: &Path) -> Vec<Recoverable> {
         let Ok(note) = serde_json::from_str::<RecoveryNote>(&text) else {
             continue;
         };
+        if note.owner_pid.is_some_and(|pid| owner_is_running(dir, pid)) {
+            continue;
+        }
         let file = p.with_extension(EXTENSION);
         if file.is_file() {
             out.push(Recoverable {
@@ -279,8 +308,21 @@ mod tests {
             &[],
         )
         .unwrap();
+        // A live copy's own autosave is not offered back to it or to a second copy.
+        assert!(find_recoverable(dir.path()).is_empty());
+        // After a crash the owner has no fresh lock: pretend another process wrote it.
+        let note_path = dir.path().join(format!("{}.json", s.id));
+        let mut note: RecoveryNote =
+            serde_json::from_str(&fs::read_to_string(&note_path).unwrap()).unwrap();
+        note.owner_pid = Some(4_000_000_000);
+        fs::write(&note_path, serde_json::to_string(&note).unwrap()).unwrap();
         let found = find_recoverable(dir.path());
         assert_eq!(found.len(), 1);
+        // The same note with a fresh lock belongs to a running copy and is skipped.
+        fs::write(lock_path(dir.path(), 4_000_000_000), "x").unwrap();
+        assert!(find_recoverable(dir.path()).is_empty());
+        fs::remove_file(lock_path(dir.path(), 4_000_000_000)).unwrap();
+        let found = find_recoverable(dir.path());
         assert_eq!(found[0].note.name, "Ep 4");
         assert_eq!(
             found[0].note.original_path.as_deref(),

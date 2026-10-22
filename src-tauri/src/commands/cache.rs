@@ -50,8 +50,53 @@ const FOLDERS: [(&str, bool); 5] = [
     ("recordings", false),
 ];
 
+/// File in the app config folder that holds a folder the user picked.
+const FOLDER_SETTING: &str = "cache-folder.txt";
+
+/// Where working files go: the folder the user picked in Settings, else
+/// `Documents/Altered Audio Editor/Cache`, else the app's own cache folder
+/// when Documents can't be found. Missing folders fall back to the default.
+pub fn cache_root(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Ok(cfg) = app.path().app_config_dir() {
+        if let Ok(text) = std::fs::read_to_string(cfg.join(FOLDER_SETTING)) {
+            let p = PathBuf::from(text.trim());
+            if !text.trim().is_empty() && p.is_dir() {
+                return Ok(p);
+            }
+        }
+    }
+    match app.path().document_dir() {
+        Ok(docs) => Ok(docs.join("Altered Audio Editor").join("Cache")),
+        Err(_) => app.path().app_cache_dir().map_err(|e| e.to_string()),
+    }
+}
+
 fn cache_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path().app_cache_dir().map_err(|e| e.to_string())
+    cache_root(app)
+}
+
+/// Uses `path` for working files from now on (None goes back to the
+/// default). Files already made stay where they are; drawings are rebuilt.
+#[tauri::command]
+pub fn cache_set_folder(app: AppHandle, path: Option<String>) -> Result<(), String> {
+    let cfg = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&cfg).map_err(|e| e.to_string())?;
+    let file = cfg.join(FOLDER_SETTING);
+    match path.filter(|p| !p.trim().is_empty()) {
+        Some(p) => {
+            let dir = PathBuf::from(&p);
+            std::fs::create_dir_all(&dir).map_err(|e| format!("Can't use that folder: {e}"))?;
+            let probe = dir.join(".write-test");
+            std::fs::write(&probe, b"x").map_err(|e| format!("That folder isn't writable: {e}"))?;
+            let _ = std::fs::remove_file(probe);
+            std::fs::write(file, p).map_err(|e| e.to_string())
+        }
+        None => match std::fs::remove_file(file) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.to_string()),
+        },
+    }
 }
 
 #[tauri::command]

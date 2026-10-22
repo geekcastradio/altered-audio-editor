@@ -9,7 +9,7 @@
 //! destructive edit.
 
 use tauri::async_runtime::spawn_blocking;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
 use super::spectral::{is_mono, render, snapshot, write_stretch, SpectralResult};
 use super::wave::OpenWave;
@@ -69,11 +69,7 @@ pub async fn wave_apply_chain(
     end: u64,
 ) -> Result<SpectralResult, String> {
     let session = snapshot(&wave)?;
-    let dir = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e| e.to_string())?
-        .join("wave-fx");
+    let dir = crate::commands::cache::cache_root(&app)?.join("wave-fx");
     spawn_blocking(move || -> Result<SpectralResult, String> {
         let rate = session.sample_rate;
         let total = mixdown::session_end(&session);
@@ -141,11 +137,7 @@ pub async fn wave_stretch(
     frames: u64,
 ) -> Result<SpectralResult, String> {
     let session = snapshot(&wave)?;
-    let dir = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e| e.to_string())?
-        .join("wave-fx");
+    let dir = crate::commands::cache::cache_root(&app)?.join("wave-fx");
     spawn_blocking(move || -> Result<SpectralResult, String> {
         let rate = session.sample_rate;
         let end = end.min(mixdown::session_end(&session));
@@ -174,6 +166,46 @@ pub async fn wave_stretch(
     .map_err(|e| e.to_string())?
 }
 
+/// Reverse (play backwards) or invert (flip polarity) interleaved stereo audio.
+fn reverse_or_invert(audio: &[f32], mode: &str) -> Result<Vec<f32>, String> {
+    match mode {
+        "invert" => Ok(audio.iter().map(|v| -v).collect()),
+        "reverse" => Ok((0..audio.len() / 2)
+            .rev()
+            .flat_map(|i| [audio[i * 2], audio[i * 2 + 1]])
+            .collect()),
+        _ => Err("Unknown edit.".into()),
+    }
+}
+
+/// Waveform editor Reverse and Invert on `start..end` (mode "reverse" or
+/// "invert"). The interface swaps the result in; Undo takes it back.
+#[tauri::command]
+pub async fn wave_reverse_invert(
+    app: AppHandle,
+    wave: State<'_, OpenWave>,
+    start: u64,
+    end: u64,
+    mode: String,
+) -> Result<SpectralResult, String> {
+    let session = snapshot(&wave)?;
+    let dir = crate::commands::cache::cache_root(&app)?.join("wave-fx");
+    spawn_blocking(move || -> Result<SpectralResult, String> {
+        let rate = session.sample_rate;
+        let end = end.min(mixdown::session_end(&session));
+        if end <= start {
+            return Err("Select some audio first, or use the whole file.".into());
+        }
+        let audio = render(&session, start as i64, end as i64);
+        let out = reverse_or_invert(&audio, &mode)?;
+        let frames = (end - start) as usize;
+        let media = write_stretch(&dir, &mode, &out, 0, frames, rate, is_mono(&session))?;
+        Ok(SpectralResult { media, start, end })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,6 +221,16 @@ mod tests {
             preset: None,
         });
         c
+    }
+
+    #[test]
+    fn reverse_and_invert() {
+        let audio = vec![0.1f32, -0.1, 0.2, -0.2, 0.3, -0.3];
+        let r = reverse_or_invert(&audio, "reverse").unwrap();
+        assert_eq!(r, vec![0.3, -0.3, 0.2, -0.2, 0.1, -0.1]);
+        let i = reverse_or_invert(&audio, "invert").unwrap();
+        assert_eq!(i, vec![-0.1, 0.1, -0.2, 0.2, -0.3, 0.3]);
+        assert!(reverse_or_invert(&audio, "x").is_err());
     }
 
     #[test]

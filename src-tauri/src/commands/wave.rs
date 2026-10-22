@@ -362,7 +362,6 @@ pub async fn wave_new(
     channels: u16,
     bit_depth: u16,
 ) -> Result<WaveDoc, String> {
-    use tauri::Manager;
     let rate = sample_rate.clamp(8_000, 384_000);
     let channels = channels.clamp(1, 2);
     let bits = if [16, 24, 32].contains(&bit_depth) {
@@ -370,11 +369,7 @@ pub async fn wave_new(
     } else {
         32
     };
-    let dir = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e| e.to_string())?
-        .join("untitled");
+    let dir = crate::commands::cache::cache_root(&app)?.join("untitled");
     let path = spawn_blocking(move || -> Result<PathBuf, String> {
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let path = mixdown::unique_path(&dir, &name, "wav");
@@ -446,7 +441,6 @@ pub async fn wave_new_from_clips(
     clips: Vec<crate::session::model::Clip>,
     media: Vec<MediaRef>,
 ) -> Result<WaveDoc, String> {
-    use tauri::Manager;
     if clips.is_empty() {
         return Err("Nothing to paste. Copy audio or clips first.".into());
     }
@@ -462,11 +456,7 @@ pub async fn wave_new_from_clips(
     );
     track.clips = clips;
     s.tracks.push(track);
-    let dir = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e| e.to_string())?
-        .join("untitled");
+    let dir = crate::commands::cache::cache_root(&app)?.join("untitled");
     let channels = channels.clamp(1, 2);
     let path = spawn_blocking(move || -> Result<PathBuf, String> {
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;

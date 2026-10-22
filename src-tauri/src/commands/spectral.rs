@@ -10,7 +10,7 @@ use std::sync::atomic::AtomicBool;
 use serde::Serialize;
 use tauri::async_runtime::spawn_blocking;
 use tauri::ipc::Response;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
 use super::wave::OpenWave;
 use crate::dsp::spectral::{self, Action, Mask, FFT_SIZE};
@@ -188,11 +188,7 @@ pub async fn wave_spectral_edit(
     }
     let start = m0.max(0.0) as u64;
     let end = m1.max(0.0).ceil() as u64;
-    let dir = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e| e.to_string())?
-        .join("spectral");
+    let dir = crate::commands::cache::cache_root(&app)?.join("spectral");
     spawn_blocking(move || -> Result<SpectralResult, String> {
         let rate = session.sample_rate;
         let total = mixdown::session_end(&session);

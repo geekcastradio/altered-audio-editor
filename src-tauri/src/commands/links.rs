@@ -12,13 +12,15 @@ use tauri::AppHandle;
 use tauri_plugin_opener::OpenerExt;
 
 /// Hosts the app may open: the GCRN site, the store page for the
-/// project lead's book, Altered Audio: Podcasting Demystified, and the
-/// support page.
+/// project lead's book, Altered Audio: Podcasting Demystified, the
+/// support page, the project's GitHub page and its Discord invite.
 const ALLOWED_HOSTS: &[&str] = &[
     "thegcrn.com",
     "www.thegcrn.com",
     "www.barnesandnoble.com",
     "paypal.me",
+    "github.com",
+    "discord.gg",
 ];
 
 /// Checks a link against the allow list.
@@ -57,6 +59,11 @@ mod tests {
         assert!(is_allowed("https://paypal.me/scp21"));
         assert!(!is_allowed("http://paypal.me/scp21"));
         assert!(!is_allowed("https://paypal.me.evil.example/scp21"));
+        assert!(is_allowed(
+            "https://github.com/geekcastradio/altered-audio-editor/issues/new/choose"
+        ));
+        assert!(is_allowed("https://discord.gg/xTT5N65y"));
+        assert!(!is_allowed("https://github.com.evil.example/"));
         assert!(!is_allowed("file:///C:/Windows/System32/calc.exe"));
         assert!(!is_allowed("not a url"));
     }
