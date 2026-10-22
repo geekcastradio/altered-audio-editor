@@ -7,9 +7,9 @@
   the visible width. Redraws when the view, the track, or peaks change.
 -->
 <script lang="ts">
-  import type { PeakStore } from "../../stores/peaks";
+  import type { PeakEntry, PeakStore } from "../../stores/peaks";
   import { clipLength, stretchOf, type ClipDoc, type FadeDoc, type MediaRefDoc, type TrackDoc } from "../../stores/session";
-  import { LIVE_BLOCK } from "../../app/core";
+  import type { LiveWave } from "../../stores/record";
   import { defaultTrackColor, trackHeight, peakRange, pickLevel, xOf, type Viewport, TRACK_GAP } from "./timeline";
   import { chipBox, chipLabel, fxLaneOf, pointsOf, rangeOf, restValue, valueToY, type EnvKind, type FxLane } from "./envelope";
 
@@ -27,7 +27,7 @@
     /** Waveform display scale. */
     ampZoom?: number;
     /** A take being recorded on this track: where it starts, the input rate, and min/max blocks. */
-    liveTake?: { at: number; rate: number; blocks: [number, number][] } | null;
+    liveTake?: { at: number; rate: number; wave: LiveWave; tick: number } | null;
     peaks: PeakStore;
     /** Changes whenever any peak data changes. */
     peakTick: number;
@@ -93,6 +93,7 @@
 
   $effect(() => {
     void peakTick;
+    void liveTake?.tick;
     const c = canvas;
     if (!c) return;
     const dpr = window.devicePixelRatio || 1;
@@ -111,8 +112,25 @@
     g.fillRect(0, 0, width, lh);
 
     const titleH = 14;
-    for (const clip of track.clips) {
-      const m = media.get(clip.media_id);
+    // A take being recorded is drawn as a clip of its own, from its live
+    // peak data, by the same code as every finished clip.
+    const lw = liveTake && liveTake.rate > 0 && liveTake.wave.blocks > 0 ? liveTake : null;
+    const fadeNone = { length: 0, shape: "linear", curve: 0 };
+    const liveClip: ClipDoc | null = lw
+      ? { id: "__live__", name: "Recording", media_id: "__live__", start: lw.at, source_in: 0, source_out: lw.wave.frames, gain_db: 0, muted: false, locked: false, color: null, fade_in: fadeNone, fade_out: fadeNone }
+      : null;
+    const liveMedia = lw ? ({ id: "__live__", path: "__live__", sample_rate: lw.rate, channels: lw.wave.channels, length: lw.wave.frames } as unknown as MediaRefDoc) : null;
+    const liveEntry = lw
+      ? ({
+          status: "ready",
+          progress: 1,
+          error: null,
+          summary: { sampleRate: lw.rate, channels: lw.wave.channels, levels: [], length: lw.wave.frames },
+          levels: [lw.wave.levelFor((view.spp * lw.rate) / sessionRate)],
+        } as unknown as PeakEntry)
+      : null;
+    for (const clip of liveClip ? [...track.clips, liveClip] : track.clips) {
+      const m = clip === liveClip ? liveMedia! : media.get(clip.media_id);
       const len = clipLength(clip, m, sessionRate);
       const x0 = xOf(clip.start, view);
       const x1 = xOf(clip.start + len, view);
@@ -145,7 +163,7 @@
 
       // Waveform.
       const body = { top: 1 + titleH, height: lh - 2 - titleH };
-      const entry = m ? peaks.get(m.path) : null;
+      const entry = clip === liveClip ? liveEntry : m ? peaks.get(m.path) : null;
       if (entry?.status === "ready" && entry.summary) {
         const ch = entry.summary.channels;
         const srcRate = m!.sample_rate || entry.summary.sampleRate;
@@ -325,44 +343,20 @@
 
       // Outline.
       g.globalAlpha = 1;
-      g.strokeStyle = selected ? "#ffffff" : color;
-      g.lineWidth = selected ? 1.5 : 1;
-      g.strokeRect(x0 + 0.5, 1.5, x1 - x0 - 1, lh - 3);
-    }
-
-    // A take being recorded: drawn as it arrives.
-    if (liveTake && liveTake.rate > 0 && liveTake.blocks.length) {
-      const per = (LIVE_BLOCK * sessionRate) / liveTake.rate; // session samples per block
-      const x0 = xOf(liveTake.at, view);
-      const x1 = xOf(liveTake.at + per * liveTake.blocks.length, view);
-      const left = Math.max(0, x0);
-      const right = Math.min(width, x1);
-      if (right > left) {
-        g.fillStyle = "rgba(229, 83, 75, 0.22)";
+      if (selected) {
+        // Clear selection: a light wash over the whole clip, a dark halo and a thick white outline.
+        g.fillStyle = "rgba(255, 255, 255, 0.14)";
         g.fillRect(left, 1, right - left, lh - 2);
-        g.fillStyle = css("--danger");
-        g.fillRect(left, 1, right - left, 14);
-        g.fillStyle = "#0e0e10";
-        g.font = `11px ${css("--font-ui")}`;
-        g.textBaseline = "middle";
-        g.fillText("Recording", left + 4, 8);
-        const top = 16;
-        const mid = top + (lh - 2 - top) / 2;
-        const half = (lh - 2 - top) / 2 - 1;
-        g.fillStyle = "#ff8a80";
-        for (let px = Math.floor(left); px < Math.ceil(right); px++) {
-          const b0 = Math.floor(((px + view.scroll / view.spp) * view.spp - liveTake.at) / per);
-          const b1 = Math.max(b0 + 1, Math.floor(((px + 1 + view.scroll / view.spp) * view.spp - liveTake.at) / per));
-          let lo = 0;
-          let hi = 0;
-          for (let b = Math.max(0, b0); b < Math.min(liveTake.blocks.length, b1); b++) {
-            lo = Math.min(lo, liveTake.blocks[b]![0]);
-            hi = Math.max(hi, liveTake.blocks[b]![1]);
-          }
-          const y0 = mid - Math.min(1, hi * ampZoom) * half;
-          const y1 = mid - Math.max(-1, lo * ampZoom) * half;
-          g.fillRect(px, y0, 1, Math.max(1, y1 - y0));
-        }
+        g.strokeStyle = "rgba(0, 0, 0, 0.7)";
+        g.lineWidth = 4;
+        g.strokeRect(x0 + 0.5, 1.5, x1 - x0 - 1, lh - 3);
+        g.strokeStyle = "#ffffff";
+        g.lineWidth = 2;
+        g.strokeRect(x0 + 0.5, 1.5, x1 - x0 - 1, lh - 3);
+      } else {
+        g.strokeStyle = color;
+        g.lineWidth = 1;
+        g.strokeRect(x0 + 0.5, 1.5, x1 - x0 - 1, lh - 3);
       }
     }
 

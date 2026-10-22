@@ -625,6 +625,11 @@ export function waveSpectralEdit(mask: SpectralMask, mode: "gain" | "repair", ga
 
 /** Renders `start..end` of the Waveform editor's file through `chain` into a new file, for replaceRange. */
 /** Waveform editor Stretch: `start..end` made `frames` long, pitch kept. */
+/** Reverse or invert `start..end` of the Waveform editor's file; the result swaps in with replaceRange. */
+export function waveReverseInvert(start: number, end: number, mode: "reverse" | "invert"): Promise<SpectralResult> {
+  return invoke<SpectralResult>("wave_reverse_invert", { start, end, mode });
+}
+
 export function waveStretch(start: number, end: number, frames: number): Promise<SpectralResult> {
   return invoke<SpectralResult>("wave_stretch", { start, end, frames });
 }
@@ -660,12 +665,14 @@ export interface Take {
 
 export interface LiveLevel {
   peak: number;
-  /** Min and max per block of LIVE_BLOCK frames. */
-  blocks: [number, number][];
+  /** Channels per block (1 or 2). */
+  channels: number;
+  /** Per block of LIVE_BLOCK frames, per channel: min then max, 16-bit, as the peak cache stores them. */
+  blocks: number[];
 }
 
-/** Frames per live waveform block (matches the core). */
-export const LIVE_BLOCK = 1024;
+/** Frames per live waveform block (matches the core, and the finest level of a finished file's peaks). */
+export const LIVE_BLOCK = 32;
 
 export interface RecordStatus {
   recording: boolean;
@@ -734,6 +741,11 @@ export function cacheInfo(): Promise<CacheInfo> {
 /** Deletes the saved waveform drawings (rebuilt when needed). Resolves to the bytes freed. */
 export function cacheClearPeaks(): Promise<number> {
   return invoke<number>("cache_clear_peaks");
+}
+
+/** Uses `path` for working files from now on; null goes back to the default folder in Documents. */
+export function cacheSetFolder(path: string | null): Promise<void> {
+  return invoke<void>("cache_set_folder", { path });
 }
 
 /** Opens the system's sound settings (inputs and outputs). */

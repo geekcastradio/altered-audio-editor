@@ -9,7 +9,7 @@
   reason, never faked.
 -->
 <script lang="ts">
-  import { cacheInfo, cacheClearPeaks, openSoundSettings, type CacheInfo } from "../core";
+  import { cacheInfo, cacheClearPeaks, cacheSetFolder, libraryPickFolder, openSoundSettings, type CacheInfo } from "../core";
   import { audioDriver, audioInputs, audioOutputs, type AudioDriver, type AudioInput } from "../core";
   import { BROADCAST_REGIONS, targetsFor } from "../loudness";
   import { DEFAULT_SETTINGS, NO_COLORS, TIMECODE_RATES, type AppColors } from "../../stores/settings";
@@ -57,6 +57,20 @@
   });
   async function refreshCache() {
     cache = await cacheInfo().catch(() => null);
+  }
+  async function chooseCacheFolder(reset: boolean) {
+    busy = true;
+    try {
+      const dir = reset ? null : await libraryPickFolder("Choose a folder for working files");
+      if (!reset && !dir) return;
+      await cacheSetFolder(dir);
+      await refreshCache();
+      onNotice("Working files will go to the new folder from now on. Waveform drawings are rebuilt as files are shown.");
+    } catch (e) {
+      onNotice(String(e));
+    } finally {
+      busy = false;
+    }
   }
   async function clearPeaks() {
     busy = true;
@@ -241,7 +255,11 @@
           {:else}
             <p class="note">Reading the cache folder…</p>
           {/if}
-          <label class="off"><button type="button" disabled>Move Cache...</button> <span class="why">The cache stays in the app's own folder for now.</span></label>
+          <div class="row">
+            <button type="button" disabled={busy} onclick={() => void chooseCacheFolder(false)}>Change Folder...</button>
+            <button type="button" disabled={busy} onclick={() => void chooseCacheFolder(true)}>Use Default</button>
+            <span class="why">The default is Documents\Altered Audio Editor\Cache. If Documents syncs to a cloud service, pick a local folder instead.</span>
+          </div>
         {:else if page === "Markers"}
           <label class="off"><input type="checkbox" disabled checked /> Marker changes can be undone <span class="why">Always on.</span></label>
           <label class="off"><input type="checkbox" disabled checked /> Markers move with cuts, pastes and crops <span class="why">Always on.</span></label>

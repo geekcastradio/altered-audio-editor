@@ -161,6 +161,7 @@
     probeMedia,
     sessionExportSesx,
     waveStretch,
+    waveReverseInvert,
   } from "./core";
   import { isTauri } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -187,7 +188,7 @@
   import { get, writable } from "svelte/store";
   import type { SessionRow } from "../panels/files/session-row";
   import { rasterize } from "../panels/editor/spectrum";
-  import { inputLevels, liveTakes, recordControl, recording } from "../stores/record";
+  import { inputLevels, liveTakes, LiveWave, recordControl, recording } from "../stores/record";
   import { stretchRange, amplifyRange, clampRange, copyRange, cropTo, deleteRange, fadeRange, insertFile, mixPasteAt, pasteAt, replaceRange, silenceRange, type WaveBoard } from "../panels/editor/wave-edit";
 
   let info = $state<AppInfo | null>(null);
@@ -757,7 +758,7 @@
   }
 
   // Mixdown. One export at a time, with a progress dialog.
-  let exporting = $state<{ title: string; progress: number } | null>(null);
+  let exporting = $state<{ title: string; progress: number; floating?: boolean } | null>(null);
 
   type MixSource = "all" | "selection" | "clips";
   type MixTarget = "file" | "files-panel" | "track";
@@ -968,11 +969,11 @@
       ]);
       if (ok !== "yes") return;
     }
-    exporting = { title: "Exporting playlist", progress: 0 };
+    exporting = { title: "Exporting playlist", progress: 0, floating: true };
     try {
       for (let i = 0; i < items.length; i++) {
         const m = items[i]!;
-        exporting = { title: `Exporting ${i + 1} of ${items.length}: ${m.name}`, progress: i / items.length };
+        exporting = { title: `Exporting ${i + 1} of ${items.length}: ${m.name}`, progress: i / items.length, floating: true };
         const r = await exportMixdown(paths[i]!, { range: [m.position, m.position + m.duration], format });
         if (r.cancelled) {
           showNotice(`Export stopped after ${i} of ${items.length} files.`);
@@ -1065,7 +1066,7 @@
   async function runMixdown(source: MixSource, target: MixTarget, path: string, format: OutputFormat | null, chapters = false) {
     const what = mixRange(source);
     if (!what || exporting) return;
-    exporting = { title: target === "track" ? "Bouncing to a new track" : "Exporting mixdown", progress: 0 };
+    exporting = { title: target === "track" ? "Bouncing to a new track" : "Exporting mixdown", progress: 0, floating: true };
     let off: (() => void) | null = null;
     try {
       off = await listen<{ done: number; total: number }>("export-progress", (e) => {
@@ -1133,7 +1134,7 @@
     let done = 0;
     try {
       for (const [i, t] of tracks.entries()) {
-        exporting = { title: `Exporting stem ${i + 1} of ${tracks.length}: ${t.name}`, progress: 0 };
+        exporting = { title: `Exporting stem ${i + 1} of ${tracks.length}: ${t.name}`, progress: 0, floating: true };
         off?.();
         off = await listen<{ done: number; total: number }>("export-progress", (e) => {
           if (exporting) exporting = { ...exporting, progress: e.payload.total > 0 ? e.payload.done / e.payload.total : 0 };
@@ -1332,6 +1333,11 @@
     const d = session.current;
     if (!d) {
       sessionRow.set(null);
+      return;
+    }
+    // A blank session nobody has touched is not listed as "Untitled Session".
+    if (!session.path && !files.dirty && d.tracks.every((t) => t.clips.length === 0)) {
+      if (get(sessionRow)) sessionRow.set(null);
       return;
     }
     const seconds = sessionEnd(d) / Math.max(1, d.sample_rate);
@@ -1856,6 +1862,21 @@
   }
 
   /** Effects > Pitch and Time > Stretch (Waveform editor): the selection, or the whole file, to a new length. */
+  async function waveReverseOrInvert(mode: "reverse" | "invert") {
+    const d = wave.current;
+    const r = waveAll();
+    const t = d?.tracks[0];
+    if (!d || !r || !t) return;
+    const label = mode === "reverse" ? "Reverse" : "Invert";
+    try {
+      const res = await waveReverseInvert(r[0], r[1], mode);
+      if (wave.current?.tracks[0]?.id !== t.id) return showNotice("You switched files while that was running, so it was not applied.");
+      await waveEdit(label, replaceRange(wave.current ?? d, res.start, res.end, res.media, label, uuid));
+    } catch (e) {
+      showError(e);
+    }
+  }
+
   async function waveStretchTo() {
     const d = wave.current;
     const r = waveAll();
@@ -1895,6 +1916,11 @@
     if (!d || !r || !t) return;
     const label = !wholeFile && waveSel() ? "Apply Voice Chain to Selection" : "Apply Voice Chain";
     const res = await waveApplyChain(chain, r[0], r[1]);
+    // The result belongs to the file the job started on. If another file is open now, do not apply it there.
+    if (wave.current?.tracks[0]?.id !== t.id) {
+      showNotice("You switched files while the effect was running, so it was not applied. Stay on the file until it finishes. To process many files, use Batch Convert.");
+      return;
+    }
     await waveEdit(label, replaceRange(wave.current ?? d, res.start, res.end, res.media, label, uuid));
     await wave.apply({ op: "set_effects", target: { kind: "track", id: t.id }, chain: chainOf(null) });
     if (!wholeFile) showNotice(`${label}: done. Undo takes it back.`);
@@ -1970,6 +1996,8 @@
   // Recording. Multitrack: every armed track records its input into
   // its own file, from the playhead, while the session plays. Waveform
   // editor: the take goes into the file at the playhead.
+  /** Loudest input peak seen during the current recording (0 to 1). */
+  let recPeakMax = 0;
   let take: { mode: "multitrack" | "wave"; at: number; plan?: RecordPlan; stopAfter?: number | null } | null = null;
   /** While recording, playback keeps going past the end of the old audio. */
   function holdEnd(on: boolean) {
@@ -2026,6 +2054,7 @@
         const at = wavePlayhead();
         await recordStart([{ key: "wave", input: settings.current.waveInput, channels, name: `${base} take ${stamp()}` }]);
         take = { mode: "wave", at };
+        liveTakes.set({ at, rate: 0, waves: {}, tick: 0 });
         holdEnd(true);
       } else {
         const doc = session.current;
@@ -2054,9 +2083,10 @@
         take = { mode: "multitrack", at, plan, stopAfter: punchStopAfter(plan, doc.sample_rate) };
         holdEnd(true);
         if (plan.punch) showNotice(`Punch-in: recording stops at the end of the time selection.`);
-        liveTakes.set({ at, rate: 0, blocks: {} });
+        liveTakes.set({ at, rate: 0, waves: {}, tick: 0 });
         void transport.play(at);
       }
+      recPeakMax = 0;
       recording.set({ active: true, seconds: 0, peak: 0 });
       startInputPoll();
     } catch (e) {
@@ -2078,7 +2108,10 @@
         inputLevels.set({});
         return;
       }
-      if (st.recording) recording.set({ active: true, seconds: st.seconds, peak: st.peak });
+      if (st.recording) {
+        recPeakMax = Math.max(recPeakMax, st.peak);
+        recording.set({ active: true, seconds: st.seconds, peak: st.peak });
+      }
       if (st.monitorNote && st.monitorNote !== lastMonitorNote) showNotice(st.monitorNote);
       lastMonitorNote = st.monitorNote ?? "";
       // A punch-in stops by itself at the end of the selection.
@@ -2098,9 +2131,12 @@
       if (st.recording) {
         liveTakes.update((lt) => {
           if (!lt) return lt;
-          const blocks = { ...lt.blocks };
-          for (const [k, v] of Object.entries(st.live)) if (v.blocks.length) blocks[k] = [...(blocks[k] ?? []), ...v.blocks];
-          return { ...lt, rate: st.rate, blocks };
+          const waves = { ...lt.waves };
+          for (const [k, v] of Object.entries(st.live)) {
+            if (!v.blocks.length) continue;
+            (waves[k] ??= new LiveWave()).push(v.channels, v.blocks, st.rate);
+          }
+          return { ...lt, rate: st.rate, waves, tick: lt.tick + 1 };
         });
       }
     }, 80);
@@ -2126,12 +2162,24 @@
     else stopInputPoll();
   }
 
+  /** Stops recording and places the take. The live waveform stays until the finished clip is in, so nothing is redrawn in between. */
   async function finishRecord() {
+    takePaths = [];
+    try {
+      await finishRecordInner();
+      // Keep drawing the live waveform until the finished take's own drawing is ready (up to 4 seconds).
+      for (let i = 0; i < 40 && takePaths.some((p) => peaks.get(p).status === "building"); i++) await new Promise((r) => setTimeout(r, 100));
+    } finally {
+      liveTakes.set(null);
+    }
+  }
+  let takePaths: string[] = [];
+
+  async function finishRecordInner() {
     const t = take;
     take = null;
     holdEnd(false);
     stopInputPoll();
-    liveTakes.set(null);
     recording.set({ active: false, seconds: 0, peak: 0 });
     let takes;
     try {
@@ -2145,11 +2193,18 @@
       setTimeout(() => syncMonitor(true), 0);
     }
     if (!t) return;
+    const silent = recPeakMax < 0.0005; // about -66 dBFS: nothing is arriving
     if (t.mode === "multitrack") await transport.stop();
     const usable = takes.filter((k) => k.length > 0);
+    takePaths = usable.map((k) => k.path);
     if (usable.length === 0) {
       showNotice("Nothing was recorded.");
       return;
+    }
+    if (silent && usable[0]!.length / Math.max(1, usable[0]!.sample_rate) >= 1) {
+      showNotice(
+        "No sound arrived while recording. On Mac, check System Settings > Privacy & Security > Microphone. On Windows, check Settings > Privacy > Microphone. Also check the input choice and its cable or gain.",
+      );
     }
     const media = (k: (typeof usable)[number]) => ({
       id: uuid(),
@@ -2433,7 +2488,7 @@
       ...["fx.spectrum.reduce-12", "fx.spectrum.reduce-24", "fx.spectrum.remove", "fx.spectrum.repair"].map((id) =>
         actions.register({ id, run: () => {}, enabled: () => false, reason: () => NOT_WAVE }),
       ),
-      ...["edit.mix-paste", "edit.crop", "fx.silence", "fx.fade-in", "fx.fade-out", "fx.amplify", "fx.normalize"].map((id) =>
+      ...["edit.mix-paste", "edit.crop", "fx.invert", "fx.reverse", "fx.silence", "fx.fade-in", "fx.fade-out", "fx.amplify", "fx.normalize"].map((id) =>
         actions.register({ id, run: () => {}, enabled: () => false, reason: () => NOT_WAVE }),
       ),
       ov(waveFocus, {
@@ -2569,6 +2624,8 @@
         },
       }),
       ov(waveIsOpen, { id: "fx.normalize", run: () => waveNormalize() }),
+      ov(waveIsOpen, { id: "fx.invert", run: () => waveReverseOrInvert("invert") }),
+      ov(waveIsOpen, { id: "fx.reverse", run: () => waveReverseOrInvert("reverse") }),
       ov(waveIsOpen, { id: "clip.stretch", run: () => waveStretchTo(), label: () => "Stretch Selection or File..." }),
       ...(
         [
@@ -2651,6 +2708,9 @@
       actions.register({ id: "help.shortcuts", run: () => void (shortcutsOpen = true) }),
       actions.register({ id: "help.website", run: () => openLink(LINKS.website) }),
       actions.register({ id: "help.book", run: () => openLink(LINKS.book) }),
+      actions.register({ id: "help.discord", run: () => openLink(LINKS.discord) }),
+      actions.register({ id: "help.github", run: () => openLink(LINKS.github) }),
+      actions.register({ id: "help.report", run: () => openLink(LINKS.report) }),
       actions.register({ id: "help.about", run: () => void (aboutOpen = true) }),
       actions.register({
         id: "file.import-files",
@@ -3954,7 +4014,7 @@
 {/if}
 
 {#if exporting}
-  <ExportProgress title={exporting.title} progress={exporting.progress} onCancel={() => void exportCancel()} />
+  <ExportProgress title={exporting.title} progress={exporting.progress} floating={exporting.floating === true} onCancel={() => void exportCancel()} />
 {/if}
 
 {#if promptReq}

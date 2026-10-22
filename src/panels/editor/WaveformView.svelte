@@ -15,6 +15,7 @@
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import { editor, type EditorState } from "../../stores/editor";
   import type { PeakStore } from "../../stores/peaks";
+  import { liveTakes, type LiveTakes } from "../../stores/record";
   import { clipLength, sessionEnd, type ClipDoc, type SessionDoc, type SessionStore } from "../../stores/session";
   import type { TransportState, TransportStore } from "../../stores/transport";
   import { onDestroy } from "svelte";
@@ -60,6 +61,13 @@
   );
   let peakTick = $state(0);
   $effect(() => peaks.subscribe(() => peakTick++));
+  /** The take being recorded into this file, drawn as it arrives. */
+  let live = $state<LiveTakes | null>(null);
+  $effect(() =>
+    liveTakes.subscribe((v) => {
+      live = v;
+    }),
+  );
   let tick = $state(0);
   $effect(() =>
     actions.changed.subscribe((n) => {
@@ -178,6 +186,7 @@
   // Waveform.
   $effect(() => {
     void peakTick;
+    void live?.tick;
     const c = canvas;
     if (!c || !doc) return;
     const dpr = window.devicePixelRatio || 1;
@@ -269,6 +278,38 @@
           const y0 = mid - Math.min(1, hi * k) * half;
           const y1 = mid - Math.max(-1, lo * k) * half;
           g.fillRect(px, y0, 1, Math.max(1, y1 - y0));
+        }
+      }
+    }
+
+    // The take being recorded: its live peak data, drawn by the same code as the clips above.
+    const lw = live && live.rate > 0 ? live.waves["wave"] : undefined;
+    if (live && lw && lw.blocks > 0) {
+      const srcRate = live.rate;
+      const len = Math.round((lw.frames * rate) / srcRate);
+      const x0 = Math.max(0, Math.floor(xOf(live.at, view)));
+      const x1 = Math.min(w, Math.ceil(xOf(live.at + len, view)));
+      if (x1 > x0) {
+        // The new take lies over what is there until Stop; hide it so the take reads alone.
+        g.fillStyle = css("--surface-0") || "#111";
+        g.fillRect(x0, 0, x1 - x0, h);
+        const framesPerPx = (view.spp * srcRate) / rate;
+        const level = lw.levelFor(framesPerPx);
+        g.fillStyle = waveColor;
+        for (let px = x0; px < x1; px++) {
+          const rel = view.scroll + px * view.spp - live.at;
+          if (rel < 0 || rel >= len) continue;
+          const s0 = (rel * srcRate) / rate;
+          const s1 = Math.min(lw.frames, s0 + framesPerPx);
+          for (let ch = 0; ch < channels; ch++) {
+            const top = ch * laneH;
+            const mid = top + laneH / 2;
+            const half = laneH / 2 - 2;
+            const [lo, hi] = peakRange(level, lw.channels, Math.min(ch, lw.channels - 1), s0, Math.max(s0 + 1, s1));
+            const y0 = mid - Math.min(1, hi * ampZoom) * half;
+            const y1 = mid - Math.max(-1, lo * ampZoom) * half;
+            g.fillRect(px, y0, 1, Math.max(1, y1 - y0));
+          }
         }
       }
     }

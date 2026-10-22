@@ -11,13 +11,15 @@
     /** 0 to 1. */
     progress: number;
     onCancel: () => void;
+    /** Small card in the corner; the app stays usable while it runs. */
+    floating?: boolean;
   }
 
-  const { title, progress, onCancel }: Props = $props();
+  const { title, progress, onCancel, floating = false }: Props = $props();
 </script>
 
-<div class="backdrop">
-  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="export-title">
+<div class="backdrop" class:floating>
+  <div class="dialog" role="dialog" aria-modal={!floating} aria-labelledby="export-title">
     <h1 id="export-title">{title}</h1>
     <div class="bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)}>
       <div style:width="{Math.round(progress * 100)}%"></div>
@@ -37,6 +39,17 @@
     display: grid;
     place-items: center;
     background: rgba(0, 0, 0, 0.5);
+  }
+
+  .backdrop.floating {
+    place-items: end end;
+    padding: 36px 16px;
+    background: none;
+    pointer-events: none;
+  }
+
+  .floating .dialog {
+    pointer-events: auto;
   }
 
   .dialog {

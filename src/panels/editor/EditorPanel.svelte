@@ -356,9 +356,44 @@
     menu = { x: e.clientX, y: e.clientY, items };
   }
 
+  /** Ctrl + wheel over a track header: taller or shorter track (Ctrl+Shift: all tracks). Committed as one edit after the wheel stops. */
+  let wheelTimer: ReturnType<typeof setTimeout> | undefined;
+  function wheelResizeTracks(e: WheelEvent) {
+    const head = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-header]");
+    const id = head?.dataset.header;
+    const track = id ? doc?.tracks.find((t) => t.id === id) : undefined;
+    if (!track) return;
+    const step = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    if (e.shiftKey) {
+      heightPreview = Math.max(0.2, Math.min(8, heightPreview * step));
+    } else {
+      const cur = resizing?.id === track.id ? resizing.h : track.height;
+      resizing = { id: track.id, h: Math.max(40, Math.min(600, Math.round(cur * step))) };
+    }
+    clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(() => {
+      if (heightPreview !== 1) {
+        const f = heightPreview;
+        heightPreview = 1;
+        resizeTracks(f);
+      }
+      if (resizing) {
+        const r = resizing;
+        resizing = null;
+        const t = doc?.tracks.find((x) => x.id === r.id);
+        if (t && t.height !== r.h) setTrack(t, { height: r.h, collapsed: false }, "Track Height");
+      }
+    }, 300);
+  }
+
   function onWheel(e: WheelEvent) {
     if (!lanesEl) return;
     const left = lanesEl.getBoundingClientRect().left;
+    if (e.ctrlKey && e.clientX < left) {
+      e.preventDefault();
+      wheelResizeTracks(e);
+      return;
+    }
     if (e.altKey) {
       // Same as the Waveform editor: Alt + wheel scales the waveforms.
       e.preventDefault();
@@ -670,6 +705,18 @@
       }
       editor.selectClips(next, track.id);
       return;
+    }
+    if (e.shiftKey && e.button === 0 && doc) {
+      // Shift+click: every clip on this track from the nearest selected clip to this one.
+      const mine = track.clips.filter((c) => ed.selectedClips.has(c.id));
+      if (mine.length) {
+        const near = mine.reduce((a, b) => (Math.abs(a.start - clip.start) <= Math.abs(b.start - clip.start) ? a : b));
+        const lo = Math.min(near.start, clip.start);
+        const hi = Math.max(near.start, clip.start);
+        const range = track.clips.filter((c) => c.start >= lo && c.start <= hi).map((c) => c.id);
+        editor.selectClips(withGroups(doc, [...ed.selectedClips, ...range]), track.id);
+        return;
+      }
     }
     if (!ed.selectedClips.has(clip.id) && doc) editor.selectClips(withGroups(doc, [clip.id]), track.id);
     if (e.button === 0 && doc) {
@@ -1070,6 +1117,8 @@
 
   function trackItems(track: TrackDoc): ContextItem[] {
     return [
+      { kind: "item", label: "Select All Clips on Track", disabled: track.clips.length === 0, run: () => editor.selectClips(withGroups(doc!, track.clips.map((c) => c.id)), track.id) },
+      { kind: "sep" },
       { kind: "item", label: "Rename Track", run: () => (renaming = track.id) },
       { kind: "item", label: "Duplicate Track", run: () => { editor.selectTrack(track.id); run("multitrack.duplicate-track"); } },
       { kind: "item", label: "Delete Track", run: () => { editor.selectTrack(track.id); run("multitrack.delete-track"); } },
@@ -1362,6 +1411,7 @@
     <div class="corner header-views" style:width="{HEADER_W}px">
       <!-- What the track headers show. Only the mix controls exist so far; the
            other views arrive with recording (P4) and effects and buses (P5). -->
+      {#if ed.selectedClips.size > 1}<span class="selcount" aria-live="polite">{ed.selectedClips.size} clips selected</span>{/if}
       <div class="views" role="radiogroup" aria-label="Track header view">
         <button type="button" class="view on" role="radio" aria-checked="true" title="Mix: volume, pan, mute, solo and arm">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2v12M8 2v12M12 2v12" stroke="currentColor" stroke-width="1" opacity="0.6" /><rect x="2.5" y="8" width="3" height="2" fill="currentColor" /><rect x="6.5" y="4.5" width="3" height="2" fill="currentColor" /><rect x="10.5" y="10" width="3" height="2" fill="currentColor" /></svg>
@@ -1590,7 +1640,7 @@
                 trackSelected={ed.selectedTrack === track.id}
                 index={i}
                 {ampZoom}
-                liveTake={live && live.blocks[track.id] ? { at: live.at, rate: live.rate, blocks: live.blocks[track.id]! } : null}
+                liveTake={live && live.waves[track.id] ? { at: live.at, rate: live.rate, wave: live.waves[track.id]!, tick: live.tick } : null}
                 {peaks}
                 {peakTick}
                 showVolume={ed.showVolume}
@@ -1873,6 +1923,13 @@
   .vwrap {
     display: flex;
     min-height: 0;
+  }
+
+  .selcount {
+    font-size: 11px;
+    color: var(--text-dim, #a0a0a8);
+    white-space: nowrap;
+    padding: 0 6px;
   }
 
   .scroller {

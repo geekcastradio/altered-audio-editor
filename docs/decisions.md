@@ -928,3 +928,20 @@ A user report on 0.1.3 listed five problems. All five are addressed in 0.1.4.
 
 - Settings > Devices now runs its three lookups one after another, and the ASIO driver list is read from the registry instead of loading every driver. A driver is only loaded when the user turns ASIO on. Reason: loading drivers in parallel is the leading suspect for the instant close; unverified until run on Windows. If it still crashes, the next step is the crash-guard marker file.
 - Added a contributor kit (CONTRIBUTING, ROADMAP with starter issues and project goals, issue forms, PR checklist). The goals section describes what users should be able to do and names no outside sources or products.
+
+## 2026-10-21: 0.1.8 scope and choices
+
+- Kept 0.1.8 to fixes that are small and certain; Invert and Reverse, the live recording waveform, export progress and the track-header wheel work went to contributor issues (ROADMAP.md). Reason: limited build credits, and each needs its own design pass.
+- Crash recovery skips autosaves whose writing copy has a lock file touched in the last 150 seconds. Cost: after a real crash, restarting within 2.5 minutes hides the recovery offer until the lock goes stale. Chosen over a process-list check to stay portable with no new dependency.
+- Apply Voice Chain checks that the same file is still open when the result arrives and refuses otherwise. A true background task with progress and Cancel is a contributor issue.
+- Working files default to `Documents\Altered Audio Editor\Cache`, picked folder stored in `cache-folder.txt` in the app config folder. Recordings and untitled files stay inside that cache folder for now (not the Sessions and Templates subfolders planned earlier). Existing files are not moved; drawings rebuild.
+- Silent-recording note triggers when the loudest input peak for a take of one second or more stays under about -66 dBFS.
+- GitHub and Discord added to the Help link allow list (github.com and discord.gg hosts). The app still makes no network requests of its own.
+
+## 2026-10-21 (second pass): live waveform, Invert and Reverse, export card, bulk selection
+
+- Live recording waveform now uses the finished file's own peak form: the core reports 32-frame min and max blocks per channel, 16-bit, scaled and rounded as the peak builder does; the interface merges to coarser levels at 10 and 60 minutes and picks levels the way a finished file does; both editors draw it with the same code as clips. It replaces the old 1024-frame block path. Reason: nothing may be swapped or redrawn at Stop. The live data is not byte-compared against the finished cache yet (a contributor test); a partial last block under 32 frames is not drawn live.
+- Reverse and Invert render the range to a new file in the working folder and replace it, like Stretch, so they are undoable and destructive only to the file's edit list.
+- Export, bounce, stems and playlist export use a corner progress card (the core exports a cloned session). Other long jobs (save audio, merge, repair) keep the blocking dialog because they change the open session.
+- Ctrl+wheel over track headers (one track) and Ctrl+Shift+wheel (all tracks) were requested by the project lead and are approved.
+- Closing the session and working without one is logged as backlog 3e with a proposed start screen; not built.

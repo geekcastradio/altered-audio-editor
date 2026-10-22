@@ -16,6 +16,12 @@ export const LINKS = {
   plugins: null as string | null,
   /** Optional support page (Help > Support Altered Audio Editor). Never shown anywhere else. */
   support: "https://paypal.me/scp21" as string | null,
+  /** Source code and issues. */
+  github: "https://github.com/geekcastradio/altered-audio-editor",
+  /** Opens the bug form. */
+  report: "https://github.com/geekcastradio/altered-audio-editor/issues/new/choose",
+  /** Community chat invite. */
+  discord: "https://discord.gg/xTT5N65y",
   /** The project lead's book, Altered Audio: Podcasting Demystified. */
   book: "https://www.barnesandnoble.com/w/altered-audio-steve-phillips/1147888459",
 } as const;
