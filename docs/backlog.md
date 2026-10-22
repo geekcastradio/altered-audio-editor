@@ -1,6 +1,6 @@
 # Backlog
 
-Planned work, roughly in the order it will be picked up. Nothing here is built yet. Controls for unbuilt features show as disabled with the reason.
+Planned work, roughly in the order it will be picked up. Entries say what is built and what is not; the table under "Roadmap audit" is the current status. Controls for unbuilt features show as disabled with the reason.
 
 ## Multitrack: right-click menu on an empty track (built)
 
@@ -84,7 +84,7 @@ The app has zero network calls today, and the CI privacy guard enforces that. Do
 
 Collected from the project's Discord group. Each entry says what we will build, where it fits, and the catch to settle before building. Nothing here is started. Order of work is at the end.
 
-### 1. Scripting, schemas and an AI-assistant endpoint
+### 1. Scripting, schemas and an AI-assistant endpoint (schemas built; scripting and endpoint not started)
 
 - **Scripting.** User macros and batch transforms in a sandboxed script engine. Plan: JavaScript run by an engine embedded in the Rust core (QuickJS through the `rquickjs` crate), with no file, network or process access and only a small, versioned API that calls the same actions the menus use. Every script edit goes through the undo stack as one step. Lua is the alternative; JavaScript wins because the interface and users already know it.
 - **Schemas and types.** Schemas for every file format stay in `/schemas`, generated from the Rust types so they cannot drift. Add generated TypeScript definitions for the script API and the file formats. We will not publish an OpenAPI spec: there is no HTTP API, and adding one would break the no-network rule. Our real file names are `.altaudio` (session), `.altemplate`, `.alworkspace`, `.alhost`, `.alkeys`, `.alprefs` and `library.json`; the request's `.altaudio.session` style names are not used.
@@ -99,7 +99,7 @@ Collected from the project's Discord group. Each entry says what we will build, 
 - **Shortcut:** the request says Alt+Drag. New shortcuts need project lead approval, so this is listed, not assigned. Until approved, stretch is a Clip menu command with a length field and a tool-strip mode.
 - **Phase:** P3 or P4 editing. High value for ad work. Early candidate.
 
-### 3. Plugin hosting
+### 3. Plugin hosting (not started)
 
 - **VST3** hosting on tracks and the master, then optionally **CLAP** (an open, simpler format). The VST3 SDK is MIT licensed, so hosting inside a GPL app is clean.
 - **VST2 is not planned.** Steinberg stopped licensing the VST2 SDK, so shipping a VST2 host is a legal risk for a public project. We can revisit if the terms change. This is a deliberate decision, logged in `decisions.md`.
@@ -108,19 +108,19 @@ Collected from the project's Discord group. Each entry says what we will build, 
 - **Not the `nih-plug` crate:** that is for writing plugins. Hosting needs the VST3 interfaces directly (for example the `vst3` crate) or our own bindings.
 - **Phase:** P5, with Realtime Export (some live plugins misbehave when a mixdown renders faster than playback).
 
-### 4. Low-latency audio on Windows (ASIO) and discrete channels
+### 4. Low-latency audio on Windows (ASIO) and discrete channels: ASIO built for 0.1.5 (needs hardware testing); routing matrix, buffer size and latency controls still to do
 
 - Add ASIO next to the current Windows audio paths, through the audio library we already use. Check the ASIO SDK licence terms before shipping a build that includes it; do not assume they fit a GPL release.
 - Per-channel input and output routing so each track can take its own channel from a multi-microphone interface, plus loopback channels for system audio.
 - **Phase:** P4 recording. Needs real hardware to test. Latency compensation and punch-in already sit in that phase.
 
-### 5. MIDI and virtual instruments
+### 5. MIDI and virtual instruments (not started)
 
 - A MIDI track type with clips, playback and a piano roll, virtual instruments on those tracks (depends on plugin hosting), and external controller mapping to transport, faders, pan and trigger pads.
 - **Phase:** its own phase after Podcast mode, as already planned. The soundboard-trigger use (pads that fire clips) is small and could ship earlier without the piano roll.
 - **Catch:** the piano roll and instrument hosting are a second product. Controller mapping for transport and faders is cheap and could come first.
 
-### 6. Markers, playlist and video
+### 6. Markers, playlist and video (markers, Playlist and chapter export built; video and ADR not started)
 
 - **Markers:** point, range, chapter and cue markers with labels, colors and notes in both editors. Most exist already. Add colors, notes and the Waveform editor.
 - **Playlist panel:** sequence marked ranges, preview the arrangement without changing the clips, and export each segment as its own file.
@@ -129,7 +129,7 @@ Collected from the project's Discord group. Each entry says what we will build, 
 - **Catch:** a web view's video element cannot step exact frames. Frame-accurate preview needs our own decoder path, probably FFmpeg (LGPL build, dynamically linked, licence noted). Writing audio back without touching the video is a stream copy, which is the easy half. Check which containers to support.
 - **Phase:** markers, playlist and chapter export in P3 to P7 as listed. Video and ADR as their own phase, tied to Voiceover mode.
 
-### 7. Podcast tools
+### 7. Podcast tools (loudness and silence handling built; ducking, alignment and bleed not started)
 
 - **Auto-ducking:** one setting that lowers music tracks while chosen speech tracks are active. Fits the effects engine (P5). A simple version needs only volume envelopes and QuickPass's speech detection, so a first release can come before the full compressor-style version.
 - **One-click loudness:** built 2026-10-17 as Effects > Loudness Match, with broadcast targets by region (US -24 by default).
@@ -234,3 +234,233 @@ Spitballed by the project lead: off by default, never required. Local first (a l
 - A sound that turned strange after about five hours in a session (fixed by re-adding the file). Needs a way to reproduce.
 - Default shortcuts Alt+Up and Alt+Down for Move to Track Above and Below, if approved.
 - Pitch Shift needs a short how-to (its controls and what Semitones and Cents do).
+
+## Next round, in order (set 2026-10-20)
+
+1. **Crash when opening Settings > Devices (top priority, confirmed by two testers and the project lead, with and without an audio interface).** The app closes at once, no error. One tester's interface (a Focusrite Vocaster Two) made it worse: with it unplugged the crash stopped; plugged back in it crashed again on the second visit. Reproduce on the same page: Edit > Settings > Devices.
+   - **What the page does when it opens:** three device lookups at the same time (outputs, inputs, and the list of installed ASIO drivers). The ASIO lookup asks every installed ASIO driver to load itself so it can report its channels. A buggy or busy driver (interface drivers are the usual suspects) can take the whole process down with a native crash that no error handler can catch, which matches "closes instantly". Release builds include ASIO since 0.1.5. The crash also happened on 0.1.6 for the project lead. The first tester is probably not on 0.1.3 (Settings does not open there) and may be on 0.1.4, which has no ASIO, so there are two suspects: the ASIO driver list (0.1.5 and later) and the plain system device lookup that every version runs when the page opens. If both versions crash, the plain lookup (or the page itself) is the common cause.
+   - **Fix plan:** (a) list ASIO driver names from the Windows registry without loading any driver; load one only when the user picks it. (b) Run the three lookups one after another, not in parallel. (c) Crash guard: write a marker file before touching ASIO or a device list; if it is still there at the next start, skip that lookup, show a one-line note and offer Try Again. (d) Show devices as "loading" first so the page never waits on hardware. (e) Longer term, load ASIO in the same helper-process style planned for plugins.
+   - **To confirm the cause we need:** the app version, and the Windows crash entry (Event Viewer > Windows Logs > Application, the "Application Error" line with the faulting module name), or the output of `npm run tauri dev` from a repro. A quick split test: `npm run tauri dev` builds without ASIO and prints errors in the terminal. If the page crashes there too, the cause is the plain lookup or the page; if only the release build crashes, it is ASIO.
+   - **Interim option:** ship the next release with ASIO driver listing off until the fix lands.
+1b. **macOS: recording gives a flat waveform (reported by a tester on the 0.1.6 Apple silicon build; fix prepared, untested).** macOS denies microphone access silently because the app has no microphone usage description in its Info.plist and its signature carries no audio-input entitlement, so the app never appears in System Settings > Privacy & Security > Microphone and every input records silence.
+   - **Fix (config only, no code):** add `src-tauri/Info.plist` with `NSMicrophoneUsageDescription` (Tauri merges that file automatically), add `src-tauri/Entitlements.plist` with `com.apple.security.device.audio-input`, and point `bundle.macOS.entitlements` at it in `tauri.conf.json` (hardened runtime on). These three files are prepared in the repo copy. The first recording after install then triggers the standard permission prompt.
+   - **Not from the suggested steps:** the config key is `infoPlist`, not `infoPlistPath`, and a stray key fails the config check, so a copied snippet would break the build. We also have no Apple Developer ID, so there is no Developer ID signing or notarization; the release build keeps its ad hoc signature (`APPLE_SIGNING_IDENTITY: "-"`), and the entitlement and usage string work with that. A manual `codesign` step is not needed because Tauri signs with the entitlements file when it is configured.
+   - **Cons to know:** ad hoc signed apps may be asked for microphone permission again after an update, because macOS ties the grant to the signature. Users still open the app with right-click, Open the first time.
+   - **Also add:** when a recording is silent from the first second, show a one-line note naming the likely cause ("No sound is arriving. On Mac, check System Settings > Privacy & Security > Microphone, and on Windows the microphone privacy setting"), instead of a flat line with no explanation.
+   - **Verify:** the Apple silicon CI build must go green, then the tester retests. Check with `codesign -d --entitlements - Altered.app` on a Mac that the entitlement is present.
+2. **Cache and Files: a default folder in Documents, easy to change (requested and revised 2026-10-20).** Today the waveform cache, effect results and unsaved recordings go to the app's own hidden folder, and Settings > Cache and Files has a disabled Move Cache button. Change: everything defaults to one visible folder, `Documents\Altered Audio Editor\`, created on first use, with subfolders `Cache`, `Recordings`, `Sessions` and `Templates`. Every location can be changed in Settings > Cache and Files with a Browse button, and a first-run note says where things go and how to change it. Saved sessions keep their Recordings folder beside the session file, as now.
+   - **Settings page layout (from a tester example, our own wording):** Working files: primary folder and an optional second folder (used when the first is full). Waveform drawings: a checkbox to keep them next to the original audio files when possible, a folder for the rest, and a Clean button. Templates folder with Browse. A "Save waveform drawings" checkbox (on by default). Free space shown beside each folder. Moving a folder copies first, then switches over, with progress.
+   - **Pros:** visible and easy to find and back up; one place to clean; people with a small system drive can point it at a bigger disk in two clicks; no setup screen to get through.
+   - **Cons and mitigations:** (a) Windows often redirects Documents into OneDrive, and then gigabytes of cache and recordings would sync and files can lock mid-recording. Detect a Documents path inside OneDrive (or another sync folder) and warn on first run, offering a local folder instead. (b) Cache is disposable but Recordings are not: only the cache and working files get a Clean button, never Recordings. (c) A chosen folder that later goes missing (unplugged drive): fall back to the default with a one-line notice, never fail silently. (d) Network or removable drives get a dropout warning.
+   - **Needs:** a folders section in the preferences file, the existing cache commands reading it instead of the app cache folder, a writable-folder check, a move command with progress, and the sync-folder detection.
+3. **Live recording waveform: draw exactly what the finished file will look like (reported 2026-10-20, applies to the Waveform editor and the multitrack).** Two problems. (a) The Waveform editor draws nothing until Stop: it records under the key "wave", but `WaveformView.svelte` never reads the live-take store that the multitrack view uses. (b) Even in the multitrack, the live picture is a different drawing from the final one: live blocks are 1024 frames each and go through a separate drawing path, while the finished file uses the peak cache (32 or 64 frames per value at the finest level) and the normal drawing code. So the live waveform looks blockier and then visibly changes when the take is replaced after Stop. The rule from now on: **what you see while recording is the same data and the same drawing as the finished waveform, so nothing is swapped or redrawn at Stop.**
+   - **Fix:** build the peak cache while recording instead of a separate live block list. Each time frames are written, append their min and max at the finest level (32 frames) and update the coarser levels, using the same rounding and scaling as the peak builder. Both editors then draw the growing take through the existing peak drawing path, so there is one renderer and one data source. Coarser levels are exact min and max combinations of finer ones, so the 64-frame level used for long files is derived from the 32-frame data with no loss. At Stop the cache is finalized and saved as the file's normal cache; no rebuild.
+   - **Waveform editor:** draw the take from the end of the file (or the punch point), grow and scroll the view with it, then keep the same view at Stop.
+   - **Things that could make it differ, to check:** device rate against file rate (record at the device rate and do not resample), recording offset and latency compensation (apply the same shift to the live drawing as to the saved clip, or the picture jumps when it is applied), input gain or monitoring effects (draw the signal that is written to the file, not the monitored one), and the meters and time readout during a Waveform recording.
+   - **Tests:** a Rust test that the incrementally built levels are byte-identical to levels built from the finished file; a check that a recorded take draws the same pixels just before and just after Stop.
+   - Small to medium. The data path exists; the work is replacing the live block format with incremental peak levels.
+3b. **Two reports on long jobs (2026-10-20).**
+   - **Apply to Whole File in the Waveform editor breaks if you switch files while it runs, with an error in the status bar.** The result comes back for the file the job started on, but the editor applies it to whichever file is open by then. **Fix:** tag every long job with the file it started on and apply the result to that file's own document (open or parked), never to "the current file"; or lock file switching with a clear "Applying, please wait" until it ends (cheap stopgap). Better: run Apply as a background task with progress in the status bar and a Cancel, so several files can be processed one after another. Applying the same Voice Chain to many files at once already exists in Batch Convert (processing presets); say so in the error text for now.
+   - **Exporting a multitrack session locks the whole app until it finishes, and a second copy of the app offers to recover "the unsaved session" that the first copy is exporting.** Two causes. (a) The export already runs on a worker thread over a copy of the session, but the interface shows a full-window progress overlay (the `exporting` state in `App.svelte`) that blocks everything. **Fix:** show export progress in the status bar with a Cancel and let the user keep working; edits made during an export do not change the export because it uses its own snapshot. (b) Crash recovery lists every autosave in the shared folder, so a live second copy looks like a crashed one. **Fix:** each running copy writes a small lock file with its process id into the autosave folder, and recovery skips autosaves whose lock belongs to a running process. Alternative: allow only one running copy and focus the open window when a second is started. **Pros of the lock file:** two windows can work on two projects. **Cons:** more code, and stale locks need a process check. Recommended: the lock file, since the single-window route would block the "second copy" workflow the tester used as a workaround.
+4. Small and certain items from the table below: Help and About links, Invert and Reverse, QuickPass layout, Files panel New File, View menu fill-in, empty window on launch, Voice Chain slot menu by family, audio hardware settings that need no hardware.
+5. **Shortcuts.** Assign the approved set in `CLAUDE.md` as each feature lands: Home and End, marker navigation, M for a marker, nudge clip, zoom keys and the rest. Wire the ones whose features already exist first (Home, End, M, zoom, Ctrl+Left and Right, nudge, Alt+Up and Down), then the others with their features.
+6. Then the build order at the end of this audit (time-based effects, master and bus tracks, and so on).
+
+## Roadmap audit (2026-10-20)
+
+Checked against the code. "Built" means it is in the repo and tested in the sandbox; none of the audio work has been tried on real hardware yet.
+
+| Area | Status | What is left |
+| --- | --- | --- |
+| Scripting, schemas, assistant endpoint | Schemas built (`/schemas`, with a test that keeps them current). Scripting and endpoint not started. | Generated TypeScript definitions. QuickJS script engine. Local stdio and pipe endpoint, off by default, read-only first. No OpenAPI (no HTTP API, no network). |
+| Time stretch and varispeed | Built: Clip > Time Stretch, Alt+drag on a clip edge, pitch kept (WSOLA) or tape-style, about 25 percent either way, exact-length stretch in the Waveform editor (0.1.6). | Formant keeping, a higher quality engine (Rubber Band is GPL, needs a note in `ATTRIBUTION.md`, decide by listening tests on speech). |
+| Plugin hosting (VST3) | Not started. | Separate helper process, shared-memory audio, plugin windows, scan list. VST2 stays out. |
+| ASIO and channel routing | ASIO built (Cargo feature, on in release builds, falls back to the normal driver). Per-channel input picking built. | Hardware testing. Buffer size, sample rate and latency controls. Output routing and a routing matrix. Loopback channels. |
+| MIDI and instruments | Not started. | See the MIDI plan below. |
+| Markers, Playlist, chapters | Built: point, range, chapter, cue, ad slot and social clip markers with colors and notes, Playlist panel, chapter export (files and embedded), Waveform editor cue points. | Clip markers that move with their clip (check), marker keyboard navigation (needs shortcut approval). |
+| Video and ADR | Not started. | See the video plan below. |
+| Podcast tools | One-click loudness built (Loudness Match, targets by region and custom). Silence and breath handling built non-destructively (QuickPass Turn Down, Breath Gate). Phase Align and Phase Rotate built. | Auto-ducking. Multi-mic alignment and bleed reduction. A smarter breath detector. |
+
+### Plan and catches for the unbuilt parts
+
+- **Scripting (QuickJS).** Sandboxed: no file, network or process access. The script API is a small versioned set of the same actions the menus run. A script run is one labelled, undoable step. Ships with generated `.d.ts` files so editors can complete the API. **Pros:** JavaScript is what the interface already speaks. **Cons:** a second language surface to keep stable. We version the API from day one.
+- **Local assistant endpoint.** A companion program speaks the Model Context Protocol over stdio and reaches the editor through a local pipe. Never the network. Off by default; a second, explicit switch allows edits and exports. Every assistant edit is labelled in History and undoable. No write access outside the session folder.
+- **VST3 hosting.** The SDK is MIT licensed, so hosting is clean. Plugins run in a separate helper process so a crashing plugin shows an error on its slot and the session carries on. Plugin windows open beside the editor rather than inside it. The `nih-plug` crate is for writing plugins, not hosting them. CLAP is a later option. VST2 is excluded on purpose: Steinberg no longer licenses the SDK, so a public project cannot ship it. This is the largest single piece of work.
+- **MIDI.** First step is small and useful: controller mapping (transport, faders, pan, trigger pads that fire clips) with a MIDI-learn dialog. Piano roll and instrument hosting are a second product and wait on plugin hosting. Control surface protocols (the common mixing-console ones) are fiddly and cannot be tested without the hardware, so they come after generic MIDI-learn.
+- **Video reference track and ADR.** Import video as a reference track, resizable preview, frame-accurate stepping, pre-roll beeps and visual cue, loop regions, audio extraction on import, and writing the finished mix back into the original container without re-encoding the picture. **Catch:** a web view cannot step exact frames, so we need our own decoder path (an LGPL FFmpeg build, dynamically linked, credited in `ATTRIBUTION.md`). Writing audio back is a stream copy and is the easy half.
+- **Auto-ducking.** One setting: music tracks lower while chosen speech tracks are active, with attack, release and depth. A first version can use the speech detection QuickPass already has and write volume envelopes (visible, editable, undoable). The live sidechain version follows with the master chain work.
+- **Multi-mic alignment and bleed.** Estimate each microphone's delay against the others and shift it (Phase Align already shifts by a fixed amount). Bleed removal quality varies; ship alignment first, gate-based bleed reduction second.
+
+## Menus, settings and behavior build-out (2026-10-20)
+
+Feature checks and requests from testers, grouped by area, with status. Behavior only: names, layout and visuals stay our own.
+
+### Help menu and About
+- Keep our Help menu. Add Join our Discord, the project on GitHub, and Report a Problem opening the GitHub issues page. Remove Show Log Files. About gets links to the website, GitHub and Discord, and a credits list (libraries and contributors from `ATTRIBUTION.md`). Liven it up a little, never at the editor's expense.
+- The new links go on the allow list in `src-tauri/src/commands/links.rs`. Not built.
+
+### Opening the app
+- A clean empty window on launch, not a multitrack session with six tracks. Approved 2026-10-20: the default is an empty window. A setting can pick last session or new session instead. Not built.
+
+### Voice Chain: slot menu and effect families
+- Clicking an empty slot opens a menu: Edit Effect, Remove Effect, then a submenu per family, then Plug-ins (VST3 when it exists). Our families today are Amplitude, Dynamics, Filter and EQ, Restoration, Time and Pitch. Target families: Amplitude and Compression, Delay and Echo, Filter and EQ, Modulation, Noise Reduction and Restoration, Reverb, Special, Stereo Imagery, Time and Pitch. Not built; the effects already exist and only need regrouping.
+- Mapping to what we have. Amplitude and Compression: Gain, Dynamics, Limiter, Speech Leveler, De-Esser built; Channel Mixer, multiband compressor to do. Filter and EQ: Parametric EQ, Band EQ (10, 20, 30), Curve EQ, Precision Filter, Notch Filter, Hum Cut built. Noise Reduction and Restoration: Noise Reducer, Noise Print Reducer, Hiss Reducer, Room Reducer, Click Repair, Clip Repair, DC Offset Fix, Sound Eraser built. Stereo Imagery: Center Remover and Phase Rotate built; a stereo expander and a frequency-dependent phase shifter to do. Time and Pitch: Pitch Shift built; automatic pitch correction to do (Pitch Tune).
+- Missing families, all to be written fresh with our own names: Delay and Echo (delay, echo, analog-style delay), Modulation (chorus, flanger, phaser), Reverb (algorithmic plus convolution with a loaded impulse response file), Special (distortion, a vocal enhancer, a mastering chain, a loudness meter effect).
+- Starter presets: a list of about forty named chains was shown. Podcast and voice-over ones exist in part; creative ones (telephone, radio, hospital radio, underwater, spooky echo, stereo widening and so on) are to be rebuilt with our own settings and names. Not built.
+- Effect windows: a Preview button, draggable graphs (straight or spline), and Hide All Effect Windows. Partly built (graphs for Curve EQ, effect windows built 0.1.4).
+
+### Batch Convert output settings
+- The panel needs the file name template or prefix and postfix, location with Same as source and Overwrite, format, sample type with Change, format settings with Change, and the three checkboxes (remove files from the panel on completion, close files, include markers and metadata). Mostly built in 0.1.2 to 0.1.3; check each one against this list.
+- Formats that should open and export: WAV (incl. BWF and RF64), AIFF, FLAC, Ogg, MP3, MP2, AAC, plus Opus. We read and write most of these today; the gaps are RF64 and BWF handling, MP2 export, and the long tail of libsndfile-style formats. Monkey's Audio (APE) and Windows Media formats are not planned: APE has no maintained Rust reader or writer, and the Windows Media codecs are proprietary and Windows only. Say so in the format menu rather than hide it.
+
+### QuickPass layout
+- The panel is cramped in the narrow left column and scrolls sideways. Rework it: no horizontal scroll, controls wrap, Find Levels sits right under the silence and sound definitions, and the Fix by block follows. Fix by options: Strip Silence (remove and close the gap) and Split Silence (cut into clips, keep the gap), plus our non-destructive Turn Down. Not built; this is a layout bug.
+- Parameter parity for the repair scans: declip (gain with auto, tolerance, minimum clip size, cubic or FFT fill, FFT size) and declick (threshold, complexity). Our Clip Repair and Click Repair cover the job; their settings pages need the same controls. Mark Audio is built.
+
+### Multitrack headers
+- **Output selector** (the MIX box): None, Mix, Bus (add a mono or stereo bus), hardware outputs by channel, Audio Hardware. Missing. It depends on the master track and bus decision below.
+- **Input default** should read None, not a device, until the user picks one (check).
+- **Automation mode** (Off, Read, Write, Latch, Touch): the box shows Read and the others are greyed out. Read plays automation today; the other modes need track-level automation. Make the Read item behave as a visible state, not a dead control, until then.
+- **Master track and buses:** the open design call stays open: the chain lags the faders by half a second (recommended), or chains run before their own fader. Needed by the output selector and by pre-fader and post-fader effect placement.
+
+### Audio hardware settings
+- Device class: ASIO, MME, WASAPI (ours: ASIO and the default driver). Per class: default input and output, clock source, latency in ms (30 to 500) for MME, I/O buffer size and sample rate for ASIO, exclusive mode and latency for WASAPI, Attempt to force hardware to document sample rate, Use machine-specific device defaults. A Settings button opens the driver's own control panel (ASIO) or the operating system's sound settings (WASAPI). Built: driver pick and device lists. Not built: everything else here. Needs hardware testing; the ASIO control panel call needs checking in `asio-sys`.
+
+### Menus to fill in
+- **File:** New Audio File also in the Files panel's new menu (it is in the File menu already). Import and export of application settings as one file (local only).
+- **View:** Show HUD, Show Editor Panel Controls, Show Clip Gain Controls, Hide All Effect Windows, a fuller Zoom submenu (Zoom Reset, Zoom to Selected Clips, zoom in and out full for the selected track, Zoom Out Full for all axes), Time Display submenu (decimal, SMPTE at 59.94, 30, 29.97, 29.97 drop, 25, 24 and 23.976, samples, bars and beats, a custom rate, edit tempo), Video Display (disabled until the video track), Waveform Channels (layered or uniquely colored), Status Bar items to switch on and off, Metering (reset indicators, show valleys, color gradient, LED style, range from 24 to 120 dB, dynamic or static peaks). Today we have three time formats, the envelope toggles and basic zoom.
+- **Effects:** Invert and Reverse (small, no new design needed; first to build), the empty Delay and Reverb and QuickPass presets submenus, Plug-in Manager (with VST3).
+- **Analysis (new):** Frequency Analysis, Amplitude Statistics, Histogram, Frequency Band Splitter (split a clip into bands on new tracks, with crossover points). Not built.
+
+### Navigation and playback behavior
+- Auto-scroll: pagewise or centered, one choice per editor, plus a toggle that switches off when you move the playhead by hand. Return the playhead to the start position on stop (first or second stop). Stop at the end of a selection when play starts inside it (built 0.1.6). Play while scrubbing. Shuttle speeds on J, K and L (slow, half, normal, double, fast). Meter color crossover levels. Zoom-to-time presets (five slots you can overwrite). Right-click drag in the ruler zooms to a range. Not built unless noted.
+- Keyboard shortcuts, **approved 2026-10-20 (use the common defaults listed here; assign each when its feature ships):** Home and End (start and end), Ctrl+Left and Ctrl+Right (previous and next marker, clip or selection edge), M (add marker), Alt+comma and Alt+period (nudge clip), Alt+Up and Alt+Down (move clip to track above and below), Shift+R and Ctrl+R (repeat last command), Shift+P (capture a noise print), Up and Down (switch the active channel), Shift+X (return to start on stop), Shift+click on M, S, R for all tracks, Shift-drag and Ctrl-drag on dials for coarse and fine steps.
+- Visual keyboard shortcut editor: a picture of the keyboard with assigned keys highlighted, click a key to see its commands, drag a command onto a key, conflict warning with Undo and Clear, saved sets and Copy to Clipboard. Our editor is a list and works. A visual one is a nice-to-have; decide later. We will not ship another product's shortcut set as a preset.
+
+### Recording and editing behavior
+- Punch-in with pre-roll and post-roll lengths, overwrite and insert modes while recording, take files named after the track. Punch-in and recording offset are built; the pre-roll length setting and insert mode are not.
+- Audio FX Panel by clip type (dialogue, music, sound effects, ambience), each with its own options; saved presets; limits on each control that a preset author can set; auto-ducking with Monitor Clip Changes and Reanalyze. Types and a basic panel are built; the rest is not.
+- Paste with a crossfade at the seams, adjust a selection to zero crossings, more fade shapes. Not built.
+- Sample rate and bit depth conversion with dither and noise shaping choices, and saved conversion presets. Dither exists on export; the choices and presets do not.
+- Control surfaces: see MIDI above.
+
+### Suggested order when credits return
+1. Small and certain: Help and About links, Invert and Reverse, QuickPass layout, Files panel New File, View menu fill-in, clean start, Voice Chain slot menu regrouping, Audio hardware settings that need no hardware (latency list, sample rate display).
+2. Effects families that are plain DSP: delay, echo, chorus, flanger, phaser, distortion, reverb, then presets.
+3. Master track, buses and the output selector, then auto-ducking and track automation modes.
+4. Analysis panels and the Band Splitter.
+5. Plugin hosting, then scripting and the assistant endpoint, then MIDI controllers, then video and ADR.
+
+## Effects, multitrack and export build-out (2026-10-20)
+
+Every effect family with the controls testers expect, then multitrack, clips, automation, stretch, video, export and metadata. Behavior only. Status by area:
+
+### Effects, family by family (each written fresh, our own names)
+- **Amplitude and Compression.** Built: Gain, Dynamics, Limiter, Speech Leveler, De-Esser, DC Offset Fix. To do: Channel Mixer (swap, mix or invert channels), a multiband compressor (crossover markers, per-band bypass, solo, input spectrum), a hard-limit preset set, a tube-style compressor (a saturation stage in front of Dynamics), Normalize as an effect with DC offset and per-channel equalizing, and an expander and downward gate mode in Dynamics (graph editing with invert, spline curves, a separate level detector section).
+- **Delay and Echo.** None built. Delay (time in ms, beats or samples, feedback, mix), Echo (decay, repeats, left and right delay) and an analog-style delay (filtered, wobbling repeats).
+- **Filter and EQ.** Built. Check each against the manual: the Notch Filter should take up to six bands, Band EQ needs a range setting and a spline option, the Parametric EQ needs Q or bandwidth entry, and the Precision Filter should offer the common filter families (Butterworth, Bessel, Chebyshev, elliptic) with order, cutoff and ripple. Elliptic is done; the rest of the families are not.
+- **Modulation.** None built. Chorus (voices, delay, rate, depth, spread, feedback, quality), flanger (initial and final delay, stereo phase, sweep mode) and phaser (stages, depth, resonance, phase difference).
+- **Noise Reduction and Restoration.** Built in some form: Noise Reducer, Noise Print Reducer, Hiss Reducer, Room Reducer, Click Repair, Clip Repair, Hum Cut, Sound Eraser. To do: a noise reduction graph you can draw (noise floor per frequency), real-time adaptive noise reduction with a spectral decay rate, hum removal with harmonic slope and a processing focus choice (low, mid, high, full band, voice), a click eliminator with threshold, complexity, FFT size, run size and light-crackle smoothing, and an automatic phase correction (detect and fix phase between channels over time).
+- **Reverb.** None built. Convolution (load an impulse response file, damping, mix), a full algorithmic reverb (decay, perception, room size, damping low and high, diffusion, early reflections, dry and wet), a studio reverb and a surround reverb (not planned: surround is out of scope).
+- **Special.** None built. Distortion (with a curve editor), a Doppler shifter (moving source, probably low value), a mastering chain (EQ, multiband, limiter, widener, in one dialog), a loudness meter and a loudness radar as effects (our Levels panel and Check Loudness cover the job; a Voice Chain meter slot is optional). The guitar amp suite is out of scope for a voice editor.
+- **Stereo Imagery.** Built: Center Remover, Phase Rotate. To do: Center Channel Extractor controls (crossover bleed, advanced settings, extract or remove), a graphic phase shifter (phase set per frequency on a curve, with a 180 or 360 degree range) and a stereo expander (center pan, width).
+- **Time and Pitch.** Built: Pitch Shift, Time Stretch, exact-length stretch. To do: automatic pitch correction (key, scale, attack, sensitivity, formant), a manual pitch editor on the pitch view (draw and reshape the pitch curve), a pitch bender (sweeps drawn over time), formant keeping, and a quality choice. Stretch and Pitch should also offer solo-instrument-or-voice and splice-frequency options.
+- **Generate.** Noise (white, pink, brown, with stereo modes) and tones (shapes, frequency sweeps, phase difference) are built; check them against the option lists.
+- **Remix.** Built as Fit Music to Length; the manual's target-duration, minimum-length and maximum-slack options map onto our plan choice.
+
+### Multitrack and tracks
+- Track types: audio, bus, and a video track (video not planned yet). Mono, stereo and 5.1 on tracks (5.1 not planned).
+- Delete Empty Tracks (a Multitrack menu command). Not built.
+- Track visibility: a Tracks panel that lists tracks, hides and shows them, and saves visibility presets. Not built.
+- Wheel over the track headers zooms the track heights; Shift+wheel resizes widths. We currently scroll there. Approved to change (matches the tester ask).
+- Shift-click (with Ctrl) on an input, output, mute, solo, record or monitor button applies it to all tracks. Not built.
+- Routing: buses, sends with pre- or post-fader switch, the Mix track, track EQ on every track, effects pre- or post-fader, outputs to hardware ports. Not built; waits on the master and bus work (decided above). Bus tracks cannot take inputs directly and output only to hardware or other buses.
+- Time display options for sessions: start offset and display format per session. Partly built (time formats).
+
+### Clips
+- Move, Slip and Razor are built. Overlapping clips without a crossfade play only the top clip; crossfades appear where clips overlap (check our behavior matches).
+- Collapse a gap (ripple delete) is built. Loop clips are built. Snap to zero crossings while editing is not built.
+- Match clip volume (peak, loudness, or average RMS) across clips: partly built (Loudness Match). Add a peak and RMS choice.
+- Fades: more shapes and symmetrical or independent crossfade curves. Not built.
+- Create one clip from many: Merge Clips built. Edit a bus or Mix track as a clip: Bounce to New Track built.
+- Clip stretch options: rendered or real-time, monophonic or polyphonic material, preserve formants. We have the stretch; the choices and formant keeping are not built.
+- Edit Original: from a mixdown file, reopen the session that made it (needs a session reference in the file's metadata). Not built; small.
+
+### Automation
+- Track envelopes for volume, pan and effect settings, and clip envelopes. Clip envelopes built; track-level automation not built.
+- Automation modes: Read, Write, Latch, Touch (record fader moves while playing, with keyframe thinning settings to avoid too many points), plus Off. Not built.
+- Spline (curved) segments, per keyframe or for a whole envelope, and numeric keyframe entry. Not built.
+
+### Video and surround (not started, one later phase)
+- Insert video, spot-frame preview while adjusting a clip, video preferences (see the video plan above). Surround output and 5.1 panning are not planned.
+
+### Export
+- Save all open files as one batch, export a range (whole session, selection, or between markers), include markers and other metadata (built for files), export a session with copies of its media in a folder (collect and save). Not built, except as noted. OMF and Final Cut interchange export is not planned for now: they are large specifications that are hard to verify without the target programs.
+- Format settings: compression (speed against size), constant or variable bitrate, and 16.8 and 24.0 floating point options. Bitrate choices are built for MP3 and AAC; variable bitrate and the float options are not.
+- Close Unused Media: built as Remove Unused Files.
+
+### Metadata
+- A metadata panel with tag sets (switch, save, delete), search, typed fields, and album art for MP3. Tags are built for Batch Convert and files; a full panel with saved sets and cover art is not.
+
+### Order suggestion (docs only; nothing started)
+1. Delay, echo, chorus, flanger, phaser and the Dynamics expander and gate mode.
+2. Reverb (algorithmic first, convolution second), distortion, Channel Mixer, stereo expander.
+3. Master and bus tracks with sends and the output selector, then track automation modes.
+4. Multiband compressor, graphic phase shifter, pitch correction and the manual pitch editor.
+5. Delete Empty Tracks, Tracks panel, session collect and save, metadata panel.
+
+## Podcast AI and transcript features (scoped 2026-10-20: a small set planned, the rest shelved)
+
+**Decision 2026-10-20:** keep the high-feasibility core, shelve the rest.
+
+**Planned (in this order):**
+1. Local transcription with word timestamps (P7). Off until the user loads or downloads a model; see the model-download rule above.
+2. Transcript panel with SRT, VTT and plain-text export (already planned).
+3. Text-based editing: delete words in the transcript to cut the audio, as one undoable step with a short crossfade and a preview before cutting.
+4. Filler word removal: reviewable list, select all, ripple cut (already planned).
+5. A Clean Voice preset (noise reduction, tone, leveler, de-ess, limiter) from effects that already exist.
+6. Soundboard: trigger pads that place or play sound effects while recording, with the MIDI controller work.
+Already built and unchanged: silence removal with a kept pause, chapter markers and export.
+
+**Shelved, not planned for this project** (kept in the table below for reference only): retake finder, edit for clarity, clip finder, chapter suggestions, show notes and other language-model writing, text to speech, voice cloning and Regenerate, translation and dubbing, an enhancement model for studio sound, remote recording, publishing and hosting, video layouts and animated captions, built-in music and effect libraries.
+
+Original note: requested by testers as ideas for later updates. Everything stays local and optional: no account, no cloud, off until the user turns it on (see "On-device AI" above and `docs/design-principles.md`). Nothing here is started.
+
+**The one piece that unlocks most of it is a local transcript with word timestamps.** Once a transcript exists, text-based editing, filler removal, retake detection, chapters, captions and clip finding are mostly ordinary editing operations driven by words instead of waveforms. Build that first, test it on real episodes, and everything below gets cheaper.
+
+| Feature | Feasibility | Notes |
+| --- | --- | --- |
+| Local transcription (word level, many languages) | **High** | Whisper-family model through a Rust or C++ runtime (MIT code). CPU is fine, GPU faster. Models are 75 MB to 3 GB; the user picks the size. Needs the model-download exception, or the user points the app at a file they downloaded. Transcribe each track separately in a multitrack session so crosstalk does not confuse it, then merge by time. |
+| Text-based editing (delete words to cut audio) | **High, medium effort** | A transcript layer links every word to a media time range. Deleting words becomes a split and ripple delete with a short crossfade at zero crossings, as one undoable step. Word timing from Whisper is approximate, so the editor snaps to the nearest quiet point and shows a preview before it cuts. Cons: timing errors on fast speech and overlapping voices; every cut needs an audition. |
+| Remove filler words | **High** (after transcription) | A reviewable list with timecodes, select all, ripple cut. Already planned for P7. The word list is user-editable. |
+| Remove retakes | **Medium** | Find consecutive passages with nearly the same words and keep the last (or best-sounding) take. This is plain text similarity, no AI needed. Always show the list for review. Cons: false matches on repeated phrases such as show catchphrases. |
+| Edit for clarity (cut chatter) | **Low to medium** | A rule-based version (fillers, long pauses, repeated words, false starts) is feasible. Judging what is "non-essential" needs a language model, and that part is unreliable. Ship the rules first. |
+| One-click noise removal | **High, mostly built** | Noise Reducer, Hiss Reducer, Room Reducer and Sound Eraser exist. A single "Clean Voice" preset is quick. |
+| One-click studio sound | **Medium to high** | A chain preset (noise, tone EQ, leveler, de-ess, limiter) works with what exists. A speech enhancement model (such as DeepFilterNet, MIT or Apache licensed, runs on CPU in real time) would sound better than the current noise code; check its weights license first. Room reverb removal and bandwidth extension are harder and vary in quality. |
+| Text to speech | **Medium** | Small open voices run on CPU (Piper, Kokoro). Check each voice's license. Good for scratch narration and fixes; the quality gap to the best commercial voices is real. |
+| Voice cloning and Regenerate (fix a flubbed word with a synthetic version) | **Medium to low** | Open models exist, but many weights are non-commercial only, they need a GPU for good results, and matching room tone, pacing and emotion at a splice is hard. Hard requirement before any code: a consent prompt (only your own voice or one you have the right to use), a visible label on generated audio, and no watermark removal. Often a re-record is faster; offer this late. |
+| Translation and AI dubbing | **Low, not planned** | Needs translation, synthesis in another language, timing fit and lip timing. Too large for this project right now. |
+| Create clips (find the best moments) | **Medium** | Transcript plus simple scoring (speech energy, laughter, question and answer shape, quotable length) can propose Social Clip markers for review. A language model improves it but is optional. Markers and clip export already exist. |
+| Chapter generator | **Medium** | Topic changes found from the transcript, titles from a local language model or typed by the user. Chapter markers and export are built. |
+| Show notes, titles, blog post, video description, script generator | **Medium, optional** | Needs a language model. Two ways: a small local model through a sidecar runtime, or leave it to the user's own assistant. The second is cheaper and fits our rules: export the transcript and chapters (text, SRT, VTT), and let the optional local assistant endpoint expose them. We do not bundle a language model in the first release. |
+| Captions and subtitles export | **High** (after transcription) | SRT, VTT and text. Already planned. Burned-in animated captions need video rendering (see below). |
+| Soundboard (fire sound effects while recording) | **High, small** | Trigger pads (keys or MIDI pads) place clips on a track at the playhead while recording, or play live into the monitor mix. Fits the MIDI controller plan. Needs shortcut assignment, which is the project lead's call. |
+| Speaker colors and labels | **High, mostly built** | Tracks have colors. Speaker labels on a single mixed file need speaker separation (diarization); skip it when each person has their own track. |
+| Remote recording with guests, separate tracks, 4K | **Not compatible with our rules** | It needs servers, accounts and the network, which this app will not have. Alternative: keep Guest tracks, import each person's separate recording from whichever service the user likes, and align them (alignment is planned). Local recording is built. |
+| Direct publishing, hosting, newsletters, social scheduling, live streaming, webinars | **Out of scope** | Different products. The Publish Package export (P7) and an optional, off-by-default upload to the user's own podcast host are the planned limit. |
+| Video layouts, overlays, backgrounds, logos, animated captions, audiograms | **Low** | A video renderer is a separate product. A simple audiogram or captioned clip export through FFmpeg is possible after the video track work. |
+| Built-in music and sound effect libraries | **Not planned** | Licensing and size. Libraries panel works with the user's own files; Help can link to free sources. |
+| Silence removal with the option to keep or restore pauses | **Built** | QuickPass: remove, split, or turn down, with a pause kept. Undo restores. |
+
+## Chapters in the file and the feed, commercial markers, and filler words (creator feedback, 2026-10-21)
+
+### Chapter and ad markers into the MP3 and the feed
+- **Already built:** chapter markers export as a timestamp list, CSV and podcast chapters JSON, and are written into exported MP3 and FLAC files. Chapters are edited as markers while editing, so there is no separate manual step in the editor.
+- **How hosts use them (checked 2026-10-21):** Apple Podcasts accepts chapters from the episode description, from the feed's `podcast:chapters` tag (through the host), or from metadata embedded in the file (ID3 in MP3 or AAC). Apple's published guidance for titles: 45 characters or fewer, under five words, no repeated words, title case. Some hosts read embedded chapters when the file is uploaded (Transistor says it does, and adjusts chapter times when dynamic ad insertion changes the length). Whether a given host also publishes them in the feed is the host's side; a host that does not can be given the chapters JSON. Check the project lead's own host before promising "import into the feed".
+- **To add:** per-chapter link and image (ID3 chapter frames can carry a URL and a picture; the JSON supports both); a soft warning in the Chapters panel when a title breaks the 45 character and five word guidance; a one-click "Copy chapters as JSON" and "Save chapters JSON beside the export" so a host without file import can take the file; an "Export" option that always writes chapters when any exist (on by default).
+- **Commercial (ad) markers:** there is no standard place for ad breaks in an MP3 or an RSS feed. Hosts with dynamic ad insertion have their own marker tools and do not read a common format. Plan: export Ad Slot markers as a separate small CSV or JSON of timestamps and contracted lengths (for pasting into a host's tools), and keep them out of the chapter list so listeners never see "Ad break" as a chapter. If a host is known to read a specific format, add it as an export option then.
+- **Cons:** chapter data baked into the MP3 can go stale if the host inserts ads and does not adjust it; the JSON route avoids that. Embedded chapters do not carry through a re-encode unless the encoder writes them, so the export step must always be the last step.
+
+### Filler word removal: keep the editor in charge
+- Feedback from a long-time editor: a filler can carry emotion in an answer, and cutting them all can bring words too close together and sound unnatural. Agreed, and it matches how the feature was already framed (a reviewable list).
+- **Spec change:** never an automatic cut. Every item is a keep or cut decision in the list, with audition in context (a few seconds around it), and filters by word, by speaker and by length. Cuts keep a minimum natural pause (adjustable, about 80 to 150 ms to start) instead of closing the gap, and use a short crossfade at zero crossings. Add "shorten" (trim a long filler to a brief one) and "turn down" as non-destructive alternatives to cutting. "Cut All" appears only after the list has been reviewed. Spacing between words after a cut is judged on cadence, not just removal: if the gap after a cut is shorter than the speaker's usual gap, the edit is flagged.

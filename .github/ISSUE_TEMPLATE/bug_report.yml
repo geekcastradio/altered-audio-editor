@@ -8,14 +8,30 @@ body:
       description: What you did, what you expected, and what happened instead.
     validations:
       required: true
+  - type: textarea
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Open...\n2. Click...\n3. See..."
+  - type: dropdown
+    attributes:
+      label: Operating system
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
   - type: input
     attributes:
-      label: Version
+      label: OS version
+  - type: input
+    attributes:
+      label: App version
       description: From Help > About.
+    validations:
+      required: true
   - type: input
     attributes:
-      label: Windows version
+      label: Audio device
+      description: Only if the bug involves recording or playback (interface name, or "built-in").
   - type: textarea
     attributes:
       label: Files or screenshots
-      description: Attach a screenshot, or describe the audio file (format, length) if it's file related.
+      description: Attach a screenshot, or describe the audio file (format, length). Please don't attach private episodes; a short test clip is best.

@@ -5,9 +5,19 @@ body:
   - type: textarea
     attributes:
       label: What you want to do
-      description: Describe the task you're trying to get done, not another program's feature name.
+      description: The editing task you're trying to get done, not another program's feature name.
     validations:
       required: true
   - type: textarea
     attributes:
+      label: How you do it today
+  - type: textarea
+    attributes:
       label: How you'd expect it to work
+  - type: checkboxes
+    attributes:
+      label: Fit with the project
+      options:
+        - label: It works fully offline, with no account, tracking or network calls.
+          required: true
+        - label: I'm happy to help build or test it (optional).

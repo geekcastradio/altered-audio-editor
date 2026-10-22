@@ -47,15 +47,31 @@ pub fn host_for(asio: bool) -> cpal::Host {
 /// Names of the ASIO drivers installed, or empty when ASIO is not built
 /// in or none are installed.
 pub fn asio_drivers() -> Vec<String> {
+    // Read the names from the registry. Asking each driver to load itself
+    // can crash the whole app when a driver misbehaves, so nothing is
+    // loaded here; a driver is only opened when the user picks ASIO.
     #[cfg(all(target_os = "windows", feature = "asio"))]
     {
-        use cpal::traits::{DeviceTrait, HostTrait};
-        if let Ok(h) = cpal::host_from_id(cpal::HostId::Asio) {
-            if let Ok(devs) = h.output_devices() {
-                return devs
-                    .filter_map(|d| d.description().ok().map(|x| x.name().to_string()))
-                    .collect();
-            }
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        if let Ok(out) = std::process::Command::new("reg")
+            .args(["query", r"HKLM\SOFTWARE\ASIO"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+        {
+            let text = String::from_utf8_lossy(&out.stdout);
+            let mut names: Vec<String> = text
+                .lines()
+                .filter_map(|l| {
+                    l.trim()
+                        .rsplit_once('\\')
+                        .map(|(_, n)| n.trim().to_string())
+                })
+                .filter(|n| !n.is_empty() && !n.eq_ignore_ascii_case("ASIO"))
+                .collect();
+            names.sort();
+            names.dedup();
+            return names;
         }
     }
     Vec::new()

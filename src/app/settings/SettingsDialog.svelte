@@ -36,19 +36,23 @@
   const systemDriverName = () => (navigator.userAgent.includes("Windows") ? "WASAPI" : navigator.userAgent.includes("Mac") ? "Core Audio" : "ALSA");
   let cache = $state<CacheInfo | null>(null);
   let busy = $state(false);
+  // Device lookups run one after another, never together: a driver that
+  // misbehaves under parallel calls can no longer take the app down.
+  let devicesLoading = false;
+  async function loadDevices() {
+    if (devicesLoading) return;
+    devicesLoading = true;
+    try {
+      const asio = d.app.driver === "asio";
+      driver = await audioDriver().catch(() => ({ asioBuilt: false, asio: false, drivers: [] }));
+      outputs = await audioOutputs(asio).catch(() => []);
+      inputs = await audioInputs(asio).catch(() => []);
+    } finally {
+      devicesLoading = false;
+    }
+  }
   $effect(() => {
-    if (page === "Audio Devices" && outputs === null)
-      void audioOutputs(d.app.driver === "asio")
-        .then((o) => (outputs = o))
-        .catch(() => (outputs = []));
-    if (page === "Audio Devices" && driver === null)
-      void audioDriver()
-        .then((v) => (driver = v))
-        .catch(() => (driver = { asioBuilt: false, asio: false, drivers: [] }));
-    if (page === "Audio Devices" && inputs === null)
-      void audioInputs(d.app.driver === "asio")
-        .then((i) => (inputs = i))
-        .catch(() => (inputs = []));
+    if (page === "Audio Devices" && (outputs === null || inputs === null || driver === null)) void loadDevices();
     if (page === "Cache and Files" && cache === null) void refreshCache();
   });
   async function refreshCache() {

@@ -873,3 +873,58 @@ A user report on 0.1.3 listed five problems. All five are addressed in 0.1.4.
 - **Stretch in the Waveform editor** (Effects > Pitch and Time, or Clip > Time Stretch while the Waveform editor is in front): type the new length of the selection or file (30, 14.99, 1:02.5) and it is re-timed with the pitch kept, and what follows moves up or back. For spots that must hit an exact length.
 - **Clip > Move to Track Above / Below.** Asked for as Alt+Up and Alt+Down; they have no default shortcut until the project lead approves one (Edit > Keyboard Shortcuts can set them now).
 - **CI:** Linux jobs pinned to ubuntu-24.04 (ubuntu-latest moves to 26.04), and the Linux release build gets the extra packages and the extract-and-run setting the AppImage tools need without FUSE.
+
+## 2026-10-20: roadmap audit and the second round of tester documents
+
+- **Why:** the project lead asked whether the items in a new set of tester documents, and a seven-part request for scripting, time stretch, plugin hosting, ASIO, MIDI, markers and video, and podcast tools, were built, planned or new. No credits were available to build, so this was an audit and a documentation update only. No code changed.
+- **Result:** most of the seven-part request was already planned in `docs/backlog.md` (added earlier this month) and several parts are now built. The backlog has a status table and a list of what remains. The document's menu screens, settings walk-through and manual pages became a grouped list of behavior to match, in our own names and layout.
+- **Decisions kept:** VST2 stays out (the SDK is no longer licensed). No OpenAPI spec, because there is no HTTP API and adding one would break the no-network rule. The `.altaudio.session` style file names in the request are not used; our extensions are `.altaudio`, `.altemplate`, `.alworkspace`, `.alhost`, `.alkeys`, `.alprefs` and `library.json`. Scripting and the assistant endpoint stay off by default and local only. Rubber Band is a candidate for time stretch only after listening tests, with an `ATTRIBUTION.md` note, because it is GPL.
+- **Decisions made:** Monkey's Audio and Windows Media formats are not planned (no maintained Rust codec for the first, proprietary and Windows-only for the second); the format menu says so. Control surface protocols come after generic MIDI-learn because they cannot be tested without the hardware. Other products' keyboard shortcut sets are not shipped as presets, and no new shortcut is added without the project lead's approval; candidates are listed in the backlog.
+- **Open for the project lead:** what the window shows on launch (empty, last session, or new session); the master chain and fader behavior (unchanged from the earlier question); which shortcut candidates to approve.
+
+## 2026-10-20: approvals and the third round of tester documents
+
+- **Shortcuts approved.** The project lead approved using the common defaults tester documents listed ("the same shortcuts"). They are listed in `CLAUDE.md` and each is assigned when its feature ships. Shortcuts are not protected expression, and we still do not ship another product's full set or preset names. Where a key clashes with an existing one (Up and Down, Alt+Up and Alt+Down), the Waveform editor or Multitrack context decides, and Edit > Keyboard Shortcuts still lets users change them.
+- **Launch window:** empty, not a session with tracks. A setting offers last session or new session.
+- **Master and bus chains (the project lead had no preference, so the recommended option was taken):** chains run on the render thread half a second ahead; track faders then lag that long when a chain follows them; the master fader stays on the audio thread and is instant. Reason: the audio thread can never allocate or lock, and the other option (chains before their own fader) makes the fader feel dead on the track it controls. Reversible before any code is written.
+- **Third document:** 228 pages of effect and multitrack manual text. Grouped into the backlog by effect family and by area, with status. OMF and Final Cut interchange export is not planned for now. Surround and the guitar amp suite are out of scope. Everything else is either built, listed, or part of the video phase.
+
+## 2026-10-20: reference documents stay private; podcast AI feasibility
+
+- **Rule.** The tester documents and their screenshots are private working material. They are never committed or published: `/reference/`, `*Bugs*.pdf` and `/private/` are in `.gitignore`, and `scripts/check-private-terms.mjs` (part of `npm run check`) fails the build if any term in `private/banned-terms.txt` appears in a tracked file. The list lives in `private/` so the names in it never reach the repo. Public docs describe features in our own words and name no other product. The source-to-feature mapping is kept in `private/`.
+- **Podcast AI features** (text-based editing, filler and retake removal, studio sound, voice tools, clips, chapters, show notes, soundboard, remote recording) were checked for feasibility; the table is in `docs/backlog.md`. Decisions: everything stays local and optional; local transcription with word timestamps comes first because most of the rest depends on it; remote recording is not compatible with the no-network rule, so we keep Guest tracks and import separate recordings; language-model writing features stay outside the core and go through the optional local assistant endpoint rather than a bundled model; voice cloning needs consent, a visible label and no watermark removal before any code.
+- **Update, same day:** the project lead judged the podcast AI ideas not feasible for this project. They are parked in `docs/backlog.md`, not scheduled, and dropped from the order of work. The earlier P7 plans (local transcription, filler word removal, Publish Package, Social clip markers) are unchanged.
+- **Final scope, same day:** the project lead agreed with the feasibility advice. Planned: local transcription, transcript export, text-based editing, filler word removal, a Clean Voice preset, the soundboard. Shelved: everything else in that table (retake finder, edit for clarity, clip finder, chapter suggestions, language-model writing, text to speech, cloning, translation, studio sound model, remote recording, publishing, video layouts, built-in libraries).
+
+## 2026-10-20: Settings > Devices crash logged as the first item for the next round
+
+- Reported by a tester and reproduced by the project lead, also without an audio interface: the app closes when the Devices page opens. Cause not confirmed. Leading suspect is the ASIO driver list, which makes every installed driver load itself, and a native crash in a driver cannot be caught. Fix plan and the information needed are in `docs/backlog.md` ("Next round"). No code changed yet.
+- Next-round order: this crash, the small certain items, assigning the approved shortcuts, then the larger build order.
+
+## 2026-10-20: cache and files go to a default folder in Documents, changeable
+
+- First asked for with nothing preselected, then revised the same day by the project lead: default to a designated folder in Documents and let people change it. Reason for the revision: a setup screen is friction, a visible default is easy to find, and Settings still offers Browse for every location. Logged for the next round, second after the Devices crash. The main risk is Documents being redirected into a sync service, so first run checks for that and warns. Layout, folders and trade-offs are in `docs/backlog.md` ("Next round"). Nothing built yet.
+
+## 2026-10-20: live recording waveform must match the final waveform
+
+- Reported as: Waveform editor recordings show nothing until Stop. The project lead then widened it: any recording, in either editor, must show exactly how the finished waveform will look, with no approximate picture swapped out afterwards. Reading the code showed why the multitrack picture changes at Stop: live blocks are 1024 frames and drawn by a separate path, while the finished file uses the peak cache (32 or 64 frames) and the normal renderer. Decision: build the peak cache incrementally while recording and draw it with the normal renderer, so live and final are the same data. Third in the next-round order. Not built.
+
+## 2026-10-20: macOS microphone permission fix prepared
+
+- Cause (from the tester's report): no microphone usage string in `Info.plist` and no audio-input entitlement, so macOS silently denies input and recording is flat. Prepared: `src-tauri/Info.plist`, `src-tauri/Entitlements.plist` and `bundle.macOS` in `tauri.conf.json` (checked against Tauri's config schema; not built or run on a Mac). Kept the ad hoc signature: there is no Apple Developer ID, so no notarization. A suggested `infoPlistPath` key was not used because the real key is `infoPlist` and a wrong key fails the build. Also planned: a clear note when input is silent. Listed as item 1b of the next round.
+
+## 2026-10-20: long-job bugs logged (apply across files, export blocks the app)
+
+- Reported: switching files during Apply to Whole File breaks the job; a multitrack export locks the app and a second copy offers to recover the session being exported. From the code: results are applied to the current file instead of the file the job started on; the export's progress overlay is modal although the work runs on a worker thread; recovery cannot tell a live copy's autosave from a crashed one. Fix plan (background tasks bound to their file, non-blocking export progress with Cancel, per-instance lock files for recovery) is item 3b of the next round in `docs/backlog.md`. Not built.
+
+## 2026-10-21: creator feedback on chapters, ad markers and filler removal
+
+- **Chapters:** embedded chapters and chapters JSON already exist. Added to the plan: chapter links and images, a title-length warning based on the major directory's published guidance, and saving the chapters JSON beside an export. Hosts differ on whether they read embedded chapters, so the plan does not promise a universal feed import.
+- **Ad markers:** no standard exists; export them as a separate timestamp file, never as chapters.
+- **Filler removal:** changed from "select all and cut" to a reviewed, per-item keep or cut with a minimum pause kept, short crossfades, shorten and turn-down options, and Cut All only after review. Reason: fillers can carry emotion and mass cuts break cadence. `CLAUDE.md` updated.
+
+
+## 2026-10-21: 0.1.7 Devices crash fix and contributor kit
+
+- Settings > Devices now runs its three lookups one after another, and the ASIO driver list is read from the registry instead of loading every driver. A driver is only loaded when the user turns ASIO on. Reason: loading drivers in parallel is the leading suspect for the instant close; unverified until run on Windows. If it still crashes, the next step is the crash-guard marker file.
+- Added a contributor kit (CONTRIBUTING, ROADMAP with starter issues and project goals, issue forms, PR checklist). The goals section describes what users should be able to do and names no outside sources or products.

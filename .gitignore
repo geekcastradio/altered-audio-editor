@@ -24,3 +24,8 @@ SyncToy_*.dat
 # Local release packaging leftovers. Never committed.
 /out/
 /portable/
+
+# Private reference documents and screenshots. Never committed.
+/reference/
+*Bugs*.pdf
+Altered*Audio*Bugs*

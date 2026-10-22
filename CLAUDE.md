@@ -163,18 +163,22 @@ Not in Default: Markers, History. (A saved-commands panel was dropped.) History 
 
 ## Planned additions (community requests, October 2026)
 
-Full detail, risks and order of work are in `docs/backlog.md`. Phase placement:
+Full detail, status table, risks and order of work are in `docs/backlog.md` (see "Roadmap audit"). Phase placement as of 2026-10-20:
 
-- **P3 and P4:** non-destructive time stretch (built: Clip > Time Stretch, and Alt+drag on a clip edge, approved 2026-10-17), non-destructive silence and breath handling in QuickPass, one-click loudness targets, chapter export, marker colors and notes, Playlist panel, ASIO and per-channel routing.
-- **P5:** VST3 plugin hosting in a separate helper process (no VST2), auto-ducking, multi-microphone alignment and bleed reduction, Realtime Export.
-- **Later:** sandboxed scripting, a local-only MCP endpoint (off by default, read-only first), MIDI tracks and instruments, video reference track and ADR cues.
-- **Rules that apply to all of these:** no network access from scripting or the MCP endpoint; any assistant or script edit is one labelled, undoable step; plugins and scripts can never crash or freeze the editor; every new third-party dependency has its licence checked and credited in `ATTRIBUTION.md` first.
+- **Built:** non-destructive time stretch (Clip > Time Stretch, Alt+drag on a clip edge, exact-length stretch in the Waveform editor), non-destructive silence and breath handling in QuickPass, one-click loudness targets, chapter export, marker colors and notes, Playlist panel, ASIO and per-channel input picking (hardware untested), Phase Align and Phase Rotate, JSON Schemas in `/schemas`.
+- **Decided 2026-10-20:** the app opens to an empty window (setting for last or new session); master and bus chains run on the render thread, track faders lag half a second, the master fader stays instant; the shortcut table above is approved.
+- **Next (small, no hardware):** Help and About links (Discord, GitHub, Report a Problem), Invert and Reverse, QuickPass layout rework, View menu fill-in, clean start window, Voice Chain slot menu by effect family, ASIO and WASAPI buffer, latency and sample rate controls.
+- **P5:** master track and buses (design call pending), delay, echo, modulation and reverb effects, VST3 plugin hosting in a separate helper process (no VST2), auto-ducking, multi-microphone alignment and bleed reduction, Realtime Export, analysis panels and the Frequency Band Splitter.
+- **Later:** sandboxed scripting (QuickJS), a local-only MCP endpoint (off by default, read-only first), MIDI controller mapping then MIDI tracks and instruments, video reference track and ADR cues.
+- **Rules that apply to all of these:** no network access from scripting or the MCP endpoint; any assistant or script edit is one labelled, undoable step; plugins and scripts can never crash or freeze the editor; every new third-party dependency has its licence checked and credited in `ATTRIBUTION.md` first; no OpenAPI spec (there is no HTTP API); new keyboard shortcuts only with the project lead's approval (candidates are listed in the backlog).
 
 ## Podcast-specific features (phase assignments in spec)
 
 These are confirmed podcast-specific additions. Data model fields are scaffolded in P1 even when the feature builds later.
 
-- **Filler word removal (P7):** post-transcription detection of "um," "uh," "you know," "like" across all host tracks; reviewable list with timecodes; select-all ripple cut.
+- **Text-based editing (P7):** delete words in the transcript to cut the audio, one undoable step with a short crossfade and a preview. Needs local transcription with word timestamps (off until a model is loaded).
+- **Soundboard (with MIDI controllers):** trigger pads place or play sound effects while recording.
+- **Filler word removal (P7):** post-transcription detection of "um," "uh," "you know," "like" across all host tracks; a reviewable list with timecodes where every item is kept or cut by the editor. Never automatic: a filler can carry emotion, and closing the gap can make speech unnatural. Cuts keep a minimum natural pause (adjustable), use a short crossfade, and can shorten a long filler instead of removing it. Each item can be auditioned in context. Cut All exists only after the list has been reviewed.
 - **Publish Package (P7):** one button exports mastered MP3, chapters JSON, VTT/SRT/text transcripts, show notes draft, and social clips from one session.
 - **Podcast Manager sync (P6 read-only, P7 write-back):** session creation picks a show via WordPress REST API; auto-loads template, episode number, hosts, profiles, library. Write-back pushes chapters, transcript, credits.
 - **Social clip extractor (P7):** Social Clip markers export audio + transcript snippet in a format Social Publisher picks up directly.
@@ -215,7 +219,31 @@ Standard Windows shortcuts only. No application-specific keymap beyond these:
 | Slip tool | Y |
 | Time stretch a clip (drag its edge) | Alt+drag |
 
-Defaults are stored in `src/keymap/default.json`. Users change them in Edit > Keyboard Shortcuts; only their changes are saved, to `keymap.alkeys` in the app config folder. Every menu item shows its shortcut. No other shortcuts are added without the project lead's explicit approval.
+Approved 2026-10-20, each assigned when its feature ships (these are the common defaults most editors share):
+
+| Action | Shortcut |
+| --- | --- |
+| Toggle Waveform and Multitrack editor | 1 (also 0 and 9 pick Multitrack and Waveform) |
+| Go to start, go to end | Home, End |
+| Previous or next marker, clip or selection edge | Ctrl+Left, Ctrl+Right |
+| Previous or next marker only | Ctrl+Alt+Left, Ctrl+Alt+Right |
+| Add marker | M or * |
+| Return playhead to start on stop (toggle) | Shift+X |
+| Zoom in or out horizontally | =, - |
+| Zoom in or out vertically | Alt+=, Alt+- |
+| Zoom reset, zoom in full, zoom out full (selected track, all axes) | Backslash, Shift+/, Shift+Backslash, Ctrl+Backslash |
+| Show spectral display, show HUD | Shift+D, Shift+U |
+| Hide all effect windows | Ctrl+Shift+H |
+| Meter input signal | Alt+I |
+| Repeat last command (with its dialog, then the dialog only) | Shift+R, Ctrl+R |
+| Convert sample type | Shift+T |
+| Capture a noise print | Shift+P |
+| Activate left or right channel (Waveform editor) | Up, Down |
+| Nudge clip left, right, up, down | Alt+comma, Alt+period, Alt+Up, Alt+Down |
+| Mute, Solo, Record or Monitor on all tracks | Ctrl+Shift+click |
+| Dial fine and coarse steps | Ctrl+drag, Shift+drag |
+
+Defaults are stored in `src/keymap/default.json`. Users change them in Edit > Keyboard Shortcuts; only their changes are saved, to `keymap.alkeys` in the app config folder. Every menu item shows its shortcut. No other shortcuts are added without the project lead's explicit approval. We never ship another product's complete shortcut set as a preset.
 
 ## Naming conventions
 

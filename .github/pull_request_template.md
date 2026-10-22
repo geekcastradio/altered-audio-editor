@@ -1,8 +1,16 @@
 ## What this changes
 
+Link the issue: Closes #
+
 ## How I tested it
 
-- [ ] The README checks pass (`npm run check`, `npm test`, `cargo fmt --check`, `cargo clippy`, `cargo test`)
-- [ ] No network calls, telemetry or accounts added
-- [ ] No code, icons, artwork or names copied from other software
-- [ ] New source files have the GPL header
+## Checklist
+
+- [ ] One fix or feature in this pull request
+- [ ] `npm run check`, `npm test`, `cargo fmt --check`, `cargo clippy` and `cargo test` pass
+- [ ] No network calls, telemetry, accounts or tracking added
+- [ ] No code, icons, artwork, names or layouts copied from other software, and no other products' names in text, code or comments
+- [ ] New source files start with the GPL header
+- [ ] No new or changed keyboard shortcuts (those need maintainer approval first)
+- [ ] User-facing text is short and plain; unbuilt controls are disabled with a reason
+- [ ] I have read CONTRIBUTING.md and agree to the CLA (the bot will ask once)
