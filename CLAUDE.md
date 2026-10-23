@@ -243,6 +243,18 @@ Approved 2026-10-20 and assigned in 0.1.9 (disabled menu items hold the chord fo
 | Mute, Solo, Record or Monitor on all tracks | Ctrl+Shift+click |
 | Dial fine and coarse steps | Ctrl+drag, Shift+drag |
 
+Approved 2026-10-23 (the right-click menu rework; disabled items hold their chords):
+
+| Action | Shortcut |
+| --- | --- |
+| Add stereo audio track, add bus track (P5) | Alt+A, Alt+B |
+| Add Tracks, Delete Empty Tracks | Shift+A, Shift+E |
+| Delete Selected Track | Ctrl+Alt+Backspace |
+| Group Clips, Suspend Groups (not built) | Ctrl+G, Ctrl+Shift+G |
+| Ripple delete: selected clips, time selection in selected clips (not built), time selection in all tracks | Shift+Backspace, Alt+Backspace, Ctrl+Shift+Backspace |
+| Deselect All, next clip in selected track, clips to end of track, clear time selection | Ctrl+Shift+A, Period, Ctrl+Alt+T, G |
+| Add CD Track marker, add Cart Timer marker | Shift+M, C |
+
 Defaults are stored in `src/keymap/default.json`. Users change them in Edit > Keyboard Shortcuts; only their changes are saved, to `keymap.alkeys` in the app config folder. Every menu item shows its shortcut. No other shortcuts are added without the project lead's explicit approval. We never ship another product's complete shortcut set as a preset.
 
 ## Naming conventions

@@ -513,6 +513,11 @@ pub enum MarkerKind {
     AdSlot,
     /// Scaffolding (P7): a region exported as a social media clip.
     SocialClip,
+    /// Scaffolding (later, disc and broadcast work): where a CD track starts.
+    CdTrack,
+    /// Scaffolding (later, broadcast work): a timed cart, such as a jingle
+    /// or a spot that must fit a set length.
+    CartTimer,
 }
 
 /// Scaffolding (P7): extra data for chapter markers.

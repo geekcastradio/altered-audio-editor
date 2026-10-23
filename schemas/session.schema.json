@@ -782,6 +782,16 @@
           "description": "Scaffolding (P7): a region exported as a social media clip.",
           "type": "string",
           "const": "social_clip"
+        },
+        {
+          "description": "Scaffolding (later, disc and broadcast work): where a CD track starts.",
+          "type": "string",
+          "const": "cd_track"
+        },
+        {
+          "description": "Scaffolding (later, broadcast work): a timed cart, such as a jingle\nor a spot that must fit a set length.",
+          "type": "string",
+          "const": "cart_timer"
         }
       ]
     },

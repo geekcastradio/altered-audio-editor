@@ -71,7 +71,7 @@
   const rate = $derived(doc?.sample_rate ?? 48000);
   const t = (samples: number) => formatIn(samples, rate, ed.timeFormat);
   // Kinds that can be chosen now. The others arrive with their phases.
-  const KINDS: MarkerKind[] = ["cue", "subclip", "chapter", "ad_slot", "social_clip"];
+  const KINDS: MarkerKind[] = ["cue", "subclip", "chapter", "ad_slot", "social_clip", "cd_track", "cart_timer"];
 
   function edit(label: string, m: MarkerDoc, change: Omit<MarkerChange, "id">) {
     void store.edit(label, { op: "set_markers", changes: [{ id: m.id, ...change }] }, run).catch(onError);

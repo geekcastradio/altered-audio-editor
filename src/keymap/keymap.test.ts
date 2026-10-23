@@ -60,6 +60,22 @@ const APPROVED: Record<string, string[]> = {
   "clip.nudge-right": ["Alt+."],
   "clip.to-track-above": ["Alt+ArrowUp"],
   "clip.to-track-below": ["Alt+ArrowDown"],
+  "edit.marker.cd-track": ["Shift+M"],
+  "edit.marker.cart": ["C"],
+  "multitrack.add.stereo": ["Alt+A"],
+  "multitrack.add.bus": ["Alt+B"],
+  "multitrack.add-tracks": ["Shift+A"],
+  "multitrack.delete-empty": ["Shift+E"],
+  "multitrack.delete-track": ["Ctrl+Alt+Backspace"],
+  "clip.group": ["Ctrl+G"],
+  "clip.group-suspend": ["Ctrl+Shift+G"],
+  "edit.ripple.clips": ["Shift+Backspace"],
+  "edit.ripple.time-clips": ["Alt+Backspace"],
+  "edit.ripple.time-all": ["Ctrl+Shift+Backspace"],
+  "edit.deselect": ["Ctrl+Shift+A"],
+  "edit.select-next-clip": ["."],
+  "edit.select-clips-track-end": ["Ctrl+Alt+T"],
+  "edit.clear-time-selection": ["G"],
 };
 
 const key = (

@@ -10,6 +10,9 @@ import "@fontsource/source-sans-3/latin-600.css";
 import "./styles/tokens.css";
 import "./styles/dock-theme.css";
 import App from "./app/App.svelte";
+import { installNativeMenuBlock } from "./app/native-menu";
+
+installNativeMenuBlock();
 
 const target = document.getElementById("app");
 if (!target) {

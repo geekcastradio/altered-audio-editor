@@ -1133,6 +1133,7 @@
       sep,
       sub("Ripple Delete", [
         act("Selected Clips", "edit.ripple.clips"),
+        act("Time Selection in Selected Clips", "edit.ripple.time-clips"),
         act("Time Selection in Selected Track", "edit.ripple.time-track"),
         act("Time Selection in All Tracks", "edit.ripple.time-all"),
         act("Gap Between Clips", "edit.ripple.gap"),
@@ -1159,7 +1160,12 @@
         act("Select Time Around Selected Clips", "edit.select-time-around-clips"),
         act("Clear Time Selection", "edit.clear-time-selection"),
       ]),
-      sub("Groups", [act("Group Clips", "clip.group"), act("Ungroup Clips", "clip.ungroup")]),
+      sub("Groups", [
+        act("Group Clips", "clip.group"),
+        act("Suspend Groups", "clip.group-suspend"),
+        act("Remove Focus Clip from Group", "clip.group-remove-focus"),
+        act("Ungroup Selected Clips", "clip.ungroup"),
+      ]),
       sep,
       sub("Track", [
         act("Add Mono Audio Track", "multitrack.add.mono"),
@@ -1170,8 +1176,6 @@
         off("Add Mono Bus Track", "Bus tracks arrive with effects (P5)."),
         off("Add Stereo Bus Track", "Bus tracks arrive with effects (P5)."),
         off("Add 5.1 Bus Track", "Surround tracks are not planned."),
-        sep,
-        off("Add Video Track", "Video is not planned."),
         sep,
         act("Delete Empty Tracks", "multitrack.delete-empty"),
         sep,
@@ -1198,6 +1202,9 @@
       ]),
       sub("Marker", [
         act("Add Cue Marker", "edit.marker.cue"),
+        act("Add Subclip Marker", "edit.marker.subclip"),
+        act("Add CD Track Marker", "edit.marker.cd-track"),
+        act("Add Cart Timer Marker", "edit.marker.cart"),
         act("Add Range Marker", "edit.marker.range"),
         act("Add Chapter Marker", "edit.marker.chapter"),
         act("Add Ad Slot", "edit.marker.ad-slot"),
@@ -1210,7 +1217,12 @@
         act("Selected Clips", "multitrack.mixdown.clips"),
       ]),
       sub("Export Mixdown", [act("Entire Session...", "file.export.mixdown"), act("Time Selection...", "file.export.selection")]),
-      sub("Bounce to New Track", [act("Time Selection", "multitrack.bounce.selection"), act("Selected Clips", "multitrack.bounce.clips")]),
+      sub("Bounce to New Track", [
+        off("Selected Track", "Not built yet."),
+        act("Time Selection", "multitrack.bounce.selection"),
+        off("Selected Clips in Time Selection", "Not built yet."),
+        act("Selected Clips Only", "multitrack.bounce.clips"),
+      ]),
       sep,
       act("Session Properties...", "multitrack.properties"),
     ];
@@ -1558,7 +1570,14 @@
 
   <div class="vwrap">
   {#if showStart}
-    <div class="start">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="start"
+      oncontextmenu={(e) => {
+        e.preventDefault();
+        menu = { x: e.clientX, y: e.clientY, items: emptyLaneItems() };
+      }}
+    >
       <p class="start-title">Nothing open</p>
       <p class="start-sub">Open a session or an audio file, or start a new session.</p>
       <div class="start-buttons">
@@ -1578,7 +1597,7 @@
     oncontextmenu={(e) => {
       // Space below the last track gets the session menu too.
       e.preventDefault();
-      if (doc) menu = { x: e.clientX, y: e.clientY, items: emptyLaneItems() };
+      menu = { x: e.clientX, y: e.clientY, items: emptyLaneItems() };
     }}
   >
     <div class="rows" bind:clientHeight={rowsH}>

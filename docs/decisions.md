@@ -999,3 +999,13 @@ A user report on 0.1.3 listed five problems. All five are addressed in 0.1.4.
 - 2026-10-22: built the 0.1.9 batch (backlog 3g, 3h, 3i, 3l, 3m, 3n, 3o, 3p, 3u, 3v, 3w, 3x). Space stops when playing or recording and the Pause/Stop setting was removed. Alt+wheel over lanes resizes the track and Alt+Shift+wheel zooms the waveform (Waveform editor keeps Alt+wheel for amplitude). Strip now leaves the gap open by default; closing gaps is an opt-in setting. Panel group buttons removed; floating lives in the panel menu. Small Tabs lasts for the session only. 3t (fade bending) and 3z (libraries) were left for a later version by the project lead.
 
 - 2026-10-22: added a `hidden` field to tracks (backlog 3j). Hidden tracks leave the Editor and Mixer lists but still play and mix; the flag is optional and left out of the file when off, so old files load unchanged. Voice Chain rows reworked with drag reorder (3q). Clip envelope menu gained Add/Remove Effects; chain-level envelopes stay disabled until the engine supports them (3k).
+
+- 2026-10-23: the web view's own right-click menu (Back, Refresh, Print, Share, in the system language) is blocked everywhere except text fields (bug report from a tester). The app's own menus are unaffected.
+
+- 2026-10-23: the multitrack right-click menu for empty space now also opens when no session is open (items that need a session are disabled with a reason). File > Export > Markers and Chapters works on the open file in the Waveform editor, using its markers, and saves beside that file by default (tester request).
+
+- 2026-10-23: empty-space right-click menu lined up with the tester's reference: Groups and Bounce gain the missing entries (shown disabled until built), Ripple Delete gains Time Selection in Selected Clips (disabled), the video track entry is removed. Our Marker entries keep their own names (Range, Chapter, Ad Slot, Social Clip).
+
+- 2026-10-23: broadcast and CD features stay in the plan (project lead). Added CD Track and Cart Timer marker kinds (Rust enum, schema, TS, Markers panel, menus), Add Subclip Marker, and 16 new shortcuts assigned to the items we have (CLAUDE.md table). Disabled items hold their chords: Alt+B, Ctrl+Shift+G, Alt+Backspace. Video and 5.1 stay out.
+
+- 2026-10-23: the right-click and marker work ships as 0.1.10, a bug-fix release on top of 0.1.9 (docs/release-0.1.10-plan.md). FCPXML export and MCP control noted in the backlog for later.

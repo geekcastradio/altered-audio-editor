@@ -187,7 +187,7 @@ export interface SessionDoc {
 }
 
 export type MarkerKind =
-  "cue" | "subclip" | "chapter" | "ad_slot" | "social_clip";
+  "cue" | "subclip" | "chapter" | "ad_slot" | "social_clip" | "cd_track" | "cart_timer";
 
 export interface MarkerDoc {
   id: string;

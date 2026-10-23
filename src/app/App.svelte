@@ -1029,12 +1029,18 @@
   const KEY_CHAPTER_FORMAT = "export.chapters-format";
   let markersExport = $state<{ format: ChapterFormat } | null>(null);
 
+  /** The document whose markers File > Export > Markers and Chapters writes: the open file in the Waveform editor, else the session. */
+  const markerDoc = () => (inWave() ? wave.current : session.current);
+
   async function saveMarkers(content: string, format: ChapterFormat) {
-    const doc = session.current;
+    const doc = markerDoc();
     const f = CHAPTER_FORMATS.find((x) => x.id === format);
     if (!doc || !f) return;
-    const base = (doc.name || "Session").replace(/[\\/:*?"<>|]+/g, " ").trim() || "Session";
-    const path = await exportText(`${base} ${format === "podcast-json" ? "chapters" : "markers"}`, sessionFolder(), "Export Markers and Chapters", f.filter, f.ext, content);
+    const wf = inWave() ? waveFile.current() : null;
+    const name = wf ? (wf.path.split(/[\\/]/).pop() ?? "").replace(/\.[^.]+$/, "") : doc.name;
+    const folder = wf ? wf.path.slice(0, Math.max(wf.path.lastIndexOf("/"), wf.path.lastIndexOf("\\"))) || null : sessionFolder();
+    const base = (name || "Session").replace(/[\\/:*?"<>|]+/g, " ").trim() || "Session";
+    const path = await exportText(`${base} ${format === "podcast-json" ? "chapters" : "markers"}`, folder, "Export Markers and Chapters", f.filter, f.ext, content);
     if (!path) return;
     markersExport = null;
     showNotice(`Saved ${path.split(/[\\/]/).pop()}.`);
@@ -2701,6 +2707,39 @@
         },
       }),
       ov(waveIsOpen, {
+        id: "edit.marker.subclip",
+        run: async () => {
+          const d = wave.current;
+          const r = waveSel();
+          if (!d || !r) return;
+          const m = newMarker(uuid(), nextMarkerName(d.markers, "Subclip"), r[0], r[1] - r[0], "subclip");
+          await waveEdit("Add Subclip Marker", { op: "add_markers", markers: [m] });
+        },
+        enabled: () => waveSel() !== null,
+        reason: () => NEED_WAVE_SEL,
+      }),
+      ov(waveIsOpen, {
+        id: "edit.marker.cd-track",
+        run: async () => {
+          const d = wave.current;
+          if (!d) return;
+          const n = d.markers.filter((x) => x.kind === "cd_track").length + 1;
+          await waveEdit("Add CD Track Marker", { op: "add_markers", markers: [newMarker(uuid(), `Track ${n}`, wavePlayhead(), 0, "cd_track")] });
+        },
+      }),
+      ov(waveIsOpen, {
+        id: "edit.marker.cart",
+        run: async () => {
+          const d = wave.current;
+          if (!d) return;
+          const r = waveSel();
+          const m = r
+            ? newMarker(uuid(), nextMarkerName(d.markers, "Cart"), r[0], r[1] - r[0], "cart_timer")
+            : newMarker(uuid(), nextMarkerName(d.markers, "Cart"), wavePlayhead(), 0, "cart_timer");
+          await waveEdit("Add Cart Timer Marker", { op: "add_markers", markers: [m] });
+        },
+      }),
+      ov(waveIsOpen, {
         id: "edit.marker.range",
         run: async () => {
           const d = wave.current;
@@ -3248,7 +3287,7 @@
           const saved = prefs.string(KEY_CHAPTER_FORMAT, "timestamps");
           markersExport = { format: CHAPTER_FORMATS.some((f) => f.id === saved) ? (saved as ChapterFormat) : "timestamps" };
         },
-        enabled: () => (session.current?.markers.length ?? 0) > 0,
+        enabled: () => (markerDoc()?.markers.length ?? 0) > 0,
         reason: () => "Add markers first (Edit > Markers).",
       }),
       ...FX_MENU.map((short) =>
@@ -3278,6 +3317,42 @@
           if (!doc) return;
           const m = newMarker(uuid(), nextMarkerName(doc.markers, settings.current.markerName), playheadNow());
           await session.edit("Add Marker", { op: "add_markers", markers: [m] }, sessionHistory);
+        },
+        enabled: () => session.current !== null,
+      }),
+      actions.register({
+        id: "edit.marker.subclip",
+        run: async () => {
+          const doc = session.current;
+          const r = timeSel();
+          if (!doc || !r) return;
+          const m = newMarker(uuid(), nextMarkerName(doc.markers, "Subclip"), r.start, r.end - r.start, "subclip");
+          await session.edit("Add Subclip Marker", { op: "add_markers", markers: [m] }, sessionHistory);
+        },
+        enabled: () => timeSel() !== null,
+        reason: () => "Select the part to mark with the Time Selection tool first.",
+      }),
+      actions.register({
+        id: "edit.marker.cd-track",
+        run: async () => {
+          const doc = session.current;
+          if (!doc) return;
+          const n = doc.markers.filter((x) => x.kind === "cd_track").length + 1;
+          const m = newMarker(uuid(), `Track ${n}`, playheadNow(), 0, "cd_track");
+          await session.edit("Add CD Track Marker", { op: "add_markers", markers: [m] }, sessionHistory);
+        },
+        enabled: () => session.current !== null,
+      }),
+      actions.register({
+        id: "edit.marker.cart",
+        run: async () => {
+          const doc = session.current;
+          if (!doc) return;
+          const r = timeSel();
+          const m = r
+            ? newMarker(uuid(), nextMarkerName(doc.markers, "Cart"), r.start, r.end - r.start, "cart_timer")
+            : newMarker(uuid(), nextMarkerName(doc.markers, "Cart"), playheadNow(), 0, "cart_timer");
+          await session.edit("Add Cart Timer Marker", { op: "add_markers", markers: [m] }, sessionHistory);
         },
         enabled: () => session.current !== null,
       }),
@@ -4045,10 +4120,10 @@
   />
 {/if}
 
-{#if markersExport && session.current}
+{#if markersExport && markerDoc()}
   <ExportMarkersDialog
-    markers={session.current.markers}
-    rate={session.current.sample_rate}
+    markers={markerDoc()!.markers}
+    rate={markerDoc()!.sample_rate}
     format={markersExport.format}
     onFormat={(f) => {
       prefs.set(KEY_CHAPTER_FORMAT, f);

@@ -50,9 +50,12 @@
   --clip-4: #b8693f;
   --clip-5: #b8a23f;
   --clip-6: #b84f6e;
+  --clip-7: #3fa3b8;
 
   /* Type and density */
-  --font-ui: "Source Sans 3", "Segoe UI", system-ui, -apple-system, "Noto Sans", sans-serif;
+  --font-ui:
+    "Source Sans 3", "Segoe UI", system-ui, -apple-system, "Noto Sans",
+    sans-serif;
   --font-mono: "Cascadia Mono", "Consolas", ui-monospace, monospace;
   --font-size: 13px;
   --font-size-small: 12px;

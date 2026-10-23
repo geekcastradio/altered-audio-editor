@@ -522,3 +522,16 @@ Original note: requested by testers as ideas for later updates. Everything stays
 ### Filler word removal: keep the editor in charge
 - Feedback from a long-time editor: a filler can carry emotion in an answer, and cutting them all can bring words too close together and sound unnatural. Agreed, and it matches how the feature was already framed (a reviewable list).
 - **Spec change:** never an automatic cut. Every item is a keep or cut decision in the list, with audition in context (a few seconds around it), and filters by word, by speaker and by length. Cuts keep a minimum natural pause (adjustable, about 80 to 150 ms to start) instead of closing the gap, and use a short crossfade at zero crossings. Add "shorten" (trim a long filler to a brief one) and "turn down" as non-destructive alternatives to cutting. "Cut All" appears only after the list has been reviewed. Spacing between words after a cut is judged on cadence, not just removal: if the gap after a cut is shorter than the speaker's usual gap, the edit is flagged.
+
+## Added 2026-10-23: broadcast and disc features, and shortcut follow-ups
+
+Decision (project lead): broadcast and CD features stay in the plan for people who want them.
+- **Built as scaffolding:** CD Track and Cart Timer marker kinds (Edit > Markers, the lanes' right-click menu, Markers panel), Shift+M and C. Subclip markers can now be added from a time selection.
+- **Still to build:** CD layout and disc export (track list from CD Track markers, gaps, CD-Text, cue sheet); Cart Timer behavior (show the cart's set length, warn when a read is over or under, like the ad read timer); Edit > Markers export of these kinds.
+- **Shortcut chords held by disabled items:** Alt+B (Bus Track, P5), Ctrl+Shift+G (Suspend Groups), Alt+Backspace (Time Selection in Selected Clips). Not built: Suspend Groups, Remove Focus Clip from Group, Time Selection in Selected Clips, Bounce Selected Track, Bounce Selected Clips in Time Selection.
+- **Not in our plans (note for later):** Add Video Track, 5.1 tracks and the video shortcuts from the reference menu.
+
+## Requested 2026-10-23, for later
+
+- **Final Cut Pro interchange (FCPXML export), and better interchange in general.** Export a session's tracks, clips, positions, fades and markers as FCPXML so editors can finish in a video editor; later look at other interchange formats. Own design, built from the published format, no other product's code.
+- **MCP control** (local-only endpoint, off by default, read-only first, every edit one labelled undoable step). Already under "Later" in CLAUDE.md; this request raises its priority.

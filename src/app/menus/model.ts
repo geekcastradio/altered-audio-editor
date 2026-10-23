@@ -137,6 +137,7 @@ export const MENUS: readonly Menu[] = [
       ]),
       sub("Ripple Delete", [
         item("edit.ripple.clips", "Selected Clips"),
+        item("edit.ripple.time-clips", "Time Selection in Selected Clips", { pending: LATER }),
         item("edit.ripple.time-track", "Time Selection in Selected Track"),
         item("edit.ripple.time-all", "Time Selection in All Tracks"),
         item("edit.ripple.gap", "Gap Between Clips"),
@@ -173,6 +174,9 @@ export const MENUS: readonly Menu[] = [
       }),
       sub("Markers", [
         item("edit.marker.cue", "Add Cue Marker"),
+        item("edit.marker.subclip", "Add Subclip Marker"),
+        item("edit.marker.cd-track", "Add CD Track Marker"),
+        item("edit.marker.cart", "Add Cart Timer Marker"),
         item("edit.marker.range", "Add Range Marker"),
         item("edit.marker.chapter", "Add Chapter Marker"),
         item("edit.marker.ad-slot", "Add Ad Slot..."),
@@ -325,7 +329,9 @@ export const MENUS: readonly Menu[] = [
       ]),
       sub("Group", [
         item("clip.group", "Group Clips"),
-        item("clip.ungroup", "Ungroup Clips"),
+        item("clip.group-suspend", "Suspend Groups", { pending: LATER }),
+        item("clip.group-remove-focus", "Remove Focus Clip from Group", { pending: LATER }),
+        item("clip.ungroup", "Ungroup Selected Clips"),
       ]),
       item("clip.stretch", "Time Stretch..."),
       item("clip.music-fit", "Fit Music to Length..."),
