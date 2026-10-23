@@ -49,7 +49,10 @@ export interface EffectChainDoc {
   slots: EffectSlotDoc[];
 }
 
-export type EffectTarget = { kind: "track"; id: string } | { kind: "clip"; id: string } | { kind: "master" };
+export type EffectTarget =
+  | { kind: "track"; id: string }
+  | { kind: "clip"; id: string }
+  | { kind: "master" };
 
 export interface ClipDoc {
   id: string;
@@ -117,7 +120,10 @@ export interface EnvelopePointDoc {
 
 export interface EnvelopeDoc {
   id: string;
-  target: { type: "volume" } | { type: "pan" } | { type: "effect_param"; slot_id: string; param: string };
+  target:
+    | { type: "volume" }
+    | { type: "pan" }
+    | { type: "effect_param"; slot_id: string; param: string };
   enabled: boolean;
   points: EnvelopePointDoc[];
 }
@@ -139,6 +145,8 @@ export interface TrackDoc {
   polarity_inverted?: boolean;
   /** Folded to its name row. Missing in files where it is off. */
   collapsed?: boolean;
+  /** Hidden from the Editor and Mixer lists. Missing in files where it is off. */
+  hidden?: boolean;
   monitor_input?: boolean;
   input?: string | null;
   effects?: EffectChainDoc;
@@ -168,11 +176,18 @@ export interface SessionDoc {
   playlist?: string[];
   view: ViewDoc;
   libraries: string[];
-  master?: { volume_db: number; channels: string; height: number; effects?: EffectChainDoc; [key: string]: unknown };
+  master?: {
+    volume_db: number;
+    channels: string;
+    height: number;
+    effects?: EffectChainDoc;
+    [key: string]: unknown;
+  };
   [key: string]: unknown;
 }
 
-export type MarkerKind = "cue" | "subclip" | "chapter" | "ad_slot" | "social_clip";
+export type MarkerKind =
+  "cue" | "subclip" | "chapter" | "ad_slot" | "social_clip";
 
 export interface MarkerDoc {
   id: string;
@@ -226,7 +241,11 @@ export interface ClipChange {
   /** Replaces the pan envelope points (-100 left to 100 right). Empty removes the envelope. */
   pan?: EnvelopePointDoc[];
   /** Replaces the points of one effect setting's envelope. Empty removes it. */
-  effect_points?: { slot_id: string; param: string; points: EnvelopePointDoc[] }[];
+  effect_points?: {
+    slot_id: string;
+    param: string;
+    points: EnvelopePointDoc[];
+  }[];
   /** Loops the clip, or changes its loop. */
   looped?: LoopDoc;
   /** Stops looping. */
@@ -261,6 +280,7 @@ export interface TrackChanges {
   pan?: number;
   polarity_inverted?: boolean;
   collapsed?: boolean;
+  hidden?: boolean;
   monitor_input?: boolean;
   input?: string | null;
   role?: "standard" | "guest";
@@ -270,7 +290,13 @@ export interface TrackChanges {
 
 /** An edit the core understands. */
 export type Op =
-  | { op: "add_track"; id: string; name: string; stereo: boolean; index: number }
+  | {
+      op: "add_track";
+      id: string;
+      name: string;
+      stereo: boolean;
+      index: number;
+    }
   | { op: "restore_track"; track: TrackDoc; index: number }
   | { op: "remove_track"; id: string }
   | { op: "move_track"; id: string; to: number }
@@ -301,10 +327,16 @@ export interface SessionBackend {
 type Listener = (doc: SessionDoc | null) => void;
 
 /** Timeline length of a clip, in session samples. */
-export function clipLength(clip: ClipDoc, media: MediaRefDoc | undefined, sessionRate: number): number {
+export function clipLength(
+  clip: ClipDoc,
+  media: MediaRefDoc | undefined,
+  sessionRate: number,
+): number {
   if (clip.looped) return clip.looped.length;
   const srcRate = media?.sample_rate || sessionRate;
-  const natural = Math.round(((clip.source_out - clip.source_in) * sessionRate) / srcRate);
+  const natural = Math.round(
+    ((clip.source_out - clip.source_in) * sessionRate) / srcRate,
+  );
   const r = stretchOf(clip);
   return r === 1 ? natural : Math.round(natural * r);
 }
@@ -314,7 +346,11 @@ export function sessionEnd(doc: SessionDoc): number {
   const media = new Map(doc.media.map((m) => [m.id, m]));
   let end = 0;
   for (const t of doc.tracks) {
-    for (const c of t.clips) end = Math.max(end, c.start + clipLength(c, media.get(c.media_id), doc.sample_rate));
+    for (const c of t.clips)
+      end = Math.max(
+        end,
+        c.start + clipLength(c, media.get(c.media_id), doc.sample_rate),
+      );
   }
   return end;
 }
@@ -399,7 +435,8 @@ function mergeKey(op: Op): string | null {
   if (op.op === "set_master_volume") return "master";
   if (op.op !== "set_track") return null;
   const keys = Object.keys(op.changes);
-  if (keys.length !== 1 || !["volume_db", "pan", "height"].includes(keys[0]!)) return null;
+  if (keys.length !== 1 || !["volume_db", "pan", "height"].includes(keys[0]!))
+    return null;
   return `${op.id}:${keys[0]}`;
 }
 
@@ -419,7 +456,12 @@ class OpCommand implements Command {
     if (this.op.op === "set_effects" && next.op.op === "set_effects") {
       const a = this.op.target;
       const b = next.op.target;
-      if (this.label !== next.label || a.kind !== b.kind || ("id" in a ? a.id : null) !== ("id" in b ? b.id : null)) return false;
+      if (
+        this.label !== next.label ||
+        a.kind !== b.kind ||
+        ("id" in a ? a.id : null) !== ("id" in b ? b.id : null)
+      )
+        return false;
       this.op = next.op;
       return true;
     }

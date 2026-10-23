@@ -12,7 +12,6 @@
 /** A fade curve, as the session stores it. */
 export type FadeShape = "linear" | "logarithmic" | "cosine";
 export type WheelAnchor = "mouse" | "playhead";
-export type SpaceAction = "pause" | "stop";
 
 export interface AppColors {
   /** Waveforms in the Waveform editor. Empty keeps the theme color. */
@@ -32,7 +31,6 @@ export interface AppSettings {
   /** Shape a new fade starts with. */
   fadeShape: FadeShape;
   /** What the space bar does to a playing session. */
-  spaceAction: SpaceAction;
   colors: AppColors;
   /** System name of the output; null is the system default. */
   output: string | null;
@@ -67,14 +65,18 @@ export interface AppSettings {
 
 export const TIMECODE_RATES = [24, 25, 30, 50, 60] as const;
 
-export const NO_COLORS: AppColors = { wave: "", playhead: "", accent: "", laneSelected: "" };
+export const NO_COLORS: AppColors = {
+  wave: "",
+  playhead: "",
+  accent: "",
+  laneSelected: "",
+};
 
 export const DEFAULT_SETTINGS: AppSettings = {
   zoomStep: 25,
   wheelAnchor: "mouse",
   wheelZooms: true,
   fadeShape: "cosine",
-  spaceAction: "pause",
   colors: { ...NO_COLORS },
   output: null,
   waveInput: null,
@@ -99,45 +101,82 @@ const HEX = /^#[0-9a-f]{6}$/i;
 
 /** Saved settings, with defaults for anything missing, out of range or the wrong type. */
 export function sanitizeSettings(raw: unknown): AppSettings {
-  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<
+    string,
+    unknown
+  >;
   const d = DEFAULT_SETTINGS;
-  const num = (v: unknown, lo: number, hi: number, def: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def);
+  const num = (v: unknown, lo: number, hi: number, def: number) =>
+    typeof v === "number" && Number.isFinite(v)
+      ? Math.min(hi, Math.max(lo, v))
+      : def;
   const bool = (v: unknown, def: boolean) => (typeof v === "boolean" ? v : def);
-  const c = (o.colors && typeof o.colors === "object" ? o.colors : {}) as Record<string, unknown>;
-  const color = (v: unknown) => (typeof v === "string" && HEX.test(v) ? v.toLowerCase() : "");
+  const c = (
+    o.colors && typeof o.colors === "object" ? o.colors : {}
+  ) as Record<string, unknown>;
+  const color = (v: unknown) =>
+    typeof v === "string" && HEX.test(v) ? v.toLowerCase() : "";
   const yellow = num(o.meterYellowDb, -40, -1, d.meterYellowDb);
   return {
     zoomStep: Math.round(num(o.zoomStep, 5, 100, d.zoomStep)),
     wheelAnchor: o.wheelAnchor === "playhead" ? "playhead" : "mouse",
     wheelZooms: bool(o.wheelZooms, d.wheelZooms),
-    fadeShape: o.fadeShape === "linear" || o.fadeShape === "logarithmic" ? o.fadeShape : "cosine",
-    spaceAction: o.spaceAction === "stop" ? "stop" : "pause",
-    colors: { wave: color(c.wave), playhead: color(c.playhead), accent: color(c.accent), laneSelected: color(c.laneSelected) },
+    fadeShape:
+      o.fadeShape === "linear" || o.fadeShape === "logarithmic"
+        ? o.fadeShape
+        : "cosine",
+    colors: {
+      wave: color(c.wave),
+      playhead: color(c.playhead),
+      accent: color(c.accent),
+      laneSelected: color(c.laneSelected),
+    },
     output: typeof o.output === "string" && o.output.trim() ? o.output : null,
     driver: o.driver === "asio" ? "asio" : "system",
-    meterSpeed: o.meterSpeed === "medium" || o.meterSpeed === "slow" ? o.meterSpeed : "fast",
+    meterSpeed:
+      o.meterSpeed === "medium" || o.meterSpeed === "slow"
+        ? o.meterSpeed
+        : "fast",
     customLufs: Math.round(num(o.customLufs, -40, -5, d.customLufs) * 10) / 10,
     customPeak: Math.round(num(o.customPeak, -10, 0, d.customPeak) * 10) / 10,
-    waveInput: typeof o.waveInput === "string" && /^(Mono|Stereo): /.test(o.waveInput) ? o.waveInput : null,
+    waveInput:
+      typeof o.waveInput === "string" && /^(Mono|Stereo): /.test(o.waveInput)
+        ? o.waveInput
+        : null,
     autosave: bool(o.autosave, d.autosave),
-    autosaveMinutes: Math.round(num(o.autosaveMinutes, 1, 60, d.autosaveMinutes)),
+    autosaveMinutes: Math.round(
+      num(o.autosaveMinutes, 1, 60, d.autosaveMinutes),
+    ),
     openChainOnAdd: bool(o.openChainOnAdd, d.openChainOnAdd),
     soloExclusive: bool(o.soloExclusive, d.soloExclusive),
     meterYellowDb: yellow,
     // Red sits above yellow.
-    meterRedDb: num(o.meterRedDb, yellow + 1, 0, Math.max(d.meterRedDb, yellow + 1)),
+    meterRedDb: num(
+      o.meterRedDb,
+      yellow + 1,
+      0,
+      Math.max(d.meterRedDb, yellow + 1),
+    ),
     backups: bool(o.backups, d.backups),
     backupCount: Math.round(num(o.backupCount, 1, 50, d.backupCount)),
     countdownSec: Math.round(num(o.countdownSec, 0, 10, d.countdownSec)),
-    markerName: typeof o.markerName === "string" && o.markerName.trim() ? o.markerName.trim().slice(0, 40) : d.markerName,
-    timecodeFps: TIMECODE_RATES.includes(o.timecodeFps as never) ? (o.timecodeFps as number) : d.timecodeFps,
+    markerName:
+      typeof o.markerName === "string" && o.markerName.trim()
+        ? o.markerName.trim().slice(0, 40)
+        : d.markerName,
+    timecodeFps: TIMECODE_RATES.includes(o.timecodeFps as never)
+      ? (o.timecodeFps as number)
+      : d.timecodeFps,
   };
 }
 
 type Listener = (s: AppSettings) => void;
 
 class SettingsStore {
-  private value: AppSettings = { ...DEFAULT_SETTINGS, colors: { ...NO_COLORS } };
+  private value: AppSettings = {
+    ...DEFAULT_SETTINGS,
+    colors: { ...NO_COLORS },
+  };
   private readonly listeners = new Set<Listener>();
 
   get current(): AppSettings {
@@ -161,7 +200,10 @@ class SettingsStore {
 export const settings = new SettingsStore();
 
 /** The Ctrl+wheel zoom ratios for zooming in and out. */
-export function zoomRatios(step = settings.current.zoomStep): { zoomIn: number; zoomOut: number } {
+export function zoomRatios(step = settings.current.zoomStep): {
+  zoomIn: number;
+  zoomOut: number;
+} {
   const out = 1 + step / 100;
   return { zoomIn: 1 / out, zoomOut: out };
 }

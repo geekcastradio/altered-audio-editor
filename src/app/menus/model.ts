@@ -12,7 +12,13 @@
 import { PANELS } from "../docking/registry";
 
 export type MenuItem =
-  | { kind: "item"; id: string; label: string; pending?: string; placeholder?: boolean }
+  | {
+      kind: "item";
+      id: string;
+      label: string;
+      pending?: string;
+      placeholder?: boolean;
+    }
   | { kind: "submenu"; label: string; items: MenuItem[] }
   | { kind: "sep" };
 
@@ -23,13 +29,21 @@ export interface Menu {
   items: MenuItem[];
 }
 
-const item = (id: string, label: string, opts: { pending?: string; placeholder?: boolean } = {}): MenuItem => ({
+const item = (
+  id: string,
+  label: string,
+  opts: { pending?: string; placeholder?: boolean } = {},
+): MenuItem => ({
   kind: "item",
   id,
   label,
   ...opts,
 });
-const sub = (label: string, items: MenuItem[]): MenuItem => ({ kind: "submenu", label, items });
+const sub = (label: string, items: MenuItem[]): MenuItem => ({
+  kind: "submenu",
+  label,
+  items,
+});
 const sep: MenuItem = { kind: "sep" };
 
 const P2 = "Arrives with playback (P2).";
@@ -52,9 +66,19 @@ export const MENUS: readonly Menu[] = [
       item("file.new-session", "New Session..."),
       item("file.new-audio", "New Audio File..."),
       item("file.open", "Open..."),
+      item("file.convert-sample-type", "Convert Sample Type...", {
+        pending: LATER,
+      }),
       sub("Open Recent", [
-        ...Array.from({ length: RECENT_SLOTS }, (_, i) => item(`file.recent.${i + 1}`, `Recent ${i + 1}`, { placeholder: true })),
-        item("file.recent.none", "No recent sessions", { pending: "Sessions you save or open appear here.", placeholder: true }),
+        ...Array.from({ length: RECENT_SLOTS }, (_, i) =>
+          item(`file.recent.${i + 1}`, `Recent ${i + 1}`, {
+            placeholder: true,
+          }),
+        ),
+        item("file.recent.none", "No recent sessions", {
+          pending: "Sessions you save or open appear here.",
+          placeholder: true,
+        }),
       ]),
       sep,
       item("file.import-files", "Import Files..."),
@@ -135,11 +159,18 @@ export const MENUS: readonly Menu[] = [
         sep,
         item("edit.select-view-time", "Select Current View Time"),
         item("edit.select-all-time", "Select All Time"),
-        item("edit.select-time-around-clips", "Select Time Around Selected Clips"),
+        item(
+          "edit.select-time-around-clips",
+          "Select Time Around Selected Clips",
+        ),
         item("edit.clear-time-selection", "Clear Time Selection"),
         item("edit.select-to-end", "Playhead to End"),
       ]),
       item("edit.find", "Find..."),
+      item("edit.repeat-last", "Repeat Last Command", { pending: LATER }),
+      item("edit.repeat-last-dialog", "Repeat Last Command Dialog", {
+        pending: LATER,
+      }),
       sub("Markers", [
         item("edit.marker.cue", "Add Cue Marker"),
         item("edit.marker.range", "Add Range Marker"),
@@ -174,14 +205,54 @@ export const MENUS: readonly Menu[] = [
       item("multitrack.duplicate-track", "Duplicate Track"),
       item("multitrack.delete-track", "Delete Track"),
       item("multitrack.delete-empty", "Delete Empty Tracks"),
+      sub("Track Visibility", [
+        item("multitrack.vis.hide-selected", "Hide Selected Track"),
+        item("multitrack.vis.show-all", "Show All Tracks"),
+        sep,
+        item("multitrack.vis.only-audio", "Show Only Audio Tracks"),
+        item("multitrack.vis.only-bus", "Show Only Bus Tracks", {
+          pending: P5,
+        }),
+        item("multitrack.vis.only-clips", "Show Only Tracks with Clips"),
+        item(
+          "multitrack.vis.only-selection",
+          "Show Only Tracks with Clips within Time Selection",
+        ),
+        item(
+          "multitrack.vis.only-playhead",
+          "Show Only Tracks with Clips at Playhead",
+        ),
+        sep,
+        item("multitrack.vis.load", "Load Visibility Preset", {
+          pending: LATER,
+        }),
+        item("multitrack.vis.save", "Save Visibility Preset", {
+          pending: LATER,
+        }),
+      ]),
       sep,
       item("multitrack.insert-files", "Insert Files at Playhead..."),
       item("multitrack.insert-tracks", "Insert Files as Tracks..."),
-      item("multitrack.insert-selected-tracks", "Insert Selected Files as Tracks"),
+      item(
+        "multitrack.insert-selected-tracks",
+        "Insert Selected Files as Tracks",
+      ),
       item("multitrack.insert-silence", "Insert Silence at Playhead..."),
       sep,
-      item("multitrack.play-pause", "Play / Pause"),
+      item("multitrack.play-pause", "Play / Stop"),
       item("multitrack.stop", "Stop"),
+      sub("Go To", [
+        item("transport.go-start", "Start"),
+        item("transport.go-end", "End"),
+        item("transport.prev-edge", "Previous Marker, Clip or Selection Edge"),
+        item("transport.next-edge", "Next Marker, Clip or Selection Edge"),
+        item("transport.prev-marker", "Previous Marker"),
+        item("transport.next-marker", "Next Marker"),
+      ]),
+      item("multitrack.return-on-stop", "Return to Start on Stop", {
+        pending: LATER,
+      }),
+      item("multitrack.meter-input", "Meter Input Signal", { pending: LATER }),
       item("multitrack.record", "Record"),
       item("multitrack.record-options", "Recording Options..."),
       sep,
@@ -193,8 +264,12 @@ export const MENUS: readonly Menu[] = [
         sep,
         item("multitrack.profile.clear", "Clear Profile"),
       ]),
-      item("multitrack.transcribe", "Transcribe Session...", { pending: LATER }),
-      item("multitrack.remove-fillers", "Remove Filler Words...", { pending: P7 }),
+      item("multitrack.transcribe", "Transcribe Session...", {
+        pending: LATER,
+      }),
+      item("multitrack.remove-fillers", "Remove Filler Words...", {
+        pending: P7,
+      }),
       sep,
       sub("Mix Down to New File", [
         item("multitrack.mixdown.all", "Entire Session"),
@@ -214,6 +289,10 @@ export const MENUS: readonly Menu[] = [
     mnemonic: "C",
     items: [
       item("clip.split", "Split at Playhead"),
+      sub("Nudge", [
+        item("clip.nudge-left", "Nudge Left", { pending: LATER }),
+        item("clip.nudge-right", "Nudge Right", { pending: LATER }),
+      ]),
       item("clip.split-all", "Split All Clips at Playhead"),
       item("clip.merge", "Merge Clips"),
       item("clip.unique", "Make Unique Copy"),
@@ -266,6 +345,8 @@ export const MENUS: readonly Menu[] = [
     items: [
       item("window.panel.voice-chain", "Voice Chain"),
       item("window.panel.audio-fx", "Audio FX Panel"),
+      item("fx.hide-windows", "Hide All Effect Windows", { pending: LATER }),
+      item("fx.capture-noise-print", "Capture Noise Print", { pending: LATER }),
       sep,
       item("fx.invert", "Invert"),
       item("fx.reverse", "Reverse"),
@@ -317,18 +398,40 @@ export const MENUS: readonly Menu[] = [
         item("fx.add.dc_offset", "DC Offset Fix"),
         item("fx.add.sound_eraser", "Sound Eraser"),
       ]),
-      sub("Delay and Reverb", [item("fx.space", "Effects arrive in P5", { pending: P5, placeholder: true })]),
+      sub("Delay and Reverb", [
+        item("fx.space", "Effects arrive in P5", {
+          pending: P5,
+          placeholder: true,
+        }),
+      ]),
       sub("Pitch and Time", [
         item("fx.add.pitch_shift", "Pitch Shift"),
         item("clip.stretch", "Time Stretch..."),
         item("clip.music-fit", "Fit Music to Length..."),
-        item("fx.pitch-tune", "Pitch Tune (automatic correction)", { pending: NEXT_FX }),
-        item("fx.pitch-curve", "Pitch Curve (pitch over time)", { pending: NEXT_FX }),
+        item("fx.pitch-tune", "Pitch Tune (automatic correction)", {
+          pending: NEXT_FX,
+        }),
+        item("fx.pitch-curve", "Pitch Curve (pitch over time)", {
+          pending: NEXT_FX,
+        }),
       ]),
-      sub("Stereo and Channels", [item("fx.add.center_remover", "Center Remover (remove vocals)"), item("fx.add.phase_rotate", "Phase Rotate")]),
-      sub("QuickPass", [item("fx.quickpass", "Presets arrive in P5", { pending: P5, placeholder: true })]),
+      sub("Stereo and Channels", [
+        item("fx.add.center_remover", "Center Remover (remove vocals)"),
+        item("fx.add.phase_rotate", "Phase Rotate"),
+      ]),
+      sub("QuickPass", [
+        item("fx.quickpass", "Presets arrive in P5", {
+          pending: P5,
+          placeholder: true,
+        }),
+      ]),
       sep,
-      sub("Plug-ins", [item("fx.plugins.none", "No plug-ins scanned", { pending: P5, placeholder: true })]),
+      sub("Plug-ins", [
+        item("fx.plugins.none", "No plug-ins scanned", {
+          pending: P5,
+          placeholder: true,
+        }),
+      ]),
       item("fx.plugin-manager", "Plug-in Manager...", { pending: P5 }),
     ],
   },
@@ -336,6 +439,7 @@ export const MENUS: readonly Menu[] = [
     label: "View",
     mnemonic: "V",
     items: [
+      item("view.editor.toggle", "Switch Between Editors"),
       item("view.editor.multitrack", "Multitrack Editor"),
       item("view.editor.waveform", "Waveform Editor"),
       item("view.spectrum", "Show Spectrum"),
@@ -345,6 +449,11 @@ export const MENUS: readonly Menu[] = [
       item("view.zoom-out", "Zoom Out"),
       item("view.zoom-session", "Zoom to Session"),
       item("view.zoom-selection", "Zoom to Selection"),
+      item("view.zoom-in-vertical", "Zoom In Vertically", { pending: LATER }),
+      item("view.zoom-out-vertical", "Zoom Out Vertically", { pending: LATER }),
+      item("view.hud", "Show HUD", { pending: LATER }),
+      item("wave.channel-left", "Activate Left Channel", { pending: LATER }),
+      item("wave.channel-right", "Activate Right Channel", { pending: LATER }),
       sub("Time Format", [
         item("view.time.decimal", "Minutes and Seconds"),
         item("view.time.samples", "Samples"),
@@ -356,7 +465,9 @@ export const MENUS: readonly Menu[] = [
         item("view.env.fx", "Clip Effect Settings"),
       ]),
       sep,
-      item("view.mode.podcast", "Podcast Mode", { pending: "Its panels arrive with P7." }),
+      item("view.mode.podcast", "Podcast Mode", {
+        pending: "Its panels arrive with P7.",
+      }),
       item("view.mode.voiceover", "Voiceover Mode", { pending: LATER }),
     ],
   },
@@ -365,7 +476,11 @@ export const MENUS: readonly Menu[] = [
     mnemonic: "W",
     items: [
       sub("Workspace", [
-        ...Array.from({ length: WORKSPACE_SLOTS }, (_, i) => item(`window.workspace.${i + 1}`, `Workspace ${i + 1}`, { placeholder: true })),
+        ...Array.from({ length: WORKSPACE_SLOTS }, (_, i) =>
+          item(`window.workspace.${i + 1}`, `Workspace ${i + 1}`, {
+            placeholder: true,
+          }),
+        ),
         sep,
         item("window.workspace.reset", "Reset Workspace"),
         item("window.workspace.save-changes", "Save Changes to Workspace"),
@@ -387,7 +502,9 @@ export const MENUS: readonly Menu[] = [
       item("help.shortcuts", "Keyboard Shortcuts"),
       sep,
       item("help.website", "The GCRN Website"),
-      item("help.plugins", "GCRN Plugins", { pending: "The plugins page on thegcrn.com is not live yet." }),
+      item("help.plugins", "GCRN Plugins", {
+        pending: "The plugins page on thegcrn.com is not live yet.",
+      }),
       sep,
       item("help.book", "Book: Altered Audio, Podcasting Demystified"),
       item("help.support", "Support Altered Audio Editor..."),
@@ -430,7 +547,10 @@ export function commandList(menus: readonly Menu[] = MENUS): CommandEntry[] {
       if (it.kind === "submenu") walk(it.items, [...trail, it.label]);
       else if (it.kind === "item" && !it.placeholder && !seen.has(it.id)) {
         seen.add(it.id);
-        out.push({ id: it.id, path: [...trail, it.label.replace(/\.\.\.$/, "")].join(" > ") });
+        out.push({
+          id: it.id,
+          path: [...trail, it.label.replace(/\.\.\.$/, "")].join(" > "),
+        });
       }
     }
   };

@@ -68,7 +68,12 @@ export interface WorkspaceEntry {
 export interface WorkspaceBackend {
   list(): Promise<WorkspaceEntry[]>;
   get(id: string): Promise<unknown | null>;
-  put(id: string, name: string, builtIn: boolean, layout: unknown): Promise<void>;
+  put(
+    id: string,
+    name: string,
+    builtIn: boolean,
+    layout: unknown,
+  ): Promise<void>;
   remove(id: string): Promise<void>;
 }
 
@@ -91,7 +96,12 @@ export interface WorkspaceState {
   items: WorkspaceEntry[];
 }
 
-const SIDE_TO_POSITION = { left: "left", right: "right", above: "top", below: "bottom" } as const;
+const SIDE_TO_POSITION = {
+  left: "left",
+  right: "right",
+  above: "top",
+  below: "bottom",
+} as const;
 
 function toPosition(place: Placement): AddPanelPositionOptions {
   if ("edge" in place) return { direction: place.edge };
@@ -99,11 +109,14 @@ function toPosition(place: Placement): AddPanelPositionOptions {
 }
 
 /**
- * Group header buttons. Docked groups get Float and Maximize; floating
- * groups get Dock. Rebuilt whenever the group moves between the two.
+ * Group header buttons. Docked groups have none: floating and maximizing
+ * live in the panel menu (the dots on the active tab, or a right-click).
+ * Floating groups get a Dock button. Rebuilt when the group moves.
  * Icons are original.
  */
-function headerActions(dockBack: (group: IGroupHeaderProps["group"]) => void): IHeaderActionsRenderer {
+function headerActions(
+  dockBack: (group: IGroupHeaderProps["group"]) => void,
+): IHeaderActionsRenderer {
   const element = document.createElement("div");
   element.className = "aa-group-actions";
   const subs: { dispose(): void }[] = [];
@@ -119,25 +132,14 @@ function headerActions(dockBack: (group: IGroupHeaderProps["group"]) => void): I
     return b;
   };
 
-  let syncMax: (() => void) | null = null;
-
   const render = (params: IGroupHeaderProps) => {
     element.replaceChildren();
-    syncMax = null;
     if (params.group.api.location.type === "floating") {
-      button("Dock panel", "M3 3h10v10H3zM3 9h10", () => dockBack(params.group)).classList.add("always");
+      button("Dock panel", "M3 3h10v10H3zM3 9h10", () =>
+        dockBack(params.group),
+      ).classList.add("always");
       return;
     }
-    button("Float panel", "M3 6h7v7H3zM6 3h7v7", () => {
-      const panel = params.group.activePanel;
-      if (panel) params.containerApi.addFloatingGroup(panel);
-    });
-    const max = button("Maximize panel", "M3 3h10v10H3z", () => {
-      if (params.api.isMaximized()) params.api.exitMaximized();
-      else params.api.maximize();
-    });
-    syncMax = () => max.classList.toggle("on", params.api.isMaximized());
-    syncMax();
   };
 
   return {
@@ -145,7 +147,6 @@ function headerActions(dockBack: (group: IGroupHeaderProps["group"]) => void): I
     init(params: IGroupHeaderProps) {
       render(params);
       subs.push(params.group.api.onDidLocationChange(() => render(params)));
-      subs.push(params.containerApi.onDidMaximizedGroupChange(() => syncMax?.()));
     },
     dispose() {
       for (const s of subs) s.dispose();
@@ -176,7 +177,13 @@ function panelTab(): ITabRenderer {
     const r = menu.getBoundingClientRect();
     // Opens the tab's own right-click menu, under the button.
     element.dispatchEvent(
-      new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left, clientY: r.bottom + 2, button: 2 }),
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: r.left,
+        clientY: r.bottom + 2,
+        button: 2,
+      }),
     );
   });
   element.append(title, menu);
@@ -185,7 +192,9 @@ function panelTab(): ITabRenderer {
     element,
     init(params: TabPartInitParameters) {
       title.textContent = params.title ?? params.api.title ?? "";
-      subs.push(params.api.onDidTitleChange((e) => (title.textContent = e.title)));
+      subs.push(
+        params.api.onDidTitleChange((e) => (title.textContent = e.title)),
+      );
     },
     dispose() {
       for (const sub of subs) sub.dispose();
@@ -206,29 +215,49 @@ function tabMenu(
 ): ContextMenuItem[] {
   const floating = group.api.location.type === "floating";
   const others = group.panels.filter((p) => p.id !== panel.id);
-  const items: ContextMenuItem[] = [];
-  if (floating) {
-    items.push({ label: "Dock Group", action: () => dockBack(group) });
-  } else {
-    items.push({ label: "Float Panel", action: () => api.addFloatingGroup(panel) });
+  const items: ContextMenuItem[] = [
+    { label: "Close Panel", action: () => api.removePanel(panel) },
+  ];
+  if (floating)
+    items.push({ label: "Dock Panel Group", action: () => dockBack(group) });
+  else
+    items.push({
+      label: "Undock Panel",
+      action: () => api.addFloatingGroup(panel),
+    });
+  items.push({
+    label: "Close Other Panels in Group",
+    disabled: others.length === 0,
+    action: () => {
+      for (const p of others) api.removePanel(p);
+    },
+  });
+  // The group-wide items, then the layout switches.
+  items.push("separator", {
+    label: "Close Panel Group",
+    action: () => {
+      for (const p of [...group.panels]) api.removePanel(p);
+    },
+  });
+  if (!floating) {
+    items.push({
+      label: "Undock Panel Group",
+      action: () => api.addFloatingGroup(group),
+    });
     const max = group.api.isMaximized();
-    items.push({ label: max ? "Restore Group" : "Maximize Group", action: () => (max ? group.api.exitMaximized() : group.api.maximize()) });
+    items.push({
+      label: max ? "Restore Panel Group" : "Maximize Panel Group",
+      action: () => (max ? group.api.exitMaximized() : group.api.maximize()),
+    });
   }
+  const small = document.body.classList.contains("aa-small-tabs");
   items.push(
     "separator",
-    { label: "Close Panel", action: () => api.removePanel(panel) },
+    { label: "Stacked Panel Group (not available yet)", disabled: true },
+    { label: "Solo Panels in Stack (not available yet)", disabled: true },
     {
-      label: "Close Other Panels in Group",
-      disabled: others.length === 0,
-      action: () => {
-        for (const p of others) api.removePanel(p);
-      },
-    },
-    {
-      label: "Close Group",
-      action: () => {
-        for (const p of [...group.panels]) api.removePanel(p);
-      },
+      label: small ? "Small Tabs (on)" : "Small Tabs",
+      action: () => document.body.classList.toggle("aa-small-tabs", !small),
     },
   );
   return items;
@@ -247,7 +276,9 @@ interface StoredLayout {
 }
 
 const hasPanels = (d: unknown) =>
-  typeof d === "object" && d !== null && Object.keys((d as { panels?: object }).panels ?? {}).length > 0;
+  typeof d === "object" &&
+  d !== null &&
+  Object.keys((d as { panels?: object }).panels ?? {}).length > 0;
 
 export class DockController {
   private api: DockviewApi | null = null;
@@ -262,7 +293,10 @@ export class DockController {
   private custom: WorkspaceEntry[] = [];
   /** Base arrangement of the current user workspace. */
   private base: SerializedDockview | null = null;
-  private readonly wsStore = writable<WorkspaceState>({ current: "default", items: [] });
+  private readonly wsStore = writable<WorkspaceState>({
+    current: "default",
+    items: [],
+  });
 
   /** The workspaces and which one is in use, for the Window menu. */
   readonly workspaces: Readable<WorkspaceState> = this.wsStore;
@@ -285,7 +319,10 @@ export class DockController {
           element: host,
           init: () => {
             const body = content((panelDef(name)?.id ?? id) as PanelId);
-            instance = mount(body.component, { target: host, props: body.props });
+            instance = mount(body.component, {
+              target: host,
+              props: body.props,
+            });
           },
           dispose: () => {
             if (instance) void unmount(instance);
@@ -293,11 +330,13 @@ export class DockController {
           },
         };
       },
-      createRightHeaderActionComponent: () => headerActions((group) => this.dockGroup(group)),
+      createRightHeaderActionComponent: () =>
+        headerActions((group) => this.dockGroup(group)),
       // Every tab uses our own renderer (title plus menu button).
       defaultTabComponent: "panel-tab",
       createTabComponent: () => panelTab(),
-      getTabContextMenuItems: ({ panel, group, api }) => tabMenu(panel, group, api, (g) => this.dockGroup(g)),
+      getTabContextMenuItems: ({ panel, group, api }) =>
+        tabMenu(panel, group, api, (g) => this.dockGroup(g)),
     });
     this.api = api;
 
@@ -357,7 +396,9 @@ export class DockController {
       const panel = api.getPanel(id);
       if (!panel) continue;
       const docked = new Set(
-        api.panels.filter((p) => p.group.api.location.type === "grid").map((p) => p.id),
+        api.panels
+          .filter((p) => p.group.api.location.type === "grid")
+          .map((p) => p.id),
       );
       const home = resolveHome(id, docked);
       if ("edge" in home) {
@@ -368,7 +409,10 @@ export class DockController {
       if (!target) continue;
       panel.api.moveTo({
         group: target,
-        position: home.direction === "within" ? "center" : SIDE_TO_POSITION[home.direction],
+        position:
+          home.direction === "within"
+            ? "center"
+            : SIDE_TO_POSITION[home.direction],
       });
     }
   }
@@ -399,7 +443,8 @@ export class DockController {
   async switchTo(id: string): Promise<void> {
     if (id === this.current || !this.api) return;
     this.saveNow();
-    this.current = presetById(id) || this.custom.some((w) => w.id === id) ? id : "default";
+    this.current =
+      presetById(id) || this.custom.some((w) => w.id === id) ? id : "default";
     this.options.setCurrentId(this.current);
     await this.restore();
   }
@@ -409,10 +454,17 @@ export class DockController {
     const api = this.api;
     const clean = name.trim();
     if (!api || !clean) return;
-    const taken = new Set([...WORKSPACE_PRESETS.map((p) => p.id), ...this.custom.map((w) => w.id)]);
+    const taken = new Set([
+      ...WORKSPACE_PRESETS.map((p) => p.id),
+      ...this.custom.map((w) => w.id),
+    ]);
     const id = workspaceId(clean, taken);
     const dockview = api.toJSON();
-    const layout: StoredLayout = { defaultVersion: 0, dockview, base: dockview };
+    const layout: StoredLayout = {
+      defaultVersion: 0,
+      dockview,
+      base: dockview,
+    };
     try {
       await this.options.workspaces.put(id, clean, false, layout);
     } catch (e) {
@@ -420,7 +472,9 @@ export class DockController {
       return;
     }
     this.saveNow();
-    this.custom = [...this.custom, { id, name: clean, builtIn: false }].sort((a, b) => a.name.localeCompare(b.name));
+    this.custom = [...this.custom, { id, name: clean, builtIn: false }].sort(
+      (a, b) => a.name.localeCompare(b.name),
+    );
     this.current = id;
     this.base = dockview;
     this.options.setCurrentId(id);
@@ -454,14 +508,24 @@ export class DockController {
   get currentWorkspace(): WorkspaceEntry {
     const p = presetById(this.current);
     if (p) return { id: p.id, name: p.name, builtIn: true };
-    return this.custom.find((w) => w.id === this.current) ?? { id: "default", name: "Default", builtIn: true };
+    return (
+      this.custom.find((w) => w.id === this.current) ?? {
+        id: "default",
+        name: "Default",
+        builtIn: true,
+      }
+    );
   }
 
   // Internals
 
   private publish(): void {
     const items: WorkspaceEntry[] = [
-      ...WORKSPACE_PRESETS.map((p) => ({ id: p.id, name: p.name, builtIn: true })),
+      ...WORKSPACE_PRESETS.map((p) => ({
+        id: p.id,
+        name: p.name,
+        builtIn: true,
+      })),
       ...this.custom,
     ];
     this.wsStore.set({ current: this.current, items });
@@ -472,19 +536,26 @@ export class DockController {
     if (!api) return;
     if (this.custom.length === 0) {
       try {
-        this.custom = (await this.options.workspaces.list()).filter((w) => !w.builtIn && !presetById(w.id));
+        this.custom = (await this.options.workspaces.list()).filter(
+          (w) => !w.builtIn && !presetById(w.id),
+        );
       } catch (e) {
         this.options.onError(`Workspaces could not be listed: ${String(e)}`);
       }
     }
     const wanted = this.current || this.options.currentId();
-    this.current = presetById(wanted) || this.custom.some((w) => w.id === wanted) ? wanted : "default";
+    this.current =
+      presetById(wanted) || this.custom.some((w) => w.id === wanted)
+        ? wanted
+        : "default";
     this.publish();
     let saved: unknown = null;
     try {
       saved = await this.options.workspaces.get(this.current);
     } catch (e) {
-      this.options.onError(`Saved workspace could not be read, using its starting layout: ${String(e)}`);
+      this.options.onError(
+        `Saved workspace could not be read, using its starting layout: ${String(e)}`,
+      );
     }
     const stored = saved as StoredLayout | null;
     const preset = presetById(this.current);
@@ -492,7 +563,10 @@ export class DockController {
     // A layout with no panels is never useful at startup; it can only come
     // from a failed load, so it is treated as damaged. A built-in layout
     // saved from an older version of its preset is rebuilt.
-    const fresh = stored && hasPanels(stored.dockview) && (!preset || stored.defaultVersion === preset.version);
+    const fresh =
+      stored &&
+      hasPanels(stored.dockview) &&
+      (!preset || stored.defaultVersion === preset.version);
     if (fresh) {
       try {
         this.suppressSave = true;
@@ -500,7 +574,9 @@ export class DockController {
         this.syncOpen();
         return;
       } catch (e) {
-        this.options.onError(`Saved workspace was damaged, using its starting layout: ${String(e)}`);
+        this.options.onError(
+          `Saved workspace was damaged, using its starting layout: ${String(e)}`,
+        );
       } finally {
         this.suppressSave = false;
       }
@@ -538,9 +614,11 @@ export class DockController {
         const group = api.getPanel(step.id)?.group;
         if (!group) continue;
         if (step.width !== undefined) group.api.setSize({ width: step.width });
-        if (step.height !== undefined) group.api.setSize({ height: step.height });
+        if (step.height !== undefined)
+          group.api.setSize({ height: step.height });
       }
-      const first = steps.find((st) => !st.inactive && st.placement === null) ?? steps[0];
+      const first =
+        steps.find((st) => !st.inactive && st.placement === null) ?? steps[0];
       if (first) api.getPanel(first.id)?.api.setActive();
     } finally {
       this.suppressSave = false;
@@ -548,7 +626,11 @@ export class DockController {
     this.syncOpen();
   }
 
-  private add(id: PanelId, placement: Placement | null, extra: Partial<AddPanelOptions> = {}): void {
+  private add(
+    id: PanelId,
+    placement: Placement | null,
+    extra: Partial<AddPanelOptions> = {},
+  ): void {
     const def = panelDef(id);
     if (!def || !this.api) return;
     const options = {
@@ -567,7 +649,9 @@ export class DockController {
 
   private syncOpen(): void {
     const known = new Set<string>(PANELS.map((p) => p.id));
-    const ids = [...this.openIds()].filter((id): id is PanelId => known.has(id));
+    const ids = [...this.openIds()].filter((id): id is PanelId =>
+      known.has(id),
+    );
     this.openStore.set(new Set(ids));
   }
 
@@ -597,8 +681,10 @@ export class DockController {
       dockview: api.toJSON(),
       ...(this.base && !preset ? { base: this.base } : {}),
     };
-    this.options.workspaces.put(ws.id, ws.name, ws.builtIn, layout).catch((e: unknown) => {
-      this.options.onError(`Layout could not be saved: ${String(e)}`);
-    });
+    this.options.workspaces
+      .put(ws.id, ws.name, ws.builtIn, layout)
+      .catch((e: unknown) => {
+        this.options.onError(`Layout could not be saved: ${String(e)}`);
+      });
   }
 }

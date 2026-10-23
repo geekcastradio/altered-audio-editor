@@ -3,7 +3,24 @@
 // This file is part of Altered Audio Editor.
 
 import { describe, expect, it } from "vitest";
-import { defaultTrackColor, dragOverviewEdge, fit, formatClock, formatIn, formatTimecode, formatTime, overviewWindow, peakRange, pickLevel, rulerTicks, sampleAt, xOf, zoomAround, MIN_SPP } from "./timeline";
+import {
+  defaultTrackColor,
+  dragOverviewEdge,
+  fit,
+  formatClock,
+  formatIn,
+  formatTimecode,
+  formatTime,
+  overviewWindow,
+  peakRange,
+  pickLevel,
+  maxSppFor,
+  rulerTicks,
+  sampleAt,
+  xOf,
+  zoomAround,
+  MIN_SPP,
+} from "./timeline";
 
 describe("timeline geometry", () => {
   it("converts between samples and pixels", () => {
@@ -45,7 +62,10 @@ describe("timeline geometry", () => {
 });
 
 describe("peaks", () => {
-  const fine = { block: 256, data: new Int16Array([-100, 200, -300, 400, -50, 50]) };
+  const fine = {
+    block: 256,
+    data: new Int16Array([-100, 200, -300, 400, -50, 50]),
+  };
   const coarse = { block: 4096, data: new Int16Array([-300, 400]) };
 
   it("picks the coarsest level that still resolves a pixel", () => {
@@ -65,7 +85,9 @@ describe("peaks", () => {
 
 describe("overview strip", () => {
   it("places the window over the visible span", () => {
-    expect(overviewWindow({ spp: 100, scroll: 10_000 }, 500, 100_000, 1000)).toEqual({ x: 100, w: 500 });
+    expect(
+      overviewWindow({ spp: 100, scroll: 10_000 }, 500, 100_000, 1000),
+    ).toEqual({ x: 100, w: 500 });
   });
 
   it("drags an edge to zoom while the other edge stays", () => {
@@ -92,5 +114,33 @@ describe("default track colors", () => {
     expect(defaultTrackColor(0)).toBe("--clip-1");
     expect(defaultTrackColor(5)).toBe("--clip-6");
     expect(defaultTrackColor(6)).toBe("--clip-1");
+  });
+});
+
+describe("ruler range and zoom limit", () => {
+  it("uses coarser labels when zoomed far out, never past a few hours per label", () => {
+    // 1,000 px over 4 hours at 48 kHz: about 14.4 s per pixel.
+    const ticks = rulerTicks({ spp: 14.4 * 48000, scroll: 0 }, 1000, 48000);
+    const labeled = ticks.filter((t) => t.label);
+    expect(labeled.length).toBeGreaterThanOrEqual(5);
+    expect(labeled[1]!.x - labeled[0]!.x).toBeGreaterThanOrEqual(90);
+    expect(ticks.length).toBeGreaterThan(labeled.length);
+  });
+
+  it("caps zoom out at 4 hours unless the content is longer", () => {
+    const rate = 48000;
+    const w = 1000;
+    expect(maxSppFor(w, 60 * rate, rate)).toBeCloseTo((4 * 3600 * rate) / w, 0);
+    expect(maxSppFor(w, 6 * 3600 * rate, rate)).toBeCloseTo(
+      (6 * 3600 * 1.1 * rate) / w,
+      0,
+    );
+    const z = zoomAround(
+      { spp: 1000, scroll: 0 },
+      1e9,
+      0,
+      maxSppFor(w, 60 * rate, rate),
+    );
+    expect(z.spp).toBeCloseTo((4 * 3600 * rate) / w, 0);
   });
 });

@@ -32,6 +32,8 @@
     fromSlider,
     MAX_SLOTS,
     moveSlot,
+    moveSlotTo,
+    replaceSlot,
     newSlot,
     paramValue,
     presetFrom,
@@ -42,6 +44,7 @@
     toSlider,
     type ChainPreset,
   } from "./chain";
+  import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import ResponseGraph from "./ResponseGraph.svelte";
   import { GRAPHED } from "./graph";
   import { clampBox, effectWindowRequest, portal, type WindowBox } from "./effect-window";
@@ -221,6 +224,57 @@
     const s = newSlot(info, crypto.randomUUID());
     commit(`Add ${info.name}`, addSlot(chain, s));
     openWindow(s.id);
+  }
+
+  // Slot rows: drag to reorder, Alt+Up or Alt+Down on a row, and a right-click menu.
+  let dragId = $state<string | null>(null);
+  let overIndex = $state<number | null>(null);
+  let slotMenu = $state<{ x: number; y: number; items: ContextItem[] } | null>(null);
+  function dropOn(i: number) {
+    const id = dragId;
+    dragId = null;
+    overIndex = null;
+    if (id) commit("Move Effect", moveSlotTo(chain, id, i));
+  }
+  function onRowKey(e: KeyboardEvent, id: string) {
+    if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+    e.preventDefault();
+    commit("Move Effect", moveSlot(chain, id, e.key === "ArrowUp" ? -1 : 1));
+  }
+  /** The effects of each family as submenus, for adding at the end or replacing a slot. */
+  function familyItems(pick: (id: string) => void): ContextItem[] {
+    return [
+      ...categories.map((c): ContextItem => ({ kind: "sub", label: c, items: catalog.filter((e) => e.category === c).map((e): ContextItem => ({ kind: "item", label: e.name, run: () => pick(e.id) })) })),
+      { kind: "sep" },
+      { kind: "item", label: "VST", disabled: true, reason: "Plugin hosting is not built yet.", run: () => {} },
+      { kind: "item", label: "VST3", disabled: true, reason: "Plugin hosting is not built yet.", run: () => {} },
+    ];
+  }
+  function openSlotMenu(e: MouseEvent, s: EffectSlotDoc | undefined) {
+    e.preventDefault();
+    const items: ContextItem[] = [];
+    if (s) {
+      const info = byId.get(s.effect);
+      items.push(
+        { kind: "item", label: "Edit Effect", run: () => openWindow(s.id) },
+        { kind: "item", label: "Remove Effect", run: () => commit(`Remove ${info?.name ?? "Effect"}`, removeSlot(chain, s.id)) },
+        { kind: "sep" },
+        {
+          kind: "sub",
+          label: "Replace With",
+          items: familyItems((id) => {
+            const ni = byId.get(id);
+            if (!ni) return;
+            const fresh = newSlot(ni, crypto.randomUUID());
+            commit(`Replace with ${ni.name}`, replaceSlot(chain, s.id, fresh));
+            openWindow(fresh.id);
+          }),
+        },
+      );
+    } else {
+      items.push(...familyItems(add));
+    }
+    slotMenu = { x: e.clientX, y: e.clientY, items };
   }
 
   function choosePreset(name: string) {
@@ -453,20 +507,54 @@
       {#each Array.from({ length: MAX_SLOTS }, (_, i) => i) as i (i)}
         {@const s = chain.slots[i]}
         {@const info = s ? byId.get(s.effect) : undefined}
-        <li class:sel={!!s && s.id === slot?.id} class:bypassed={!!s && !s.enabled}>
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+        <li
+          class:sel={!!s && s.id === slot?.id}
+          class:bypassed={!!s && !s.enabled}
+          class:over={overIndex === i && dragId !== null}
+          draggable={!!s}
+          tabindex={s ? 0 : -1}
+          ondragstart={(e) => {
+            if (!s) return;
+            dragId = s.id;
+            e.dataTransfer?.setData("text/plain", s.id);
+            if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+          }}
+          ondragover={(e) => {
+            if (dragId && i < chain.slots.length) {
+              e.preventDefault();
+              overIndex = i;
+            }
+          }}
+          ondrop={(e) => {
+            e.preventDefault();
+            dropOn(i);
+          }}
+          ondragend={() => {
+            dragId = null;
+            overIndex = null;
+          }}
+          onkeydown={(e) => s && onRowKey(e, s.id)}
+          oncontextmenu={(e) => openSlotMenu(e, s)}
+        >
           <span class="n">{i + 1}</span>
           {#if s}
+            <button
+              type="button"
+              class="pow"
+              class:on={s.enabled}
+              title={s.enabled ? "On: click to bypass" : "Off: click to turn on"}
+              aria-label={s.enabled ? "Bypass effect" : "Turn effect on"}
+              aria-pressed={s.enabled}
+              onclick={() => commit(s.enabled ? "Bypass Effect" : "Turn On Effect", setSlot(chain, s.id, { enabled: !s.enabled }))}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v6" stroke="currentColor" stroke-width="1.8" /><path d="M4.6 4.4a5 5 0 1 0 6.8 0" fill="none" stroke="currentColor" stroke-width="1.6" /></svg>
+            </button>
             <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
             <span class="name" onclick={() => openWindow(s.id)} title={info?.description ?? "Not a built-in effect: kept in the file, skipped on playback."}>
-              <span class="badge" style:background={info ? (CATEGORY_COLORS[info.category] ?? "#888") : "#666"}></span>
               {info?.name ?? s.effect}
             </span>
-            <button type="button" class="mini" class:on={s.enabled} title={s.enabled ? "Bypass" : "Turn on"} aria-pressed={s.enabled} onclick={() => commit(s.enabled ? "Bypass Effect" : "Turn On Effect", setSlot(chain, s.id, { enabled: !s.enabled }))}>
-              {s.enabled ? "On" : "Off"}
-            </button>
             <button type="button" class="mini" title="Open its settings" aria-label="Open its settings" onclick={() => openWindow(s.id)}>⚙</button>
-            <button type="button" class="mini" title="Move up" aria-label="Move up" disabled={i === 0} onclick={() => commit("Move Effect", moveSlot(chain, s.id, -1))}>▲</button>
-            <button type="button" class="mini" title="Move down" aria-label="Move down" disabled={i === chain.slots.length - 1} onclick={() => commit("Move Effect", moveSlot(chain, s.id, 1))}>▼</button>
             <button type="button" class="mini" title="Remove" aria-label="Remove" onclick={() => commit(`Remove ${info?.name ?? "Effect"}`, removeSlot(chain, s.id))}>✕</button>
           {:else if i === chain.slots.length}
             <select
@@ -633,13 +721,19 @@
   {/if}
 </section>
 
+{#if slotMenu}
+  <ContextMenu x={slotMenu.x} y={slotMenu.y} items={slotMenu.items} onClose={() => (slotMenu = null)} />
+{/if}
+
 <style>
   .vc {
     display: flex;
     flex-direction: column;
     height: 100%;
     min-height: 0;
-    overflow: auto;
+    min-width: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
     background: var(--surface-1);
     font-size: 12px;
   }
@@ -756,11 +850,30 @@
     border-bottom: 1px dotted var(--border);
     cursor: default;
   }
-  .badge {
+  .pow {
     flex: none;
-    width: 8px;
-    height: 8px;
-    border-radius: 2px;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--text-faint);
+    cursor: pointer;
+  }
+  .pow svg {
+    width: 14px;
+    height: 14px;
+  }
+  .pow.on {
+    color: #5fd38d;
+  }
+  .slots li.over {
+    box-shadow: inset 0 2px 0 var(--accent);
+  }
+  .slots li[draggable="true"] {
+    cursor: grab;
   }
   .add {
     flex: 1;

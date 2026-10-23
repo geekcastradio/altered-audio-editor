@@ -208,7 +208,7 @@ Standard Windows shortcuts only. No application-specific keymap beyond these:
 | Copy | Ctrl+C |
 | Paste | Ctrl+V |
 | Delete selected | Delete or Backspace |
-| Play / Pause | Spacebar |
+| Play / Stop (plays; stops when playing or recording) | Spacebar |
 | Split at playhead | Ctrl+K |
 | Zoom in | Ctrl+= |
 | Zoom out | Ctrl+- |
@@ -219,7 +219,7 @@ Standard Windows shortcuts only. No application-specific keymap beyond these:
 | Slip tool | Y |
 | Time stretch a clip (drag its edge) | Alt+drag |
 
-Approved 2026-10-20, each assigned when its feature ships (these are the common defaults most editors share):
+Approved 2026-10-20 and assigned in 0.1.9 (disabled menu items hold the chord for features not built yet; these are the common defaults most editors share):
 
 | Action | Shortcut |
 | --- | --- |
@@ -296,7 +296,7 @@ Zero logins, zero telemetry, zero tracking. The app is fully usable offline with
 The bar is an editor that feels right to someone who has edited podcasts for years.
 
 1. Every action exists in a menu and shows its shortcut.
-2. Every panel can dock, tab, float, resize, and maximize.
+2. Every panel can dock, tab, float, resize, and maximize (floating and maximizing are in the panel menu on the active tab or a right-click, not buttons).
 3. Drag and drop works everywhere: OS to Files, Files to tracks, Libraries to tracks, clips between tracks.
 4. Right-click context menus on every clip, track, marker, file, and panel tab.
 5. Interaction feedback within one frame (16 ms). Anything slower shows progress and never freezes the window.

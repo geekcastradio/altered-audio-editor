@@ -88,6 +88,8 @@ pub struct TrackChanges {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub collapsed: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hidden: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub monitor_input: Option<bool>,
     /// Hardware input; `Some(None)` clears it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -453,6 +455,9 @@ pub fn apply(s: &mut Session, op: &Op) -> Result<Op, OpError> {
             }
             if let Some(v) = changes.collapsed {
                 old.collapsed = Some(std::mem::replace(&mut t.collapsed, v));
+            }
+            if let Some(v) = changes.hidden {
+                old.hidden = Some(std::mem::replace(&mut t.hidden, v));
             }
             if let Some(v) = changes.monitor_input {
                 old.monitor_input = Some(std::mem::replace(&mut t.monitor_input, v));

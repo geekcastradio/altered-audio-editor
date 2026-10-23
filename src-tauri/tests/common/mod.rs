@@ -122,6 +122,7 @@ pub fn track() -> Track {
         color: Some("#3f73b8".into()),
         height: 120,
         collapsed: false,
+        hidden: false,
         volume_db: -2.0,
         pan: -15.0,
         muted: false,

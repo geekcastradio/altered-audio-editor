@@ -206,6 +206,10 @@ pub struct Track {
     /// Folded down to its name row in the Editor. Left out of the file when off.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub collapsed: bool,
+    /// Hidden from the Editor and Mixer lists. The track still plays and
+    /// mixes. Left out of the file when off.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
 
     pub volume_db: f64,
     pub pan: f64,
@@ -245,6 +249,7 @@ impl Track {
             color: None,
             height: 96,
             collapsed: false,
+            hidden: false,
             volume_db: 0.0,
             pan: 0.0,
             muted: false,

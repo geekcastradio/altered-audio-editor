@@ -47,8 +47,9 @@
   import TimeInfoPanel from "../panels/time-info/TimeInfoPanel.svelte";
   import { editor, restoreSettings, settingsOf } from "../stores/editor";
   import { anchorStart, clipsFrom, clipsUpTo, nextClipId } from "./clip-select";
+  import { hasClipIn, showOnly } from "../panels/editor/visibility";
   import { clipLength, sessionEnd, type ClipDoc, type Op, type TrackDoc } from "../stores/session";
-  import { fit, zoomAround } from "../panels/editor/timeline";
+  import { fit, maxSppFor, zoomAround } from "../panels/editor/timeline";
   import ChoiceDialog, { type ChoiceButton } from "./ChoiceDialog.svelte";
   import ExportDialog, { type ExportScopeInfo, type ExportSettings } from "./ExportDialog.svelte";
   import { describeFormat, extensionOf, kindOfPath, sanitizeFormat, type OutputFormat } from "./output-format";
@@ -632,6 +633,44 @@
       return out as T;
     }
     return value;
+  }
+
+  /** Track Visibility: set which tracks the Editor and Mixer list, as one undoable step. */
+  function visibilityActions() {
+    const tracks = () => session.current?.tracks ?? [];
+    const apply = async (label: string, keep: (t: TrackDoc) => boolean) => {
+      const changes = showOnly(tracks(), keep);
+      if (!changes.length) return;
+      await session.edit(label, { op: "batch", ops: changes.map((c) => ({ op: "set_track" as const, id: c.id, changes: { hidden: c.hidden } })) }, sessionHistory);
+    };
+    const spans = (t: TrackDoc) => {
+      const d = session.current;
+      return t.clips.map((c) => ({ start: c.start, length: clipLength(c, d?.media.find((m) => m.id === c.media_id), d?.sample_rate ?? 48000) }));
+    };
+    const mk = (id: string, label: string, keep: (t: TrackDoc) => boolean, enabled: () => boolean = () => tracks().length > 0, reason = "No tracks.") =>
+      actions.register({ id, run: () => apply(label, keep), enabled, reason: () => reason });
+    return [
+      actions.register({
+        id: "multitrack.vis.hide-selected",
+        run: async () => {
+          const t = selectedTrack();
+          if (t) await apply("Hide Track", (x) => x.id !== t.id && !x.hidden);
+        },
+        enabled: () => selectedTrack() !== null,
+        reason: () => "Select a track first.",
+      }),
+      mk("multitrack.vis.show-all", "Show All Tracks", () => true, () => tracks().some((t) => t.hidden), "No tracks are hidden."),
+      mk("multitrack.vis.only-audio", "Show Only Audio Tracks", () => true, () => tracks().some((t) => t.hidden), "Every track is an audio track until bus tracks exist."),
+      mk("multitrack.vis.only-clips", "Show Only Tracks with Clips", (t) => t.clips.length > 0),
+      mk("multitrack.vis.only-selection", "Show Only Tracks with Clips in Selection", (t) => {
+        const s = timeSel();
+        return !!s && hasClipIn(spans(t), s.start, s.end);
+      }, () => tracks().length > 0 && timeSel() !== null, "Make a time selection first."),
+      mk("multitrack.vis.only-playhead", "Show Only Tracks with Clips at Playhead", (t) => {
+        const p = session.current?.view.playhead ?? 0;
+        return hasClipIn(spans(t), p, p);
+      }),
+    ];
   }
 
   const selectedTrack = () => session.current?.tracks.find((t) => t.id === editor.current().selectedTrack) ?? null;
@@ -1988,9 +2027,10 @@
     files.stopAutosave();
     if (settings.current.autosave) files.startAutosave(settings.current.autosaveMinutes * 60_000);
   }
-  /** Space bar: pause where it is, or stop and go back, per Settings > General. */
+  /** Space bar: stops when recording or playing, otherwise plays (the multitrack, or the open Waveform file). */
   function spaceToggle(t: TransportStore): Promise<void> {
-    return t.current.playing && settings.current.spaceAction === "stop" ? t.stop() : t.toggle();
+    if (take) return finishRecord();
+    return t.current.playing ? t.stop() : t.toggle();
   }
 
   // Recording. Multitrack: every armed track records its input into
@@ -2674,6 +2714,7 @@
       }),
       ov(waveIsOpen, { id: "multitrack.play-pause", run: () => spaceToggle(waveTransport) }),
       ov(waveIsOpen, { id: "multitrack.stop", run: () => (take ? finishRecord() : waveTransport.stop()) }),
+      ov(waveIsOpen, { id: "transport.go-start", run: () => waveTransport.seek(0) }),
       ov(waveIsOpen, { id: "view.zoom-in", run: () => waveZoom.run?.("in") }),
       ov(waveIsOpen, { id: "view.zoom-out", run: () => waveZoom.run?.("out") }),
       ov(waveIsOpen, { id: "view.zoom-session", run: () => waveZoom.run?.("full") }),
@@ -2770,8 +2811,32 @@
       const v = view();
       if (!v) return;
       const w = editor.current().width;
-      const z = zoomAround({ spp: v.samples_per_pixel, scroll: v.scroll }, factor, w / 2);
+      const z = zoomAround({ spp: v.samples_per_pixel, scroll: v.scroll }, factor, w / 2, maxSppFor(w, contentEnd(), session.current?.sample_rate ?? 48000));
       session.setView({ ...v, samples_per_pixel: z.spp, scroll: z.scroll });
+    };
+    /** Moves the playhead to the previous or next marker, or (not `markersOnly`) clip edge or selection edge. */
+    const jumpEdge = (dir: -1 | 1, markersOnly: boolean) => {
+      const doc = session.current;
+      if (!doc) return Promise.resolve();
+      const here = transport.current.position;
+      const edges = new Set<number>(doc.markers.map((m) => m.position));
+      if (!markersOnly) {
+        const media = new Map(doc.media.map((m) => [m.id, m]));
+        for (const t of doc.tracks)
+          for (const c of t.clips) {
+            edges.add(c.start);
+            edges.add(c.start + clipLength(c, media.get(c.media_id), doc.sample_rate));
+          }
+        const sel = doc.view.selection;
+        if (sel) {
+          edges.add(sel.start);
+          edges.add(sel.end);
+        }
+      }
+      const slack = Math.max(1, Math.round(doc.sample_rate / 1000));
+      const list = [...edges].filter((e) => (dir < 0 ? e < here - slack : e > here + slack));
+      const to = list.length ? (dir < 0 ? Math.max(...list) : Math.min(...list)) : dir < 0 ? 0 : contentEnd();
+      return transport.seek(to);
     };
     const contentEnd = () => {
       const doc = session.current;
@@ -2958,6 +3023,7 @@
         enabled: () => (session.current?.tracks ?? []).some((t) => t.clips.length === 0),
         reason: () => "No empty tracks.",
       }),
+      ...visibilityActions(),
       actions.register({
         id: "multitrack.insert-files",
         run: async () => {
@@ -3003,6 +3069,13 @@
       }),
       actions.register({ id: "view.zoom-in", run: () => zoomBy(0.5), enabled: () => session.current !== null }),
       actions.register({ id: "view.zoom-out", run: () => zoomBy(2), enabled: () => session.current !== null }),
+      actions.register({ id: "view.editor.toggle", run: async () => void (await actions.run(inWave() ? "view.editor.multitrack" : "view.editor.waveform")) }),
+      actions.register({ id: "transport.go-start", run: () => transport.seek(0), enabled: () => session.current !== null }),
+      actions.register({ id: "transport.go-end", run: () => transport.seek(contentEnd()), enabled: () => session.current !== null }),
+      actions.register({ id: "transport.prev-edge", run: () => jumpEdge(-1, false), enabled: () => session.current !== null }),
+      actions.register({ id: "transport.next-edge", run: () => jumpEdge(1, false), enabled: () => session.current !== null }),
+      actions.register({ id: "transport.prev-marker", run: () => jumpEdge(-1, true), enabled: () => session.current !== null }),
+      actions.register({ id: "transport.next-marker", run: () => jumpEdge(1, true), enabled: () => session.current !== null }),
       actions.register({
         id: "view.zoom-session",
         run: () => {

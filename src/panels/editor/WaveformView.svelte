@@ -426,10 +426,11 @@
     const px = xOf(playhead, view);
     if (px >= 0 && px <= w) {
       g.fillStyle = css("--playhead");
+      const cx = Math.round(px) + 0.5;
       g.beginPath();
-      g.moveTo(px - 5, RULER_H - 7);
-      g.lineTo(px + 5, RULER_H - 7);
-      g.lineTo(px, RULER_H);
+      g.moveTo(cx - 5, RULER_H - 7);
+      g.lineTo(cx + 5, RULER_H - 7);
+      g.lineTo(cx, RULER_H);
       g.fill();
     }
     g.fillStyle = css("--text-faint");

@@ -1100,6 +1100,10 @@
           "format": "uint32",
           "minimum": 0
         },
+        "hidden": {
+          "description": "Hidden from the Editor and Mixer lists. The track still plays and\nmixes. Left out of the file when off.",
+          "type": "boolean"
+        },
         "host_profile_id": {
           "description": "Scaffolding (P5): id of the host profile applied to this track,\nfor example `host`.",
           "type": [

@@ -86,6 +86,22 @@
     g.stroke();
   }
 
+  /** Mixes a color toward white by `amount` (0 to 1). Unknown formats come back unchanged. */
+  function lighten(c: string, amount: number): string {
+    const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c.trim());
+    let r: number, gr: number, b: number;
+    if (m) {
+      const h = m[1]!.length === 3 ? m[1]!.replace(/./g, (x) => x + x) : m[1]!;
+      [r, gr, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number];
+    } else {
+      const n = /^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i.exec(c.trim());
+      if (!n) return c;
+      [r, gr, b] = [Number(n[1]), Number(n[2]), Number(n[3])];
+    }
+    const mix = (v: number) => Math.round(v + (255 - v) * amount);
+    return `rgb(${mix(r)}, ${mix(gr)}, ${mix(b)})`;
+  }
+
   function clipColor(clip: ClipDoc): string {
     const c = clip.color ?? track.color ?? defaultTrackColor(index);
     return c.startsWith("--") ? css(c) : c;
@@ -143,7 +159,7 @@
       // Body and title bar.
       g.globalAlpha = clip.muted ? 0.35 : 1;
       g.fillStyle = color;
-      g.globalAlpha *= 0.28;
+      g.globalAlpha *= 0.2;
       g.fillRect(left, 1, right - left, lh - 2);
       g.globalAlpha = clip.muted ? 0.35 : 1;
       g.fillStyle = color;
@@ -180,8 +196,9 @@
           g.restore();
         }
         if (level) {
-          g.fillStyle = color;
-          g.globalAlpha = clip.muted ? 0.35 : 0.95;
+          // Much lighter than the clip body so the waveform stands out.
+          g.fillStyle = lighten(color, 0.55);
+          g.globalAlpha = clip.muted ? 0.35 : 1;
           const laneH = body.height / ch;
           // A looped clip wraps back to the start of its region.
           const region = clip.source_out - clip.source_in;
@@ -253,14 +270,18 @@
       drawFade(g, clip.fade_in, x0, fi, body.top, body.height, true);
       drawFade(g, clip.fade_out, fo, x1, body.top, body.height, false);
       g.restore();
-      if (x1 - x0 > 24) {
-        g.fillStyle = "#f2f2f2";
+      if (x1 - x0 > 30) {
+        // Fade handles sit just under the title bar, large and light so they are easy to see and grab.
+        const hy = 1 + titleH + 3;
         for (const hx of [fi, fo]) {
-          if (hx < -4 || hx > width + 4) continue;
-          const cx = Math.min(Math.max(hx, x0 + 4), x1 - 4);
-          g.fillRect(Math.round(cx) - 3, 4, 7, 7);
+          if (hx < -8 || hx > width + 8) continue;
+          const cx = Math.min(Math.max(hx, x0 + 8), x1 - 8);
+          g.fillStyle = "#ffffff";
+          g.fillRect(Math.round(cx) - 6, hy, 13, 13);
           g.strokeStyle = "#0e0e10";
-          g.strokeRect(Math.round(cx) - 2.5, 4.5, 6, 6);
+          g.lineWidth = 1.5;
+          g.strokeRect(Math.round(cx) - 5.25, hy + 0.75, 11.5, 11.5);
+          g.lineWidth = 1;
         }
       }
       // Envelope chip: which envelope lines show; click it to change.

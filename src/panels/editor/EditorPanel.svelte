@@ -20,11 +20,13 @@
   import { clipLength, stretchOf, type ClipChange, type ClipDoc, type SessionDoc, type SessionStore, type TrackChanges, type TrackDoc } from "../../stores/session";
   import { stretchTo } from "./stretch";
   import { clipsAt, fadeClip, LockedError, MIN_CLIP, moveClips, nearest, previewTracks, snapTargets, splitClips, trimClip, withCrossfades, withGroups } from "./clip-edit";
+  import { shownTracks as listedTracks } from "./visibility";
   import { addPoint, chipBox, chipLabel, envChange, envName, formatValue, fxChoices, fxLaneOf, fxParam, levelAt, movePoint, pointsOf, rangeOf, restValue, snapValue, valueToY, yToValue, type EnvKind } from "./envelope";
   import LaneCanvas from "./LaneCanvas.svelte";
   import Dial from "./Dial.svelte";
   import TrackMeter from "./TrackMeter.svelte";
   import { inputLevels, liveTakes, type LiveTakes } from "../../stores/record";
+  import { keepLast } from "../../app/settings/device-cache";
   import { audioInputs, openSoundSettings, type AudioInput } from "../../app/core";
   import WaveformView from "./WaveformView.svelte";
   import TransportBar, { type ZoomKind } from "./TransportBar.svelte";
@@ -33,7 +35,7 @@
   import OverviewStrip from "./OverviewStrip.svelte";
   import { KIND_COLORS, markerAt, markerCss } from "../markers/markers";
   import { type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
-  import { defaultTrackColor, trackHeight, formatIn, rulerTicks, sampleAt, xOf, zoomAround, type Viewport, TRACK_GAP } from "./timeline";
+  import { defaultTrackColor, trackHeight, formatIn, maxSppFor, rulerTicks, sampleAt, xOf, zoomAround, type Viewport, TRACK_GAP } from "./timeline";
 
   interface Props {
     session: SessionStore;
@@ -114,6 +116,14 @@
     }),
   );
   const run = (id: string) => void actions.run(id);
+
+  /** Nothing in the session yet and nothing chosen: show a start screen instead of six empty tracks. */
+  let startDismissed = $state(false);
+  const showStart = $derived(
+    !startDismissed && doc != null && !session.path && doc.markers.length === 0 && doc.tracks.every((t) => t.clips.length === 0),
+  );
+  const shown = $derived(listedTracks(doc?.tracks ?? []));
+  const headerTracks = $derived(showStart ? [] : shown);
   const can = (id: string) => {
     void tick;
     return actions.isEnabled(id);
@@ -274,13 +284,45 @@
     const px = xOf(playhead, view);
     if (px >= -6 && px <= w + 6) {
       g.fillStyle = cs.getPropertyValue("--playhead");
+      // Same pixel column as the line in the lanes, which fills [round(px), round(px) + 1].
+      const cx = Math.round(px) + 0.5;
       g.beginPath();
-      g.moveTo(px - 5, RULER_H - 8);
-      g.lineTo(px + 5, RULER_H - 8);
-      g.lineTo(px, RULER_H);
+      g.moveTo(cx - 5, RULER_H - 8);
+      g.lineTo(cx + 5, RULER_H - 8);
+      g.lineTo(cx, RULER_H);
       g.fill();
     }
   });
+
+  /**
+   * Drag to slide the view: left and right scroll the timeline, and with
+   * `vertical` up and down scroll the tracks. A click that did not move
+   * calls `onClick`. Used by the ruler and the middle mouse button.
+   */
+  function startPan(e: PointerEvent, vertical: boolean, onClick?: (clientX: number) => void) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startScroll = view.scroll;
+    const startTop = scroller?.scrollTop ?? 0;
+    const spp = view.spp;
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.abs(ev.clientX - startX) < 3 && Math.abs(ev.clientY - startY) < 3) return;
+      if (!moved) document.body.style.cursor = "grabbing";
+      moved = true;
+      setView({ scroll: Math.max(0, startScroll - (ev.clientX - startX) * spp) });
+      if (vertical && scroller) scroller.scrollTop = startTop - (ev.clientY - startY);
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", up, true);
+      document.body.style.cursor = "";
+      if (!moved) onClick?.(ev.clientX);
+    };
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", up, true);
+  }
 
   /**
    * Ruler: drag a marker flag to move it, click it to jump there.
@@ -291,7 +333,12 @@
     const left = (e.currentTarget as HTMLElement).getBoundingClientRect().left;
     const hit = markerAt(doc.markers ?? [], e.clientX - left, (s) => xOf(s, view));
     if (!hit) {
-      startRange(e, left);
+      // Dragging the ruler slides the timeline; a plain click puts the playhead there.
+      startPan(e, false, (clientX) => {
+        const cur = session.current;
+        if (cur?.view.selection) session.setView({ ...cur.view, selection: null });
+        void transport.seek(sampleAt(clientX - left, view));
+      });
       return;
     }
     e.preventDefault();
@@ -356,11 +403,11 @@
     menu = { x: e.clientX, y: e.clientY, items };
   }
 
-  /** Ctrl + wheel over a track header: taller or shorter track (Ctrl+Shift: all tracks). Committed as one edit after the wheel stops. */
+  /** Wheel over a track header, or Alt+wheel over a lane: taller or shorter track (Shift: all tracks). Committed as one edit after the wheel stops. */
   let wheelTimer: ReturnType<typeof setTimeout> | undefined;
   function wheelResizeTracks(e: WheelEvent) {
-    const head = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-header]");
-    const id = head?.dataset.header;
+    const head = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-header],[data-lane]");
+    const id = head?.dataset.header ?? head?.dataset.lane;
     const track = id ? doc?.tracks.find((t) => t.id === id) : undefined;
     if (!track) return;
     const step = e.deltaY < 0 ? 1.12 : 1 / 1.12;
@@ -386,32 +433,43 @@
     }, 300);
   }
 
+  /**
+   * The mouse wheel. Over the ruler it zooms the timeline; over a track's
+   * header it makes the track taller or shorter (Shift: all tracks); over
+   * the lanes it scrolls the tracks up and down. Alt + wheel scales the
+   * waveforms, Ctrl + wheel zooms the timeline, Shift + wheel (or a
+   * sideways wheel) scrolls along the timeline.
+   */
   function onWheel(e: WheelEvent) {
     if (!lanesEl) return;
     const left = lanesEl.getBoundingClientRect().left;
-    if (e.ctrlKey && e.clientX < left) {
-      e.preventDefault();
-      wheelResizeTracks(e);
-      return;
-    }
-    if (e.altKey) {
-      // Same as the Waveform editor: Alt + wheel scales the waveforms.
-      e.preventDefault();
-      onZoom(e.deltaY < 0 ? "amp-in" : "amp-out");
-    } else if (e.ctrlKey || (settings.current.wheelZooms && !e.shiftKey && e.clientX >= left && Math.abs(e.deltaY) >= Math.abs(e.deltaX))) {
-      // Over the lanes the wheel zooms (Settings can turn that off); over
-      // the track headers it scrolls the tracks.
+    const overRuler = (e.target as HTMLElement | null)?.closest(".ruler-wrap") != null;
+    const zoomTime = () => {
       e.preventDefault();
       const r = zoomRatios();
       const mouse = Math.max(0, e.clientX - left);
-      const at = settings.current.wheelAnchor === "playhead" ? Math.max(0, Math.min(lanesEl.clientWidth, xOf(playhead, view))) : mouse;
-      const z = zoomAround(view, e.deltaY > 0 ? r.zoomOut : r.zoomIn, at);
+      const at = settings.current.wheelAnchor === "playhead" ? Math.max(0, Math.min(lanesEl!.clientWidth, xOf(playhead, view))) : mouse;
+      const z = zoomAround(view, e.deltaY > 0 ? r.zoomOut : r.zoomIn, at, maxSppFor(lanesWidth, contentEnd, rate));
       setView({ spp: z.spp, scroll: z.scroll });
+    };
+    if (e.clientX < left && !overRuler) {
+      e.preventDefault();
+      wheelResizeTracks(e);
+    } else if (e.altKey && e.shiftKey) {
+      e.preventDefault();
+      onZoom(e.deltaY < 0 ? "amp-in" : "amp-out");
+    } else if (e.altKey) {
+      // Alt+wheel over the lanes makes the track under the pointer taller or shorter.
+      e.preventDefault();
+      wheelResizeTracks(e);
+    } else if (overRuler || e.ctrlKey) {
+      zoomTime();
     } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
       e.preventDefault();
       const d = e.shiftKey ? e.deltaY : e.deltaX;
       setView({ scroll: view.scroll + d * view.spp });
     }
+    // Otherwise the wheel scrolls the tracks, which the scroller does by itself.
   }
 
   function clipAt(track: TrackDoc, x: number): ClipDoc | null {
@@ -487,9 +545,11 @@
     const x0 = xOf(clip.start, view);
     const x1 = xOf(clip.start + clipLength(clip, mediaMap.get(clip.media_id), rate), view);
     const w = x1 - x0;
-    if (y <= TITLE_H && w > 24) {
-      if (Math.abs(x - (x0 + clip.fade_in.length / view.spp)) <= EDGE_PX) return { kind: "fade-in", clip };
-      if (Math.abs(x - (x1 - clip.fade_out.length / view.spp)) <= EDGE_PX) return { kind: "fade-out", clip };
+    // Fade handles sit just under the title bar (see LaneCanvas).
+    if (y > TITLE_H && y <= TITLE_H + 21 && w > 30) {
+      const hit = (hx: number) => Math.abs(x - Math.min(Math.max(hx, x0 + 8), x1 - 8)) <= 8;
+      if (hit(x0 + clip.fade_in.length / view.spp)) return { kind: "fade-in", clip };
+      if (hit(x1 - clip.fade_out.length / view.spp)) return { kind: "fade-out", clip };
     }
     if (y > TITLE_H && !clip.locked) {
       const box = envBox(trackHeight(track));
@@ -645,6 +705,13 @@
         { kind: "item", label: "Volume", checked: ed.showVolume, run: () => run("view.env.volume") },
         { kind: "item", label: "Pan", checked: ed.showPan, run: () => run("view.env.pan") },
         { kind: "sub", label: "Effect Setting", items: fx },
+        { kind: "sep" },
+        { kind: "item", label: "Add/Remove Effects", run: () => run("window.panel.voice-chain") },
+        { kind: "sep" },
+        { kind: "item", label: "Chain Input Gain", disabled: true, reason: "Chain-level envelopes are not built yet", run: () => {} },
+        { kind: "item", label: "Chain Output Gain", disabled: true, reason: "Chain-level envelopes are not built yet", run: () => {} },
+        { kind: "item", label: "Chain Mix", disabled: true, reason: "Chain-level envelopes are not built yet", run: () => {} },
+        { kind: "item", label: "Chain Power", disabled: true, reason: "Chain-level envelopes are not built yet", run: () => {} },
       ],
     };
   }
@@ -661,6 +728,10 @@
   }
 
   function onLanePointer(e: PointerEvent, track: TrackDoc) {
+    if (e.button === 1) {
+      startPan(e, true);
+      return;
+    }
     if (e.button !== 0 && e.button !== 2) return;
     const { x, y } = laneXY(e, e.currentTarget as HTMLElement);
     const chipClip = e.button === 0 ? chipAt(track, x, y) : null;
@@ -818,7 +889,8 @@
       if (moved) return;
       const cur = session.current;
       if (cur?.view.selection) session.setView({ ...cur.view, selection: null });
-      void transport.seek(sampleAt(ev.clientX - left, v));
+      // While playing, only the ruler moves the playhead; a click in the lanes leaves playback alone.
+      if (leftEdge !== undefined || !tp?.playing) void transport.seek(sampleAt(ev.clientX - left, v));
     };
     window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerup", up, true);
@@ -844,7 +916,7 @@
       const t0 = sampleAt(left, v);
       const t1 = sampleAt(right, v);
       const ids = new Set(keep);
-      for (const t of doc?.tracks ?? []) {
+      for (const t of shown) {
         const row = lanesEl?.querySelector<HTMLElement>(`[data-track="${t.id}"]`);
         if (!row || row.offsetTop + row.offsetHeight < top || row.offsetTop > bottom) continue;
         for (const c of t.clips) {
@@ -869,7 +941,7 @@
       const cur = session.current;
       if (cur?.view.selection) session.setView({ ...cur.view, selection: null });
       if (!ev.shiftKey) editor.selectClips([]);
-      void transport.seek(sampleAt(ev.clientX - box.left, v));
+      if (!tp?.playing) void transport.seek(sampleAt(ev.clientX - box.left, v));
     };
     window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerup", up, true);
@@ -890,10 +962,13 @@
     let changes: ClipChange[] = [];
     // Alt while grabbing an edge stretches the clip instead of trimming it.
     const stretching = e.altKey && (kind === "trim-left" || kind === "trim-right") && !clip.looped && !clip.locked;
+    let lastEv: PointerEvent | null = null;
     const move = (ev: PointerEvent) => {
+      lastEv = ev;
       if (!moved && Math.abs(ev.clientX - startX) < 3 && Math.abs(ev.clientY - startY) < 3) return;
       moved = true;
-      const dx = (ev.clientX - startX) * v.spp;
+      // The timeline may have scrolled under the drag (see the timer below), so add what it moved.
+      const dx = (ev.clientX - startX) * v.spp + (view.scroll - v.scroll);
       const tol = ev.shiftKey || !ed.snap.on ? 0 : SNAP_PX * v.spp;
       if (kind === "move") {
         const over = hitLanes(ev.clientX, ev.clientY).trackId;
@@ -927,13 +1002,28 @@
         }
         if (ed.autoCrossfade) changes = withCrossfades(d0, changes);
       } else {
-        const at = sampleAt(ev.clientX - lanesEl!.getBoundingClientRect().left, v);
+        const at = sampleAt(ev.clientX - lanesEl!.getBoundingClientRect().left, view);
         const c = fadeClip(d0, clip, kind === "fade-in" ? "in" : "out", kind === "fade-in" ? at - clip.start : end - at);
         changes = c ? [c] : [];
       }
       preview = changes;
     };
+    // Holding the pointer near either end of the lanes scrolls the timeline with the drag.
+    const timer = window.setInterval(() => {
+      if (!moved || !lastEv || !lanesEl) return;
+      const r = lanesEl.getBoundingClientRect();
+      const band = 40;
+      let px = 0;
+      if (lastEv.clientX > r.right - band) px = Math.min(40, 4 + (lastEv.clientX - (r.right - band)) / 3);
+      else if (lastEv.clientX < r.left + band) px = -Math.min(40, 4 + (r.left + band - lastEv.clientX) / 3);
+      if (px === 0) return;
+      const next = Math.max(0, view.scroll + px * view.spp);
+      if (next === view.scroll) return;
+      setView({ scroll: next });
+      move(lastEv);
+    }, 30);
     const up = () => {
+      window.clearInterval(timer);
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", up, true);
       preview = [];
@@ -1088,6 +1178,17 @@
         act("Delete Selected Track", "multitrack.delete-track"),
         act("Duplicate Selected Track", "multitrack.duplicate-track"),
       ]),
+      sub("Track Visibility", [
+        act("Hide Selected Track", "multitrack.vis.hide-selected"),
+        act("Show All Tracks", "multitrack.vis.show-all"),
+        sep,
+        act("Show Only Tracks with Clips", "multitrack.vis.only-clips"),
+        act("Show Only Tracks with Clips within Time Selection", "multitrack.vis.only-selection"),
+        act("Show Only Tracks with Clips at Playhead", "multitrack.vis.only-playhead"),
+        sep,
+        off("Show Only Bus Tracks", "Bus tracks arrive with effects (P5)."),
+        off("Load and Save Visibility Presets", "Not built yet."),
+      ]),
       sub("Insert", [
         act("Files at Playhead...", "multitrack.insert-files"),
         act("Files as Tracks...", "multitrack.insert-tracks"),
@@ -1177,34 +1278,20 @@
       const d = dragTrack;
       dragTrack = null;
       if (!moved || !d || !doc) return;
-      const from = doc.tracks.findIndex((t) => t.id === d.id);
-      const to = d.overIndex > from ? d.overIndex - 1 : d.overIndex;
+      // overIndex counts the listed (shown) tracks; map it back to the full list.
+      const full = doc.tracks;
+      const from = full.findIndex((t) => t.id === d.id);
+      const before = shown[d.overIndex];
+      const target = before ? full.findIndex((t) => t.id === before.id) : full.length;
+      const to = target > from ? target - 1 : target;
       if (to !== from) void session.edit("Move Track", { op: "move_track", id: d.id, to }, runner).catch(onError);
     };
     window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerup", up, true);
   }
 
-  // Horizontal scrollbar.
+  // Length the overview strip scrolls over.
   const total = $derived(Math.max(contentEnd * 1.1, view.scroll + lanesWidth * view.spp, rate * 60));
-  const thumbW = $derived(Math.max(24, (lanesWidth * view.spp * lanesWidth) / total));
-  const thumbX = $derived(((lanesWidth - thumbW) * view.scroll) / Math.max(1, total - lanesWidth * view.spp));
-
-  function onThumbPointer(e: PointerEvent) {
-    const startX = e.clientX;
-    const startScroll = view.scroll;
-    const span = Math.max(1, total - lanesWidth * view.spp);
-    const travel = Math.max(1, lanesWidth - thumbW);
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    const move = (ev: PointerEvent) => setView({ scroll: startScroll + ((ev.clientX - startX) / travel) * span });
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  }
-
 
   /** The track's input as shown on its picker. */
   function inputLabel(track: TrackDoc): string {
@@ -1220,7 +1307,7 @@
     const y = e.clientY;
     let inputs: AudioInput[] = [];
     try {
-      inputs = await audioInputs();
+      inputs = keepLast("in:track", await audioInputs()).list;
     } catch {
       inputs = [];
     }
@@ -1346,7 +1433,7 @@
 
   /** Zoom Out Full on both axes: the whole session across, every track fitted to the lanes' height. */
   async function zoomOutAll() {
-    const tracks = doc?.tracks ?? [];
+    const tracks = shown;
     const avail = (scroller?.clientHeight ?? 0) - 8;
     if (tracks.length && avail > 0) {
       const h = Math.max(40, Math.min(600, Math.floor(avail / tracks.length)));
@@ -1359,7 +1446,7 @@
 
   /** Taller or shorter tracks, all at once. Heights stay between 40 and 600 pixels. */
   function resizeTracks(factor: number) {
-    const tracks = doc?.tracks ?? [];
+    const tracks = shown;
     const ops = tracks
       .map((t) => ({ t, h: Math.max(40, Math.min(600, Math.round(t.height * factor))) }))
       .filter(({ t, h }) => h !== t.height)
@@ -1462,7 +1549,7 @@
     </div>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="ruler-wrap">
-      <canvas class="ruler" bind:this={ruler} onpointerdown={onRulerPointer} oncontextmenu={onRulerMenu} onwheel={onWheel}></canvas>
+      <canvas class="ruler" bind:this={ruler} onpointerdown={onRulerPointer} onmousedown={(e) => e.button === 1 && e.preventDefault()} oncontextmenu={onRulerMenu} onwheel={onWheel}></canvas>
       {#if razor && ed.tool === "razor"}
         <div class="razor-mark" style:left="{razor.x}px" aria-hidden="true"></div>
       {/if}
@@ -1470,6 +1557,18 @@
   </div>
 
   <div class="vwrap">
+  {#if showStart}
+    <div class="start">
+      <p class="start-title">Nothing open</p>
+      <p class="start-sub">Open a session or an audio file, or start a new session.</p>
+      <div class="start-buttons">
+        <button type="button" onclick={() => { startDismissed = true; run("file.new-session"); }}>New Session...</button>
+        <button type="button" onclick={() => run("file.open")}>Open...</button>
+        <button type="button" onclick={() => run("file.import-files")}>Import Files...</button>
+        <button type="button" onclick={() => (startDismissed = true)}>Use an Empty Session</button>
+      </div>
+    </div>
+  {/if}
   <div
     class="scroller"
     bind:this={scroller}
@@ -1484,7 +1583,7 @@
   >
     <div class="rows" bind:clientHeight={rowsH}>
       <div class="headers" style:width="{HEADER_W}px">
-        {#each doc?.tracks ?? [] as track, i (track.id)}
+        {#each headerTracks as track, i (track.id)}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div
             class="header"
@@ -1618,12 +1717,16 @@
           ></div>
         {/if}
         {#if doc}
-          {#each doc.tracks as track, i (track.id)}
+          {#each shown as track, i (track.id)}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
               class="lane"
               data-track={track.id}
               style:cursor={preview.length > 0 && hoverCursor === "grab" ? "grabbing" : hoverCursor}
+              onmousedown={(e) => {
+                if (e.button === 1) e.preventDefault();
+              }}
+              data-lane={track.id}
               onpointerdown={(e) => onLanePointer(e, track)}
               onpointermove={(e) => onLaneHover(e, track)}
               oncontextmenu={(e) => onLaneMenu(e, track)}
@@ -1688,7 +1791,7 @@
        Drag the thumb to scroll; drag its ends to make every track taller or shorter. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="vbar" bind:clientHeight={vbarH} onpointerdown={onVbarPointer}>
-    {#each doc?.tracks ?? [] as track, i (track.id)}
+    {#each shown as track, i (track.id)}
       <div class="vseg" style:height="{(shownHeight(track) / Math.max(1, rowsH)) * 100}%" style:background={trackColor(track.color, i)}></div>
     {/each}
     {#if rowsH > scrollerH + 1}
@@ -1700,13 +1803,6 @@
   </div>
   </div>
 
-  <div class="hbar">
-    <div class="corner" style:width="{HEADER_W}px"></div>
-    <div class="track">
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="thumb" style:width="{thumbW}px" style:left="{thumbX}px" onpointerdown={onThumbPointer}></div>
-    </div>
-  </div>
   <TransportBar
     {transport}
     {rate}
@@ -1793,8 +1889,7 @@
 
 
   .overview-row,
-  .ruler-row,
-  .hbar {
+  .ruler-row {
     display: flex;
     min-width: 0;
   }
@@ -1922,7 +2017,38 @@
 
   .vwrap {
     display: flex;
+    position: relative;
     min-height: 0;
+  }
+
+  .start {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: grid;
+    place-content: center;
+    gap: 10px;
+    justify-items: center;
+    background: var(--surface-0);
+    text-align: center;
+  }
+
+  .start-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  .start-sub {
+    margin: 0;
+    color: var(--text-dim);
+  }
+
+  .start-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
   }
 
   .selcount {
@@ -2301,25 +2427,5 @@
     height: 2px;
     background: var(--accent);
     pointer-events: none;
-  }
-
-  .hbar .track {
-    position: relative;
-    flex: 1;
-    height: 12px;
-    background: var(--surface-1);
-    border-top: 1px solid var(--border);
-  }
-
-  .thumb {
-    position: absolute;
-    top: 2px;
-    height: 7px;
-    border-radius: 4px;
-    background: var(--border-strong);
-  }
-
-  .thumb:hover {
-    background: var(--text-faint);
   }
 </style>

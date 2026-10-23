@@ -406,7 +406,9 @@
 
   .list {
     min-height: 0;
-    overflow: auto;
+    min-width: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
     background: var(--surface-0);
   }
 

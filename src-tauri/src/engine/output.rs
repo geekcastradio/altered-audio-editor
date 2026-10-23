@@ -36,6 +36,15 @@ pub fn output_device(host: &cpal::Host) -> Option<cpal::Device> {
     host.default_output_device()
 }
 
+/// The output to open now: on the chosen driver, or on the system driver
+/// when that has none. ASIO drivers open for one program at a time, so
+/// after a recording holds the driver, playback goes to the system output
+/// instead of failing with "No audio output device found".
+pub fn output_device_any() -> Option<cpal::Device> {
+    let host = crate::engine::host::host();
+    output_device(&host).or_else(|| output_device(&cpal::default_host()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

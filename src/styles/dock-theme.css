@@ -235,3 +235,9 @@ body.path-dragging * {
   background: var(--surface-3);
   color: var(--text);
 }
+
+/* Panel menu > Small Tabs: a shorter tab strip. */
+body.aa-small-tabs .dockview-theme-altaudio {
+  --dv-tabs-and-actions-container-height: 20px;
+  --dv-tabs-and-actions-container-font-size: 11px;
+}

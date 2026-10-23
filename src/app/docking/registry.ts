@@ -31,8 +31,7 @@ export type Side = "left" | "right" | "above" | "below";
 
 /** Where to put a panel: next to a panel, inside its tab group, or at an edge of the window. */
 export type Placement =
-  | { reference: PanelId; direction: Side | "within" }
-  | { edge: Side };
+  { reference: PanelId; direction: Side | "within" } | { edge: Side };
 
 export interface PanelDef {
   id: PanelId;
@@ -66,9 +65,27 @@ export const PANELS: readonly PanelDef[] = [
     ],
     pending: null,
   },
-  { id: "voice-chain", title: "Voice Chain", inDefault: true, home: LEFT_TABS, pending: null },
-  { id: "batch-convert", title: "Batch Convert", inDefault: true, home: LEFT_TABS, pending: null },
-  { id: "quickpass", title: "QuickPass", inDefault: true, home: LEFT_TABS, pending: null },
+  {
+    id: "voice-chain",
+    title: "Voice Chain",
+    inDefault: true,
+    home: LEFT_TABS,
+    pending: null,
+  },
+  {
+    id: "batch-convert",
+    title: "Batch Convert",
+    inDefault: true,
+    home: LEFT_TABS,
+    pending: null,
+  },
+  {
+    id: "quickpass",
+    title: "QuickPass",
+    inDefault: true,
+    home: LEFT_TABS,
+    pending: null,
+  },
   {
     id: "editor",
     title: "Editor",
@@ -83,7 +100,13 @@ export const PANELS: readonly PanelDef[] = [
     home: [{ reference: "editor", direction: "within" }, { edge: "right" }],
     pending: null,
   },
-  { id: "levels", title: "Levels", inDefault: true, home: [{ edge: "below" }], pending: null },
+  {
+    id: "levels",
+    title: "Levels",
+    inDefault: true,
+    home: [{ edge: "below" }],
+    pending: null,
+  },
   {
     id: "audio-fx",
     title: "Audio FX Panel",
@@ -113,12 +136,48 @@ export const PANELS: readonly PanelDef[] = [
     home: [{ reference: "levels", direction: "right" }, { edge: "below" }],
     pending: null,
   },
-  { id: "history", title: "History", inDefault: false, home: LEFT_TABS, pending: null },
-  { id: "drive-manager", title: "Drive Manager", inDefault: false, home: LEFT_TABS, pending: null },
-  { id: "markers", title: "Markers", inDefault: false, home: LEFT_TABS, pending: null },
-  { id: "playlist", title: "Playlist", inDefault: false, home: LEFT_TABS, pending: null },
-  { id: "loudness-match", title: "Loudness Match", inDefault: false, home: LEFT_TABS, pending: "Loudness Match is in the Effects menu." },
-  { id: "properties", title: "Properties", inDefault: false, home: LEFT_TABS, pending: "Not built yet." },
+  {
+    id: "history",
+    title: "History",
+    inDefault: false,
+    home: LEFT_TABS,
+    pending: null,
+  },
+  {
+    id: "drive-manager",
+    title: "Drive Manager",
+    inDefault: false,
+    home: LEFT_TABS,
+    pending: null,
+  },
+  {
+    id: "markers",
+    title: "Markers",
+    inDefault: false,
+    home: LEFT_TABS,
+    pending: null,
+  },
+  {
+    id: "playlist",
+    title: "Playlist",
+    inDefault: false,
+    home: LEFT_TABS,
+    pending: null,
+  },
+  {
+    id: "loudness-match",
+    title: "Loudness Match",
+    inDefault: false,
+    home: LEFT_TABS,
+    pending: "Loudness Match is in the Effects menu.",
+  },
+  {
+    id: "properties",
+    title: "Properties",
+    inDefault: false,
+    home: LEFT_TABS,
+    pending: "Not built yet.",
+  },
 ];
 
 const BY_ID = new Map(PANELS.map((p) => [p.id, p]));
@@ -164,10 +223,22 @@ export interface LayoutStep {
  */
 export const DEFAULT_LAYOUT: readonly LayoutStep[] = [
   { id: "editor", placement: null },
-  { id: "mixer", placement: { reference: "editor", direction: "within" }, inactive: true },
-  { id: "audio-fx", placement: { reference: "editor", direction: "right" }, width: DEFAULT_SIZES.rightWidth },
+  {
+    id: "mixer",
+    placement: { reference: "editor", direction: "within" },
+    inactive: true,
+  },
+  {
+    id: "audio-fx",
+    placement: { reference: "editor", direction: "right" },
+    width: DEFAULT_SIZES.rightWidth,
+  },
   { id: "libraries", placement: { reference: "audio-fx", direction: "below" } },
-  { id: "levels", placement: { edge: "below" }, height: DEFAULT_SIZES.levelsHeight },
+  {
+    id: "levels",
+    placement: { edge: "below" },
+    height: DEFAULT_SIZES.levelsHeight,
+  },
   {
     id: "time-info",
     placement: { reference: "levels", direction: "right" },
@@ -175,8 +246,16 @@ export const DEFAULT_LAYOUT: readonly LayoutStep[] = [
   },
   { id: "files", placement: { edge: "left" }, width: DEFAULT_SIZES.leftWidth },
   { id: "voice-chain", placement: { reference: "files", direction: "below" } },
-  { id: "batch-convert", placement: { reference: "voice-chain", direction: "within" }, inactive: true },
-  { id: "quickpass", placement: { reference: "voice-chain", direction: "within" }, inactive: true },
+  {
+    id: "batch-convert",
+    placement: { reference: "voice-chain", direction: "within" },
+    inactive: true,
+  },
+  {
+    id: "quickpass",
+    placement: { reference: "voice-chain", direction: "within" },
+    inactive: true,
+  },
 ];
 
 /**
@@ -207,34 +286,54 @@ export const WORKSPACE_PRESETS: readonly WorkspacePreset[] = [
   {
     id: "default",
     name: "Default",
-    description: "Everything for a podcast edit: files, effects, editor, libraries and levels.",
+    description:
+      "Everything for a podcast edit: files, effects, editor, libraries and levels.",
     steps: DEFAULT_LAYOUT,
     version: DEFAULT_LAYOUT_VERSION,
   },
   {
     id: "focused-edit",
     name: "Focused Edit",
-    description: "As much room as possible for the timeline. Files on the left, levels below.",
+    description:
+      "As much room as possible for the timeline. Files on the left, levels below.",
     version: 1,
     steps: [
       { id: "editor", placement: null },
-      { id: "mixer", placement: { reference: "editor", direction: "within" }, inactive: true },
+      {
+        id: "mixer",
+        placement: { reference: "editor", direction: "within" },
+        inactive: true,
+      },
       { id: "levels", placement: { edge: "below" }, height: S.levelsHeight },
-      { id: "time-info", placement: { reference: "levels", direction: "right" }, width: S.timeInfoWidth },
+      {
+        id: "time-info",
+        placement: { reference: "levels", direction: "right" },
+        width: S.timeInfoWidth,
+      },
       { id: "files", placement: { edge: "left" }, width: 220 },
     ],
   },
   {
     id: "mixing",
     name: "Mixing",
-    description: "The Mixer up front with tall meters, files and markers on the left.",
-    version: 1,
+    description:
+      "The Mixer up front with tall meters, files and markers on the left.",
+    version: 2,
     steps: [
-      { id: "mixer", placement: null },
-      { id: "editor", placement: { reference: "mixer", direction: "within" }, inactive: true },
-      { id: "libraries", placement: { reference: "mixer", direction: "right" }, width: S.rightWidth },
+      // Editor stays the first tab; the Mixer is added after it and comes to the front.
+      { id: "editor", placement: null },
+      { id: "mixer", placement: { reference: "editor", direction: "within" } },
+      {
+        id: "libraries",
+        placement: { reference: "editor", direction: "right" },
+        width: S.rightWidth,
+      },
       { id: "levels", placement: { edge: "below" }, height: 170 },
-      { id: "time-info", placement: { reference: "levels", direction: "right" }, width: S.timeInfoWidth },
+      {
+        id: "time-info",
+        placement: { reference: "levels", direction: "right" },
+        width: S.timeInfoWidth,
+      },
       { id: "files", placement: { edge: "left" }, width: S.leftWidth },
       { id: "markers", placement: { reference: "files", direction: "below" } },
     ],
@@ -242,31 +341,60 @@ export const WORKSPACE_PRESETS: readonly WorkspacePreset[] = [
   {
     id: "voiceover",
     name: "Voiceover",
-    description: "Takes and markers on the left, the editor in the middle, libraries on the right.",
+    description:
+      "Takes and markers on the left, the editor in the middle, libraries on the right.",
     version: 1,
     steps: [
       { id: "editor", placement: null },
-      { id: "mixer", placement: { reference: "editor", direction: "within" }, inactive: true },
-      { id: "libraries", placement: { reference: "editor", direction: "right" }, width: S.rightWidth },
+      {
+        id: "mixer",
+        placement: { reference: "editor", direction: "within" },
+        inactive: true,
+      },
+      {
+        id: "libraries",
+        placement: { reference: "editor", direction: "right" },
+        width: S.rightWidth,
+      },
       { id: "levels", placement: { edge: "below" }, height: S.levelsHeight },
-      { id: "time-info", placement: { reference: "levels", direction: "right" }, width: S.timeInfoWidth },
+      {
+        id: "time-info",
+        placement: { reference: "levels", direction: "right" },
+        width: S.timeInfoWidth,
+      },
       { id: "files", placement: { edge: "left" }, width: S.leftWidth },
       { id: "markers", placement: { reference: "files", direction: "below" } },
-      { id: "voice-chain", placement: { reference: "markers", direction: "within" }, inactive: true },
+      {
+        id: "voice-chain",
+        placement: { reference: "markers", direction: "within" },
+        inactive: true,
+      },
     ],
   },
   {
     id: "review",
     name: "Review and Export",
-    description: "For the final listen: markers and history on the left, wide meters below.",
+    description:
+      "For the final listen: markers and history on the left, wide meters below.",
     version: 1,
     steps: [
       { id: "editor", placement: null },
-      { id: "mixer", placement: { reference: "editor", direction: "within" }, inactive: true },
+      {
+        id: "mixer",
+        placement: { reference: "editor", direction: "within" },
+        inactive: true,
+      },
       { id: "levels", placement: { edge: "below" }, height: 150 },
-      { id: "time-info", placement: { reference: "levels", direction: "right" }, width: S.timeInfoWidth },
+      {
+        id: "time-info",
+        placement: { reference: "levels", direction: "right" },
+        width: S.timeInfoWidth,
+      },
       { id: "markers", placement: { edge: "left" }, width: S.leftWidth },
-      { id: "history", placement: { reference: "markers", direction: "below" } },
+      {
+        id: "history",
+        placement: { reference: "markers", direction: "below" },
+      },
     ],
   },
 ];

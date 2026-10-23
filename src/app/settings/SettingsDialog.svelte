@@ -11,6 +11,7 @@
 <script lang="ts">
   import { cacheInfo, cacheClearPeaks, cacheSetFolder, libraryPickFolder, openSoundSettings, type CacheInfo } from "../core";
   import { audioDriver, audioInputs, audioOutputs, type AudioDriver, type AudioInput } from "../core";
+  import { keepLast } from "./device-cache";
   import { BROADCAST_REGIONS, targetsFor } from "../loudness";
   import { DEFAULT_SETTINGS, NO_COLORS, TIMECODE_RATES, type AppColors } from "../../stores/settings";
   import { cleanDraft, LATER_PAGES, PAGES, sizeText, type Page, type SettingsDraft } from "./pages";
@@ -39,14 +40,18 @@
   // Device lookups run one after another, never together: a driver that
   // misbehaves under parallel calls can no longer take the app down.
   let devicesLoading = false;
+  let devicesStale = $state(false);
   async function loadDevices() {
     if (devicesLoading) return;
     devicesLoading = true;
     try {
       const asio = d.app.driver === "asio";
       driver = await audioDriver().catch(() => ({ asioBuilt: false, asio: false, drivers: [] }));
-      outputs = await audioOutputs(asio).catch(() => []);
-      inputs = await audioInputs(asio).catch(() => []);
+      const o = keepLast(`out:${asio}`, await audioOutputs(asio).catch(() => []));
+      const i = keepLast(`in:${asio}`, await audioInputs(asio).catch(() => []));
+      outputs = o.list;
+      inputs = i.list;
+      devicesStale = o.stale || i.stale;
     } finally {
       devicesLoading = false;
     }
@@ -102,7 +107,7 @@
   }
   function resetPage() {
     const def = DEFAULT_SETTINGS;
-    if (page === "General") Object.assign(d.app, { zoomStep: def.zoomStep, wheelAnchor: def.wheelAnchor, wheelZooms: def.wheelZooms, fadeShape: def.fadeShape, spaceAction: def.spaceAction });
+    if (page === "General") Object.assign(d.app, { zoomStep: def.zoomStep, wheelAnchor: def.wheelAnchor, wheelZooms: def.wheelZooms, fadeShape: def.fadeShape });
     else if (page === "Appearance") d.app.colors = { ...NO_COLORS };
     else if (page === "Autosave") Object.assign(d.app, { autosave: def.autosave, autosaveMinutes: def.autosaveMinutes, backups: def.backups, backupCount: def.backupCount });
     else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb, meterSpeed: def.meterSpeed });
@@ -135,7 +140,6 @@
         {/if}
 
         {#if page === "General"}
-          <label><input type="checkbox" bind:checked={d.app.wheelZooms} /> The mouse wheel over the timeline zooms (off: it scrolls; Ctrl + wheel always zooms)</label>
           <label class="row">Each wheel step zooms by <input type="number" min="5" max="100" step="5" bind:value={d.app.zoomStep} /> % a step</label>
           <fieldset>
             <legend>Wheel zoom centers on</legend>
@@ -148,11 +152,7 @@
             <label><input type="radio" bind:group={d.app.fadeShape} value="linear" /> Straight line</label>
             <label><input type="radio" bind:group={d.app.fadeShape} value="logarithmic" /> Logarithmic (fast start)</label>
           </fieldset>
-          <fieldset>
-            <legend>Space bar while playing</legend>
-            <label><input type="radio" bind:group={d.app.spaceAction} value="pause" /> Pause where it is</label>
-            <label><input type="radio" bind:group={d.app.spaceAction} value="stop" /> Stop and go back to where it started</label>
-          </fieldset>
+          <p class="note">The Space bar plays, and stops when playing or recording.</p>
           <label class="off" title="Warnings with a 'don't ask again' box arrive with the first such warning."><input type="checkbox" disabled /> Show warnings I turned off again <span class="why">No warnings can be turned off yet.</span></label>
         {:else if page === "Appearance"}
           <p class="note">Leave a color on Theme to keep the built-in one. Changes show the next time each view redraws.</p>
@@ -207,6 +207,7 @@
               <option value="asio">ASIO</option>
             </select>
           </label>
+          {#if devicesStale}<p class="note">The driver is busy (for example while it records), so the last known device lists are shown.</p>{/if}
           {#if !driver?.asioBuilt}
             <p class="note">ASIO is in the Windows release builds. This build uses the system driver.</p>
           {:else if d.app.driver === "asio"}

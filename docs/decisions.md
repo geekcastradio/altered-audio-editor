@@ -945,3 +945,57 @@ A user report on 0.1.3 listed five problems. All five are addressed in 0.1.4.
 - Export, bounce, stems and playlist export use a corner progress card (the core exports a cloned session). Other long jobs (save audio, merge, repair) keep the blocking dialog because they change the open session.
 - Ctrl+wheel over track headers (one track) and Ctrl+Shift+wheel (all tracks) were requested by the project lead and are approved.
 - Closing the session and working without one is logged as backlog 3e with a proposed start screen; not built.
+
+## 2026-10-22: bug round 5
+
+- Playback and previews open the chosen driver first, then the system driver if the chosen one has no output. Reason: ASIO drivers open for one program at a time and a recording holds it.
+- Device lists keep the last non-empty result per driver (note shown). Reason: a busy driver returns an empty list, which looked like all devices were forgotten.
+- Mouse wheel rule set by the project lead: lanes scroll tracks, ruler zooms time, track headers resize tracks. The "wheel zooms over the timeline" setting is gone.
+- A blank, untouched session shows a start screen. The core still holds a blank session; a real Close Session command is backlog 3e.
+
+## 2026-10-22: shortcuts and Space bar queued
+
+- The project lead asked for every approved shortcut to be assigned, including for unbuilt features (disabled items with the chord shown), and for Space to play, or stop when playing or recording. Queued as backlog 3g for the next round, to be done at the desk. No shortcut changes were made yet.
+
+- 2026-10-22: ruler drag becomes a pan, not a selection (backlog 3h), queued for the next round with 3g.
+- 2026-10-22: middle-button drag pans the view (backlog 3i), queued with 3g and 3h.
+
+- 2026-10-22: multitrack tab/panel menu and Track Visibility (hide, show only by kind or clips, presets) queued as backlog 3j. Needs a track `hidden` field.
+
+- 2026-10-22: clip envelope selector menu (Add/Remove Effects, Rack Input, Output, Mix, Power) queued as backlog 3k.
+
+- 2026-10-22: fade handles move below the clip title bar and get bigger and clearer (backlog 3l).
+
+- 2026-10-22: clip waveforms get much higher contrast against the clip body (backlog 3m).
+
+- 2026-10-22: ruler gets finer labels and ticks at every zoom; timeline extent defaults to 4 hours and grows only for longer content (backlog 3n).
+
+- 2026-10-22: dragging a clip near the lane edge auto-scrolls the timeline with it (backlog 3o).
+
+- 2026-10-22: Alt+wheel over lanes resizes track height with a vertical scroll view, never drawn as peaking (backlog 3p); conflicts with Alt amplitude zoom, resolve at the desk.
+
+- 2026-10-22: Voice Chain rows get the power toggle left of the name, gear and remove at the right, no arrows or color codes, drag to reorder (backlog 3q). Effect editors get Presets and centered pop-ups; Dynamics becomes a transfer-curve editor with a segment table (backlog 3r).
+
+- 2026-10-22: presets for most effects, with the Limiter editor layout as the pattern (backlog 3r d).
+
+- 2026-10-22: added character voice chains (Godlike, Demonic, Evil Voice, Ethereal, Angelic) to the Voice Chain presets using pitch, EQ, dynamics and limiter. Reverb, delay, modulation and stereo imaging are queued as new effects (backlog 3s). Preset values from other tools are not importable and are not copied.
+
+- 2026-10-22: fades get a drag handle to bend the curve freely (backlog 3t); the existing `curve` field is wired through the drawing, engine and export.
+
+- 2026-10-22: while playing, a click in the lanes no longer moves the playhead; only the ruler does. The ruler triangle now sits on the same pixel column as the playhead line (multitrack and Waveform editor). The bottom horizontal scrollbar in the multitrack is removed, because the overview strip at the top scrolls and zooms the same range.
+
+- 2026-10-22: panel tab strips lose the float and maximize buttons; active tab gets a menu icon, overflow gets a chevron list (backlog 3u). Float and maximize stay in the panel menu (3j).
+
+- 2026-10-22: the panel menu opens from the active tab's menu icon or a tab right-click, with a Panel Group Settings submenu (backlog 3u, shared with 3j).
+
+- 2026-10-22: QuickPass gets a Fix by dropdown on every scan and stops closing gaps by default (backlog 3v); Editor tab before Mixer (3w); left panels never scroll sideways (3x, partly done: QuickPass columns, Voice Chain, Batch Convert).
+
+- 2026-10-22: QuickPass results list detail (verb buttons follow the Fix by choice, sortable Start, check marks, counts, rounded scan time) added to backlog 3v.
+
+- 2026-10-22: Split Silence and Strip Silence behavior spelled out (backlog 3v); clip right-click menu audit queued (backlog 3y).
+
+- 2026-10-22: Libraries get an Empty start option, deletable and reorderable bins, saved custom starter sets and an empty-state message (backlog 3z).
+
+- 2026-10-22: built the 0.1.9 batch (backlog 3g, 3h, 3i, 3l, 3m, 3n, 3o, 3p, 3u, 3v, 3w, 3x). Space stops when playing or recording and the Pause/Stop setting was removed. Alt+wheel over lanes resizes the track and Alt+Shift+wheel zooms the waveform (Waveform editor keeps Alt+wheel for amplitude). Strip now leaves the gap open by default; closing gaps is an opt-in setting. Panel group buttons removed; floating lives in the panel menu. Small Tabs lasts for the session only. 3t (fade bending) and 3z (libraries) were left for a later version by the project lead.
+
+- 2026-10-22: added a `hidden` field to tracks (backlog 3j). Hidden tracks leave the Editor and Mixer lists but still play and mix; the flag is optional and left out of the file when off, so old files load unchanged. Voice Chain rows reworked with drag reorder (3q). Clip envelope menu gained Add/Remove Effects; chain-level envelopes stay disabled until the engine supports them (3k).

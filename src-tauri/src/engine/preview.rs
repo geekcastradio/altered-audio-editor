@@ -172,8 +172,7 @@ impl Drop for PreviewPlayer {
 /// Body of the preview thread. Owns the device stream, which on some
 /// platforms must stay on the thread that created it.
 fn run(path: PathBuf, start: f64, shared: Arc<Shared>, ready: mpsc::Sender<Result<u32, String>>) {
-    let host = crate::engine::host::host();
-    let Some(device) = super::output::output_device(&host) else {
+    let Some(device) = super::output::output_device_any() else {
         let _ = ready.send(Err("No audio output device found.".into()));
         return;
     };

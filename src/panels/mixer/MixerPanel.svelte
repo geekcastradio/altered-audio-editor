@@ -125,7 +125,7 @@
 
 <section class="mixer" aria-label="Mixer">
   <div class="strips">
-    {#each doc?.tracks ?? [] as t (t.id)}
+    {#each (doc?.tracks ?? []).filter((x) => !x.hidden) as t (t.id)}
       {@const m = tp?.tracks[t.id]}
       <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
       <div class="strip" class:selected={selected === t.id} onclick={() => editor.selectTrack(t.id)}>

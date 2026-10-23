@@ -15,6 +15,8 @@ import {
   fromSlider,
   MAX_SLOTS,
   moveSlot,
+  moveSlotTo,
+  replaceSlot,
   newSlot,
   presetFrom,
   removeSlot,
@@ -52,8 +54,25 @@ const KNOWN = new Set([
   "altaudio.phase_rotate",
 ]);
 
-const p = (over: Partial<EffectParamInfo>): EffectParamInfo => ({ key: "k", name: "K", unit: "dB", min: -24, max: 24, default: 0, step: 0.1, log: false, toggle: false, ...over });
-const gain: EffectInfo = { id: "altaudio.gain", name: "Gain", category: "Amplitude", description: "", params: [p({ key: "gain" })] };
+const p = (over: Partial<EffectParamInfo>): EffectParamInfo => ({
+  key: "k",
+  name: "K",
+  unit: "dB",
+  min: -24,
+  max: 24,
+  default: 0,
+  step: 0.1,
+  log: false,
+  toggle: false,
+  ...over,
+});
+const gain: EffectInfo = {
+  id: "altaudio.gain",
+  name: "Gain",
+  category: "Amplitude",
+  description: "",
+  params: [p({ key: "gain" })],
+};
 
 let n = 0;
 const id = () => `s${n++}`;
@@ -68,12 +87,20 @@ describe("voice chain", () => {
     expect(moveSlot(c, "c", 1).slots.map((s) => s.id)).toEqual(["a", "c", "b"]);
     expect(moveSlot(c, "c", -1)).toBe(c);
     expect(removeSlot(c, "a").slots.map((s) => s.id)).toEqual(["c", "b"]);
-    for (let i = c.slots.length; i < MAX_SLOTS; i++) c = addSlot(c, newSlot(gain, id()))!;
+    for (let i = c.slots.length; i < MAX_SLOTS; i++)
+      c = addSlot(c, newSlot(gain, id()))!;
     expect(addSlot(c, newSlot(gain, "x"))).toBeNull();
   });
 
   it("snaps values and maps sliders, log ones too", () => {
-    const freq = p({ unit: "Hz", min: 20, max: 20_000, default: 1000, step: 1, log: true });
+    const freq = p({
+      unit: "Hz",
+      min: 20,
+      max: 20_000,
+      default: 1000,
+      step: 1,
+      log: true,
+    });
     expect(toSlider(freq, 20)).toBe(0);
     expect(toSlider(freq, 20_000)).toBeCloseTo(1);
     expect(toSlider(freq, 632)).toBeCloseTo(0.5, 2);
@@ -92,7 +119,9 @@ describe("voice chain", () => {
     expect(formatParam(p({ unit: "Hz", step: 1 }), 1200)).toBe("1.20 kHz");
     expect(formatParam(p({ unit: "Hz", step: 1 }), 80)).toBe("80 Hz");
     expect(formatParam(p({ toggle: true }), 1)).toBe("On");
-    expect(formatParam(p({ choices: ["12 dB/oct", "24 dB/oct"], min: 0 }), 1)).toBe("24 dB/oct");
+    expect(
+      formatParam(p({ choices: ["12 dB/oct", "24 dB/oct"], min: 0 }), 1),
+    ).toBe("24 dB/oct");
   });
 
   it("ships presets that only use real effects, with unique names", () => {
@@ -100,10 +129,14 @@ describe("voice chain", () => {
     expect(new Set(names).size).toBe(names.length);
     for (const pr of BUILTIN_PRESETS) {
       expect(pr.chain.slots.length).toBeGreaterThan(0);
-      for (const s of pr.chain.slots) expect(KNOWN.has(s.effect), `${pr.name}: ${s.effect}`).toBe(true);
+      for (const s of pr.chain.slots)
+        expect(KNOWN.has(s.effect), `${pr.name}: ${s.effect}`).toBe(true);
     }
     // The limiter default the project chose: -6 dB, with a -3 dB variant.
-    const lim = (name: string) => BUILTIN_PRESETS.find((x) => x.name === name)!.chain.slots.find((s) => s.effect === "altaudio.limiter")!.params.ceiling;
+    const lim = (name: string) =>
+      BUILTIN_PRESETS.find((x) => x.name === name)!.chain.slots.find(
+        (s) => s.effect === "altaudio.limiter",
+      )!.params.ceiling;
     expect(lim("Podcast Voice")).toBe(-6);
     expect(lim("Podcast Voice 3 -3 dB")).toBe(-3);
   });
@@ -113,26 +146,94 @@ describe("voice chain", () => {
     const hum = BUILTIN_PRESETS.find((x) => x.name === "Hum Cut 60 Hz (US)")!;
     const voice = BUILTIN_PRESETS.find((x) => x.name === "Podcast Voice")!;
     c = applyPreset(c, hum, KNOWN, id)!;
-    expect(c.slots.map((s) => s.effect)).toEqual(["altaudio.gain", "altaudio.hum_cut"]);
+    expect(c.slots.map((s) => s.effect)).toEqual([
+      "altaudio.gain",
+      "altaudio.hum_cut",
+    ]);
     expect(c.slots[1]!.preset).toBe("Hum Cut 60 Hz (US)");
     c = applyPreset(c, voice, KNOWN, id)!;
     expect(c.slots.some((s) => s.id === "keep")).toBe(false);
     // Unknown effects in a preset are skipped, never sent to the core.
-    expect(applyPreset(c, voice, new Set(["altaudio.limiter"]), id)!.slots).toHaveLength(1);
+    expect(
+      applyPreset(c, voice, new Set(["altaudio.limiter"]), id)!.slots,
+    ).toHaveLength(1);
   });
 
   it("keeps per-voice track chains out of Batch Convert", () => {
     const names = batchPresets(BUILTIN_PRESETS).map((p) => p.name);
-    for (const n of ["Podcast Voice", "Podcast Voice 4 -3 dB", "Radio Announcer Voice", "Voice Over", "Remote Guest Cleanup"]) expect(names).not.toContain(n);
-    for (const n of ["Voice Leveler and Noise Gate", "DeEss and Limit Male Voice Over", "Hard Limit to -0.1 dB", "Remove Vocals", "Remove Clicks"]) expect(names).toContain(n);
+    for (const n of [
+      "Podcast Voice",
+      "Podcast Voice 4 -3 dB",
+      "Radio Announcer Voice",
+      "Voice Over",
+      "Remote Guest Cleanup",
+    ])
+      expect(names).not.toContain(n);
+    for (const n of [
+      "Voice Leveler and Noise Gate",
+      "DeEss and Limit Male Voice Over",
+      "Hard Limit to -0.1 dB",
+      "Remove Vocals",
+      "Remove Clicks",
+    ])
+      expect(names).toContain(n);
   });
 
   it("saves and reloads user presets safely", () => {
     const c = addSlot(chainOf(null), newSlot(gain, "g"))!;
-    const saved = JSON.parse(JSON.stringify([presetFrom("Mine", { ...c, output_gain_db: -2 })]));
-    const back = sanitizePresets([...saved, null, { name: "" }, { name: "Bad", chain: { slots: "x" } }]);
+    const saved = JSON.parse(
+      JSON.stringify([presetFrom("Mine", { ...c, output_gain_db: -2 })]),
+    );
+    const back = sanitizePresets([
+      ...saved,
+      null,
+      { name: "" },
+      { name: "Bad", chain: { slots: "x" } },
+    ]);
     expect(back).toHaveLength(1);
-    expect(back[0]).toMatchObject({ name: "Mine", chain: { output_gain_db: -2, slots: [{ effect: "altaudio.gain" }] } });
+    expect(back[0]).toMatchObject({
+      name: "Mine",
+      chain: { output_gain_db: -2, slots: [{ effect: "altaudio.gain" }] },
+    });
     expect(sanitizePresets("nope")).toEqual([]);
+  });
+
+  it("has character voice chains for the Voice Chain only, with unique names", () => {
+    const names = BUILTIN_PRESETS.map((p) => p.name);
+    expect(new Set(names).size).toBe(names.length);
+    const batch = batchPresets(BUILTIN_PRESETS).map((p) => p.name);
+    for (const n of [
+      "Godlike",
+      "Demonic",
+      "Evil Voice",
+      "Ethereal",
+      "Angelic",
+    ]) {
+      expect(names).toContain(n);
+      expect(batch).not.toContain(n);
+    }
+  });
+
+  it("moves a slot to an index and swaps one in place", () => {
+    let c = chainOf(null);
+    for (const k of ["a", "b", "c"]) c = addSlot(c, newSlot(gain, k))!;
+    expect(moveSlotTo(c, "a", 2).slots.map((x) => x.id)).toEqual([
+      "b",
+      "c",
+      "a",
+    ]);
+    expect(moveSlotTo(c, "c", 0).slots.map((x) => x.id)).toEqual([
+      "c",
+      "a",
+      "b",
+    ]);
+    expect(moveSlotTo(c, "b", 1)).toBe(c);
+    expect(moveSlotTo(c, "a", 99).slots.map((x) => x.id)).toEqual([
+      "b",
+      "c",
+      "a",
+    ]);
+    const r = replaceSlot(c, "b", { ...newSlot(gain, "z") });
+    expect(r.slots.map((x) => x.id)).toEqual(["a", "z", "c"]);
   });
 });

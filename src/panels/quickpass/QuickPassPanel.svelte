@@ -62,7 +62,7 @@
   const KEY = "quickpass.settings";
   const PRESETS_KEY = "quickpass.presets";
   const WINDOW_MS = 10;
-  const VERB = { repair: "Repair", remove: "Remove", duck: "Turn Down", split: "Split", mark: "Mark" } as const;
+  const VERB = { repair: "Repair", remove: "Strip", duck: "Turn Down", split: "Split", mark: "Mark" } as const;
 
   let s = $state<QuickPassSettings>({ ...DEFAULTS });
   let mine = $state<Preset[]>([]);
@@ -98,9 +98,11 @@
   const info = $derived(scanInfo(s.scan));
   const one = $derived(info.noun[0]);
   const many = $derived(info.noun[1]);
+  /** Short names for the Fix by menu. */
+  const FIX_BY = { repair: "Repair", remove: "Strip (leave a gap)", duck: "Turn Down", split: "Split", mark: "Mark" } as const;
   const ACTION_TEXT = {
     repair: "Repairing it (the clip gets a repaired copy of its audio)",
-    remove: "Removing it",
+    remove: "Stripping it (the audio goes, the gap stays so tracks stay in step)",
     duck: "Turning it down (clips stay whole)",
     split: "Splitting at it",
     mark: "Marking it",
@@ -253,7 +255,7 @@
       } else if (s.action === "remove") {
         const op = removeOp(doc, list, s, uuid);
         if (!op) return onNotice(`Nothing to remove there. The ${many} are shorter than the pause you keep.`);
-        await store().edit(`Remove ${cap(list.length === 1 ? one : many)}`, op, run());
+        await store().edit(`Strip ${cap(list.length === 1 ? one : many)}`, op, run());
         let rest = found.filter((f) => !list.includes(f));
         for (const g of [...list].sort((a, b) => b.start - a.start)) rest = shiftFindings(rest, g, s.ripple, s.keepMs, rate);
         const next: Record<string, Done> = {};
@@ -374,8 +376,9 @@
         </label>
         {#if s.action === "remove"}
           <label title="Leave this much in place so speech does not run together. Use 0 for noises.">Keep a pause of <input type="number" step="10" min="0" max="5000" value={s.keepMs} onchange={(e) => set({ keepMs: field(e) })} /> ms</label>
-          <label title="Where the gap closes. This track only leaves other tracks where they are.">Close the gap on
-            <select value={s.ripple} onchange={(e) => set({ ripple: e.currentTarget.value === "all" ? "all" : "track" })}>
+          <label title="Leaving the gap open keeps every track in step. Closing it moves later clips left and can throw other tracks out of line.">Close gaps after fixing
+            <select value={s.ripple} onchange={(e) => set({ ripple: e.currentTarget.value === "all" ? "all" : e.currentTarget.value === "track" ? "track" : "none" })}>
+              <option value="none">no, leave them open</option>
               <option value="track">this track only</option>
               <option value="all">all tracks</option>
             </select>
@@ -387,6 +390,11 @@
       </fieldset>
     </div>
   {:else}
+    <label class="fixby">Fix by
+      <select value={s.action} onchange={(e) => set({ action: e.currentTarget.value as QuickPassSettings["action"] })}>
+        {#each info.actions as a (a)}<option value={a}>{FIX_BY[a]}</option>{/each}
+      </select>
+    </label>
     <div class="bar">
       <button type="button" class="go" disabled={busy} onclick={scan}>{busy ? "Scanning" : "Scan"}</button>
       <span class="grow"></span>
@@ -431,6 +439,17 @@
     gap: 5px;
     padding: 6px 8px;
     border-bottom: 1px solid var(--border);
+  }
+  .fixby {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px 0;
+    color: var(--text-dim);
+  }
+  .fixby select {
+    flex: 1;
+    min-width: 0;
   }
   .line {
     display: flex;
@@ -502,7 +521,9 @@
   .body {
     flex: 1;
     min-height: 0;
-    overflow: auto;
+    min-width: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
   .settings {
     display: grid;
@@ -571,7 +592,7 @@
   .head,
   .row {
     display: grid;
-    grid-template-columns: 62px 78px 78px 1fr;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
     gap: 6px;
     padding: 2px 8px;
     text-align: left;

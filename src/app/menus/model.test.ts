@@ -6,14 +6,17 @@ import { describe, expect, it } from "vitest";
 import { MENUS, commandList, menuActionIds, type MenuItem } from "./model";
 
 function allItems(items: readonly MenuItem[]): MenuItem[] {
-  return items.flatMap((it) => (it.kind === "submenu" ? [it, ...allItems(it.items)] : [it]));
+  return items.flatMap((it) =>
+    it.kind === "submenu" ? [it, ...allItems(it.items)] : [it],
+  );
 }
 
 describe("menu model", () => {
   it("has a mnemonic letter in every menu label, all different", () => {
     const letters = MENUS.map((m) => m.mnemonic.toLowerCase());
     expect(new Set(letters).size).toBe(letters.length);
-    for (const m of MENUS) expect(m.label.toLowerCase()).toContain(m.mnemonic.toLowerCase());
+    for (const m of MENUS)
+      expect(m.label.toLowerCase()).toContain(m.mnemonic.toLowerCase());
   });
 
   it("never starts, ends or doubles a separator", () => {
@@ -33,20 +36,27 @@ describe("menu model", () => {
   // The list of names to keep out lives in private/banned-terms.txt (one
   // regular expression per line), which is never committed. Without it,
   // for example in CI, the check is skipped.
-  const found = import.meta.glob<string>("../../../private/banned-terms.txt", { query: "?raw", import: "default", eager: true });
-  const bannedText = Object.values(found)[0];
-  it.skipIf(bannedText === undefined)("does not use other products' feature names", () => {
-    const terms = (bannedText ?? "")
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
-    const banned = new RegExp(terms.join("|"), "i");
-    for (const m of MENUS) {
-      for (const it of allItems(m.items)) {
-        if (it.kind !== "sep") expect(it.label).not.toMatch(banned);
-      }
-    }
+  const found = import.meta.glob<string>("../../../private/banned-terms.txt", {
+    query: "?raw",
+    import: "default",
+    eager: true,
   });
+  const bannedText = Object.values(found)[0];
+  it.skipIf(bannedText === undefined)(
+    "does not use other products' feature names",
+    () => {
+      const terms = (bannedText ?? "")
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      const banned = new RegExp(terms.join("|"), "i");
+      for (const m of MENUS) {
+        for (const it of allItems(m.items)) {
+          if (it.kind !== "sep") expect(it.label).not.toMatch(banned);
+        }
+      }
+    },
+  );
 
   it("gives every unbuilt item a reason", () => {
     const built = new Set([
@@ -82,6 +92,12 @@ describe("menu model", () => {
       "multitrack.duplicate-track",
       "multitrack.delete-track",
       "multitrack.delete-empty",
+      "multitrack.vis.hide-selected",
+      "multitrack.vis.show-all",
+      "multitrack.vis.only-audio",
+      "multitrack.vis.only-clips",
+      "multitrack.vis.only-selection",
+      "multitrack.vis.only-playhead",
       "multitrack.insert-files",
       "multitrack.insert-tracks",
       "multitrack.insert-selected-tracks",
@@ -104,6 +120,13 @@ describe("menu model", () => {
       "file.import-sesx",
       "multitrack.play-pause",
       "multitrack.stop",
+      "transport.go-start",
+      "transport.go-end",
+      "transport.prev-edge",
+      "transport.next-edge",
+      "transport.prev-marker",
+      "transport.next-marker",
+      "view.editor.toggle",
       "multitrack.properties",
       "clip.split",
       "clip.split-all",
@@ -243,7 +266,14 @@ describe("menu model", () => {
     ]);
     for (const m of MENUS) {
       for (const it of allItems(m.items)) {
-        if (it.kind !== "item" || built.has(it.id) || it.id.startsWith("window.panel.") || it.id.startsWith("file.recent.") || it.id.startsWith("window.workspace.")) continue;
+        if (
+          it.kind !== "item" ||
+          built.has(it.id) ||
+          it.id.startsWith("window.panel.") ||
+          it.id.startsWith("file.recent.") ||
+          it.id.startsWith("window.workspace.")
+        )
+          continue;
         expect(it.pending, it.id).toBeTruthy();
       }
     }
@@ -262,7 +292,9 @@ describe("menu model", () => {
     const ids = list.map((c) => c.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).not.toContain("fx.dynamics");
-    expect(list.find((c) => c.id === "edit.select-all")?.path).toBe("Edit > Select > Select All");
+    expect(list.find((c) => c.id === "edit.select-all")?.path).toBe(
+      "Edit > Select > Select All",
+    );
   });
 
   it("lists action ids", () => {

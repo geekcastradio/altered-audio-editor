@@ -23,17 +23,49 @@ const APPROVED: Record<string, string[]> = {
   "edit.delete": ["Delete", "Backspace"],
   "multitrack.play-pause": ["Space"],
   "clip.split": ["Ctrl+K"],
-  "view.zoom-in": ["Ctrl+="],
-  "view.zoom-out": ["Ctrl+-"],
+  "view.zoom-in": ["Ctrl+=", "="],
+  "view.zoom-out": ["Ctrl+-", "-"],
   "edit.find": ["Ctrl+F"],
   // Approved by the project lead.
   "tool.razor": ["R"],
   "tool.move": ["V"],
   "tool.time": ["T"],
   "tool.slip": ["Y"],
+  // Approved 2026-10-20, assigned in 0.1.9 (unbuilt features show as disabled menu items).
+  "transport.go-start": ["Home"],
+  "transport.go-end": ["End"],
+  "transport.prev-edge": ["Ctrl+ArrowLeft"],
+  "transport.next-edge": ["Ctrl+ArrowRight"],
+  "transport.prev-marker": ["Ctrl+Alt+ArrowLeft"],
+  "transport.next-marker": ["Ctrl+Alt+ArrowRight"],
+  "edit.marker.cue": ["M", "Shift+*", "*"],
+  "view.zoom-session": ["\\"],
+  "view.editor.toggle": ["1"],
+  "view.editor.multitrack": ["0"],
+  "view.editor.waveform": ["9"],
+  "view.spectrum": ["Shift+D"],
+  "view.hud": ["Shift+U"],
+  "view.zoom-in-vertical": ["Alt+="],
+  "view.zoom-out-vertical": ["Alt+-"],
+  "multitrack.return-on-stop": ["Shift+X"],
+  "fx.hide-windows": ["Ctrl+Shift+H"],
+  "multitrack.meter-input": ["Alt+I"],
+  "edit.repeat-last": ["Shift+R"],
+  "edit.repeat-last-dialog": ["Ctrl+R"],
+  "file.convert-sample-type": ["Shift+T"],
+  "fx.capture-noise-print": ["Shift+P"],
+  "wave.channel-left": ["ArrowUp"],
+  "wave.channel-right": ["ArrowDown"],
+  "clip.nudge-left": ["Alt+,"],
+  "clip.nudge-right": ["Alt+."],
+  "clip.to-track-above": ["Alt+ArrowUp"],
+  "clip.to-track-below": ["Alt+ArrowDown"],
 };
 
-const key = (k: string, m: Partial<{ ctrl: boolean; alt: boolean; shift: boolean }> = {}) => ({
+const key = (
+  k: string,
+  m: Partial<{ ctrl: boolean; alt: boolean; shift: boolean }> = {},
+) => ({
   key: k,
   ctrlKey: m.ctrl ?? false,
   altKey: m.alt ?? false,
@@ -76,7 +108,8 @@ describe("shipped keymap", () => {
 
   it("binds only actions that exist in the menus", () => {
     const ids = new Set(menuActionIds(MENUS));
-    for (const id of Object.keys(DEFAULT_BINDINGS)) expect(ids.has(id), id).toBe(true);
+    for (const id of Object.keys(DEFAULT_BINDINGS))
+      expect(ids.has(id), id).toBe(true);
   });
 
   it("never binds one chord twice", () => {
@@ -152,38 +185,68 @@ describe("dispatch", () => {
   const opts = { inTextField: false, modalOpen: false, release: true };
 
   it("runs the bound action and stops the webview default", () => {
-    expect(decide(key("z", { ctrl: true }), new Keymap(), opts)).toEqual({ action: "edit.undo", prevent: true });
+    expect(decide(key("z", { ctrl: true }), new Keymap(), opts)).toEqual({
+      action: "edit.undo",
+      prevent: true,
+    });
   });
 
   it("leaves text fields alone", () => {
-    expect(decide(key("z", { ctrl: true }), new Keymap(), { ...opts, inTextField: true })).toEqual({
+    expect(
+      decide(key("z", { ctrl: true }), new Keymap(), {
+        ...opts,
+        inTextField: true,
+      }),
+    ).toEqual({
       prevent: false,
     });
   });
 
   it("does nothing while a dialog is open", () => {
-    expect(decide(key(" "), new Keymap(), { ...opts, modalOpen: true }).action).toBeUndefined();
+    expect(
+      decide(key(" "), new Keymap(), { ...opts, modalOpen: true }).action,
+    ).toBeUndefined();
   });
 
   it("never lets Ctrl+A select the page's text under a dialog", () => {
-    expect(decide(key("a", { ctrl: true }), new Keymap(), { ...opts, modalOpen: true })).toEqual({ prevent: true });
-    expect(decide(key("a", { ctrl: true }), new Keymap(), { ...opts, modalOpen: true, inTextField: true }).prevent).toBe(false);
+    expect(
+      decide(key("a", { ctrl: true }), new Keymap(), {
+        ...opts,
+        modalOpen: true,
+      }),
+    ).toEqual({ prevent: true });
+    expect(
+      decide(key("a", { ctrl: true }), new Keymap(), {
+        ...opts,
+        modalOpen: true,
+        inTextField: true,
+      }).prevent,
+    ).toBe(false);
   });
 
   it("fires Space once when held", () => {
-    expect(decide({ ...key(" "), repeat: true }, new Keymap(), opts)).toEqual({ prevent: true });
+    expect(decide({ ...key(" "), repeat: true }, new Keymap(), opts)).toEqual({
+      prevent: true,
+    });
   });
 
   it("repeats undo when held", () => {
-    expect(decide({ ...key("z", { ctrl: true }), repeat: true }, new Keymap(), opts).action).toBe("edit.undo");
+    expect(
+      decide({ ...key("z", { ctrl: true }), repeat: true }, new Keymap(), opts)
+        .action,
+    ).toBe("edit.undo");
   });
 
   it("blocks reload in release builds only", () => {
     expect(decide(key("F5"), new Keymap(), opts)).toEqual({ prevent: true });
-    expect(decide(key("F5"), new Keymap(), { ...opts, release: false })).toEqual({ prevent: false });
+    expect(
+      decide(key("F5"), new Keymap(), { ...opts, release: false }),
+    ).toEqual({ prevent: false });
   });
 
   it("skips keys another handler already took", () => {
-    expect(decide({ ...key(" "), defaultPrevented: true }, new Keymap(), opts)).toEqual({ prevent: false });
+    expect(
+      decide({ ...key(" "), defaultPrevented: true }, new Keymap(), opts),
+    ).toEqual({ prevent: false });
   });
 });
