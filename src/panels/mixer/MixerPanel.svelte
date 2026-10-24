@@ -3,14 +3,19 @@
   Copyright (c) The GeekCast Radio Network, LLC.
   This file is part of Altered Audio Editor.
 
-  Mixer: one strip per track (pan, mute, solo, arm, fader, level meter)
-  and the master strip. Every change is undoable; a fader drag is one
-  undo step.
+  Mixer: one strip per track (pan, mute, solo, arm, fader, level meter),
+  one per bus, and the master strip. Each track and bus strip picks its
+  output (the master or a bus) and holds its aux sends. Every change is
+  undoable; a fader or send drag is one undo step.
 -->
 <script lang="ts">
   import { trackOp } from "./solo";
+  import { busOp, isRouted, MASTER_ID } from "./routing";
+  import SendList from "./SendList.svelte";
+  import { monoCheck } from "../../stores/mono-check";
+  import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import type { CommandRunner } from "../../stores/media-pool";
-  import type { SessionDoc, SessionStore, TrackDoc } from "../../stores/session";
+  import type { OutputDoc, SendDoc, SessionDoc, SessionStore } from "../../stores/session";
   import type { MeterLevel, TransportState, TransportStore } from "../../stores/transport";
   import { editor } from "../../stores/editor";
   import { dbToFader, faderToDb, formatDb, formatPan } from "./fader";
@@ -44,9 +49,54 @@
   );
 
   const masterDb = $derived(doc?.master?.volume_db ?? 0);
+  const routed = $derived(isRouted(doc));
 
-  function setTrack(t: TrackDoc, changes: Partial<Pick<TrackDoc, "volume_db" | "pan" | "muted" | "solo" | "record_armed">>, label: string) {
-    void session.edit(label, trackOp(doc, t.id, changes), runner).catch(onError);
+  /** A track or bus strip. */
+  interface Strip {
+    kind: "track" | "bus";
+    id: string;
+    name: string;
+    volume_db: number;
+    pan: number;
+    muted: boolean;
+    solo: boolean;
+    record_armed: boolean;
+    mono: boolean;
+    output: OutputDoc;
+    sends: SendDoc[];
+  }
+  const strips = $derived<Strip[]>([
+    ...(doc?.tracks ?? [])
+      .filter((x) => !x.hidden)
+      .map((t): Strip => ({ kind: "track", id: t.id, name: t.name, volume_db: t.volume_db, pan: t.pan, muted: t.muted, solo: t.solo, record_armed: t.record_armed, mono: !!t.mono, output: t.output ?? { type: "master" }, sends: t.sends ?? [] })),
+    ...(doc?.buses ?? []).map((b): Strip => ({ kind: "bus", id: b.id, name: b.name, volume_db: b.volume_db, pan: b.pan, muted: b.muted, solo: b.solo, record_armed: false, mono: !!b.mono, output: b.output, sends: b.sends })),
+  ]);
+
+  type StripChanges = Partial<Pick<Strip, "volume_db" | "pan" | "muted" | "solo" | "record_armed" | "name" | "output" | "mono">>;
+  function setStrip(st: Strip, changes: StripChanges, label: string) {
+    const what = st.kind === "bus" ? label.replace("Track", "Bus") : label;
+    const op = st.kind === "bus" ? busOp(doc, st.id, changes) : trackOp(doc, st.id, changes);
+    void session.edit(what, op, runner).catch(onError);
+  }
+
+  let menu = $state<{ x: number; y: number; items: ContextItem[] } | null>(null);
+  let renaming = $state<string | null>(null);
+  function busMenu(e: MouseEvent, st: Strip) {
+    if (st.kind !== "bus") return;
+    e.preventDefault();
+    menu = {
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        { kind: "item", label: "Rename Bus", run: () => (renaming = st.id) },
+        { kind: "item", label: "Delete Bus", run: () => void session.edit("Delete Bus", { op: "remove_bus", id: st.id }, runner).catch(onError) },
+      ],
+    };
+  }
+  function finishRename(st: Strip, value: string) {
+    renaming = null;
+    const name = value.trim();
+    if (name && name !== st.name) setStrip(st, { name }, "Rename Bus");
   }
 
   function setMaster(db: number) {
@@ -93,7 +143,7 @@
     apply(next);
   }
 
-  function dragPan(e: PointerEvent, t: TrackDoc) {
+  function dragPan(e: PointerEvent, t: Strip) {
     if (e.button !== 0) return;
     e.preventDefault();
     const el = e.currentTarget as HTMLElement;
@@ -105,7 +155,7 @@
       const v = Math.min(100, Math.max(-100, Math.round(start + (ev.clientX - startX) * (ev.shiftKey ? 0.25 : 1))));
       if (v !== last) {
         last = v;
-        setTrack(t, { pan: v }, "Track Pan");
+        setStrip(t, { pan: v }, "Track Pan");
       }
     };
     const up = () => {
@@ -125,26 +175,50 @@
 
 <section class="mixer" aria-label="Mixer">
   <div class="strips">
-    {#each (doc?.tracks ?? []).filter((x) => !x.hidden) as t (t.id)}
+    {#each strips as t (t.id)}
       {@const m = tp?.tracks[t.id]}
       <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-      <div class="strip" class:selected={selected === t.id} onclick={() => editor.selectTrack(t.id)}>
-        <div class="name" title={t.name}>{t.name}</div>
+      <div class="strip" class:bus={t.kind === "bus"} class:selected={selected === t.id} onclick={() => editor.selectTrack(t.id)} oncontextmenu={(e) => busMenu(e, t)}>
+        {#if renaming === t.id}
+          <!-- svelte-ignore a11y_autofocus -->
+          <input
+            class="rename"
+            aria-label="Bus name"
+            value={t.name}
+            autofocus
+            onkeydown={(e) => {
+              if (e.key === "Enter") finishRename(t, e.currentTarget.value);
+              if (e.key === "Escape") renaming = null;
+            }}
+            onblur={(e) => finishRename(t, e.currentTarget.value)}
+          />
+        {:else}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="name" title={t.kind === "bus" ? `${t.name} (bus). Double-click to rename, right-click for more.` : t.name} ondblclick={() => t.kind === "bus" && (renaming = t.id)}>
+            {#if t.kind === "bus"}<span class="tag">BUS</span>{/if}{t.name}
+          </div>
+        {/if}
+        {#if doc}
+          <SendList {doc} {session} {runner} {onError} kind={t.kind} id={t.id} name={t.name} output={t.output} sends={t.sends} />
+        {/if}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class="pan"
           title="Pan. Drag left or right, double-click to center."
           onpointerdown={(e) => dragPan(e, t)}
-          ondblclick={() => setTrack(t, { pan: 0 }, "Track Pan")}
+          ondblclick={() => setStrip(t, { pan: 0 }, "Track Pan")}
         >
           <div class="pan-line"></div>
           <div class="pan-dot" style:left="{(t.pan + 100) / 2}%"></div>
           <span>{formatPan(t.pan)}</span>
         </div>
         <div class="buttons">
-          <button type="button" class:on={t.muted} class="m" title="Mute" aria-pressed={t.muted} onclick={() => setTrack(t, { muted: !t.muted }, t.muted ? "Unmute Track" : "Mute Track")}>M</button>
-          <button type="button" class:on={t.solo} class="s" title="Solo" aria-pressed={t.solo} onclick={() => setTrack(t, { solo: !t.solo }, t.solo ? "Unsolo Track" : "Solo Track")}>S</button>
-          <button type="button" class:on={t.record_armed} class="r" title="Arm for recording (recording arrives in P4)" aria-pressed={t.record_armed} onclick={() => setTrack(t, { record_armed: !t.record_armed }, "Arm Track")}>R</button>
+          <button type="button" class:on={t.muted} class="m" title="Mute" aria-pressed={t.muted} onclick={() => setStrip(t, { muted: !t.muted }, t.muted ? "Unmute Track" : "Mute Track")}>M</button>
+          <button type="button" class:on={t.solo} class="s" title={t.kind === "bus" ? "Solo: plays this bus and everything feeding it" : "Solo"} aria-pressed={t.solo} onclick={() => setStrip(t, { solo: !t.solo }, t.solo ? "Unsolo Track" : "Solo Track")}>S</button>
+          <button type="button" class:on={t.mono} class="mo" title="Mono: folds this strip's left and right into one centered signal, after its effects and before its fader and pan. Part of the mix, so exports hear it too." aria-pressed={t.mono} onclick={() => setStrip(t, { mono: !t.mono }, t.mono ? "Track Stereo" : "Track Mono")}>MO</button>
+          {#if t.kind === "track"}
+            <button type="button" class:on={t.record_armed} class="r" title="Arm for recording" aria-pressed={t.record_armed} onclick={() => setStrip(t, { record_armed: !t.record_armed }, "Arm Track")}>R</button>
+          {/if}
         </div>
         <div class="body">
           <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -157,9 +231,9 @@
             aria-valuemax={12}
             aria-valuenow={t.volume_db}
             title="Volume. Drag, or use the mouse wheel. Shift for fine steps. Double-click for 0 dB."
-            onpointerdown={(e) => dragFader(e, t.volume_db, (db) => setTrack(t, { volume_db: db }, "Track Volume"))}
-            onwheel={(e) => wheelFader(e, t.volume_db, (db) => setTrack(t, { volume_db: db }, "Track Volume"))}
-            ondblclick={() => setTrack(t, { volume_db: 0 }, "Track Volume")}
+            onpointerdown={(e) => dragFader(e, t.volume_db, (db) => setStrip(t, { volume_db: db }, "Track Volume"))}
+            onwheel={(e) => wheelFader(e, t.volume_db, (db) => setStrip(t, { volume_db: db }, "Track Volume"))}
+            ondblclick={() => setStrip(t, { volume_db: 0 }, "Track Volume")}
           >
             <div class="slot"></div>
             <div class="unity" style:bottom="{dbToFader(0) * 100}%"></div>
@@ -182,8 +256,10 @@
     {/if}
   </div>
 
-  <div class="strip master">
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  <div class="strip master" class:selected={selected === MASTER_ID} onclick={() => editor.selectTrack(MASTER_ID)} title="Click to show the master's Voice Chain">
     <div class="name">Master</div>
+    <button type="button" class="check" class:on={$monoCheck} title="Mono check: hear the whole mix folded to mono, to check how it holds up. Listening only: exports are not changed (to write a mono file, pick Mono in Export)." aria-pressed={$monoCheck} onclick={(e) => { e.stopPropagation(); void monoCheck.toggle().catch(onError); }}>MONO</button>
     <div class="body">
       <div class="scale" aria-hidden="true">
         {#each SCALE as s (s)}<span style:bottom="{dbToFader(s) * 100}%">{s > 0 ? `+${s}` : s}</span>{/each}
@@ -216,8 +292,15 @@
       </div>
     </div>
     <div class="db">{formatDb(masterDb)}</div>
+    {#if routed}
+      <p class="lag" title="The mix uses buses, sends, a master chain or a sidechain, so it is mixed ahead of the speakers. Track and bus faders are heard about half a second after you move them; the master fader is instant.">Faders lag ½ s</p>
+    {/if}
   </div>
 </section>
+
+{#if menu}
+  <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => (menu = null)} />
+{/if}
 
 <style>
   .mixer {
@@ -240,13 +323,43 @@
   .strip {
     display: grid;
     flex: none;
-    grid-template-rows: auto auto auto 1fr auto;
+    grid-template-rows: auto auto auto auto 1fr auto;
     gap: 6px;
-    width: 78px;
+    width: 92px;
     padding: 6px 5px;
     border: 1px solid var(--border);
     background: var(--surface-1);
     box-sizing: border-box;
+  }
+
+  .strip.bus {
+    background: color-mix(in srgb, var(--surface-1) 82%, var(--clip-3) 18%);
+  }
+
+  .tag {
+    margin-right: 3px;
+    padding: 0 2px;
+    border-radius: 2px;
+    background: var(--surface-3);
+    color: var(--text-dim);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  .rename {
+    width: 100%;
+    min-width: 0;
+    font: inherit;
+    font-size: var(--font-size-small);
+    box-sizing: border-box;
+  }
+
+  .lag {
+    margin: 0;
+    color: var(--text-faint);
+    font-size: 9px;
+    text-align: center;
   }
 
   .strip.selected {
@@ -257,7 +370,7 @@
   .strip.master {
     width: 96px;
     margin: 4px;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto auto 1fr auto auto;
   }
 
   .name {
@@ -328,6 +441,32 @@
   }
 
   .buttons .s.on {
+    background: var(--clip-5);
+    color: #111;
+  }
+
+  .buttons .mo {
+    width: 22px;
+    font-size: 8px;
+  }
+
+  .buttons .mo.on {
+    background: var(--accent-dim);
+    color: #fff;
+  }
+
+  .check {
+    height: 18px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--surface-3);
+    color: var(--text-dim);
+    font: inherit;
+    font-size: 9px;
+    font-weight: 700;
+  }
+
+  .check.on {
     background: var(--clip-5);
     color: #111;
   }

@@ -15,15 +15,22 @@
   (or the whole file) as one undoable edit.
 -->
 <script lang="ts">
-  import { effectsCatalog, learnNoisePrint, type EffectInfo, type EffectParamInfo, type LearnSource } from "../../app/core";
+  import Knob from "../../app/Knob.svelte";
+  import { effectsCatalog, learnNoisePrint, pluginOpenWindow, pluginRestart, pluginsRegistry, type EffectInfo, type EffectParamInfo, type LearnSource } from "../../app/core";
+  import { markStopped, pluginsVersion, stoppedPlugins } from "../../stores/plugins";
   import { editor, type EditorState } from "../../stores/editor";
+  import { chainTarget } from "../../stores/chain-target";
   import type { CommandRunner } from "../../stores/media-pool";
   import type { Preferences } from "../../stores/preferences";
-  import { meterFraction, type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
+  import { MASTER_CHAIN, meterFraction, type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
+  import { keyChoices, MASTER_ID } from "../mixer/routing";
   import type { EffectChainDoc, EffectSlotDoc, EffectTarget, SessionDoc, SessionStore } from "../../stores/session";
   import {
     addsOne,
     addSlot,
+    addSlotAt,
+    layoutSlots,
+    moveSlotToIndex,
     applyPreset,
     BUILTIN_PRESETS,
     CATEGORY_COLORS,
@@ -32,7 +39,6 @@
     fromSlider,
     MAX_SLOTS,
     moveSlot,
-    moveSlotTo,
     replaceSlot,
     newSlot,
     paramValue,
@@ -42,12 +48,15 @@
     setParam,
     setSlot,
     toSlider,
+    pluginMenuGroups,
     type ChainPreset,
+    type MenuPlugin,
   } from "./chain";
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import ResponseGraph from "./ResponseGraph.svelte";
   import { GRAPHED } from "./graph";
   import { clampBox, effectWindowRequest, portal, type WindowBox } from "./effect-window";
+  import { dropEdit, effectMenu, ownerKey, slotOver, startSlotDrag, type SlotSpot } from "./slot-drag";
 
   interface Props {
     session: SessionStore;
@@ -90,9 +99,46 @@
 
   let catalog = $state<EffectInfo[]>([]);
   let loadError = $state<string | null>(null);
-  void effectsCatalog()
-    .then((c) => (catalog = c))
-    .catch((e) => (loadError = String(e)));
+  // Loads again after a plug-in scan.
+  $effect(() =>
+    pluginsVersion.subscribe(() => {
+      void effectsCatalog()
+        .then((c) => (catalog = c))
+        .catch((e) => (loadError = String(e)));
+      void pluginsRegistry()
+        .then((r) => (menuPlugins = r.plugins.filter((p) => !p.instrument)))
+        .catch(() => (menuPlugins = []));
+    }),
+  );
+  /** Installed effect plug-ins with their maker and type, for the Add effect menu. */
+  let menuPlugins = $state<MenuPlugin[]>([]);
+
+  /**
+   * Opens a slot the way its effect is best edited: a plug-in in its own
+   * window (when it has one and is running), anything else in the
+   * settings window here.
+   */
+  function openSlot(s: EffectSlotDoc) {
+    const info = byId.get(s.effect);
+    if (info?.plugin && info.hasWindow && !$stoppedPlugins.has(s.id)) openPluginWindow(s);
+    else openWindow(s.id);
+  }
+
+  /** Opens a plug-in's own window (it runs in its own process). */
+  function openPluginWindow(s: EffectSlotDoc) {
+    const name = byId.get(s.effect)?.name ?? "Plug-in";
+    void pluginOpenWindow($state.snapshot(s) as EffectSlotDoc, label ? `${name} - ${label}` : name).catch(onError);
+  }
+
+  /** Starts a stopped plug-in again; it comes back with the next playback. */
+  function restartPlugin(s: EffectSlotDoc) {
+    void pluginRestart(s.id)
+      .then(() => {
+        markStopped(s.id, null);
+        onNotice("The plug-in starts again with the next playback.");
+      })
+      .catch(onError);
+  }
   const byId = $derived(new Map(catalog.map((e) => [e.id, e])));
   const known = $derived(new Set(catalog.map((e) => e.id)));
   const categories = $derived([...new Set(catalog.map((e) => e.category))]);
@@ -131,11 +177,25 @@
   const clip = $derived(oneClip ? clipTrack?.clips.find((c) => c.id === oneClip) : undefined);
   const inWave = $derived(ed.mode === "waveform");
   const waveTrack = $derived(waveDoc?.tracks[0]);
+  // Track Effects also shows a bus's or the master's chain, picked here or in the Mixer.
+  const ownerId = $derived(pickedTrack ?? ed.selectedTrack);
+  const onTrackTab = $derived(!inWave && tab === "track");
+  const bus = $derived(onTrackTab ? doc?.buses?.find((b) => b.id === ownerId) : undefined);
+  const onMaster = $derived(onTrackTab && !!doc && ownerId === MASTER_ID);
+  // Tell the Editor whose chain this is, so it can mark that row.
+  $effect(() => {
+    chainTarget.set(onTrackTab ? (onMaster ? MASTER_ID : (bus?.id ?? track?.id ?? null)) : null);
+  });
+  $effect(() => () => chainTarget.set(null));
   const target = $derived.by((): EffectTarget | null => {
     if (inWave) return waveTrack ? { kind: "track", id: waveTrack.id } : null;
     if (tab === "clip") return clip ? { kind: "clip", id: clip.id } : null;
+    if (onMaster) return { kind: "master" };
+    if (bus) return { kind: "bus", id: bus.id };
     return track ? { kind: "track", id: track.id } : null;
   });
+  /** Whose chain the sidechain choices are for: a track, bus or the master. */
+  const keyOwner = $derived(onMaster ? MASTER_ID : (bus?.id ?? track?.id ?? null));
   const why = $derived(
     inWave
       ? "Open a file in the Waveform editor to try a Voice Chain on it."
@@ -145,8 +205,12 @@
           : "Select a clip to give it effects."
         : "Add a track to the session to give it effects.",
   );
-  const label = $derived(inWave ? "Preview on the open file" : tab === "clip" ? (clip ? `Clip: ${clip.name}` : "") : track ? `Track: ${track.name}` : "");
-  const chain = $derived(chainOf(inWave ? waveTrack?.effects : tab === "clip" ? clip?.effects : track?.effects));
+  const label = $derived(
+    inWave ? "Preview on the open file" : tab === "clip" ? (clip ? `Clip: ${clip.name}` : "") : onMaster ? "Master" : bus ? `Bus: ${bus.name}` : track ? `Track: ${track.name}` : "",
+  );
+  const chain = $derived(
+    chainOf(inWave ? waveTrack?.effects : tab === "clip" ? clip?.effects : onMaster ? doc?.master?.effects : bus ? bus.effects : track?.effects),
+  );
 
   let selectedSlot = $state<string | null>(null);
   const slot = $derived(chain.slots.find((s) => s.id === selectedSlot) ?? chain.slots[0] ?? null);
@@ -223,40 +287,58 @@
     if (!info) return;
     const s = newSlot(info, crypto.randomUUID());
     commit(`Add ${info.name}`, addSlot(chain, s));
-    openWindow(s.id);
+    openSlot(s);
+  }
+
+  /** Adds an effect into numbered slot `at` (0 first). */
+  function addAt(id: string, at: number) {
+    const info = byId.get(id);
+    if (!info) return;
+    const s = newSlot(info, crypto.randomUUID());
+    commit(`Add ${info.name}`, addSlotAt(chain, s, at));
+    openSlot(s);
+  }
+
+  /** An empty slot's Add button: the families as submenus, adding into that slot. */
+  function openAddMenu(e: MouseEvent, at: number) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    slotMenu = { x: r.left, y: r.bottom, items: familyItems((id) => addAt(id, at)) };
+  }
+
+  /** Where this chain's slot rows say they belong, for dragging effects between chains. */
+  const owner = $derived(target && !inWave ? ownerKey(target) : "wave");
+  const rows = $derived(layoutSlots(chain));
+  /** A dragged effect let go over a slot: moved here, or copied from another chain. */
+  function dropSlot(s: EffectSlotDoc, to: SlotSpot) {
+    if (to.owner === owner) {
+      commit("Move Effect", moveSlotToIndex(chain, s.id, to.index));
+      return;
+    }
+    if (inWave || !target || !doc) return;
+    const ed = dropEdit(doc, target, $state.snapshot(s) as EffectSlotDoc, to, () => crypto.randomUUID());
+    if (ed) void session.edit(ed.label, ed.op, runner).catch(onError);
+    else onNotice(`A Voice Chain holds ${MAX_SLOTS} effects.`);
   }
 
   // Slot rows: drag to reorder, Alt+Up or Alt+Down on a row, and a right-click menu.
-  let dragId = $state<string | null>(null);
-  let overIndex = $state<number | null>(null);
   let slotMenu = $state<{ x: number; y: number; items: ContextItem[] } | null>(null);
-  function dropOn(i: number) {
-    const id = dragId;
-    dragId = null;
-    overIndex = null;
-    if (id) commit("Move Effect", moveSlotTo(chain, id, i));
-  }
   function onRowKey(e: KeyboardEvent, id: string) {
     if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
     e.preventDefault();
     commit("Move Effect", moveSlot(chain, id, e.key === "ArrowUp" ? -1 : 1));
   }
-  /** The effects of each family as submenus, for adding at the end or replacing a slot. */
+  /** The effects of each family as submenus, for adding or replacing a slot. */
   function familyItems(pick: (id: string) => void): ContextItem[] {
-    return [
-      ...categories.map((c): ContextItem => ({ kind: "sub", label: c, items: catalog.filter((e) => e.category === c).map((e): ContextItem => ({ kind: "item", label: e.name, run: () => pick(e.id) })) })),
-      { kind: "sep" },
-      { kind: "item", label: "VST", disabled: true, reason: "Plugin hosting is not built yet.", run: () => {} },
-      { kind: "item", label: "VST3", disabled: true, reason: "Plugin hosting is not built yet.", run: () => {} },
-    ];
+    return effectMenu(catalog, menuPlugins, pick) as ContextItem[];
   }
-  function openSlotMenu(e: MouseEvent, s: EffectSlotDoc | undefined) {
+  function openSlotMenu(e: MouseEvent, s: EffectSlotDoc | undefined, at?: number) {
     e.preventDefault();
     const items: ContextItem[] = [];
     if (s) {
       const info = byId.get(s.effect);
       items.push(
-        { kind: "item", label: "Edit Effect", run: () => openWindow(s.id) },
+        { kind: "item", label: info?.plugin && info.hasWindow ? "Open Plug-in Window" : "Edit Effect", run: () => openSlot(s) },
+        ...(info?.plugin ? [{ kind: "item", label: "Show Controls", run: () => openWindow(s.id) } as ContextItem] : []),
         { kind: "item", label: "Remove Effect", run: () => commit(`Remove ${info?.name ?? "Effect"}`, removeSlot(chain, s.id)) },
         { kind: "sep" },
         {
@@ -272,7 +354,7 @@
         },
       );
     } else {
-      items.push(...familyItems(add));
+      items.push(...familyItems((id) => (at === undefined ? add(id) : addAt(id, at))));
     }
     slotMenu = { x: e.clientX, y: e.clientY, items };
   }
@@ -373,7 +455,9 @@
     if (chain[key] !== value) commit(label, { ...chain, [key]: value });
   }
 
-  // Noise Print Reducer: learn the print from the time selection.
+  // Noise Print Reducer: learn the print from the time selection. A bus
+  // or the master has no audio of its own to learn from yet.
+  const canLearn = $derived(inWave || target?.kind === "track" || target?.kind === "clip");
   const LEARNS = new Set(["altaudio.noise_print", "altaudio.sound_eraser"]);
   const learnSel = $derived.by(() => {
     const v = inWave ? waveDoc?.view.selection : doc?.view.selection;
@@ -381,9 +465,9 @@
   });
   let learning = $state(false);
   async function learnPrint(s: EffectSlotDoc) {
-    if (!learnSel || !target || learning) return;
+    if (!learnSel || !target || learning || !canLearn) return;
     const source: LearnSource =
-      target.kind === "master" || inWave
+      target.kind === "master" || target.kind === "bus" || inWave
         ? { kind: "wave", start: learnSel.start, end: learnSel.end }
         : { kind: target.kind, id: target.id, start: learnSel.start, end: learnSel.end };
     learning = true;
@@ -409,7 +493,8 @@
     }),
   );
   const meterTrack = $derived(inWave ? waveTrack : tab === "track" ? track : clipTrack);
-  const chainMeter = $derived(meterTrack ? ts?.chains[meterTrack.id] : undefined);
+  const meterKey = $derived(onMaster ? MASTER_CHAIN : bus ? bus.id : meterTrack?.id);
+  const chainMeter = $derived(meterKey ? ts?.chains[meterKey] : undefined);
   const louder = (a?: MeterLevel, b?: MeterLevel) => (a && b ? (a.peak >= b.peak ? a : b) : (a ?? b));
   const dbText = (m: MeterLevel | undefined) => (m && m.peak > 0.00001 ? (20 * Math.log10(m.peak)).toFixed(1) : "-inf");
 
@@ -491,11 +576,25 @@
           </select>
         {/if}
       </div>
-      {#if !inWave && tab === "track" && doc && doc.tracks.length > 1}
+      {#if onTrackTab && doc && (doc.tracks.length > 1 || (doc.buses?.length ?? 0) > 0 || onMaster)}
+        {@const count = (c: EffectChainDoc | undefined) => ((c?.slots.length ?? 0) > 0 ? ` (${c!.slots.length})` : "")}
         <label class="line target">
-          <span>Track</span>
-          <select class="grow" aria-label="Track" value={track?.id ?? ""} onchange={(e) => (pickedTrack = e.currentTarget.value)}>
-            {#each doc.tracks as t (t.id)}<option value={t.id}>{t.name}{(t.effects?.slots.length ?? 0) > 0 ? ` (${t.effects!.slots.length})` : ""}</option>{/each}
+          <span>{onMaster ? "Master" : bus ? "Bus" : "Track"}</span>
+          <select class="grow" aria-label="Track, bus or master" value={onMaster ? MASTER_ID : (bus?.id ?? track?.id ?? "")} onchange={(e) => {
+            const id = e.currentTarget.value;
+            // Select it in the Editor too, so the row marked there is the one shown here.
+            editor.selectTrack(id);
+            pickedTrack = id;
+          }}>
+            <optgroup label="Tracks">
+              {#each doc.tracks as t (t.id)}<option value={t.id}>{t.name}{count(t.effects)}</option>{/each}
+            </optgroup>
+            {#if doc.buses?.length}
+              <optgroup label="Buses">
+                {#each doc.buses as b (b.id)}<option value={b.id}>{b.name}{count(b.effects)}</option>{/each}
+              </optgroup>
+            {/if}
+            <option value={MASTER_ID}>Master{count(doc.master?.effects)}</option>
           </select>
         </label>
       {:else}
@@ -504,38 +603,20 @@
     </div>
 
     <ol class="slots" class:off={!chain.enabled}>
-      {#each Array.from({ length: MAX_SLOTS }, (_, i) => i) as i (i)}
-        {@const s = chain.slots[i]}
+      {#each rows as s, i (i)}
         {@const info = s ? byId.get(s.effect) : undefined}
         <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
         <li
           class:sel={!!s && s.id === slot?.id}
           class:bypassed={!!s && !s.enabled}
-          class:over={overIndex === i && dragId !== null}
-          draggable={!!s}
+          class:over={$slotOver?.owner === owner && $slotOver.index === i}
+          data-slot-owner={owner}
+          data-slot-index={i}
           tabindex={s ? 0 : -1}
-          ondragstart={(e) => {
-            if (!s) return;
-            dragId = s.id;
-            e.dataTransfer?.setData("text/plain", s.id);
-            if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
-          }}
-          ondragover={(e) => {
-            if (dragId && i < chain.slots.length) {
-              e.preventDefault();
-              overIndex = i;
-            }
-          }}
-          ondrop={(e) => {
-            e.preventDefault();
-            dropOn(i);
-          }}
-          ondragend={() => {
-            dragId = null;
-            overIndex = null;
-          }}
+          title={s ? "Drag to another slot to move it, or onto another track's effects (Editor, Effects view) to copy it" : undefined}
+          onpointerdown={(e) => s && startSlotDrag(e, (to) => dropSlot(s, to))}
           onkeydown={(e) => s && onRowKey(e, s.id)}
-          oncontextmenu={(e) => openSlotMenu(e, s)}
+          oncontextmenu={(e) => openSlotMenu(e, s ?? undefined, i)}
         >
           <span class="n">{i + 1}</span>
           {#if s}
@@ -551,30 +632,21 @@
               <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v6" stroke="currentColor" stroke-width="1.8" /><path d="M4.6 4.4a5 5 0 1 0 6.8 0" fill="none" stroke="currentColor" stroke-width="1.6" /></svg>
             </button>
             <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-            <span class="name" onclick={() => openWindow(s.id)} title={info?.description ?? "Not a built-in effect: kept in the file, skipped on playback."}>
+            <span
+              class="name"
+              class:stopped={$stoppedPlugins.has(s.id)}
+              onclick={() => openSlot(s)}
+              title={$stoppedPlugins.get(s.id) ?? info?.description ?? (s.effect.startsWith("vst3:") ? "This plug-in is not installed (or not scanned yet): kept in the file, skipped on playback. See Effects > Plug-in Manager." : "Not a built-in effect: kept in the file, skipped on playback.")}
+            >
               {info?.name ?? s.effect}
             </span>
-            <button type="button" class="mini" title="Open its settings" aria-label="Open its settings" onclick={() => openWindow(s.id)}>⚙</button>
+            {#if info?.plugin}
+              <button type="button" class="mini" title="Show its controls as a list (and restart it if it stopped)" aria-label="Show its controls" onclick={() => openWindow(s.id)}>☰</button>
+            {/if}
+            <button type="button" class="mini" title={info?.plugin && info.hasWindow ? "Open the plug-in's window" : "Open its settings"} aria-label={info?.plugin && info.hasWindow ? "Open the plug-in's window" : "Open its settings"} onclick={() => openSlot(s)}>⚙</button>
             <button type="button" class="mini" title="Remove" aria-label="Remove" onclick={() => commit(`Remove ${info?.name ?? "Effect"}`, removeSlot(chain, s.id))}>✕</button>
-          {:else if i === chain.slots.length}
-            <select
-              class="add"
-              aria-label="Add an effect"
-              value=""
-              onchange={(e) => {
-                add(e.currentTarget.value);
-                e.currentTarget.value = "";
-              }}
-            >
-              <option value="" disabled>+ Add effect</option>
-              {#each categories as c (c)}
-                <optgroup label={c}>
-                  {#each catalog.filter((e) => e.category === c) as e (e.id)}<option value={e.id}>{e.name}</option>{/each}
-                </optgroup>
-              {/each}
-            </select>
           {:else}
-            <span class="name blank"></span>
+            <button type="button" class="add" class:quiet={i !== chain.slots.length && i > 0 && !rows[i - 1]} aria-haspopup="menu" title="Add an effect in slot {i + 1}" onclick={(e) => openAddMenu(e, i)}>+ Add effect <span class="chev" aria-hidden="true">▾</span></button>
           {/if}
         </li>
       {/each}
@@ -597,11 +669,34 @@
                 {#if GRAPHED.has(winSlot.effect)}
           <ResponseGraph slot={winSlot} info={winInfo} onPoint={(pf, f, pg, g, done) => dragPoint(winSlot, pf, f, pg, g, done)} />
         {/if}
+        {#if winInfo.sidechain && onTrackTab && doc && keyOwner}
+          <label class="param" title="Sidechain: let another track's or bus's sound drive this effect, for example to duck music under a voice. It listens before that track's fader.">
+            <span class="pname">Listen to</span>
+            <select
+              value={winSlot.sidechain ?? ""}
+              onchange={(e) => commit("Set Sidechain", setSlot(chain, winSlot.id, { sidechain: e.currentTarget.value || null }))}
+            >
+              <option value="">Its own input</option>
+              {#each keyChoices(doc, keyOwner) as k (k.id)}<option value={k.id}>{k.bus ? "Bus: " : ""}{k.name}</option>{/each}
+            </select>
+          </label>
+        {/if}
+        {#if winInfo.plugin}
+          <div class="learn">
+            {#if $stoppedPlugins.has(winSlot.id)}
+              <span class="hint stopped">{$stoppedPlugins.get(winSlot.id)}</span>
+              <button type="button" onclick={() => restartPlugin(winSlot)}>Restart Plug-in</button>
+            {:else}
+              <button type="button" disabled={!winInfo.hasWindow} title={winInfo.hasWindow ? "Open the plug-in's own window. What you set there is saved with the session." : "This plug-in has no window of its own; use the controls below."} onclick={() => openPluginWindow(winSlot)}>Open Plug-in Window</button>
+              <span class="hint">{winInfo.hasWindow ? "Its own window has every setting. Controls below move it too." : "Controls only."}</span>
+            {/if}
+          </div>
+        {/if}
         {#if LEARNS.has(winSlot.effect)}
           {@const len = winSlot.params.printlen ?? 0}
           {@const what = winSlot.effect === "altaudio.sound_eraser" ? "sound" : "noise"}
           <div class="learn">
-            <button type="button" disabled={!learnSel || learning} title={learnSel ? `Learn the ${what} in the time selection` : `Select a stretch with only the ${what} in it first`} onclick={() => void learnPrint(winSlot)}>
+            <button type="button" disabled={!learnSel || learning || !canLearn} title={!canLearn ? `Learn on a track or clip, or in the Waveform editor; a bus or the master has no ${what} of its own to learn from` : learnSel ? `Learn the ${what} in the time selection` : `Select a stretch with only the ${what} in it first`} onclick={() => void learnPrint(winSlot)}>
               {learning ? "Learning…" : "Learn from Selection"}
             </button>
             <span class="hint">
@@ -648,64 +743,64 @@
     {/if}
 
     <div class="bottom">
-      {#each [GAIN("input_gain_db", "Input"), GAIN("output_gain_db", "Output")] as p (p.key)}
-        {@const cur = draft?.key === `chain.${p.key}` ? draft.value : chain[p.key as "input_gain_db" | "output_gain_db"]}
-        <label class="param">
-          <span class="pname">{p.name}</span>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.001"
+      {#snippet bars(name: string, k: number)}
+        <div class="mbars" aria-label="{name} level">
+          {#each [k, k + 1] as ch (ch)}
+            {@const m = chainMeter?.[ch]}
+            <div class="mbar" role="meter" aria-label="{name} {ch % 2 === 0 ? 'left' : 'right'}" aria-valuemin={-60} aria-valuemax={0} aria-valuenow={m && m.peak > 0 ? Math.max(-60, Math.round(20 * Math.log10(m.peak))) : -60}>
+              <div class="mcover" style:width="{(1 - meterFraction(m?.level ?? 0)) * 100}%"></div>
+              {#if m && m.peak > 0}<div class="mpeak" style:left="{meterFraction(m.peak) * 100}%"></div>{/if}
+            </div>
+          {/each}
+        </div>
+      {/snippet}
+      {#each [[GAIN("input_gain_db", "Input"), 0], [GAIN("output_gain_db", "Output"), 2]] as const as [p, k] (p.key)}
+        {@const key = p.key as "input_gain_db" | "output_gain_db"}
+        {@const cur = draft?.key === `chain.${key}` ? draft.value : chain[key]}
+        <div class="io">
+          <span class="pname">{p.name}:</span>
+          {@render bars(k === 0 ? "In" : "Out", k)}
+          <Knob
+            label="{p.name} gain"
             value={toSlider(p, cur)}
-            oninput={(e) => {
-              const v = fromSlider(p, Number(e.currentTarget.value));
-              dragChain(p.key as "input_gain_db", `Voice Chain ${p.name} Gain`, v, v);
+            home={toSlider(p, 0)}
+            text={formatParam(p, cur)}
+            title="Drag to turn (Ctrl for fine, Shift for coarse). Double-click for 0 dB."
+            oninput={(t) => {
+              const v = fromSlider(p, t);
+              dragChain(key, `Voice Chain ${p.name} Gain`, v, v);
             }}
-            onchange={(e) => setChain(p.key as "input_gain_db", `Voice Chain ${p.name} Gain`, fromSlider(p, Number(e.currentTarget.value)))}
-            ondblclick={() => setChain(p.key as "input_gain_db", `Voice Chain ${p.name} Gain`, 0)}
-            title="Double-click for 0 dB"
+            oncommit={(t) => setChain(key, `Voice Chain ${p.name} Gain`, fromSlider(p, t))}
           />
           <span class="val">{formatParam(p, cur)}</span>
-        </label>
+        </div>
       {/each}
-      <label class="param">
-          <span class="pname" title="Dry/Wet: how much of the effected sound you hear">Mix</span>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            value={mixShown}
-            oninput={(e) => dragChain("mix", "Voice Chain Mix", Number(e.currentTarget.value), Number(e.currentTarget.value) / 100)}
-            onchange={(e) => setChain("mix", "Voice Chain Mix", Number(e.currentTarget.value) / 100)}
-          />
-          <span class="val">{formatParam(MIX, mixShown)}</span>
-        </label>
-      <div class="meters" aria-label="Track chain meters">
-        {#each [["In", 0], ["Out", 2]] as const as [name, k] (name)}
-          <div class="mrow">
-            <span class="pname">{name}</span>
-            <div class="mbars">
-              {#each [k, k + 1] as ch (ch)}
-                {@const m = chainMeter?.[ch]}
-                <div class="mbar" role="meter" aria-label="{name} {ch % 2 === 0 ? 'left' : 'right'}" aria-valuemin={-60} aria-valuemax={0} aria-valuenow={m && m.peak > 0 ? Math.max(-60, Math.round(20 * Math.log10(m.peak))) : -60}>
-                  <div class="mcover" style:width="{(1 - meterFraction(m?.level ?? 0)) * 100}%"></div>
-                  {#if m && m.peak > 0}<div class="mpeak" style:left="{meterFraction(m.peak) * 100}%"></div>{/if}
-                </div>
-              {/each}
-            </div>
-            <span class="val">{dbText(louder(chainMeter?.[k], chainMeter?.[k + 1]))}</span>
-          </div>
-        {/each}
-        <p class="hint">
-          {#if !meterTrack}Meters show a track's chain while playing.
-          {:else if tab === "clip" && !inWave}Meters show the track chain of {meterTrack.name}. Clip chains are not metered yet.
-          {:else if !ts?.playing}Meters move while playing.
-          {:else if !chainMeter}This track's chain does nothing yet, so there is nothing to meter.
-          {:else}Track chain level going in and coming out.{/if}
-        </p>
+      <div class="io mixrow">
+        <span class="pname" title="How much of the effected sound you hear">Mix:</span>
+        <span class="end">Dry</span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          step="1"
+          aria-label="Mix"
+          value={mixShown}
+          oninput={(e) => dragChain("mix", "Voice Chain Mix", Number(e.currentTarget.value), Number(e.currentTarget.value) / 100)}
+          onchange={(e) => setChain("mix", "Voice Chain Mix", Number(e.currentTarget.value) / 100)}
+          ondblclick={() => setChain("mix", "Voice Chain Mix", 1)}
+          title="Double-click for 100 %"
+        />
+        <span class="end">Wet</span>
+        <span class="val">{formatParam(MIX, mixShown)}</span>
       </div>
+      <p class="hint">
+        {#if onMaster || bus}{#if !ts?.playing}Meters move while playing.{:else if !chainMeter}This chain does nothing yet, or nothing feeds the {onMaster ? "master" : "bus"}.{:else}{onMaster ? "Master" : "Bus"} chain level going in and coming out.{/if}
+        {:else if !meterTrack}Meters show a track's chain while playing.
+        {:else if tab === "clip" && !inWave}Meters show the track chain of {meterTrack.name}. Clip chains are not metered yet.
+        {:else if !ts?.playing}Meters move while playing.
+        {:else if !chainMeter}This track's chain does nothing yet, so there is nothing to meter.
+        {:else}Track chain level going in and coming out.{/if}
+      </p>
       {#if inWave}
         <div class="apply">
           <p class="hint">You hear this chain when you play the file. The file changes only when you apply it, and Undo takes it back.</p>
@@ -756,12 +851,14 @@
   }
   .top {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 4px;
     padding: 6px 8px;
     border-bottom: 1px solid var(--border);
   }
   .line {
     display: flex;
+    min-width: 0;
     gap: 4px;
     align-items: center;
   }
@@ -845,11 +942,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .name.blank {
-    height: 1px;
-    border-bottom: 1px dotted var(--border);
-    cursor: default;
-  }
   .pow {
     flex: none;
     display: grid;
@@ -872,12 +964,23 @@
   .slots li.over {
     box-shadow: inset 0 2px 0 var(--accent);
   }
-  .slots li[draggable="true"] {
+  .slots li:has(.pow) {
     cursor: grab;
   }
   .add {
+    display: flex;
     flex: 1;
+    justify-content: space-between;
     color: var(--text-dim);
+    text-align: left;
+  }
+  /* Later empty slots: quiet until hovered, so the list stays calm. */
+  .add.quiet {
+    opacity: 0;
+  }
+  li:hover .add.quiet,
+  .add.quiet:focus-visible {
+    opacity: 0.7;
   }
   .mini {
     min-width: 20px;
@@ -972,10 +1075,6 @@
     margin: 0;
     color: var(--text-faint);
   }
-  .meters {
-    display: grid;
-    gap: 3px;
-  }
   .learn {
     display: flex;
     flex-wrap: wrap;
@@ -996,11 +1095,36 @@
     background: var(--accent);
     color: var(--on-accent, #fff);
   }
-  .mrow {
+  .io {
     display: grid;
-    grid-template-columns: 88px minmax(0, 1fr) 72px;
+    grid-template-columns: 52px minmax(0, 1fr) 28px 64px;
     gap: 6px;
     align-items: center;
+  }
+  .io.mixrow {
+    grid-template-columns: 52px auto minmax(0, 1fr) auto 44px;
+  }
+  .end {
+    color: var(--text-faint);
+  }
+  .io input[type="range"] {
+    appearance: none;
+    height: 4px;
+    margin: 0;
+    border-radius: 2px;
+    background: var(--surface-3);
+    outline-offset: 4px;
+  }
+  .io input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: 50%;
+    background: var(--text-dim);
+  }
+  .io input[type="range"]:hover::-webkit-slider-thumb {
+    background: var(--accent);
   }
   .mbars {
     display: grid;
@@ -1028,5 +1152,9 @@
   }
   .empty {
     padding: 12px 8px;
+  }
+  .name.stopped,
+  .hint.stopped {
+    color: var(--danger);
   }
 </style>

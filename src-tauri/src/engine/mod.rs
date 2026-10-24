@@ -8,12 +8,15 @@
 //! touches the disk. Worker threads prepare audio and hand it over
 //! through lock-free ring buffers; settings arrive as atomics.
 
+pub(crate) mod fx;
+pub mod graph;
 pub mod host;
 pub mod output;
 pub mod plan;
 pub mod preview;
 pub mod record;
 pub mod render;
+pub mod scope;
 pub mod transport;
 
 pub use preview::{PreviewPlayer, PreviewStatus};

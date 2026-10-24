@@ -15,8 +15,10 @@ export interface Viewport {
   scroll: number;
 }
 
-/** Closest zoom in: 4 samples per pixel. */
-export const MIN_SPP = 4;
+/** Closest zoom in: 32 pixels per sample, so single samples can be seen (drawn as points on a line). */
+export const MIN_SPP = 1 / 32;
+/** Closest zoom in the Waveform editor, the same as the Multitrack's. */
+export const SAMPLE_SPP = MIN_SPP;
 /** Farthest zoom out: about 6 hours across 1,000 pixels at 48 kHz. */
 export const MAX_SPP = 1_048_576;
 
@@ -47,8 +49,9 @@ export function zoomAround(
   factor: number,
   anchorX: number,
   maxSpp = MAX_SPP,
+  minSpp = MIN_SPP,
 ): Viewport {
-  const spp = Math.min(maxSpp, Math.max(MIN_SPP, v.spp * factor));
+  const spp = Math.min(maxSpp, Math.max(minSpp, v.spp * factor));
   const anchor = v.scroll + anchorX * v.spp;
   return { spp, scroll: Math.max(0, anchor - anchorX * spp) };
 }
@@ -64,7 +67,7 @@ export function fit(length: number, width: number): Viewport {
 
 /** Seconds between labeled ruler ticks, from fine to coarse. */
 const STEPS = [
-  0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 20, 30,
+  0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 20, 30,
   60, 120, 180, 300, 600, 900, 1200, 1800, 3600, 7200,
 ];
 
@@ -121,7 +124,7 @@ export function rulerTicks(
 export function formatTime(seconds: number, step = 0.001): string {
   const neg = seconds < 0;
   let s = Math.abs(seconds);
-  const decimals = step < 0.01 ? 3 : step < 0.1 ? 2 : step < 1 ? 1 : 0;
+  const decimals = step < 0.001 ? 4 : step < 0.01 ? 3 : step < 0.1 ? 2 : step < 1 ? 1 : 0;
   const scale = 10 ** decimals;
   s = Math.round(s * scale) / scale;
   const h = Math.floor(s / 3600);

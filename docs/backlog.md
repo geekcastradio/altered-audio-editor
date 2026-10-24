@@ -99,7 +99,7 @@ Collected from the project's Discord group. Each entry says what we will build, 
 - **Shortcut:** the request says Alt+Drag. New shortcuts need project lead approval, so this is listed, not assigned. Until approved, stretch is a Clip menu command with a length field and a tool-strip mode.
 - **Phase:** P3 or P4 editing. High value for ad work. Early candidate.
 
-### 3. Plugin hosting (not started)
+### 3. Plugin hosting (built 2026-10-24, see decisions.md)
 
 - **VST3** hosting on tracks and the master, then optionally **CLAP** (an open, simpler format). The VST3 SDK is MIT licensed, so hosting inside a GPL app is clean.
 - **VST2 is not planned.** Steinberg stopped licensing the VST2 SDK, so shipping a VST2 host is a legal risk for a public project. We can revisit if the terms change. This is a deliberate decision, logged in `decisions.md`.
@@ -114,7 +114,7 @@ Collected from the project's Discord group. Each entry says what we will build, 
 - Per-channel input and output routing so each track can take its own channel from a multi-microphone interface, plus loopback channels for system audio.
 - **Phase:** P4 recording. Needs real hardware to test. Latency compensation and punch-in already sit in that phase.
 
-### 5. MIDI and virtual instruments (not started)
+### 5. MIDI and virtual instruments (tracks, piano roll and VST3 instruments proposed 2026-10-24; controllers not started)
 
 - A MIDI track type with clips, playback and a piano roll, virtual instruments on those tracks (depends on plugin hosting), and external controller mapping to transport, faders, pan and trigger pads.
 - **Phase:** its own phase after Podcast mode, as already planned. The soundboard-trigger use (pads that fire clips) is small and could ship earlier without the piano roll.
@@ -226,7 +226,7 @@ Spitballed by the project lead: off by default, never required. Local first (a l
 
 ## From the 0.1.6 tester reports (not built yet)
 
-- Master track in the multitrack view, and buses (waiting on the master chain and fader decision).
+- Master track in the multitrack view, and bus lanes in the Editor. Buses, sends, outputs, the master chain and sidechain keys are built (2026-10-24); buses live in the Mixer for now.
 - A per-track Mono button (hear and meter a track summed to mono).
 - Crossfade options for overlapping clips (how the fade weighs each clip) and more fade shapes with adjustable curve in the clip's fade handles.
 - Clip Properties dialog.
@@ -332,9 +332,9 @@ Checked against the code. "Built" means it is in the repo and tested in the sand
 | --- | --- | --- |
 | Scripting, schemas, assistant endpoint | Schemas built (`/schemas`, with a test that keeps them current). Scripting and endpoint not started. | Generated TypeScript definitions. QuickJS script engine. Local stdio and pipe endpoint, off by default, read-only first. No OpenAPI (no HTTP API, no network). |
 | Time stretch and varispeed | Built: Clip > Time Stretch, Alt+drag on a clip edge, pitch kept (WSOLA) or tape-style, about 25 percent either way, exact-length stretch in the Waveform editor (0.1.6). | Formant keeping, a higher quality engine (Rubber Band is GPL, needs a note in `ATTRIBUTION.md`, decide by listening tests on speech). |
-| Plugin hosting (VST3) | Not started. | Separate helper process, shared-memory audio, plugin windows, scan list. VST2 stays out. |
+| Plugin hosting (VST3) | Built (proposed 2026-10-24, see decisions.md). | Separate host process per plug-in (pipes, not shared memory), Plug-in Manager with user folders, plug-in windows on Windows, settings saved in the session. Still open: windows on Linux and macOS, macOS bundles, live input monitoring through plug-ins, plug-in sidechain inputs. VST2 stays out. |
 | ASIO and channel routing | ASIO built (Cargo feature, on in release builds, falls back to the normal driver). Per-channel input picking built. | Hardware testing. Buffer size, sample rate and latency controls. Output routing and a routing matrix. Loopback channels. |
-| MIDI and instruments | Not started. | See the MIDI plan below. |
+| MIDI and instruments | MIDI tracks, MIDI clips, a piano roll, session tempo and VST3 instruments built (proposed 2026-10-24, see decisions.md). | Free (non-snapping) stretch of MIDI clips when clip stretching reaches them (tester request: MIDI clips should get a free stretch, not only one that snaps), hearing notes while drawing them, recording from a MIDI keyboard, `.mid` import and export, tempo changes along the timeline, moving MIDI clips between tracks with Alt+Up and Alt+Down, copy and paste of MIDI clips, quantize, controllers and sustain pedal, and the controller mapping in the MIDI plan below. |
 | Markers, Playlist, chapters | Built: point, range, chapter, cue, ad slot and social clip markers with colors and notes, Playlist panel, chapter export (files and embedded), Waveform editor cue points. | Clip markers that move with their clip (check), marker keyboard navigation (needs shortcut approval). |
 | Video and ADR | Not started. | See the video plan below. |
 | Podcast tools | One-click loudness built (Loudness Match, targets by region and custom). Silence and breath handling built non-destructively (QuickPass Turn Down, Breath Gate). Phase Align and Phase Rotate built. | Auto-ducking. Multi-mic alignment and bleed reduction. A smarter breath detector. |
@@ -346,7 +346,7 @@ Checked against the code. "Built" means it is in the repo and tested in the sand
 - **VST3 hosting.** The SDK is MIT licensed, so hosting is clean. Plugins run in a separate helper process so a crashing plugin shows an error on its slot and the session carries on. Plugin windows open beside the editor rather than inside it. The `nih-plug` crate is for writing plugins, not hosting them. CLAP is a later option. VST2 is excluded on purpose: Steinberg no longer licenses the SDK, so a public project cannot ship it. This is the largest single piece of work.
 - **MIDI.** First step is small and useful: controller mapping (transport, faders, pan, trigger pads that fire clips) with a MIDI-learn dialog. Piano roll and instrument hosting are a second product and wait on plugin hosting. Control surface protocols (the common mixing-console ones) are fiddly and cannot be tested without the hardware, so they come after generic MIDI-learn.
 - **Video reference track and ADR.** Import video as a reference track, resizable preview, frame-accurate stepping, pre-roll beeps and visual cue, loop regions, audio extraction on import, and writing the finished mix back into the original container without re-encoding the picture. **Catch:** a web view cannot step exact frames, so we need our own decoder path (an LGPL FFmpeg build, dynamically linked, credited in `ATTRIBUTION.md`). Writing audio back is a stream copy and is the easy half.
-- **Auto-ducking.** One setting: music tracks lower while chosen speech tracks are active, with attack, release and depth. A first version can use the speech detection QuickPass already has and write volume envelopes (visible, editable, undoable). The live sidechain version follows with the master chain work.
+- **Auto-ducking.** One setting: music tracks lower while chosen speech tracks are active, with attack, release and depth. A first version can use the speech detection QuickPass already has and write volume envelopes (visible, editable, undoable). The live sidechain is built (2026-10-24: Dynamics or Breath Gate on the music track, Listen to the voice track); the one-setting dialog is still to do.
 - **Multi-mic alignment and bleed.** Estimate each microphone's delay against the others and shift it (Phase Align already shifts by a fixed amount). Bleed removal quality varies; ship alignment first, gate-based bleed reduction second.
 
 ## Menus, settings and behavior build-out (2026-10-20)
@@ -432,7 +432,7 @@ Every effect family with the controls testers expect, then multitrack, clips, au
 - Track visibility: a Tracks panel that lists tracks, hides and shows them, and saves visibility presets. Not built.
 - Wheel over the track headers zooms the track heights; Shift+wheel resizes widths. We currently scroll there. Approved to change (matches the tester ask).
 - Shift-click (with Ctrl) on an input, output, mute, solo, record or monitor button applies it to all tracks. Not built.
-- Routing: buses, sends with pre- or post-fader switch, the Mix track, track EQ on every track, effects pre- or post-fader, outputs to hardware ports. Not built; waits on the master and bus work (decided above). Bus tracks cannot take inputs directly and output only to hardware or other buses.
+- Routing: buses, sends with pre- or post-fader switch, the Mix track, track EQ on every track, effects pre- or post-fader, outputs to hardware ports. Buses, sends (pre or post) and outputs to the master or a bus are built (2026-10-24); outputs to hardware ports and effects after the fader are not. Bus tracks cannot take inputs directly and output only to hardware or other buses.
 - Time display options for sessions: start offset and display format per session. Partly built (time formats).
 
 ### Clips

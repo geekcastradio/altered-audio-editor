@@ -56,6 +56,8 @@ export interface SessionFilesDeps {
   libraries?(): string[];
 }
 
+export { isBlank } from "../stores/session";
+
 /** Display name: the file name without extension, or the session name. */
 export function displayName(path: string | null, doc: SessionDoc | null): string {
   if (path) {
@@ -67,11 +69,17 @@ export function displayName(path: string | null, doc: SessionDoc | null): string
 
 /** One line describing what a .sesx import brought across. */
 export function sesxSummary(r: SesxReport): string {
-  const parts = [
-    `Imported ${r.tracks} ${r.tracks === 1 ? "track" : "tracks"} and ${r.clips} ${r.clips === 1 ? "clip" : "clips"}.`,
-  ];
+  const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const buses = r.buses ? `, ${count(r.buses, "bus", "buses")}` : "";
+  const parts = [`Imported ${count(r.tracks, "track", "tracks")}${buses} and ${count(r.clips, "clip", "clips")}.`];
+  if (r.plugins) parts.push(`${count(r.plugins, "plug-in", "plug-ins")} came across with ${r.plugins === 1 ? "its" : "their"} settings.`);
+  if (r.missingPlugins?.length) {
+    parts.push(`Not found on this computer (install or scan them in the Plug-in Manager): ${r.missingPlugins.join(", ")}.`);
+  }
+  if (r.stretched) parts.push(`${count(r.stretched, "clip keeps its", "clips keep their")} stretch and pitch.`);
   if (r.skippedEffects > 0) {
-    parts.push(`${r.skippedEffects} ${r.skippedEffects === 1 ? "effect was" : "effects were"} left out; rebuild them in Voice Chain (P5).`);
+    const names = r.skippedNames?.length ? ` (${r.skippedNames.join(", ")})` : "";
+    parts.push(`${count(r.skippedEffects, "built-in effect was", "built-in effects were")} left out${names}; rebuild them in Voice Chain.`);
   }
   if (r.missingFiles.length > 0) {
     const n = r.missingFiles.length;
@@ -89,13 +97,18 @@ export class SessionFiles {
     return this.d.stack.current.dirty;
   }
 
+  /** Changed and worth saving: the blank session the app opened with, with files imported only, does not count. */
+  get unsaved(): boolean {
+    return this.dirty && !this.d.session.isScratch();
+  }
+
   get name(): string {
     return displayName(this.d.session.path, this.d.session.current);
   }
 
   /** Window title, with a star while there are unsaved changes. */
   title(): string {
-    return `${this.name}${this.dirty ? " *" : ""} - Altered Audio Editor`;
+    return `${this.name}${this.unsaved ? " *" : ""} - Altered Audio Editor`;
   }
 
   startAutosave(intervalMs = AUTOSAVE_MS): void {
@@ -110,7 +123,7 @@ export class SessionFiles {
 
   /** Writes a recovery copy if there is anything unsaved. */
   async autosaveNow(): Promise<boolean> {
-    if (!this.dirty) return false;
+    if (!this.unsaved) return false;
     try {
       await this.d.backend.autosave(this.mediaRefs());
       return true;
@@ -121,7 +134,7 @@ export class SessionFiles {
 
   /** Returns false if the user cancelled. */
   async confirmDiscard(): Promise<boolean> {
-    if (!this.dirty) return true;
+    if (!this.unsaved) return true;
     const choice = await this.d.askSave(this.name);
     if (choice === "cancel") return false;
     if (choice === "save") return this.save();
@@ -209,7 +222,7 @@ export class SessionFiles {
 
   private async replace(r: SessionResult<SessionDoc>, base: string, unsaved: boolean): Promise<void> {
     this.d.session.set(r.session, r.path);
-    this.d.pool.replaceAll(r.session.media.map((m) => ({ id: m.id, path: m.path })));
+    this.d.pool.merge(r.session.media.map((m) => ({ id: m.id, path: m.path })));
     await this.d.stack.clear(base);
     if (unsaved) await this.d.stack.markUnsaved();
     this.d.onReplaced?.(r.session);

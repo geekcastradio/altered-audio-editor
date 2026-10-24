@@ -37,6 +37,12 @@ export interface EffectSlotDoc {
   /** Values by parameter key; missing keys take the effect's default. */
   params: Record<string, number>;
   preset: string | null;
+  /** Sidechain: the track or bus this effect's detector listens to. Missing listens to its own input. */
+  sidechain?: string | null;
+  /** A VST3 plug-in's own settings (set in its window), base64. */
+  plugin_state?: string | null;
+  /** Which numbered slot it shows in (0 first), so a chain can leave gaps. Missing follows the one before. */
+  position?: number | null;
 }
 
 /** A Voice Chain on a clip, a track or the master. */
@@ -52,7 +58,44 @@ export interface EffectChainDoc {
 export type EffectTarget =
   | { kind: "track"; id: string }
   | { kind: "clip"; id: string }
+  | { kind: "bus"; id: string }
   | { kind: "master" };
+
+/** Where a track or bus sends its sound after its fader. */
+export type OutputDoc = { type: "master" } | { type: "bus"; bus_id: string };
+
+/** An aux send: a copy of the sound sent on to a bus at its own level. */
+export interface SendDoc {
+  id: string;
+  bus_id: string;
+  level_db: number;
+  /** -100 left to 100 right. */
+  pan: number;
+  /** Before the fader: ignores the sender's fader and pan (still follows mute and solo). */
+  pre_fader: boolean;
+  enabled: boolean;
+}
+
+/** A bus track: sums what feeds it, runs its own chain and fader. */
+export interface BusDoc {
+  id: string;
+  name: string;
+  channels: "mono" | "stereo";
+  color: string | null;
+  height: number;
+  volume_db: number;
+  pan: number;
+  muted: boolean;
+  solo: boolean;
+  output: OutputDoc;
+  sends: SendDoc[];
+  effects: EffectChainDoc;
+  /** Shows below this many tracks in the Editor; missing shows it below the last. */
+  position?: number | null;
+  /** Folded to mono after its Voice Chain. Missing when off. */
+  mono?: boolean;
+  [key: string]: unknown;
+}
 
 export interface ClipDoc {
   id: string;
@@ -92,9 +135,26 @@ export const AUDIO_TYPES: { id: AudioType; label: string }[] = [
 export interface StretchDoc {
   /** Timeline length over natural length: 1.25 plays 25 percent longer. */
   ratio: number;
-  /** True keeps the pitch; false changes pitch with speed, like tape. */
+  /** True keeps the pitch; false changes pitch with speed, like tape (varispeed). */
   keep_pitch: boolean;
+  /** Pitch change in semitones, -24 to +24 (pitch-keeping only). */
+  pitch?: number;
+  /** Several notes at once (music): longer analysis frames. */
+  polyphonic?: boolean;
+  /** Worked out ahead rather than live. Sounds the same here; kept for round trips. */
+  rendered?: boolean;
+  advanced?: StretchAdvancedDoc | null;
 }
+
+export interface StretchAdvancedDoc {
+  window_ms: number;
+  transient_sensitivity: number;
+  preserve_formants: boolean;
+  high_precision: boolean;
+}
+
+export const PITCH_MIN = -24;
+export const PITCH_MAX = 24;
 
 export const STRETCH_MIN = 0.25;
 export const STRETCH_MAX = 4;
@@ -143,6 +203,8 @@ export interface TrackDoc {
   record_armed: boolean;
   /** Missing in files where it is off. */
   polarity_inverted?: boolean;
+  /** Folded to mono after its Voice Chain. Missing in files where it is off. */
+  mono?: boolean;
   /** Folded to its name row. Missing in files where it is off. */
   collapsed?: boolean;
   /** Hidden from the Editor and Mixer lists. Missing in files where it is off. */
@@ -150,9 +212,52 @@ export interface TrackDoc {
   monitor_input?: boolean;
   input?: string | null;
   effects?: EffectChainDoc;
+  output?: OutputDoc;
+  sends?: SendDoc[];
   clips: ClipDoc[];
+  /** "midi" for MIDI tracks. Missing for audio tracks. */
+  kind?: "audio" | "midi";
+  /** MIDI tracks: the VST3 instrument that plays the notes. */
+  instrument?: EffectSlotDoc | null;
+  /** MIDI tracks: their clips. Missing when there are none. */
+  midi_clips?: MidiClipDoc[];
   [key: string]: unknown;
 }
+
+/** A note in a MIDI clip. Times are in beats from the clip's start. */
+export interface NoteDoc {
+  /** 0 to 127; 60 is middle C. */
+  pitch: number;
+  /** 1 to 127. */
+  velocity: number;
+  start: number;
+  length: number;
+}
+
+/** A MIDI clip. Its start and length are in beats, so it follows the tempo. */
+export interface MidiClipDoc {
+  id: string;
+  name: string;
+  start: number;
+  length: number;
+  muted?: boolean;
+  color?: string | null;
+  notes: NoteDoc[];
+}
+
+export interface TempoDoc {
+  bpm: number;
+  beats_per_bar: number;
+}
+
+export const DEFAULT_TEMPO: TempoDoc = { bpm: 120, beats_per_bar: 4 };
+export const BPM_MIN = 20;
+export const BPM_MAX = 400;
+
+/** The session's tempo (the default when the file has none). */
+export const tempoOf = (doc: SessionDoc): TempoDoc => (doc.tempo as TempoDoc | undefined) ?? DEFAULT_TEMPO;
+
+export const isMidi = (t: TrackDoc) => t.kind === "midi";
 
 export interface ViewDoc {
   samples_per_pixel: number;
@@ -171,6 +276,8 @@ export interface SessionDoc {
   bit_depth: number;
   media: MediaRefDoc[];
   tracks: TrackDoc[];
+  /** Bus tracks, in mixer order. */
+  buses?: BusDoc[];
   markers: MarkerDoc[];
   /** Playlist panel order: ids of range markers. */
   playlist?: string[];
@@ -183,6 +290,8 @@ export interface SessionDoc {
     effects?: EffectChainDoc;
     [key: string]: unknown;
   };
+  /** Missing at the default, 120 BPM in 4. */
+  tempo?: TempoDoc;
   [key: string]: unknown;
 }
 
@@ -279,6 +388,7 @@ export interface TrackChanges {
   volume_db?: number;
   pan?: number;
   polarity_inverted?: boolean;
+  mono?: boolean;
   collapsed?: boolean;
   hidden?: boolean;
   monitor_input?: boolean;
@@ -286,6 +396,27 @@ export interface TrackChanges {
   role?: "standard" | "guest";
   /** The host profile applied; "" clears it. */
   host_profile_id?: string;
+  output?: OutputDoc;
+  /** MIDI tracks: sets the instrument. */
+  instrument?: EffectSlotDoc;
+  /** MIDI tracks: takes the instrument out. */
+  clear_instrument?: boolean;
+}
+
+export interface BusChanges {
+  name?: string;
+  muted?: boolean;
+  solo?: boolean;
+  color?: string | null;
+  volume_db?: number;
+  pan?: number;
+  height?: number;
+  output?: OutputDoc;
+  /** Shows the bus below this many tracks in the Editor. */
+  position?: number;
+  /** Shows the bus below the last track again. */
+  clear_position?: boolean;
+  mono?: boolean;
 }
 
 /** An edit the core understands. */
@@ -296,6 +427,8 @@ export type Op =
       name: string;
       stereo: boolean;
       index: number;
+      /** A MIDI track instead of an audio track. */
+      midi?: boolean;
     }
   | { op: "restore_track"; track: TrackDoc; index: number }
   | { op: "remove_track"; id: string }
@@ -316,6 +449,14 @@ export type Op =
   | { op: "set_playlist"; ids: string[] }
   | { op: "set_effects"; target: EffectTarget; chain: EffectChainDoc }
   | { op: "set_master_volume"; volume_db: number }
+  | { op: "add_bus"; id: string; name: string; stereo: boolean; index: number }
+  | { op: "restore_bus"; bus: BusDoc; index: number }
+  | { op: "remove_bus"; id: string }
+  | { op: "move_bus"; id: string; to: number }
+  | { op: "set_bus"; id: string; changes: BusChanges }
+  | { op: "set_sends"; owner: string; sends: SendDoc[] }
+  | { op: "set_midi_clips"; track_id: string; clips: MidiClipDoc[] }
+  | { op: "set_tempo"; bpm: number; beats_per_bar: number }
   | { op: "batch"; ops: Op[] };
 
 export interface SessionBackend {
@@ -341,10 +482,37 @@ export function clipLength(
   return r === 1 ? natural : Math.round(natural * r);
 }
 
-/** End of the last clip, in session samples. */
+/**
+ * True for a session with nothing in it worth keeping: no clips (audio or
+ * MIDI), markers, buses or effects. Files imported into such a session
+ * sit in the Files panel to open on their own, without making a session
+ * anyone has to save.
+ */
+export function isBlank(doc: SessionDoc | null): boolean {
+  if (!doc) return true;
+  const fx = (c: { slots?: unknown[] } | undefined) => (c?.slots?.length ?? 0) > 0;
+  return (
+    doc.tracks.every((t) => t.clips.length === 0 && !(t.midi_clips?.length ?? 0) && !fx(t.effects)) &&
+    doc.markers.length === 0 &&
+    !(doc.buses?.length ?? 0) &&
+    !fx(doc.master?.effects)
+  );
+}
+
+/** End of the last MIDI clip, in session samples (the core's sums). */
+export function midiEnd(doc: SessionDoc, rate = doc.sample_rate): number {
+  const t = tempoOf(doc);
+  const bpm = Math.min(BPM_MAX, Math.max(BPM_MIN, t.bpm));
+  let end = 0;
+  for (const tr of doc.tracks)
+    for (const c of tr.midi_clips ?? []) end = Math.max(end, Math.round(((c.start + c.length) * 60 * rate) / bpm));
+  return end;
+}
+
+/** End of the last clip (audio or MIDI), in session samples. */
 export function sessionEnd(doc: SessionDoc): number {
   const media = new Map(doc.media.map((m) => [m.id, m]));
-  let end = 0;
+  let end = midiEnd(doc);
   for (const t of doc.tracks) {
     for (const c of t.clips)
       end = Math.max(
@@ -353,6 +521,15 @@ export function sessionEnd(doc: SessionDoc): number {
       );
   }
   return end;
+}
+
+/** Where errors no caller can catch go; the app shows them in the status bar. */
+let errorSink: (e: unknown) => void = (e) => console.error(e);
+export function setErrorSink(fn: (e: unknown) => void): void {
+  errorSink = fn;
+}
+export function reportError(e: unknown): void {
+  errorSink(e);
 }
 
 export class SessionStore {
@@ -383,17 +560,59 @@ export class SessionStore {
   async load(): Promise<SessionDoc> {
     const r = await this.backend.get();
     this.set(r.session, r.path);
+    if (r.path === null) this.launch = { id: r.session.id, tracks: r.session.tracks.map((t) => t.id).join() };
     return this.doc!;
+  }
+
+  /** The never-saved session the app opened with, and its tracks then. */
+  private launch: { id: string; tracks: string } | null = null;
+
+  /**
+   * True while the open session is still the blank one the app started
+   * with: never saved, its tracks as they were, and nothing in it (files
+   * imported into the Files panel do not count). It is not listed, starred
+   * or offered for saving, and the Editor shows its start screen. A
+   * session made with New Session or opened from a file never is.
+   */
+  isScratch(doc: SessionDoc | null = this.doc): boolean {
+    return (
+      !!doc &&
+      !!this.launch &&
+      this.filePath === null &&
+      doc.id === this.launch.id &&
+      doc.tracks.map((t) => t.id).join() === this.launch.tracks &&
+      isBlank(doc)
+    );
+  }
+
+  /**
+   * Tells every listener. One that throws is reported and skipped, so a
+   * fault in one part of the interface never leaves the rest showing an
+   * old session (tester report: tracks added but never shown).
+   */
+  private notify(doc: SessionDoc | null): void {
+    for (const fn of this.listeners) {
+      try {
+        fn(doc);
+      } catch (e) {
+        reportError(e);
+      }
+    }
   }
 
   /** Replaces the whole document, for example after opening a file. */
   set(doc: SessionDoc, path?: string | null): void {
     this.doc = doc;
     if (path !== undefined) this.filePath = path;
-    for (const fn of this.listeners) fn(doc);
+    this.notify(doc);
   }
 
   /** Runs an op as one undoable step. */
+  /** An op as a command not run yet, to combine with others into one undo step. */
+  command(label: string, op: Op): Command {
+    return new OpCommand(this, op, label);
+  }
+
   edit(label: string, op: Op, runner: CommandRunner): Promise<void> {
     return runner.execute(new OpCommand(this, op, label));
   }
@@ -409,7 +628,7 @@ export class SessionStore {
   setView(view: ViewDoc): void {
     if (!this.doc) return;
     this.doc = { ...this.doc, view };
-    for (const fn of this.listeners) fn(this.doc);
+    this.notify(this.doc);
     clearTimeout(this.viewTimer);
     this.viewTimer = setTimeout(() => {
       this.viewTimer = undefined;
@@ -433,7 +652,8 @@ export class SessionStore {
 /** Track settings a fader-style drag changes many times in a row. */
 function mergeKey(op: Op): string | null {
   if (op.op === "set_master_volume") return "master";
-  if (op.op !== "set_track") return null;
+  if (op.op === "set_sends") return `sends:${op.owner}`;
+  if (op.op !== "set_track" && op.op !== "set_bus") return null;
   const keys = Object.keys(op.changes);
   if (keys.length !== 1 || !["volume_db", "pan", "height"].includes(keys[0]!))
     return null;
