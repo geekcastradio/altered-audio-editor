@@ -38,6 +38,8 @@
   import HistoryPanel from "../panels/history/HistoryPanel.svelte";
   import EditorPanel from "../panels/editor/EditorPanel.svelte";
   import { peaks, session, transport } from "../stores/open-session";
+  import PhaseWheelPanel from "../panels/phase/PhaseWheelPanel.svelte";
+  import PropertiesPanel from "../panels/properties/PropertiesPanel.svelte";
   import LevelsPanel from "../panels/levels/LevelsPanel.svelte";
   import { PreviewMeter } from "../stores/preview-meter";
   import QuickPassPanel from "../panels/quickpass/QuickPassPanel.svelte";
@@ -48,7 +50,7 @@
   import { editor, restoreSettings, settingsOf } from "../stores/editor";
   import { anchorStart, clipsFrom, clipsUpTo, nextClipId } from "./clip-select";
   import { hasClipIn, showOnly } from "../panels/editor/visibility";
-  import { clipLength, sessionEnd, type ClipDoc, type Op, type TrackDoc } from "../stores/session";
+  import { clipLength, sessionEnd, setErrorSink, type ClipDoc, type Op, type TrackDoc } from "../stores/session";
   import { fit, maxSppFor, zoomAround } from "../panels/editor/timeline";
   import ChoiceDialog, { type ChoiceButton } from "./ChoiceDialog.svelte";
   import ExportDialog, { type ExportScopeInfo, type ExportSettings } from "./ExportDialog.svelte";
@@ -106,7 +108,12 @@
   import { placeTake, punchStopAfter, recordPlan, sanitizeRecordOptions, type RecordOptions, type RecordPlan } from "./recording";
   import RecordOptionsDialog from "./RecordOptionsDialog.svelte";
   import AddTracksDialog, { type AddTracksValues } from "./AddTracksDialog.svelte";
+  import PluginManagerDialog from "./PluginManagerDialog.svelte";
+  import { PluginSync } from "./plugin-sync";
+  import { markStopped, pluginsVersion } from "../stores/plugins";
   import { newTrackNames } from "./track-names";
+  import { allMidiClipIds, deleteClipsOps } from "../panels/editor/midi";
+  import { CompoundCommand } from "../commands/compound";
   import { SessionFiles, displayName, planOpen, type Choice } from "./session-files";
   import { RECENT_SLOTS, WORKSPACE_SLOTS } from "./menus/model";
   import {
@@ -122,12 +129,14 @@
     exportEmbedChapters,
     generateAudio,
     exportMixdown,
+    pluginEvents,
+    pluginState,
     exportMerge,
     exportRegionCopy,
     templateList,
     templateSave,
     templateDelete,
-    sessionDefaultFolder,
+    sessionDefaultFolder, sessionNextName,
     type TemplateEntry,
     wavePeak,
     exportCancel,
@@ -208,6 +217,20 @@
     errorTimer = setTimeout(() => (lastError = null), 12000);
   }
 
+  // Errors nothing else catches (in an update, an effect or a promise)
+  // show in the status bar, so they can be seen and reported.
+  setErrorSink((e) => showError(e));
+  onMount(() => {
+    const onErr = (ev: ErrorEvent) => showError(ev.error ?? ev.message);
+    const onRej = (ev: PromiseRejectionEvent) => showError(ev.reason);
+    window.addEventListener("error", onErr);
+    window.addEventListener("unhandledrejection", onRej);
+    return () => {
+      window.removeEventListener("error", onErr);
+      window.removeEventListener("unhandledrejection", onRej);
+    };
+  });
+
   /** A short status bar message that clears itself. */
   function showNotice(text: string) {
     notice = text;
@@ -270,7 +293,8 @@
     if (items.length === 0) return null;
     const ops: Op[] = [];
     let target = trackId;
-    if (!target || !doc.tracks.some((t) => t.id === target)) {
+    // Audio never lands on a MIDI track: it gets a new track instead.
+    if (!target || !doc.tracks.some((t) => t.id === target && t.kind !== "midi")) {
       target = uuid();
       ops.push({
         op: "add_track",
@@ -566,7 +590,11 @@
    * its own track at the start so it can be played and edited right away.
    */
   async function openAny(): Promise<void> {
-    const picked = await filePickOpen();
+    await openPaths(await filePickOpen());
+  }
+
+  /** Opens picked or dropped files: a session (ours or .sesx), plus any audio files. */
+  async function openPaths(picked: string[]): Promise<void> {
     if (picked.length === 0) return;
     const plan = planOpen(picked);
     if (plan.session && !(await files.open(plan.session))) return;
@@ -602,13 +630,23 @@
     addTracksOpen = false;
     const doc = session.current;
     if (!doc) return;
+    if (v.bus) {
+      const buses = doc.buses ?? [];
+      const names = newTrackNames([...doc.tracks, ...buses].map((t) => t.name), v.count, v.base);
+      const ids = names.map(() => uuid());
+      const ops: Op[] = names.map((name, k) => ({ op: "add_bus", id: ids[k]!, name, stereo: true, index: buses.length + k }));
+      await session.edit(v.count === 1 ? "Add Bus Track" : `Add ${v.count} Bus Tracks`, { op: "batch", ops }, sessionHistory);
+      editor.selectTrack(ids[0]!);
+      return;
+    }
     const sel = editor.current().selectedTrack;
     const i = doc.tracks.findIndex((t) => t.id === sel);
     const start = i >= 0 ? i + 1 : doc.tracks.length;
     const names = newTrackNames(doc.tracks.map((t) => t.name), v.count, v.base);
     const ids = names.map(() => uuid());
-    const ops: Op[] = names.map((name, k) => ({ op: "add_track", id: ids[k]!, name, stereo: v.stereo, index: start + k }));
-    await session.edit(v.count === 1 ? "Add Track" : `Add ${v.count} Tracks`, { op: "batch", ops }, sessionHistory);
+    const ops: Op[] = names.map((name, k) => ({ op: "add_track", id: ids[k]!, name, stereo: v.stereo, index: start + k, ...(v.midi ? { midi: true } : {}) }));
+    const what = v.midi ? "MIDI Track" : "Track";
+    await session.edit(v.count === 1 ? `Add ${what}` : `Add ${v.count} ${what}s`, { op: "batch", ops }, sessionHistory);
     editor.selectTrack(ids[0]!);
   }
 
@@ -622,6 +660,64 @@
     return session
       .edit(stereo ? "Add Stereo Track" : "Add Mono Track", { op: "add_track", id, name: nextTrackName(doc.tracks), stereo, index }, sessionHistory)
       .then(() => editor.selectTrack(id));
+  }
+
+  /** Multitrack > Add > MIDI Track: after the selected track, ready for an instrument. */
+  async function addMidiTrack() {
+    const doc = session.current;
+    if (!doc) return;
+    const sel = editor.current().selectedTrack;
+    const i = doc.tracks.findIndex((t) => t.id === sel);
+    const id = uuid();
+    const [name] = newTrackNames(
+      doc.tracks.map((t) => t.name),
+      1,
+      "MIDI",
+    );
+    await session.edit("Add MIDI Track", { op: "add_track", id, name: name!, stereo: true, index: i >= 0 ? i + 1 : doc.tracks.length, midi: true }, sessionHistory);
+    editor.selectTrack(id);
+    showNotice("Added a MIDI track. Pick its instrument in the track header, then double-click the lane to make a clip.");
+  }
+
+  /** Multitrack > Add > Bus Track: a bus at the end of the Mixer, shown there. */
+  async function addBus(stereo = true) {
+    const doc = session.current;
+    if (!doc) return;
+    const buses = doc.buses ?? [];
+    const taken = new Set(buses.map((b) => b.name));
+    let n = buses.length + 1;
+    while (taken.has(`Bus ${n}`)) n++;
+    const id = uuid();
+    await session.edit(stereo ? "Add Bus Track" : "Add Mono Bus Track", { op: "add_bus", id, name: `Bus ${n}`, stereo, index: buses.length }, sessionHistory);
+    editor.selectTrack(id);
+    showNotice(`Added Bus ${n}. Route a track to it with the track's output or a send (the track header, made taller, the right-click menu, or the Mixer).`);
+  }
+
+  /** Effects > Plug-in Manager. */
+  let pluginManagerOpen = $state(false);
+
+  /** Brings what is set in plug-in windows into the session (see plugin-sync.ts). */
+  const pluginSync = new PluginSync({
+    doc: () => session.current,
+    events: () => pluginEvents(),
+    state: (id) => pluginState(id),
+    commit: async (ops) => {
+      await session.edit("Plug-in Settings", ops.length === 1 ? ops[0]! : { op: "batch", ops }, sessionHistory);
+    },
+    onStopped: (slot, why) => {
+      markStopped(slot.id, why);
+      showNotice(`A plug-in stopped: ${why} Restart it from its effect window.`);
+    },
+    onLatency: () => {
+      // The plug-in's delay changed: start again where it is, so every track lines up.
+      if (transport.current.playing) void transport.play(transport.current.position).catch(showError);
+    },
+  });
+
+  /** A mixdown with every plug-in's latest settings saved in the session first. */
+  async function exportMix(path: string, req: Parameters<typeof exportMixdown>[1]) {
+    await pluginSync.captureAll().catch(showError);
+    return exportMixdown(path, req);
   }
 
   /** Gives every `id` field inside a copied object a new value. */
@@ -660,7 +756,7 @@
         reason: () => "Select a track first.",
       }),
       mk("multitrack.vis.show-all", "Show All Tracks", () => true, () => tracks().some((t) => t.hidden), "No tracks are hidden."),
-      mk("multitrack.vis.only-audio", "Show Only Audio Tracks", () => true, () => tracks().some((t) => t.hidden), "Every track is an audio track until bus tracks exist."),
+      mk("multitrack.vis.only-audio", "Show Only Audio Tracks", () => true, () => tracks().some((t) => t.hidden), "Bus tracks always show below the audio tracks."),
       mk("multitrack.vis.only-clips", "Show Only Tracks with Clips", (t) => t.clips.length > 0),
       mk("multitrack.vis.only-selection", "Show Only Tracks with Clips in Selection", (t) => {
         const s = timeSel();
@@ -1013,7 +1109,7 @@
       for (let i = 0; i < items.length; i++) {
         const m = items[i]!;
         exporting = { title: `Exporting ${i + 1} of ${items.length}: ${m.name}`, progress: i / items.length, floating: true };
-        const r = await exportMixdown(paths[i]!, { range: [m.position, m.position + m.duration], format });
+        const r = await exportMix(paths[i]!, { range: [m.position, m.position + m.duration], format });
         if (r.cancelled) {
           showNotice(`Export stopped after ${i} of ${items.length} files.`);
           return;
@@ -1117,7 +1213,7 @@
       off = await listen<{ done: number; total: number }>("export-progress", (e) => {
         if (exporting) exporting = { ...exporting, progress: e.payload.total > 0 ? e.payload.done / e.payload.total : 0 };
       });
-      const r = await exportMixdown(path, {
+      const r = await exportMix(path, {
         ...(what.range ? { range: what.range } : {}),
         ...(what.clips ? { clips: what.clips } : {}),
         ...(format ? { format } : {}),
@@ -1185,7 +1281,7 @@
           if (exporting) exporting = { ...exporting, progress: e.payload.total > 0 ? e.payload.done / e.payload.total : 0 };
         });
         const path = `${folder}${sep}${fileSafe(doc.name)} - ${String(i + 1).padStart(2, "0")} ${fileSafe(t.name)}.wav`;
-        const r = await exportMixdown(path, { track: t.id });
+        const r = await exportMix(path, { track: t.id });
         if (r.cancelled) {
           showNotice(`Stem export cancelled after ${done} of ${tracks.length}.`);
           return;
@@ -1370,7 +1466,7 @@
   function updateEditorTitle() {
     const f = waveFile.current();
     const what = inWave() && f ? (f.path.split(/[\\/]/).pop() ?? "") : files.name;
-    dock.setTitle("editor", what ? `Editor - ${what}${inWave() ? "" : files.dirty ? " *" : ""}` : "Editor");
+    dock.setTitle("editor", what ? `Editor - ${what}${inWave() ? "" : files.unsaved ? " *" : ""}` : "Editor");
   }
   /** The open session as a row at the top of the Files panel. */
   const sessionRow = writable<SessionRow | null>(null);
@@ -1380,13 +1476,13 @@
       sessionRow.set(null);
       return;
     }
-    // A blank session nobody has touched is not listed as "Untitled Session".
-    if (!session.path && !files.dirty && d.tracks.every((t) => t.clips.length === 0)) {
+    // A never-saved session with nothing in it (files imported only) is not listed as "Untitled Session".
+    if (session.isScratch(d)) {
       if (get(sessionRow)) sessionRow.set(null);
       return;
     }
     const seconds = sessionEnd(d) / Math.max(1, d.sample_rate);
-    const row: SessionRow = { name: files.name, dirty: files.dirty, seconds, sampleRate: d.sample_rate, active: !inWave() };
+    const row: SessionRow = { name: files.name, dirty: files.unsaved, seconds, sampleRate: d.sample_rate, active: !inWave() };
     const cur = get(sessionRow);
     if (!cur || cur.name !== row.name || cur.dirty !== row.dirty || cur.seconds !== row.seconds || cur.sampleRate !== row.sampleRate || cur.active !== row.active) sessionRow.set(row);
   }
@@ -1421,7 +1517,11 @@
     await exitApp();
   }
 
-  const fileDrop = new FileDropRouter((paths) => void importPaths(paths).catch(showError));
+  // A dropped session file (ours or .sesx) opens wherever it lands.
+  const fileDrop = new FileDropRouter(
+    (paths) => void importPaths(paths).catch(showError),
+    (paths) => void openPaths(paths).catch(showError),
+  );
 
   const asComponent = (c: unknown) => c as Component<Record<string, unknown>>;
 
@@ -1465,6 +1565,8 @@
         return { component: asComponent(TimeInfoPanel), props: { session, transport, wave, waveTransport } };
       case "levels":
         return { component: asComponent(LevelsPanel), props: { transport, wave: waveTransport, preview: previewMeter } };
+      case "phase-wheel":
+        return { component: asComponent(PhaseWheelPanel), props: { transport, wave: waveTransport } };
       case "batch-convert":
         return {
           component: asComponent(BatchConvertPanel),
@@ -1494,6 +1596,8 @@
             onError: showError,
           },
         };
+      case "properties":
+        return { component: asComponent(PropertiesPanel), props: { session, onEdit: editClips, onError: showError } };
       case "playlist":
         return {
           component: asComponent(PlaylistPanel),
@@ -1508,6 +1612,7 @@
         return {
           component: asComponent(EditorPanel),
           props: {
+            onShowChain: () => dock.show("voice-chain"),
             session,
             runner: sessionHistory,
             peaks,
@@ -1574,15 +1679,31 @@
       deleteLabel: "Remove from Session",
       selected: () => mediaPool.current.selected.size,
       total: () => mediaPool.size,
-      remove: () => {
+      remove: async () => {
         const used = usedMedia();
         const ids = [...mediaPool.current.selected];
-        const free = ids.filter((id) => !used.has(id));
-        if (free.length < ids.length) {
-          const kept = ids.length - free.length;
-          showNotice(`${kept} ${kept === 1 ? "file is" : "files are"} used by clips and stayed in the session.`);
-        }
-        return mediaPool.remove(free, sessionHistory);
+        const inUse = ids.filter((id) => used.has(id));
+        const doc = session.current;
+        if (inUse.length === 0 || !doc) return mediaPool.remove(ids, sessionHistory);
+        // Files on the timeline: remove them with their clips (one undo step), or keep those.
+        const clipIds = doc.tracks.flatMap((t) => t.clips.filter((c) => inUse.includes(c.media_id)).map((c) => c.id));
+        const n = inUse.length;
+        const choice = await ask(
+          "Files in use",
+          `${n === 1 ? "This file is" : `${n} of these files are`} used by ${clipIds.length} ${clipIds.length === 1 ? "clip" : "clips"} on the timeline. Remove ${n === 1 ? "it" : "them"} and ${clipIds.length === 1 ? "that clip" : "those clips"} too?`,
+          [
+            { label: "Remove with Clips", value: "all" },
+            { label: ids.length > n ? "Keep Those, Remove the Rest" : "Keep It", value: "keep" },
+            { label: "Cancel", value: "cancel" },
+          ],
+        );
+        if (choice === "cancel" || choice === null) return;
+        if (choice === "keep") return mediaPool.remove(ids.filter((id) => !used.has(id)), sessionHistory);
+        const files = mediaPool.removeCommand(ids);
+        const parts = [session.command("Remove Clips", { op: "remove_clips", ids: clipIds }), ...(files ? [files] : [])];
+        const label = ids.length === 1 ? "Remove File and Clips" : `Remove ${ids.length} Files and Clips`;
+        await sessionHistory.execute(new CompoundCommand(label, parts));
+        editor.selectClips([]);
       },
       selectAll: () => mediaPool.selectAll(),
       deselect: () => mediaPool.setSelection([]),
@@ -1590,14 +1711,20 @@
     multitrack: {
       deleteLabel: "Delete Clips",
       selected: () => editor.current().selectedClips.size,
-      total: () => (session.current?.tracks ?? []).reduce((n, t) => n + t.clips.length, 0),
+      total: () => (session.current?.tracks ?? []).reduce((n, t) => n + t.clips.length + (t.midi_clips?.length ?? 0), 0),
       remove: async () => {
+        const doc = session.current;
         const ids = [...editor.current().selectedClips];
-        if (!ids.length) return;
-        await session.edit(ids.length === 1 ? "Delete Clip" : `Delete ${ids.length} Clips`, { op: "remove_clips", ids }, sessionHistory);
+        if (!ids.length || !doc) return;
+        const ops = deleteClipsOps(doc, new Set(ids));
+        if (!ops.length) return;
+        await session.edit(ids.length === 1 ? "Delete Clip" : `Delete ${ids.length} Clips`, ops.length === 1 ? ops[0]! : { op: "batch", ops }, sessionHistory);
         editor.selectClips([]);
       },
-      selectAll: () => editor.selectClips((session.current?.tracks ?? []).flatMap((t) => t.clips.map((c) => c.id))),
+      selectAll: () => {
+        const doc = session.current;
+        if (doc) editor.selectClips([...doc.tracks.flatMap((t) => t.clips.map((c) => c.id)), ...allMidiClipIds(doc)]);
+      },
       deselect: () => {
         editor.selectClips([]);
         const v = session.current?.view;
@@ -1879,10 +2006,12 @@
     const sel = editor.current().selectedClips;
     if (!d || sel.size === 0) return null;
     const changes: ClipChange[] = [];
-    for (let i = 0; i < d.tracks.length; i++) {
-      for (const c of d.tracks[i]!.clips) {
+    // Hidden tracks are skipped, the same as the Editor lists them.
+    const listed = d.tracks.filter((t) => !t.hidden);
+    for (let i = 0; i < listed.length; i++) {
+      for (const c of listed[i]!.clips) {
         if (!sel.has(c.id)) continue;
-        const to = d.tracks[i + dir];
+        const to = listed[i + dir];
         if (!to || c.locked) return null;
         changes.push({ id: c.id, track_id: to.id });
       }
@@ -1894,8 +2023,9 @@
     const d = session.current;
     if (!changes || !d) return;
     await session.edit(dir < 0 ? "Move to Track Above" : "Move to Track Below", { op: "set_clips", changes }, sessionHistory);
-    const first = d.tracks.findIndex((t) => t.clips.some((c) => c.id === changes[0]!.id));
-    const target = d.tracks[first + dir];
+    const listed = d.tracks.filter((t) => !t.hidden);
+    const first = listed.findIndex((t) => t.clips.some((c) => c.id === changes[0]!.id));
+    const target = listed[first + dir];
     if (target) editor.selectClips(editor.current().selectedClips, target.id);
   }
 
@@ -2376,7 +2506,10 @@
     const folder = await sessionDefaultFolder().catch(() => "");
     const last = lastUsed(KEY_NEW_SESSION, { folder, template: null as string | null, sampleRate: 48_000, bitDepth: 32, mono: false });
     newSessionCount += 1;
-    newSessionReq = { initial: { name: `Untitled Session ${newSessionCount}`, ...last }, templates };
+    // The next name not taken in the folder it will be saved in (Untitled Session 2 when 1 exists).
+    const where = last.folder || folder;
+    const name = where ? await sessionNextName(where, "Untitled Session").catch(() => `Untitled Session ${newSessionCount}`) : `Untitled Session ${newSessionCount}`;
+    newSessionReq = { initial: { name, ...last }, templates };
   }
   async function makeNewSession(v: NewSessionSettings) {
     prefs.set(KEY_NEW_SESSION, { folder: v.folder, template: v.template, sampleRate: v.sampleRate, bitDepth: v.bitDepth, mono: v.mono });
@@ -2877,13 +3010,10 @@
       const to = list.length ? (dir < 0 ? Math.max(...list) : Math.min(...list)) : dir < 0 ? 0 : contentEnd();
       return transport.seek(to);
     };
+    /** Where the session's last clip (audio or MIDI) ends. */
     const contentEnd = () => {
       const doc = session.current;
-      if (!doc) return 0;
-      const media = new Map(doc.media.map((m) => [m.id, m]));
-      let end = 0;
-      for (const t of doc.tracks) for (const c of t.clips) end = Math.max(end, c.start + clipLength(c, media.get(c.media_id), doc.sample_rate));
-      return end;
+      return doc ? sessionEnd(doc) : 0;
     };
     /** Where a "clips to ..." selection starts or ends: the chosen clips, or the playhead when none are chosen. */
     const clipSpan = () => {
@@ -3023,6 +3153,9 @@
         enabled: () => session.current !== null,
       }),
       actions.register({ id: "multitrack.add.stereo", run: () => addTrack(true) }),
+      actions.register({ id: "multitrack.add.midi", run: () => addMidiTrack(), enabled: () => session.current !== null }),
+      actions.register({ id: "multitrack.add.bus", run: () => addBus(true), enabled: () => session.current !== null }),
+      actions.register({ id: "multitrack.add.bus-mono", run: () => addBus(false), enabled: () => session.current !== null }),
       actions.register({
         id: "multitrack.delete-track",
         run: async () => {
@@ -3268,9 +3401,10 @@
             if (!done) return;
             const r = done.report;
             const left: string[] = [];
-            if (r.chainsLeftOut) left.push(`${r.chainsLeftOut} Voice ${r.chainsLeftOut === 1 ? "Chain" : "Chains"}`);
+            if (r.chainsLeftOut) left.push(`built-in effects in ${r.chainsLeftOut} Voice ${r.chainsLeftOut === 1 ? "Chain" : "Chains"} (plug-ins are kept)`);
             if (r.envelopesLeftOut) left.push(`envelopes on ${r.envelopesLeftOut} ${r.envelopesLeftOut === 1 ? "clip" : "clips"}`);
-            if (r.clipsSimplified) left.push(`${r.clipsSimplified} looped or stretched ${r.clipsSimplified === 1 ? "clip" : "clips"} (written as plain clips)`);
+            if (r.clipsSimplified) left.push(`${r.clipsSimplified} looped ${r.clipsSimplified === 1 ? "clip" : "clips"} (written as plain clips)`);
+            if (r.routingLeftOut) left.push(`bus routing on ${r.routingLeftOut} ${r.routingLeftOut === 1 ? "track or bus" : "tracks and buses"} (every track goes straight to the mix)`);
             if (r.markersLeftOut) left.push(`${r.markersLeftOut} ${r.markersLeftOut === 1 ? "marker" : "markers"}`);
             const name = done.path.split(/[\\/]/).pop();
             showNotice(`Exported ${name}: ${r.tracks} tracks, ${r.clips} clips.${left.length ? ` Left out: ${left.join(", ")}.` : ""} Keep saving your work as .altaudio.`);
@@ -3808,6 +3942,12 @@
         reason: () => "Select a clip first.",
       }),
       actions.register({
+        id: "clip.properties",
+        run: () => dock.show("properties"),
+        enabled: () => editor.current().selectedClips.size > 0,
+        reason: () => "Select a clip first.",
+      }),
+      actions.register({
         id: "clip.reveal",
         run: () => {
           const ids = editor.current().selectedClips;
@@ -3835,8 +3975,14 @@
       actions.register({ id: "file.new-session", run: () => askNewSession() }),
       actions.register({ id: "file.save-template", run: () => saveAsTemplate() }),
       actions.register({ id: "file.open", run: () => openAny() }),
-      actions.register({ id: "file.save", run: () => files.save().then(() => undefined) }),
-      actions.register({ id: "file.save-as", run: () => files.saveAs().then(() => undefined) }),
+      actions.register({ id: "file.save", run: () => pluginSync.captureAll().then(() => files.save()).then(() => undefined) }),
+      actions.register({ id: "file.save-as", run: () => pluginSync.captureAll().then(() => files.saveAs()).then(() => undefined) }),
+      actions.register({
+        id: "fx.plugin-manager",
+        run: () => {
+          pluginManagerOpen = true;
+        },
+      }),
       actions.register({ id: "file.save-all", run: () => files.save().then(() => undefined) }),
       actions.register({ id: "file.close", run: () => files.close().then(() => undefined) }),
       actions.register({ id: "file.import-sesx", run: () => files.importSesx().then(() => undefined) }),
@@ -3881,14 +4027,25 @@
     return offs;
   }
 
+  // Effect envelopes need each control's range; plug-ins change after a scan.
+  // Running plug-ins are kept in step with the session while the app is open.
+  $effect(() => {
+    pluginSync.start();
+    const stopCatalog = pluginsVersion.subscribe(() => {
+      void effectsCatalog()
+        .then((c) => {
+          fxCatalog = c;
+          setFxCatalog(c);
+        })
+        .catch(() => {});
+    });
+    return () => {
+      stopCatalog();
+      pluginSync.stop();
+    };
+  });
+
   onMount(() => {
-    // Effect envelopes need each control's range.
-    void effectsCatalog()
-      .then((c) => {
-        fxCatalog = c;
-        setFxCatalog(c);
-      })
-      .catch(() => {});
     void prefs
       .load()
       .then(() => libraries.restore())
@@ -3927,6 +4084,16 @@
         restoreSettings(prefs.raw(KEY_EDITOR));
         settings.set(sanitizeSettings(prefs.raw(KEY_SETTINGS)));
         applyAppSettings(settings.current, false);
+        // Settings changed outside the Settings window (a view's right-click colors) are kept too.
+        let lastSettings = JSON.stringify(settings.current);
+        offs.push(
+          settings.subscribe((v) => {
+            const now = JSON.stringify(v);
+            if (now === lastSettings) return;
+            lastSettings = now;
+            prefs.set(KEY_SETTINGS, v);
+          }),
+        );
         let last = JSON.stringify(settingsOf(editor.current()));
         offs.push(
           editor.subscribe((st) => {
@@ -4041,6 +4208,15 @@
     onCancel={() => void exportCancel()}
     onApplyGain={(db) => void applyMasterGain(db).catch(showError)}
     onClose={() => (loud = null)}
+  />
+{/if}
+
+{#if pluginManagerOpen}
+  <PluginManagerDialog
+    pickFolder={() => exportPickFolder(null, "Add a Plug-in Folder")}
+    onNotice={showNotice}
+    onError={showError}
+    onClose={() => (pluginManagerOpen = false)}
   />
 {/if}
 

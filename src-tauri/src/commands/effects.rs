@@ -15,13 +15,36 @@ use tauri::State;
 use super::session::OpenSession;
 use super::wave::{without_effects, OpenWave};
 use crate::dsp::effects::print::{learn, print_params};
-use crate::dsp::effects::{build, ui_catalog, EffectInfo};
+use crate::dsp::effects::{build, full_catalog, EffectInfo, KEYED};
 use crate::export::mixdown::{self, MixdownRequest};
 use crate::session::model::{EffectSlot, Id, Session};
 
+/// An effect for the editor, marked when it can listen to a sidechain,
+/// and for a plug-in, whether it has a window of its own.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogEntry {
+    #[serde(flatten)]
+    info: EffectInfo,
+    sidechain: bool,
+    plugin: bool,
+    has_window: bool,
+}
+
 #[tauri::command]
-pub fn effects_catalog() -> Vec<EffectInfo> {
-    ui_catalog()
+pub fn effects_catalog() -> Vec<CatalogEntry> {
+    full_catalog()
+        .into_iter()
+        .map(|info| {
+            let found = crate::plugins::find(info.id);
+            CatalogEntry {
+                sidechain: KEYED.contains(&info.id),
+                plugin: found.is_some(),
+                has_window: found.is_some_and(|f| f.info.has_editor),
+                info,
+            }
+        })
+        .collect()
 }
 
 /// Effects whose response is a fixed curve, so a graph means something.
@@ -213,6 +236,9 @@ mod tests {
             enabled: false,
             params: params.iter().map(|(k, v)| ((*k).to_string(), *v)).collect(),
             preset: None,
+            sidechain: None,
+            plugin_state: None,
+            position: None,
         };
         let flat = response(&slot("altaudio.curve_eq", &[]), 32);
         assert_eq!(flat.len(), 32);

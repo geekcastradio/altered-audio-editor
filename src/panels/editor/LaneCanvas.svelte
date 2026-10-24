@@ -12,6 +12,7 @@
   import type { LiveWave } from "../../stores/record";
   import { defaultTrackColor, trackHeight, peakRange, pickLevel, xOf, type Viewport, TRACK_GAP } from "./timeline";
   import { chipBox, chipLabel, fxLaneOf, pointsOf, rangeOf, restValue, valueToY, type EnvKind, type FxLane } from "./envelope";
+  import { exactSamples, SAMPLE_VIEW } from "../../stores/exact-samples";
 
   interface Props {
     track: TrackDoc;
@@ -38,9 +39,11 @@
     /** Effect-setting envelopes, and which setting each clip shows. */
     showFx?: boolean;
     fxLanes?: Record<string, FxLane>;
+    /** Draw stretch handles in each clip's top corners. */
+    stretchHandles?: boolean;
   }
 
-  const { track, media, sessionRate, view, width, playhead, selectedClips, trackSelected, index = 0, ampZoom = 1, liveTake = null, peaks, peakTick, showVolume = false, showPan = false, showFx = false, fxLanes = {} }: Props = $props();
+  const { track, media, sessionRate, view, width, playhead, selectedClips, trackSelected, index = 0, ampZoom = 1, liveTake = null, peaks, peakTick, showVolume = false, showPan = false, showFx = false, fxLanes = {}, stretchHandles = false }: Props = $props();
 
   let canvas = $state<HTMLCanvasElement | null>(null);
 
@@ -107,8 +110,26 @@
     return c.startsWith("--") ? css(c) : c;
   }
 
-  $effect(() => {
+  // Redraw when exact samples (for close zoom) arrive.
+  let exactTick = $state(0);
+  $effect(() => exactSamples.subscribe(() => exactTick++));
+
+  // Waveform data for this lane's own files only, so a file that finishes
+  // loading redraws the lanes that use it, not every lane in the session.
+  const peakKey = $derived.by(() => {
     void peakTick;
+    let key = "";
+    for (const c of track.clips) {
+      const m = media.get(c.media_id);
+      const e = m ? peaks.get(m.path) : null;
+      key += e ? `${e.status}${Math.round(e.progress * 20)}.${e.levels.length}|` : "-|";
+    }
+    return key;
+  });
+
+  $effect(() => {
+    void peakKey;
+    void exactTick;
     void liveTake?.tick;
     const c = canvas;
     if (!c) return;
@@ -173,8 +194,12 @@
       g.clip();
       const st = stretchOf(clip);
       // A stretched clip says so in its title, with the pitch mode.
-      const label = st === 1 ? clip.name : `${clip.name}  ${Math.round(st * 1000) / 10}%${clip.stretch?.keep_pitch === false ? " tape" : ""}`;
-      g.fillText(label, Math.max(x0, 0) + 4, 1 + titleH / 2);
+      const semis = clip.looped || !clip.stretch?.keep_pitch ? 0 : (clip.stretch.pitch ?? 0);
+      const pitchText = semis ? `  ${semis > 0 ? "+" : ""}${Math.round(semis * 100) / 100} st` : "";
+      const label = st === 1 && !semis ? clip.name : `${clip.name}  ${st === 1 ? "" : `${Math.round(st * 1000) / 10}%`}${clip.stretch?.keep_pitch === false ? " tape" : ""}${pitchText}`;
+      // Clear of the stretch handle in the corner, when shown.
+      const indent = stretchHandles && !clip.looped && !clip.locked && x1 - x0 > 26 ? 14 : 4;
+      g.fillText(label, Math.max(x0, 0) + indent, 1 + titleH / 2);
       g.restore();
 
       // Waveform.
@@ -195,7 +220,56 @@
           g.fillText(`No waveform data (${entry.levels.length} levels)`, left + 6, body.top + 12);
           g.restore();
         }
-        if (level) {
+        // Zoomed in close: the file's exact samples, a line through them
+        // with a dot on each once they are 6 pixels apart.
+        const exact =
+          framesPerPx <= SAMPLE_VIEW && clip !== liveClip && !clip.looped && ratio === 1 && m
+            ? exactSamples.get(
+                m.path,
+                Math.max(clip.source_in, Math.floor(clip.source_in + ((view.scroll + left * view.spp - clip.start) * srcRate) / sessionRate) - 1),
+                Math.min(clip.source_out, Math.ceil(clip.source_in + ((view.scroll + right * view.spp - clip.start) * srcRate) / sessionRate) + 1),
+              )
+            : null;
+        if (exact) {
+          const tone = lighten(color, 0.55);
+          g.strokeStyle = tone;
+          g.fillStyle = tone;
+          g.lineWidth = 1.25;
+          g.globalAlpha = clip.muted ? 0.35 : 1;
+          const laneH = body.height / ch;
+          const fA = Math.max(clip.source_in, exact.start, Math.floor(clip.source_in + ((view.scroll + left * view.spp - clip.start) * srcRate) / sessionRate) - 1);
+          const fB = Math.min(clip.source_out, exact.start + exact.count, Math.ceil(clip.source_in + ((view.scroll + right * view.spp - clip.start) * srcRate) / sessionRate) + 1);
+          const pxPerFrame = 1 / framesPerPx;
+          g.save();
+          g.beginPath();
+          g.rect(left, body.top, right - left, body.height);
+          g.clip();
+          for (let k = 0; k < ch; k++) {
+            const mid = body.top + laneH * (k + 0.5);
+            const hc = Math.min(k, exact.channels - 1);
+            const at = (f: number): [number, number] => {
+              const v = Math.max(-1, Math.min(1, (exact.data[(f - exact.start) * exact.channels + hc] ?? 0) * ampZoom));
+              return [xOf(clip.start + ((f - clip.source_in) * sessionRate) / srcRate, view), mid - v * (laneH / 2 - 1)];
+            };
+            g.beginPath();
+            for (let f = fA; f < fB; f++) {
+              const [x, y] = at(f);
+              if (f === fA) g.moveTo(x, y);
+              else g.lineTo(x, y);
+            }
+            g.stroke();
+            if (pxPerFrame >= 6) {
+              for (let f = fA; f < fB; f++) {
+                const [x, y] = at(f);
+                g.beginPath();
+                g.arc(x, y, 2.25, 0, Math.PI * 2);
+                g.fill();
+              }
+            }
+          }
+          g.restore();
+          g.globalAlpha = 1;
+        } else if (level) {
           // Much lighter than the clip body so the waveform stands out.
           g.fillStyle = lighten(color, 0.55);
           g.globalAlpha = clip.muted ? 0.35 : 1;
@@ -282,6 +356,25 @@
           g.lineWidth = 1.5;
           g.strokeRect(Math.round(cx) - 5.25, hy + 0.75, 11.5, 11.5);
           g.lineWidth = 1;
+        }
+      }
+      // Stretch handles: a white triangle filling each top corner of the
+      // title bar (11 pixels, matching the Editor's hit test). Brighter on
+      // a clip that is already stretched.
+      if (stretchHandles && !clip.looped && !clip.locked && x1 - x0 > 26) {
+        const s = 11;
+        g.fillStyle = clip.stretch ? "#ffffff" : "rgba(255, 255, 255, 0.8)";
+        g.strokeStyle = "#0e0e10";
+        g.lineWidth = 1;
+        for (const [cx, dir] of [[x0 + 1, 1], [x1 - 1, -1]] as const) {
+          if (cx < -s || cx > width + s) continue;
+          g.beginPath();
+          g.moveTo(cx, 1);
+          g.lineTo(cx + dir * s, 1);
+          g.lineTo(cx, 1 + s);
+          g.closePath();
+          g.fill();
+          g.stroke();
         }
       }
       // Envelope chip: which envelope lines show; click it to change.

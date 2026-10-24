@@ -10,18 +10,21 @@
 -->
 <script lang="ts">
   import { settings, zoomRatios } from "../../stores/settings";
+  import ColorPairPopover from "../../app/ColorPairPopover.svelte";
+  import { SPECTRUM_HIGH, SPECTRUM_LOW } from "../../app/colors";
   import { KIND_COLORS } from "../markers/markers";
   import type { ActionRegistry } from "../../app/actions";
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import { editor, type EditorState } from "../../stores/editor";
   import type { PeakStore } from "../../stores/peaks";
   import { liveTakes, type LiveTakes } from "../../stores/record";
-  import { clipLength, sessionEnd, type ClipDoc, type SessionDoc, type SessionStore } from "../../stores/session";
+  import { clipLength, sessionEnd, stretchOf, type ClipDoc, type SessionDoc, type SessionStore } from "../../stores/session";
   import type { TransportState, TransportStore } from "../../stores/transport";
   import { onDestroy } from "svelte";
   import { waveZoom, type WaveFile } from "../../stores/wave";
   import { levelAt, pointsOf } from "./envelope";
-  import { fit, formatIn, peakRange, pickLevel, rulerTicks, sampleAt, xOf, zoomAround, type Viewport } from "./timeline";
+  import { fit, formatIn, peakRange, pickLevel, rulerTicks, sampleAt, SAMPLE_SPP, xOf, zoomAround, type Viewport } from "./timeline";
+  import { mediaFrames } from "../../app/core";
   import TransportBar from "./TransportBar.svelte";
   import SpectrumView from "./SpectrumView.svelte";
 
@@ -102,8 +105,12 @@
   const channels = $derived(Math.max(1, Math.min(2, doc?.media[0]?.channels ?? 1)));
   const clips = $derived((doc?.tracks[0]?.clips ?? []).slice().sort((a, b) => a.start - b.start));
 
-  function setView(v: Partial<{ spp: number; scroll: number; playhead: number; selection: { start: number; end: number } | null }>) {
+  function setView(v: Partial<{ spp: number; scroll: number; playhead: number; selection: { start: number; end: number } | null }>, auto = false) {
     if (!doc) return;
+    if (!auto && tp?.playing && v.playhead === undefined && (v.scroll !== undefined || v.spp !== undefined)) {
+      const x = (tp.position - (v.scroll ?? doc.view.scroll)) / (v.spp ?? doc.view.samples_per_pixel);
+      followHeld = x < 0 || x > width;
+    }
     const maxScroll = Math.max(0, total - width * (v.spp ?? view.spp) * 0.5);
     wave.setView({
       ...doc.view,
@@ -132,12 +139,26 @@
     setView({ spp: f.spp, scroll: 0 });
   });
 
-  // Keep the playhead in view while playing.
+  // Keep the playhead in view while playing, unless the view was moved
+  // away from it by hand: then wait until it is back in view (or playback
+  // starts again).
+  let followHeld = false;
+  let wasPlaying = false;
   $effect(() => {
-    if (!tp?.playing || width <= 0) return;
+    const playingNow = !!tp?.playing;
+    if (playingNow && !wasPlaying) followHeld = false;
+    wasPlaying = playingNow;
+    if (!playingNow || !tp || width <= 0) return;
     const x = xOf(tp.position, view);
-    if (x > width - 20 || x < 0) setView({ scroll: tp.position - 20 * view.spp });
+    if (followHeld) {
+      if (x < 0 || x > width) return;
+      followHeld = false;
+    }
+    if (x > width - 20 || x < 0) setView({ scroll: tp.position - 20 * view.spp }, true);
   });
+
+  /** Farthest zoom out: the whole file fills the view, with no empty time after it. */
+  const outermost = () => fit(total, width).spp;
 
   /** The view's zoom commands, used by the Zoom actions while this editor shows. */
   export function zoom(kind: "in" | "out" | "full" | "selection" | "amp-in" | "amp-out"): void {
@@ -152,7 +173,7 @@
       setView({ spp: f.spp, scroll: Math.max(0, selection.start - (selection.end - selection.start) * 0.05) });
     } else if (kind === "in" || kind === "out") {
       const anchor = Math.max(0, Math.min(width, xOf(playhead, view)));
-      const z = zoomAround(view, kind === "in" ? 0.5 : 2, anchor);
+      const z = zoomAround(view, kind === "in" ? 0.5 : 2, anchor, outermost(), SAMPLE_SPP);
       setView({ spp: z.spp, scroll: z.scroll });
     }
   }
@@ -174,6 +195,35 @@
     if (rel < c.fade_in.length) g *= rel / Math.max(1, c.fade_in.length);
     if (len - rel < c.fade_out.length) g *= (len - rel) / Math.max(1, c.fade_out.length);
     return g;
+  }
+
+  /**
+   * Zoomed in past this many source frames per pixel, the waveform is
+   * drawn from the file's exact samples (a line through them, with a dot
+   * on each once they are far enough apart) instead of the peak cache.
+   */
+  const SAMPLE_VIEW = 8;
+  /** Exact samples read for drawing, per file: a stretch around what is shown. */
+  let exact = $state<Record<string, { start: number; count: number; channels: number; data: Float32Array }>>({});
+  const asking = new Set<string>();
+  const failed = new Set<string>();
+  function needFrames(path: string, from: number, to: number) {
+    const have = exact[path];
+    if (have && from >= have.start && to <= have.start + have.count) return;
+    const span = to - from;
+    const start = Math.max(0, Math.floor(from - span));
+    const count = Math.ceil(span * 3) + 2;
+    const key = `${path}:${start}:${count}`;
+    if (asking.has(key)) return;
+    asking.add(key);
+    void mediaFrames(path, start, count)
+      .then((r) => (exact = { ...exact, [path]: { start, count: r.data.length / r.channels, channels: r.channels, data: r.data } }))
+      .catch((e: unknown) => {
+        // The peak drawing stays up; say why once per file.
+        if (!failed.has(path)) console.warn(`Exact samples could not be read from ${path}:`, e);
+        failed.add(path);
+      })
+      .finally(() => asking.delete(key));
   }
 
   function css(name: string): string {
@@ -258,6 +308,50 @@
       if (entry.status !== "ready" || !entry.summary) continue;
       const srcRate = m.sample_rate || entry.summary.sampleRate;
       const framesPerPx = (view.spp * srcRate) / rate;
+      const plain = !clip.looped && (clip.stretch == null || stretchOf(clip) === 1);
+      if (framesPerPx <= SAMPLE_VIEW && plain) {
+        // Exact samples: map every frame in view to its spot, through the piece's level.
+        const relA = Math.max(0, view.scroll + x0 * view.spp - clip.start);
+        const relB = Math.min(len, view.scroll + x1 * view.spp - clip.start);
+        const fA = Math.max(clip.source_in, Math.floor(clip.source_in + (relA * srcRate) / rate) - 1);
+        const fB = Math.min(clip.source_out, Math.ceil(clip.source_in + (relB * srcRate) / rate) + 1);
+        needFrames(m.path, fA, fB);
+        const have = exact[m.path];
+        const ready = have && fA >= have.start && fB <= have.start + Math.max(have.count, 0) + 1;
+        if (ready) {
+        const pxPerFrame = 1 / framesPerPx;
+        g.strokeStyle = waveColor;
+        g.lineWidth = 1.25;
+        for (let ch = 0; ch < channels; ch++) {
+          const top = ch * laneH;
+          const mid = top + laneH / 2;
+          const half = laneH / 2 - 2;
+          const hc = Math.min(ch, have.channels - 1);
+          const at = (f: number) => {
+            const rel = ((f - clip.source_in) * rate) / srcRate;
+            const v = (have.data[(f - have.start) * have.channels + hc] ?? 0) * pieceGain(clip, rel, len) * ampZoom;
+            return [xOf(clip.start + rel, view), mid - Math.max(-1, Math.min(1, v)) * half] as const;
+          };
+          g.beginPath();
+          for (let f = fA; f < fB; f++) {
+            const [x, y] = at(f);
+            if (f === fA) g.moveTo(x, y);
+            else g.lineTo(x, y);
+          }
+          g.stroke();
+          if (pxPerFrame >= 6) {
+            for (let f = fA; f < fB; f++) {
+              const [x, y] = at(f);
+              g.beginPath();
+              g.arc(x, y, 2.25, 0, Math.PI * 2);
+              g.fill();
+            }
+          }
+        }
+        continue;
+        }
+        // Not read yet (or could not be): the finest peaks below, until it is.
+      }
       const level = pickLevel(entry.levels, framesPerPx);
       if (!level) continue;
       const pch = entry.summary.channels;
@@ -479,7 +573,25 @@
     if (!doc || e.button !== 0) return;
     const x = xIn(e, e.currentTarget as HTMLElement);
     if (x > width) return;
-    void transport.seek(Math.max(0, Math.min(total, Math.round(sampleAt(x, view)))));
+    // Click or drag: the playhead follows the mouse. While playing,
+    // playback moves there when the button is let go.
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    const at = (ev: PointerEvent) => Math.max(0, Math.min(total, Math.round(sampleAt(Math.max(0, Math.min(width, xIn(ev, el))), view))));
+    const wasPlaying = !!tp?.playing;
+    let last = at(e);
+    if (!wasPlaying) void transport.seek(last);
+    const move = (ev: PointerEvent) => {
+      last = at(ev);
+      if (!wasPlaying) void transport.seek(last);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", up, true);
+      void transport.seek(last);
+    };
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", up, true);
   }
 
   function onWheel(e: WheelEvent) {
@@ -492,7 +604,7 @@
       e.preventDefault();
       const r = zoomRatios();
       const at = settings.current.wheelAnchor === "playhead" ? Math.max(0, Math.min(width, xOf(playhead, view))) : x;
-      const z = zoomAround(view, e.deltaY > 0 ? r.zoomOut : r.zoomIn, at);
+      const z = zoomAround(view, e.deltaY > 0 ? r.zoomOut : r.zoomIn, at, outermost(), SAMPLE_SPP);
       setView({ spp: z.spp, scroll: z.scroll });
     } else {
       e.preventDefault();
@@ -522,8 +634,20 @@
         { kind: "sep" },
         act("Select All", "edit.select-all"),
         act("Deselect All", "edit.deselect"),
+        ...(ed.showSpectrum
+          ? ([{ kind: "sep" }, { kind: "item", label: "Spectrogram Colors...", run: () => (colorPop = { x: e.clientX, y: e.clientY }) }] as ContextItem[])
+          : []),
       ],
     };
+  }
+
+  /** The spectrogram's color picker, opened from the right-click menu. */
+  let colorPop = $state<{ x: number; y: number } | null>(null);
+  let appColors = $state(settings.current.colors);
+  $effect(() => settings.subscribe((v) => (appColors = v.colors)));
+  function setSpectrumColors(low: string, high: string) {
+    const c = settings.current;
+    settings.set({ ...c, colors: { ...c.colors, spectrumLow: low, spectrumHigh: high } });
   }
 
   // Horizontal scroll bar.
@@ -680,6 +804,21 @@
   {/if}
 </section>
 
+{#if colorPop}
+  <ColorPairPopover
+    x={colorPop.x}
+    y={colorPop.y}
+    title="Spectrogram colors"
+    lowLabel="Quiet"
+    highLabel="Loud"
+    low={appColors.spectrumLow}
+    high={appColors.spectrumHigh}
+    lowDefault={SPECTRUM_LOW}
+    highDefault={SPECTRUM_HIGH}
+    onChange={setSpectrumColors}
+    onClose={() => (colorPop = null)}
+  />
+{/if}
 {#if menu}
   <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => (menu = null)} />
 {/if}

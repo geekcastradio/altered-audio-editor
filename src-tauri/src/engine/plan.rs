@@ -5,17 +5,25 @@
 //! Turns a session into what the playback engine needs: clip positions
 //! in output-device frames, and per-track gains.
 //!
-//! Gains change often (faders, mute, solo) and are applied by the audio
-//! thread from atomics, so they never need a rebuild. Anything that
-//! moves audio in time (clips, tracks, order) changes the `layout` and
+//! Gains change often (faders, mute, solo, sends) and never need a
+//! rebuild: the audio thread applies them from atomics in a plain
+//! session, the mix graph ramps them in when routed. Anything that moves
+//! audio in time (clips, tracks, order) or changes who feeds whom
+//! (outputs, sends, buses, sidechains) changes the `layout`, and
 //! playback restarts from where it was. Voice Chain changes are listed
-//! apart (`chains`): they swap into the running renderer, with no
-//! restart, unless the chain's look-ahead changes.
+//! apart (`chains`): they swap into the running renderer and graph,
+//! with no restart, unless the chain's look-ahead changes.
+//!
+//! MIDI tracks plan their notes in output frames at the session tempo,
+//! with their instrument; the renderer plays them through it.
 
 use std::path::PathBuf;
 
 use crate::dsp::effects::chain_hash;
-use crate::session::model::{Clip, EffectChain, EnvelopeTarget, Fade, FadeShape, Id, Session};
+use crate::session::model::{
+    Clip, EffectChain, EffectSlot, EnvelopeTarget, Fade, FadeShape, Id, Session, Tempo, Track,
+    TrackKind,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClipPlan {
@@ -49,10 +57,91 @@ pub struct ClipPlan {
     pub stretch: f64,
     /// Stretch keeps the pitch (true) or changes it with speed (false).
     pub keep_pitch: bool,
+    /// Pitch change in semitones (pitch-keeping stretch only).
+    pub pitch: f64,
+    /// Stretch analysis frame length in seconds; 0 picks one by material.
+    pub stretch_frame: f64,
     /// Clip Voice Chain, run after the clip's gain and fades.
     pub effects: EffectChain,
     /// Automation of the clip chain's effect settings, over time.
     pub automation: Vec<ParamLane>,
+    /// Clips above this one on the track that overlap it. A clip on top
+    /// covers the ones under it; they come through only where it fades.
+    pub covers: Vec<Cover>,
+}
+
+/// Where a clip on top covers this one, in frames from this clip's start.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Cover {
+    pub from: u64,
+    pub to: u64,
+    pub fade_in: u64,
+    pub fade_in_shape: FadeShape,
+    pub fade_out: u64,
+    pub fade_out_shape: FadeShape,
+    /// This clip fades out across the top clip's fade in (or in across
+    /// its fade out): a crossfade, where both play through their own fades.
+    pub crossfade_in: bool,
+    pub crossfade_out: bool,
+}
+
+impl Cover {
+    /// How much of this clip comes through at `rel`: 1 outside the top
+    /// clip, 0 under its body, and the rest of its fade inside a fade.
+    fn pass(&self, rel: u64) -> f32 {
+        if rel < self.from || rel >= self.to {
+            return 1.0;
+        }
+        let into = rel - self.from;
+        if into < self.fade_in {
+            return if self.crossfade_in {
+                1.0
+            } else {
+                1.0 - fade_curve(self.fade_in_shape, into as f32 / self.fade_in as f32)
+            };
+        }
+        let left = self.to - rel;
+        if left < self.fade_out {
+            return if self.crossfade_out {
+                1.0
+            } else {
+                1.0 - fade_curve(self.fade_out_shape, left as f32 / self.fade_out as f32)
+            };
+        }
+        0.0
+    }
+}
+
+/// Fills in each clip's covers: every later clip (drawn on top) that
+/// overlaps it and is not muted.
+pub(crate) fn add_covers(clips: &mut [ClipPlan]) {
+    for i in 0..clips.len() {
+        let (lo, hi) = clips.split_at_mut(i + 1);
+        let a = &mut lo[i];
+        let a_end = a.start + a.len;
+        for b in hi.iter() {
+            let b_end = b.start + b.len;
+            if b.gain == 0.0 || b.start >= a_end || b_end <= a.start {
+                continue;
+            }
+            let from = b.start.saturating_sub(a.start);
+            // Where b starts before a, its fade in is partly gone already.
+            let cut = a.start.saturating_sub(b.start);
+            let to = b_end - a.start;
+            a.covers.push(Cover {
+                from,
+                to,
+                fade_in: b.fade_in.saturating_sub(cut),
+                fade_in_shape: b.fade_in_shape,
+                fade_out: b.fade_out.min(to - from),
+                fade_out_shape: b.fade_out_shape,
+                crossfade_in: a.fade_out > 0 && a_end <= b.start + b.fade_in + 1 && a_end > b.start,
+                crossfade_out: a.fade_in > 0
+                    && a.start + 1 >= b_end.saturating_sub(b.fade_out)
+                    && a.start < b_end,
+            });
+        }
+    }
 }
 
 /// One effect setting moving over time: (frame from the clip start,
@@ -123,8 +212,11 @@ impl ClipPlan {
             loop_phase: 0,
             stretch: 1.0,
             keep_pitch: true,
+            pitch: 0.0,
+            stretch_frame: 0.0,
             effects: EffectChain::default(),
             automation: Vec::new(),
+            covers: Vec::new(),
         }
     }
 
@@ -135,6 +227,7 @@ impl ClipPlan {
             && self.volume.is_empty()
             && self.pan.is_empty()
             && self.loop_len == 0
+            && self.covers.is_empty()
     }
 
     /// Looped clips: a short dip on both sides of each seam inside the
@@ -199,6 +292,9 @@ impl ClipPlan {
         }
         if rel < self.fade_in {
             g *= fade_curve(self.fade_in_shape, rel as f32 / self.fade_in as f32);
+        }
+        for c in &self.covers {
+            g *= c.pass(rel);
         }
         g *= self.seam_gain(rel);
         let left = self.len.saturating_sub(rel);
@@ -265,8 +361,77 @@ pub fn fade_curve(shape: FadeShape, t: f32) -> f32 {
 pub struct TrackPlan {
     pub id: Id,
     pub clips: Vec<ClipPlan>,
-    /// Track Voice Chain, run on the track before its fader.
-    pub effects: EffectChain,
+    /// A MIDI track with an instrument: what it plays.
+    pub midi: Option<MidiPlan>,
+}
+
+/// One note in output frames.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NotePlan {
+    pub on: u64,
+    /// After `on`.
+    pub off: u64,
+    pub pitch: u8,
+    /// 0 to 1.
+    pub velocity: f32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MidiPlan {
+    pub instrument: EffectSlot,
+    pub tempo: Tempo,
+    /// Every note of every unmuted clip, cut at its clip's end, in order of `on`.
+    pub notes: Vec<NotePlan>,
+    /// Every note's end: (frame, pitch), in order.
+    pub offs: Vec<(u64, u8)>,
+}
+
+/// What a MIDI track plays, or None when it has no instrument (silent).
+fn midi_plan(t: &Track, tempo: Tempo, out_rate: u32) -> Option<MidiPlan> {
+    if t.kind != TrackKind::Midi {
+        return None;
+    }
+    let instrument = t.instrument.clone()?;
+    let mut notes: Vec<NotePlan> = Vec::new();
+    for c in t.midi_clips.iter().filter(|c| !c.muted) {
+        for n in &c.notes {
+            if n.start >= c.length || n.length <= 0.0 {
+                continue;
+            }
+            let on = tempo.samples(c.start + n.start, out_rate);
+            let off = tempo.samples(c.start + (n.start + n.length).min(c.length), out_rate);
+            notes.push(NotePlan {
+                on,
+                off: off.max(on + 1),
+                pitch: n.pitch.min(127),
+                velocity: f32::from(n.velocity.clamp(1, 127)) / 127.0,
+            });
+        }
+    }
+    notes.sort_by_key(|n| n.on);
+    let mut offs: Vec<(u64, u8)> = notes.iter().map(|n| (n.off, n.pitch)).collect();
+    offs.sort_unstable();
+    Some(MidiPlan {
+        instrument,
+        tempo,
+        notes,
+        offs,
+    })
+}
+
+/// Session samples where the track's last MIDI clip ends.
+pub fn midi_end(session: &Session) -> u64 {
+    session
+        .tracks
+        .iter()
+        .flat_map(|t| &t.midi_clips)
+        .map(|c| {
+            session
+                .tempo
+                .samples(c.start + c.length, session.sample_rate)
+        })
+        .max()
+        .unwrap_or(0)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -289,7 +454,7 @@ pub fn build(session: &Session, out_rate: u32) -> Plan {
         .iter()
         .map(|t| TrackPlan {
             id: t.id,
-            effects: t.effects.clone(),
+            midi: midi_plan(t, session.tempo, out_rate),
             clips: t
                 .clips
                 .iter()
@@ -351,11 +516,31 @@ pub fn build(session: &Session, out_rate: u32) -> Plan {
                         loop_phase,
                         stretch: c.stretch_ratio(),
                         keep_pitch: c.stretch.is_none_or(|s| s.keep_pitch),
+                        pitch: match (c.looped, c.stretch) {
+                            (None, Some(s)) if s.keep_pitch => s.pitch.clamp(
+                                crate::session::model::PITCH_MIN,
+                                crate::session::model::PITCH_MAX,
+                            ),
+                            _ => 0.0,
+                        },
+                        stretch_frame: c.stretch.map_or(0.0, |s| match s.advanced {
+                            Some(a) if a.window_ms > 0.0 => {
+                                (a.window_ms / 1000.0).clamp(0.005, 0.2)
+                            }
+                            // Several notes at once: longer frames keep chords steady.
+                            _ if s.polyphonic => 0.08,
+                            _ => 0.0,
+                        }),
                         effects: c.effects.clone(),
                         automation: param_lanes(c, session.sample_rate, out_rate),
+                        covers: Vec::new(),
                     })
                 })
                 .collect(),
+        })
+        .map(|mut t: TrackPlan| {
+            add_covers(&mut t.clips);
+            t
         })
         .collect();
     Plan {
@@ -374,30 +559,14 @@ pub fn to_session(out_frame: u64, session_rate: u32, out_rate: u32) -> u64 {
     convert(out_frame, out_rate, session_rate)
 }
 
-/// Left and right gain for each track, with mute, solo, volume and pan.
-///
-/// Pan is a balance control: centered plays both sides at full level,
-/// and panning turns the far side down. This keeps a centered voice at
-/// exactly the level the fader shows.
+/// Left and right gain for each track, with mute, solo, volume, pan
+/// and polarity: what the audio thread applies in a plain session.
+/// See [`super::graph::levels`] for the rules.
 pub fn gains(session: &Session) -> Vec<[f32; 2]> {
-    let any_solo = session.tracks.iter().any(|t| t.solo);
-    session
+    super::graph::levels(session)
         .tracks
-        .iter()
-        .map(|t| {
-            let audible = !t.muted && (!any_solo || t.solo);
-            if !audible {
-                return [0.0, 0.0];
-            }
-            let mut g = 10f64.powf(t.volume_db.clamp(-96.0, 24.0) / 20.0) as f32;
-            if t.polarity_inverted {
-                g = -g;
-            }
-            let pan = (t.pan.clamp(-100.0, 100.0) / 100.0) as f32;
-            let left = if pan > 0.0 { 1.0 - pan } else { 1.0 };
-            let right = if pan < 0.0 { 1.0 + pan } else { 1.0 };
-            [g * left, g * right]
-        })
+        .into_iter()
+        .map(|l| l.main)
         .collect()
 }
 
@@ -423,6 +592,9 @@ fn envelope_hash(c: &Clip) -> u64 {
         mix(0x5354_5243);
         mix(st.ratio.to_bits());
         mix(u64::from(st.keep_pitch));
+        mix(st.pitch.to_bits());
+        mix(u64::from(st.polyphonic));
+        mix(st.advanced.map_or(0, |a| a.window_ms.to_bits()));
     }
     // The loop changes what plays where, so it is part of the shape too.
     if let Some(l) = c.looped {
@@ -445,37 +617,163 @@ fn envelope_hash(c: &Clip) -> u64 {
     h
 }
 
-/// Per track: track id and its clips, in order. A change restarts
-/// playback from the same spot.
-pub type Layout = Vec<(Id, Vec<ClipKey>)>;
+/// Per track: track id and its clips, in order; then a fingerprint of
+/// the routing. A change restarts playback from the same spot.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Layout {
+    pub tracks: Vec<(Id, Vec<ClipKey>)>,
+    pub routing: u64,
+    /// MIDI notes, instruments and the tempo.
+    pub midi: u64,
+}
 
-/// Every Voice Chain that plays: owner id, true for a track (false for
-/// a clip), and a fingerprint of the chain.
-pub type Chains = Vec<(Id, bool, u64)>;
+/// Whose Voice Chain it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Owner {
+    Track,
+    Clip,
+    Bus,
+    Master,
+}
+
+/// Every Voice Chain that plays: owner id, whose it is, and a
+/// fingerprint of the chain.
+pub type Chains = Vec<(Id, Owner, u64)>;
 
 pub fn chains(session: &Session) -> Chains {
     let mut out = Vec::new();
     for t in &session.tracks {
-        out.push((t.id, true, chain_hash(&t.effects)));
+        out.push((t.id, Owner::Track, chain_hash(&t.effects)));
         for c in &t.clips {
-            out.push((c.id, false, chain_hash(&c.effects)));
+            out.push((c.id, Owner::Clip, chain_hash(&c.effects)));
         }
     }
+    for b in &session.buses {
+        out.push((b.id, Owner::Bus, chain_hash(&b.effects)));
+    }
+    out.push((
+        Id::nil(),
+        Owner::Master,
+        chain_hash(&session.master.effects),
+    ));
     out
 }
 
-/// The chain of the track or clip `id`.
-pub fn chain_of(session: &Session, id: Id, track: bool) -> Option<&EffectChain> {
-    session.tracks.iter().find_map(|t| {
-        if track {
-            (t.id == id).then_some(&t.effects)
-        } else {
-            t.clips.iter().find(|c| c.id == id).map(|c| &c.effects)
+/// The chain of the track, clip or bus `id`, or the master's.
+pub fn chain_of(session: &Session, id: Id, owner: Owner) -> Option<&EffectChain> {
+    match owner {
+        Owner::Track => session
+            .tracks
+            .iter()
+            .find(|t| t.id == id)
+            .map(|t| &t.effects),
+        Owner::Clip => session
+            .tracks
+            .iter()
+            .flat_map(|t| &t.clips)
+            .find(|c| c.id == id)
+            .map(|c| &c.effects),
+        Owner::Bus => session
+            .buses
+            .iter()
+            .find(|b| b.id == id)
+            .map(|b| &b.effects),
+        Owner::Master => Some(&session.master.effects),
+    }
+}
+
+/// A fingerprint of who feeds whom: whether the mix is routed, the
+/// buses, every output and send (not their levels), and every sidechain.
+fn routing_hash(session: &Session) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut mix = |v: u128| {
+        for b in v.to_le_bytes() {
+            h ^= u64::from(b);
+            h = h.wrapping_mul(0x100_0000_01b3);
         }
-    })
+    };
+    let routed = crate::session::routing::is_routed(session);
+    mix(u128::from(routed));
+    let output = |o: &crate::session::model::Output| match o {
+        crate::session::model::Output::Master => 0,
+        crate::session::model::Output::Bus { bus_id } => bus_id.as_u128(),
+    };
+    let chain = |c: &EffectChain, mix: &mut dyn FnMut(u128)| {
+        for s in crate::session::routing::key_sources(c) {
+            mix(s.as_u128());
+        }
+    };
+    for t in &session.tracks {
+        mix(output(&t.output));
+        for x in &t.sends {
+            mix(x.id.as_u128() ^ x.bus_id.as_u128());
+            mix(u128::from(x.pre_fader));
+        }
+        chain(&t.effects, &mut mix);
+        mix(1);
+    }
+    if routed {
+        for b in &session.buses {
+            mix(b.id.as_u128());
+            mix(u128::from(
+                b.channels == crate::session::model::ChannelLayout::Mono,
+            ));
+            mix(output(&b.output));
+            for x in &b.sends {
+                mix(x.id.as_u128() ^ x.bus_id.as_u128());
+                mix(u128::from(x.pre_fader));
+            }
+            chain(&b.effects, &mut mix);
+            mix(2);
+        }
+        chain(&session.master.effects, &mut mix);
+    }
+    h
 }
 
 pub fn layout(session: &Session) -> Layout {
+    Layout {
+        tracks: clip_layout(session),
+        routing: routing_hash(session),
+        midi: midi_hash(session),
+    }
+}
+
+/// A fingerprint of what MIDI tracks play: the tempo, each instrument
+/// (not its settings, which reach a running instrument directly) and
+/// every MIDI clip.
+fn midi_hash(session: &Session) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut mix = |v: u64| {
+        h ^= v;
+        h = h.wrapping_mul(0x100_0000_01b3);
+    };
+    mix(session.tempo.bpm.to_bits());
+    mix(u64::from(session.tempo.beats_per_bar));
+    for t in session.tracks.iter().filter(|t| t.kind == TrackKind::Midi) {
+        mix(t.id.as_u128() as u64);
+        if let Some(i) = &t.instrument {
+            mix(i.id.as_u128() as u64);
+            for b in i.effect.bytes() {
+                mix(u64::from(b));
+            }
+        }
+        for c in &t.midi_clips {
+            mix(c.id.as_u128() as u64);
+            mix(c.start.to_bits());
+            mix(c.length.to_bits());
+            mix(u64::from(c.muted));
+            for n in &c.notes {
+                mix(u64::from(n.pitch) | u64::from(n.velocity) << 8);
+                mix(n.start.to_bits());
+                mix(n.length.to_bits());
+            }
+        }
+    }
+    h
+}
+
+fn clip_layout(session: &Session) -> Vec<(Id, Vec<ClipKey>)> {
     session
         .tracks
         .iter()

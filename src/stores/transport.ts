@@ -35,8 +35,9 @@ export interface TransportState {
   /** Session samples. */
   position: number;
   master: [MeterLevel, MeterLevel];
+  /** Levels after the fader by track id, and by bus id while the mix is routed. */
   tracks: Record<string, [MeterLevel, MeterLevel]>;
-  /** Track Voice Chain meters by track id: left in, right in, left out, right out. Only tracks whose chain does something. */
+  /** Voice Chain meters by track or bus id, and `master` for the master chain: left in, right in, left out, right out. Only chains that do something. */
   chains: Record<string, [MeterLevel, MeterLevel, MeterLevel, MeterLevel]>;
 }
 
@@ -73,6 +74,9 @@ export function foldMeter(prev: MeterLevel, reading: number, hold: number): { me
   return { meter: { level, peak, over: prev.over || reading > 1 }, hold };
 }
 
+/** Key of the master chain's meters in `TransportState.chains`. */
+export const MASTER_CHAIN = "master";
+
 type Listener = (s: TransportState) => void;
 
 export class TransportStore {
@@ -87,7 +91,8 @@ export class TransportStore {
 
   constructor(
     private readonly backend: TransportBackend,
-    private readonly session: SessionStore,
+    /** The document this transport plays. */
+    readonly session: SessionStore,
     private readonly onError: (e: unknown) => void = console.error,
     private readonly tickMs = 33,
   ) {}
@@ -205,12 +210,19 @@ export class TransportStore {
       tracks[id] = [this.meter(`${id}:0`, prev[0], m[0]), this.meter(`${id}:1`, prev[1], m[1])];
     });
     const chains: TransportState["chains"] = {};
-    s.trackIds.forEach((id, i) => {
-      const m = s.chainMeters?.[i];
+    (s.busIds ?? []).forEach((id, i) => {
+      const m = s.busMeters?.[i] ?? [0, 0];
+      const prev = this.state.tracks[id] ?? [quiet(), quiet()];
+      tracks[id] = [this.meter(`${id}:0`, prev[0], m[0]), this.meter(`${id}:1`, prev[1], m[1])];
+    });
+    const chain = (id: string, m: [number, number, number, number] | null | undefined) => {
       if (!m) return;
       const prev = this.state.chains[id] ?? [quiet(), quiet(), quiet(), quiet()];
       chains[id] = [0, 1, 2, 3].map((k) => this.meter(`${id}:fx${k}`, prev[k]!, m[k]!)) as TransportState["chains"][string];
-    });
+    };
+    s.trackIds.forEach((id, i) => chain(id, s.chainMeters?.[i]));
+    (s.busIds ?? []).forEach((id, i) => chain(id, s.busChainMeters?.[i]));
+    chain(MASTER_CHAIN, s.masterChainMeter);
     this.set({
       position: s.position,
       tracks,

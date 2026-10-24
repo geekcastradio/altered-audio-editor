@@ -54,7 +54,7 @@
       ]
     },
     "Bus": {
-      "description": "A bus track. Tracks and other buses can output to it.",
+      "description": "A bus track. Tracks and other buses output or send to it; it runs\nits own Voice Chain and fader on the sum, then outputs to the master\nor another bus. A bus has no clips and no inputs of its own.",
       "type": "object",
       "properties": {
         "channels": {
@@ -84,6 +84,10 @@
           "type": "string",
           "format": "uuid"
         },
+        "mono": {
+          "description": "Folds the bus's left and right into one centered signal, after its\nVoice Chain and before its fader and pan. Left out of the file when off.",
+          "type": "boolean"
+        },
         "muted": {
           "type": "boolean"
         },
@@ -97,8 +101,17 @@
           "type": "number",
           "format": "double"
         },
+        "position": {
+          "description": "Where the bus shows among the tracks in the Editor: below this many\ntracks (0 is above the first). None, or more than there are\ntracks, shows it below the last track. Display only.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
         "sends": {
-          "description": "Scaffolding (P2).",
+          "description": "Aux sends to other buses.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/Send"
@@ -303,17 +316,41 @@
       ]
     },
     "ClipStretch": {
-      "description": "How a stretched clip plays.",
+      "description": "How a stretched (or pitch-shifted) clip plays.",
       "type": "object",
       "properties": {
+        "advanced": {
+          "description": "Finer settings, when set.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StretchAdvanced"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "keep_pitch": {
-          "description": "True keeps the pitch (for speech and ad fitting); false changes\npitch with speed, like a tape running faster or slower.",
+          "description": "True keeps the pitch (for speech and ad fitting); false changes\npitch with speed, like a tape running faster or slower (varispeed).",
+          "type": "boolean"
+        },
+        "pitch": {
+          "description": "Pitch change in semitones, -24 to +24, independent of the stretch.\nOnly while the pitch is kept (varispeed sets pitch by speed).",
+          "type": "number",
+          "format": "double"
+        },
+        "polyphonic": {
+          "description": "For music and other material with several notes at once: longer\nanalysis frames. False suits a single voice or instrument.",
           "type": "boolean"
         },
         "ratio": {
           "description": "Timeline length over natural length: 1.25 plays 25 percent longer.",
           "type": "number",
           "format": "double"
+        },
+        "rendered": {
+          "description": "The user asked for the stretch to be worked out ahead (rendered)\nrather than live. Playback and export sound the same either way;\nkept so files from other editors round-trip.",
+          "type": "boolean"
         }
       },
       "required": [
@@ -380,12 +417,36 @@
             "format": "double"
           }
         },
+        "plugin_state": {
+          "description": "A VST3 plug-in's own settings (everything set in its window), as the\nplug-in saved them, base64. Only on plug-in slots (`vst3:` effects).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "position": {
+          "description": "Which of the numbered slots it shows in (0 is the first), so a chain\ncan leave gaps. Effects still run in list order. None follows the\none before.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
         "preset": {
           "description": "Name of the preset last loaded, if any.",
           "type": [
             "string",
             "null"
           ]
+        },
+        "sidechain": {
+          "description": "Sidechain: the track or bus whose sound drives this effect's\nlevel detector (for ducking music under a voice, for example).\nThe key is that track's or bus's sound after its Voice Chain,\nbefore its fader. Only effects with a detector use it, and only\non track and bus chains. None listens to the effect's own input.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
         }
       },
       "required": [
@@ -788,6 +849,88 @@
         "length"
       ]
     },
+    "MidiClip": {
+      "description": "A MIDI clip: notes, placed in beats so they follow the tempo.",
+      "type": "object",
+      "properties": {
+        "color": {
+          "description": "`#rrggbb` or a palette token. None uses the track color.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "length": {
+          "description": "Beats. Notes past the end are not played.",
+          "type": "number",
+          "format": "double"
+        },
+        "muted": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Note"
+          }
+        },
+        "start": {
+          "description": "Timeline position of the clip's left edge, in beats.",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "start",
+        "length",
+        "notes"
+      ]
+    },
+    "Note": {
+      "description": "One note in a MIDI clip.",
+      "type": "object",
+      "properties": {
+        "length": {
+          "description": "Beats.",
+          "type": "number",
+          "format": "double"
+        },
+        "pitch": {
+          "description": "MIDI note number, 0 to 127 (60 is middle C).",
+          "type": "integer",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0
+        },
+        "start": {
+          "description": "Beats from the clip's start.",
+          "type": "number",
+          "format": "double"
+        },
+        "velocity": {
+          "description": "1 to 127.",
+          "type": "integer",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0
+        }
+      },
+      "required": [
+        "pitch",
+        "velocity",
+        "start",
+        "length"
+      ]
+    },
     "Output": {
       "description": "Where a track or bus sends its output.",
       "oneOf": [
@@ -823,7 +966,7 @@
       ]
     },
     "Send": {
-      "description": "Scaffolding (P2): an aux send to a bus.",
+      "description": "An aux send: a copy of a track's or bus's sound sent on to a bus at\nits own level, for example to a shared reverb. A pre-fader send\nignores the sender's fader and pan but still follows its mute and solo.",
       "type": "object",
       "properties": {
         "bus_id": {
@@ -955,6 +1098,10 @@
           ],
           "format": "uuid"
         },
+        "tempo": {
+          "description": "Tempo and meter. MIDI clips and notes are placed in beats, so they\nfollow it. Files from before MIDI tracks get the default.",
+          "$ref": "#/$defs/Tempo"
+        },
         "tracks": {
           "description": "Audio tracks, top to bottom.",
           "type": "array",
@@ -1049,6 +1196,57 @@
         "playhead"
       ]
     },
+    "StretchAdvanced": {
+      "description": "Finer stretch settings. The window size sets the length of the\nanalysis frames; the rest are kept for files that carry them.",
+      "type": "object",
+      "properties": {
+        "high_precision": {
+          "description": "Higher precision takes longer to work out.",
+          "type": "boolean"
+        },
+        "preserve_formants": {
+          "description": "Keep the voice's character when the pitch moves.",
+          "type": "boolean"
+        },
+        "transient_sensitivity": {
+          "description": "How readily a sharp attack starts a new frame, 0 to 100.",
+          "type": "number",
+          "format": "double"
+        },
+        "window_ms": {
+          "description": "Analysis frame length in milliseconds (about 10 to 100).",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "window_ms",
+        "transient_sensitivity",
+        "preserve_formants",
+        "high_precision"
+      ]
+    },
+    "Tempo": {
+      "description": "The session's tempo and meter.",
+      "type": "object",
+      "properties": {
+        "beats_per_bar": {
+          "description": "Beats in a bar, for example 4 in 4/4 or 3 in 3/4.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "bpm": {
+          "description": "Beats (quarter notes) per minute.",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "bpm",
+        "beats_per_bar"
+      ]
+    },
     "TimeRange": {
       "description": "A span of the timeline.",
       "type": "object",
@@ -1132,8 +1330,34 @@
             "null"
           ]
         },
+        "instrument": {
+          "description": "MIDI tracks: the VST3 instrument that plays the notes. Its sound\nthen goes through the track's Voice Chain like any track's.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EffectSlot"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "description": "Audio or MIDI. Left out of the file for audio tracks.",
+          "$ref": "#/$defs/TrackKind"
+        },
+        "midi_clips": {
+          "description": "MIDI tracks: their clips.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MidiClip"
+          }
+        },
         "monitor_input": {
           "description": "Scaffolding (P4): input monitoring on.",
+          "type": "boolean"
+        },
+        "mono": {
+          "description": "Folds the track's left and right into one centered signal, after\nits Voice Chain and before its fader and pan. Left out of the\nfile when off.",
           "type": "boolean"
         },
         "muted": {
@@ -1161,7 +1385,7 @@
           "$ref": "#/$defs/TrackRole"
         },
         "sends": {
-          "description": "Scaffolding (P2).",
+          "description": "Aux sends to buses.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/Send"
@@ -1192,6 +1416,21 @@
         "effects",
         "clips",
         "envelopes"
+      ]
+    },
+    "TrackKind": {
+      "description": "What a track holds.",
+      "oneOf": [
+        {
+          "description": "Audio clips.",
+          "type": "string",
+          "const": "audio"
+        },
+        {
+          "description": "MIDI clips, played by the track's instrument.",
+          "type": "string",
+          "const": "midi"
+        }
       ]
     },
     "TrackRole": {

@@ -57,6 +57,10 @@ pub struct Session {
     /// Bus tracks, top to bottom.
     pub buses: Vec<Bus>,
     pub master: MasterTrack,
+    /// Tempo and meter. MIDI clips and notes are placed in beats, so they
+    /// follow it. Files from before MIDI tracks get the default.
+    #[serde(default, skip_serializing_if = "Tempo::is_default")]
+    pub tempo: Tempo,
     pub markers: Vec<Marker>,
     /// Playlist panel: range markers in the order they play and export.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -99,6 +103,7 @@ impl Session {
             tracks: Vec::new(),
             buses: Vec::new(),
             master: MasterTrack::default(),
+            tempo: Tempo::default(),
             markers: Vec::new(),
             playlist: Vec::new(),
             view: SessionView::default(),
@@ -113,6 +118,91 @@ impl Session {
     pub fn media_by_id(&self, id: Id) -> Option<&MediaRef> {
         self.media.iter().find(|m| m.id == id)
     }
+}
+
+/// The session's tempo and meter.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Tempo {
+    /// Beats (quarter notes) per minute.
+    pub bpm: f64,
+    /// Beats in a bar, for example 4 in 4/4 or 3 in 3/4.
+    pub beats_per_bar: u32,
+}
+
+impl Default for Tempo {
+    fn default() -> Self {
+        Self {
+            bpm: 120.0,
+            beats_per_bar: 4,
+        }
+    }
+}
+
+/// Lowest and highest tempos a session can have.
+pub const BPM_MIN: f64 = 20.0;
+pub const BPM_MAX: f64 = 400.0;
+
+impl Tempo {
+    pub fn is_default(&self) -> bool {
+        *self == Tempo::default()
+    }
+
+    /// Beats to samples at `rate`.
+    pub fn samples(&self, beats: f64, rate: u32) -> u64 {
+        (beats.max(0.0) * 60.0 / self.bpm.clamp(BPM_MIN, BPM_MAX) * f64::from(rate)).round() as u64
+    }
+
+    /// Samples at `rate` to beats.
+    pub fn beats(&self, samples: u64, rate: u32) -> f64 {
+        samples as f64 / f64::from(rate.max(1)) * self.bpm.clamp(BPM_MIN, BPM_MAX) / 60.0
+    }
+}
+
+/// What a track holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TrackKind {
+    /// Audio clips.
+    #[default]
+    Audio,
+    /// MIDI clips, played by the track's instrument.
+    Midi,
+}
+
+impl TrackKind {
+    pub fn is_audio(&self) -> bool {
+        *self == TrackKind::Audio
+    }
+}
+
+/// One note in a MIDI clip.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Note {
+    /// MIDI note number, 0 to 127 (60 is middle C).
+    pub pitch: u8,
+    /// 1 to 127.
+    pub velocity: u8,
+    /// Beats from the clip's start.
+    pub start: f64,
+    /// Beats.
+    pub length: f64,
+}
+
+/// A MIDI clip: notes, placed in beats so they follow the tempo.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct MidiClip {
+    pub id: Id,
+    pub name: String,
+    /// Timeline position of the clip's left edge, in beats.
+    pub start: f64,
+    /// Beats. Notes past the end are not played.
+    pub length: f64,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub muted: bool,
+    /// `#rrggbb` or a palette token. None uses the track color.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    pub notes: Vec<Note>,
 }
 
 /// A source audio file referenced by clips.
@@ -150,7 +240,9 @@ pub enum Output {
     },
 }
 
-/// Scaffolding (P2): an aux send to a bus.
+/// An aux send: a copy of a track's or bus's sound sent on to a bus at
+/// its own level, for example to a shared reverb. A pre-fader send
+/// ignores the sender's fader and pan but still follows its mute and solo.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Send {
     pub id: Id,
@@ -194,6 +286,9 @@ pub enum TrackRole {
 pub struct Track {
     pub id: Id,
     pub name: String,
+    /// Audio or MIDI. Left out of the file for audio tracks.
+    #[serde(default, skip_serializing_if = "TrackKind::is_audio")]
+    pub kind: TrackKind,
     pub role: TrackRole,
     /// Scaffolding (P5): id of the host profile applied to this track,
     /// for example `host`.
@@ -219,6 +314,11 @@ pub struct Track {
     /// file when off.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub polarity_inverted: bool,
+    /// Folds the track's left and right into one centered signal, after
+    /// its Voice Chain and before its fader and pan. Left out of the
+    /// file when off.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub mono: bool,
 
     /// Scaffolding (P4): armed for recording.
     pub record_armed: bool,
@@ -228,11 +328,18 @@ pub struct Track {
     pub input: Option<String>,
 
     pub output: Output,
-    /// Scaffolding (P2).
+    /// Aux sends to buses.
     pub sends: Vec<Send>,
     pub effects: EffectChain,
     /// Clips on this track. Order does not matter; position does.
     pub clips: Vec<Clip>,
+    /// MIDI tracks: the VST3 instrument that plays the notes. Its sound
+    /// then goes through the track's Voice Chain like any track's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instrument: Option<EffectSlot>,
+    /// MIDI tracks: their clips.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub midi_clips: Vec<MidiClip>,
     /// Track automation lanes.
     pub envelopes: Vec<Envelope>,
 }
@@ -243,6 +350,7 @@ impl Track {
         Self {
             id: new_id(),
             name: name.into(),
+            kind: TrackKind::Audio,
             role: TrackRole::Standard,
             host_profile_id: None,
             channels,
@@ -255,6 +363,7 @@ impl Track {
             muted: false,
             solo: false,
             polarity_inverted: false,
+            mono: false,
             record_armed: false,
             monitor_input: false,
             input: None,
@@ -262,12 +371,24 @@ impl Track {
             sends: Vec::new(),
             effects: EffectChain::default(),
             clips: Vec::new(),
+            instrument: None,
+            midi_clips: Vec::new(),
             envelopes: Vec::new(),
+        }
+    }
+
+    /// An empty MIDI track.
+    pub fn midi(name: impl Into<String>) -> Self {
+        Self {
+            kind: TrackKind::Midi,
+            ..Self::new(name, ChannelLayout::Stereo)
         }
     }
 }
 
-/// A bus track. Tracks and other buses can output to it.
+/// A bus track. Tracks and other buses output or send to it; it runs
+/// its own Voice Chain and fader on the sum, then outputs to the master
+/// or another bus. A bus has no clips and no inputs of its own.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Bus {
     pub id: Id,
@@ -280,10 +401,19 @@ pub struct Bus {
     pub muted: bool,
     pub solo: bool,
     pub output: Output,
-    /// Scaffolding (P2).
+    /// Aux sends to other buses.
     pub sends: Vec<Send>,
     pub effects: EffectChain,
     pub envelopes: Vec<Envelope>,
+    /// Where the bus shows among the tracks in the Editor: below this many
+    /// tracks (0 is above the first). None, or more than there are
+    /// tracks, shows it below the last track. Display only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<u32>,
+    /// Folds the bus's left and right into one centered signal, after its
+    /// Voice Chain and before its fader and pan. Left out of the file when off.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub mono: bool,
 }
 
 impl Bus {
@@ -303,6 +433,8 @@ impl Bus {
             sends: Vec::new(),
             effects: EffectChain::default(),
             envelopes: Vec::new(),
+            position: None,
+            mono: false,
         }
     }
 }
@@ -392,15 +524,66 @@ pub struct ClipLoop {
     pub phase: u64,
 }
 
-/// How a stretched clip plays.
+/// How a stretched (or pitch-shifted) clip plays.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ClipStretch {
     /// Timeline length over natural length: 1.25 plays 25 percent longer.
     pub ratio: f64,
     /// True keeps the pitch (for speech and ad fitting); false changes
-    /// pitch with speed, like a tape running faster or slower.
+    /// pitch with speed, like a tape running faster or slower (varispeed).
     pub keep_pitch: bool,
+    /// Pitch change in semitones, -24 to +24, independent of the stretch.
+    /// Only while the pitch is kept (varispeed sets pitch by speed).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub pitch: f64,
+    /// For music and other material with several notes at once: longer
+    /// analysis frames. False suits a single voice or instrument.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub polyphonic: bool,
+    /// The user asked for the stretch to be worked out ahead (rendered)
+    /// rather than live. Playback and export sound the same either way;
+    /// kept so files from other editors round-trip.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub rendered: bool,
+    /// Finer settings, when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub advanced: Option<StretchAdvanced>,
 }
+
+impl Default for ClipStretch {
+    fn default() -> Self {
+        Self {
+            ratio: 1.0,
+            keep_pitch: true,
+            pitch: 0.0,
+            polyphonic: false,
+            rendered: false,
+            advanced: None,
+        }
+    }
+}
+
+/// Finer stretch settings. The window size sets the length of the
+/// analysis frames; the rest are kept for files that carry them.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct StretchAdvanced {
+    /// Analysis frame length in milliseconds (about 10 to 100).
+    pub window_ms: f64,
+    /// How readily a sharp attack starts a new frame, 0 to 100.
+    pub transient_sensitivity: f64,
+    /// Keep the voice's character when the pitch moves.
+    pub preserve_formants: bool,
+    /// Higher precision takes longer to work out.
+    pub high_precision: bool,
+}
+
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
+}
+
+/// Pitch changes a clip can take, in semitones.
+pub const PITCH_MIN: f64 = -24.0;
+pub const PITCH_MAX: f64 = 24.0;
 
 /// Stretch ratios a clip can take.
 pub const STRETCH_MIN: f64 = 0.25;
@@ -583,6 +766,22 @@ pub struct EffectSlot {
     pub params: std::collections::BTreeMap<String, f64>,
     /// Name of the preset last loaded, if any.
     pub preset: Option<String>,
+    /// Sidechain: the track or bus whose sound drives this effect's
+    /// level detector (for ducking music under a voice, for example).
+    /// The key is that track's or bus's sound after its Voice Chain,
+    /// before its fader. Only effects with a detector use it, and only
+    /// on track and bus chains. None listens to the effect's own input.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidechain: Option<Id>,
+    /// A VST3 plug-in's own settings (everything set in its window), as the
+    /// plug-in saved them, base64. Only on plug-in slots (`vst3:` effects).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_state: Option<String>,
+    /// Which of the numbered slots it shows in (0 is the first), so a chain
+    /// can leave gaps. Effects still run in list order. None follows the
+    /// one before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<u32>,
 }
 
 /// A span of the timeline.
