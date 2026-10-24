@@ -310,7 +310,12 @@ fn scans_processes_saves_and_survives_a_crash() {
 fn plays_notes_on_an_instrument_at_their_frames() {
     let bundle = test_bundle();
     let mut h = Host::start();
-    match h.load_class(&bundle, &cid_of(&bundle, "Altered Test Synth"), None, vec![]) {
+    match h.load_class(
+        &bundle,
+        &cid_of(&bundle, "Altered Test Synth"),
+        None,
+        vec![],
+    ) {
         Message::Loaded {
             instrument,
             latency,
