@@ -15,13 +15,27 @@ use tauri::State;
 use super::session::OpenSession;
 use super::wave::{without_effects, OpenWave};
 use crate::dsp::effects::print::{learn, print_params};
-use crate::dsp::effects::{build, ui_catalog, EffectInfo};
+use crate::dsp::effects::{build, ui_catalog, EffectInfo, KEYED};
 use crate::export::mixdown::{self, MixdownRequest};
 use crate::session::model::{EffectSlot, Id, Session};
 
+/// An effect for the editor, marked when it can listen to a sidechain.
+#[derive(Serialize)]
+pub struct CatalogEntry {
+    #[serde(flatten)]
+    info: EffectInfo,
+    sidechain: bool,
+}
+
 #[tauri::command]
-pub fn effects_catalog() -> Vec<EffectInfo> {
+pub fn effects_catalog() -> Vec<CatalogEntry> {
     ui_catalog()
+        .into_iter()
+        .map(|info| CatalogEntry {
+            sidechain: KEYED.contains(&info.id),
+            info,
+        })
+        .collect()
 }
 
 /// Effects whose response is a fixed curve, so a graph means something.
@@ -213,6 +227,7 @@ mod tests {
             enabled: false,
             params: params.iter().map(|(k, v)| ((*k).to_string(), *v)).collect(),
             preset: None,
+            sidechain: None,
         };
         let flat = response(&slot("altaudio.curve_eq", &[]), 32);
         assert_eq!(flat.len(), 32);

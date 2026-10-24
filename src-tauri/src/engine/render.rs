@@ -6,11 +6,11 @@
 //! Runs on a worker thread ahead of the audio device, never on it: it
 //! opens files, seeks and allocates.
 //!
-//! Voice Chains run here too: each clip's chain on that clip, then each
-//! track's chain on the track. A chain with look-ahead delays its
-//! output, so its input is read that many frames early (and the chain
-//! is primed with the frames in between), which keeps every track in
-//! time with the others.
+//! Clip Voice Chains run here: each clip's chain on that clip. A chain
+//! with look-ahead delays its output, so its input is read that many
+//! frames early (and the chain is primed with the frames in between),
+//! which keeps every clip in time with the others. Track, bus and
+//! master chains run after this, in the mix graph (`graph.rs`).
 //!
 //! A chain edited during playback swaps in without stopping: the new
 //! chain is warmed up on the last stretch of input the old one heard,
@@ -20,67 +20,13 @@
 
 use std::collections::HashMap;
 
+use super::fx::{swap_fx, Fx};
 use super::plan::{ClipPlan, ParamLane, Plan, TrackPlan};
 use crate::codecs::AudioReader;
-use crate::dsp::effects::ChainProcessor;
 use crate::dsp::stretch::Stretcher;
 use crate::session::model::{EffectChain, Id};
 
-/// Extra input, beyond the look-ahead, a swapped-in chain is warmed up
-/// on so its filters and level detectors settle first.
-const WARM_SECONDS: f64 = 0.1;
-
-/// An open clip being streamed.
-struct Active {
-    reader: Option<AudioReader>,
-    /// Decoded samples not yet used (stereo interleaved).
-    pending: Vec<f32>,
-    used: usize,
-    /// Looped clips: frames left before the region starts over.
-    lap_left: u64,
-    /// Pitch-keeping stretch, fed from the reader.
-    stretcher: Option<Stretcher>,
-    scratch: Vec<f32>,
-    fx: Option<Fx>,
-}
-
-/// A running Voice Chain and the bookkeeping for its look-ahead.
-struct Fx {
-    chain: ChainProcessor,
-    latency: u64,
-    primed: bool,
-    buf: Vec<f32>,
-    /// The latest input, for warming up a chain that replaces this one.
-    hist: Vec<f32>,
-    keep: usize,
-    /// Peaks in and out since last read: left in, right in, left out, right out.
-    peaks: [f32; 4],
-}
-
 impl Fx {
-    fn new(chain: &EffectChain, rate: u32) -> Option<Self> {
-        ChainProcessor::new(chain, rate).map(|c| Self::from(c, rate))
-    }
-
-    fn from(c: ChainProcessor, rate: u32) -> Self {
-        let latency = c.latency() as u64;
-        Fx {
-            keep: (latency as usize + (f64::from(rate) * WARM_SECONDS) as usize) * 2,
-            latency,
-            chain: c,
-            primed: false,
-            buf: Vec::new(),
-            hist: Vec::new(),
-            peaks: [0.0; 4],
-        }
-    }
-
-    fn restart(&mut self) {
-        self.chain.reset();
-        self.primed = false;
-        self.hist.clear();
-    }
-
     /// Runs the chain over `buf`, whose first frame is `at` frames into
     /// the clip, moving automated settings every 256 frames.
     fn run_at(&mut self, buf: &mut [f32], at: u64, lanes: &[ParamLane]) {
@@ -100,63 +46,29 @@ impl Fx {
             done += chunk.len() / 2;
         }
     }
-
-    /// Runs the chain over `buf` in place, keeping the input history
-    /// and the meter peaks.
-    fn run(&mut self, buf: &mut [f32]) {
-        self.hist.extend_from_slice(buf);
-        if self.hist.len() > self.keep {
-            let cut = self.hist.len() - self.keep;
-            self.hist.drain(..cut);
-        }
-        for f in buf.as_chunks::<2>().0 {
-            self.peaks[0] = self.peaks[0].max(f[0].abs());
-            self.peaks[1] = self.peaks[1].max(f[1].abs());
-        }
-        self.chain.process(buf);
-        for f in buf.as_chunks::<2>().0 {
-            self.peaks[2] = self.peaks[2].max(f[0].abs());
-            self.peaks[3] = self.peaks[3].max(f[1].abs());
-        }
-    }
 }
 
-/// Puts `chain` in place of the chain in `slot` while it plays. False,
-/// with nothing changed, when the look-ahead would change.
-fn swap_fx(slot: &mut Option<Fx>, chain: &EffectChain, rate: u32) -> bool {
-    let new = ChainProcessor::new(chain, rate);
-    let old_lat = slot.as_ref().map_or(0, |f| f.latency);
-    if new.as_ref().map_or(0, |c| c.latency() as u64) != old_lat {
-        return false;
-    }
-    let Some(c) = new else {
-        *slot = None;
-        return true;
-    };
-    let mut fx = Fx::from(c, rate);
-    match slot.take() {
-        // Not started yet: it primes itself on its first block.
-        Some(old) if !old.primed => {}
-        Some(old) => {
-            // Warm up on what the old chain heard; drop the output.
-            let mut warm = old.hist;
-            fx.run(&mut warm);
-            fx.peaks = [0.0; 4];
-            fx.buf = warm;
-            fx.primed = true;
-        }
-        // No chain before, so no look-ahead: nothing to prime.
-        None => fx.primed = true,
-    }
-    *slot = Some(fx);
-    true
+/// An open clip being streamed.
+struct Active {
+    reader: Option<AudioReader>,
+    /// Decoded samples not yet used (stereo interleaved).
+    pending: Vec<f32>,
+    used: usize,
+    /// Looped clips: frames left before the region starts over.
+    lap_left: u64,
+    /// Pitch-keeping stretch, fed from the reader.
+    stretcher: Option<Stretcher>,
+    scratch: Vec<f32>,
+    fx: Option<Fx>,
 }
 
-/// Chains edited during playback, by owner: tracks, then clips.
+/// Chains edited during playback, by owner.
 #[derive(Debug, Clone, Default)]
 pub struct ChainUpdate {
     pub tracks: Vec<(Id, EffectChain)>,
     pub clips: Vec<(Id, EffectChain)>,
+    pub buses: Vec<(Id, EffectChain)>,
+    pub master: Option<EffectChain>,
 }
 
 impl Active {
@@ -344,8 +256,6 @@ pub struct Renderer {
     /// Next output frame to render.
     pos: u64,
     active: Vec<HashMap<Id, Active>>,
-    /// Each track's Voice Chain, if it does anything.
-    fx: Vec<Option<Fx>>,
     /// On reaching frame `.0`, continue from frame `.1`: back to the
     /// start for Loop Playback, past the selection for Skip Selection.
     jump: Option<(u64, u64)>,
@@ -356,13 +266,7 @@ pub struct Renderer {
 impl Renderer {
     pub fn new(plan: Plan, start_frame: u64) -> Self {
         let n = plan.tracks.len();
-        let rate = plan.out_rate;
         Self {
-            fx: plan
-                .tracks
-                .iter()
-                .map(|t| Fx::new(&t.effects, rate))
-                .collect(),
             plan,
             pos: start_frame,
             active: (0..n).map(|_| HashMap::new()).collect(),
@@ -377,30 +281,12 @@ impl Renderer {
         self.rendered
     }
 
-    /// Each track chain's peaks since the last call (left in, right in,
-    /// left out, right out); `None` for a track with no chain.
-    pub fn take_chain_peaks(&mut self) -> Vec<Option<[f32; 4]>> {
-        self.fx
-            .iter_mut()
-            .map(|f| f.as_mut().map(|f| std::mem::take(&mut f.peaks)))
-            .collect()
-    }
-
-    /// Swaps in chains edited during playback. False if any chain's
+    /// Swaps in clip chains edited during playback. False if any chain's
     /// look-ahead changed; those keep the old chain, and the caller
     /// restarts playback to pick them up.
     pub fn set_chains(&mut self, update: &ChainUpdate) -> bool {
         let rate = self.plan.out_rate;
         let mut ok = true;
-        for (id, chain) in &update.tracks {
-            if let Some(t) = self.plan.tracks.iter().position(|t| t.id == *id) {
-                if swap_fx(&mut self.fx[t], chain, rate) {
-                    self.plan.tracks[t].effects = chain.clone();
-                } else {
-                    ok = false;
-                }
-            }
-        }
         for (id, chain) in &update.clips {
             for (t, track) in self.plan.tracks.iter_mut().enumerate() {
                 let Some(clip) = track.clips.iter_mut().find(|c| c.id == *id) else {
@@ -438,8 +324,9 @@ impl Renderer {
         self.pos
     }
 
-    /// Renders the next `frames` frames. `out[t]` receives track `t` as
-    /// stereo interleaved samples and is resized to `frames * 2`.
+    /// Renders the next `frames` frames. `out[t]` receives track `t`
+    /// (its clips, before the track's chain and fader) as stereo
+    /// interleaved samples and is resized to the frames rendered.
     /// Stops short at a jump point, so it may render fewer frames.
     pub fn render(&mut self, frames: usize, out: &mut [Vec<f32>]) {
         let frames = match self.jump {
@@ -453,38 +340,16 @@ impl Renderer {
             let buf = &mut out[t];
             buf.clear();
             buf.resize(frames * 2, 0.0);
-            let active = &mut self.active[t];
-            match self.fx[t].as_mut() {
-                None => render_track(track, active, rate, start, end, buf),
-                Some(fx) => {
-                    let lat = fx.latency;
-                    if !fx.primed {
-                        fx.buf.clear();
-                        fx.buf.resize(lat as usize * 2, 0.0);
-                        if lat > 0 {
-                            render_track(track, active, rate, start, start + lat, &mut fx.buf);
-                        }
-                        let mut b = std::mem::take(&mut fx.buf);
-                        fx.run(&mut b);
-                        fx.buf = b;
-                        fx.primed = true;
-                    }
-                    render_track(track, active, rate, start + lat, end + lat, buf);
-                    fx.run(buf);
-                }
-            }
+            render_track(track, &mut self.active[t], rate, start, end, buf);
         }
         self.pos = end;
         self.rendered += frames as u64;
         if let Some((at, to)) = self.jump {
             if end == at {
                 self.pos = to;
-                // Clips reopen at the new spot, and chains start clean.
+                // Clips reopen at the new spot, and their chains start clean.
                 for a in &mut self.active {
                     a.clear();
-                }
-                for fx in self.fx.iter_mut().flatten() {
-                    fx.restart();
                 }
                 if to > at {
                     // Skips happen once.
@@ -566,7 +431,6 @@ mod tests {
             out_rate: 48_000,
             session_rate: 48_000,
             tracks: vec![TrackPlan {
-                effects: Default::default(),
                 id: new_id(),
                 clips: vec![ClipPlan::plain(
                     new_id(),
@@ -600,139 +464,10 @@ mod tests {
             enabled: true,
             params: params.iter().map(|(k, v)| ((*k).to_string(), *v)).collect(),
             preset: None,
+            sidechain: None,
         });
         c
     }
-
-    #[test]
-    fn voice_chains_apply_and_look_ahead_keeps_time() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = click_file(dir.path());
-        let limiter = chain("altaudio.limiter", &[("ceiling", 0.0), ("lookahead", 5.0)]);
-        let make = |track_fx, clip_fx| {
-            let mut clip = ClipPlan::plain(new_id(), path.clone(), 5_000, 10_000, 500.0 / 48_000.0);
-            clip.effects = clip_fx;
-            Plan {
-                out_rate: 48_000,
-                session_rate: 48_000,
-                tracks: vec![TrackPlan {
-                    effects: track_fx,
-                    id: new_id(),
-                    clips: vec![clip],
-                }],
-            }
-        };
-        let none = crate::session::model::EffectChain::default();
-        for (track_fx, clip_fx) in [
-            (limiter.clone(), none.clone()),
-            (none.clone(), limiter.clone()),
-            (limiter.clone(), limiter.clone()),
-        ] {
-            let plan = make(track_fx, clip_fx);
-            let mut r = Renderer::new(plan.clone(), 0);
-            let mut out = vec![Vec::new()];
-            let mut all = Vec::new();
-            for _ in 0..12 {
-                r.render(1_024, &mut out);
-                all.extend_from_slice(&out[0]);
-            }
-            assert_eq!(first_click(&all), Some(5_500), "the click stays put");
-            let mut r = Renderer::new(plan, 5_200);
-            r.render(1_024, &mut out);
-            assert_eq!(
-                first_click(&out[0]),
-                Some(300),
-                "and when starting mid-clip"
-            );
-        }
-        // A gain effect on the track halves the click.
-        let plan = make(chain("altaudio.gain", &[("gain", -6.0206)]), none);
-        let mut r = Renderer::new(plan, 5_000);
-        let mut out = vec![Vec::new()];
-        r.render(1_024, &mut out);
-        let peak = out[0].iter().fold(0f32, |m, s| m.max(s.abs()));
-        assert!((peak - 0.5).abs() < 0.01, "{peak}");
-    }
-
-    #[test]
-    fn chains_swap_in_while_playing() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = click_file(dir.path());
-        let limiter = |ceiling: f64| {
-            chain(
-                "altaudio.limiter",
-                &[("ceiling", ceiling), ("lookahead", 5.0)],
-            )
-        };
-        let clip_id = new_id();
-        let track_id = new_id();
-        let mut clip = ClipPlan::plain(clip_id, path.clone(), 5_000, 10_000, 500.0 / 48_000.0);
-        clip.effects = limiter(0.0);
-        let plan = Plan {
-            out_rate: 48_000,
-            session_rate: 48_000,
-            tracks: vec![TrackPlan {
-                effects: limiter(0.0),
-                id: track_id,
-                clips: vec![clip],
-            }],
-        };
-        let play = |swap: Option<ChainUpdate>| {
-            let mut r = Renderer::new(plan.clone(), 0);
-            let mut out = vec![Vec::new()];
-            let mut all = Vec::new();
-            for block in 0..12 {
-                if block == 5 {
-                    // Frame 5,120: the clip is playing, the click is ahead.
-                    if let Some(u) = &swap {
-                        assert!(r.set_chains(u));
-                    }
-                }
-                r.render(1_024, &mut out);
-                all.extend_from_slice(&out[0]);
-            }
-            all
-        };
-        let plain = play(None);
-        // The same chains swapped in: the new ones pick up exactly where
-        // the old ones were, sample for sample.
-        let same = play(Some(ChainUpdate {
-            tracks: vec![(track_id, limiter(0.0))],
-            clips: vec![(clip_id, limiter(0.0))],
-        }));
-        assert_eq!(plain, same);
-        // A lower ceiling, same look-ahead: the click stays put, quieter.
-        let lower = play(Some(ChainUpdate {
-            tracks: vec![(track_id, limiter(-6.0))],
-            clips: vec![],
-        }));
-        let (at, peak) = lower
-            .iter()
-            .step_by(2)
-            .enumerate()
-            .fold(
-                (0, 0f32),
-                |m, (i, v)| if v.abs() > m.1 { (i, v.abs()) } else { m },
-            );
-        assert_eq!(at, 5_500);
-        assert!((peak - 0.5).abs() < 0.02, "{peak}");
-        // A different look-ahead cannot swap in place.
-        let mut r = Renderer::new(plan.clone(), 0);
-        let longer = chain("altaudio.limiter", &[("ceiling", 0.0), ("lookahead", 10.0)]);
-        assert!(!r.set_chains(&ChainUpdate {
-            tracks: vec![(track_id, longer)],
-            clips: vec![],
-        }));
-        // Meters report the track chain in and out.
-        let mut out = vec![Vec::new()];
-        for _ in 0..6 {
-            r.render(1_024, &mut out);
-        }
-        let m = r.take_chain_peaks()[0].unwrap();
-        assert!(m[0] > 0.9 && m[2] > 0.9, "{m:?}");
-        assert_eq!(r.take_chain_peaks()[0], Some([0.0; 4]));
-    }
-
     fn clicks_in(r: &mut Renderer, total: usize) -> Vec<usize> {
         let mut out = vec![Vec::new()];
         let mut all = Vec::new();
@@ -755,7 +490,6 @@ mod tests {
             out_rate: 48_000,
             session_rate: 48_000,
             tracks: vec![TrackPlan {
-                effects: Default::default(),
                 id: new_id(),
                 clips: vec![ClipPlan::plain(
                     new_id(),
@@ -802,7 +536,6 @@ mod tests {
             out_rate: 48_000,
             session_rate: 48_000,
             tracks: vec![TrackPlan {
-                effects: Default::default(),
                 id: new_id(),
                 clips: vec![clip],
             }],
@@ -837,7 +570,6 @@ mod tests {
             out_rate: 48_000,
             session_rate: 48_000,
             tracks: vec![TrackPlan {
-                effects: Default::default(),
                 id: new_id(),
                 clips: vec![ClipPlan::plain(
                     new_id(),
@@ -878,7 +610,6 @@ mod tests {
             out_rate: 48_000,
             session_rate: 48_000,
             tracks: vec![TrackPlan {
-                effects: Default::default(),
                 id: new_id(),
                 clips: vec![clip],
             }],
@@ -915,68 +646,6 @@ mod tests {
         w.finalize().unwrap();
         path
     }
-
-    /// A track chain runs over every clip on the track, not just the first
-    /// (a report said only the first recorded take got the effects).
-    #[test]
-    fn track_chain_reaches_every_clip() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = tone_file(dir.path());
-        for fx in [
-            chain("altaudio.gain", &[("gain", -12.0)]),
-            chain(
-                "altaudio.limiter",
-                &[("ceiling", -12.0), ("lookahead", 5.0)],
-            ),
-            chain("altaudio.noise_reducer", &[]),
-        ] {
-            let clips = vec![
-                ClipPlan::plain(new_id(), path.clone(), 0, 12_000, 0.0),
-                ClipPlan::plain(new_id(), path.clone(), 30_000, 12_000, 0.0),
-                ClipPlan::plain(new_id(), path.clone(), 60_000, 12_000, 0.0),
-            ];
-            let plan = Plan {
-                out_rate: 48_000,
-                session_rate: 48_000,
-                tracks: vec![TrackPlan {
-                    effects: fx.clone(),
-                    id: new_id(),
-                    clips,
-                }],
-            };
-            let all = render_all(plan, 80_000);
-            let peak = |from: usize, to: usize| {
-                all[from * 2..to * 2]
-                    .iter()
-                    .fold(0f32, |m, s| m.max(s.abs()))
-            };
-            let (a, b, c) = (
-                peak(4_000, 11_000),
-                peak(34_000, 41_000),
-                peak(64_000, 71_000),
-            );
-            if fx.slots[0].effect == "altaudio.noise_reducer" {
-                // It keeps learning (a steady tone looks like noise), but no
-                // clip comes through untouched after the silent gaps.
-                assert!(
-                    a < 0.48 && b < 0.48 && c < 0.48,
-                    "noise reducer: {a} {b} {c}"
-                );
-            } else {
-                assert!(
-                    (a - b).abs() < 0.03 && (a - c).abs() < 0.03,
-                    "{}: {a} {b} {c}",
-                    fx.slots[0].effect
-                );
-                assert!(
-                    a < 0.35,
-                    "{}: first clip {a} not processed",
-                    fx.slots[0].effect
-                );
-            }
-        }
-    }
-
     /// A clip's Gain effect automated from 0 dB down to -24 dB over the
     /// clip turns the tone down smoothly, without restarting anything.
     #[test]
@@ -996,7 +665,6 @@ mod tests {
             out_rate: 48_000,
             session_rate: 48_000,
             tracks: vec![TrackPlan {
-                effects: crate::session::model::EffectChain::default(),
                 id: new_id(),
                 clips: vec![clip],
             }],
@@ -1034,7 +702,6 @@ mod tests {
             out_rate: 48_000,
             session_rate: 48_000,
             tracks: vec![TrackPlan {
-                effects: Default::default(),
                 id: new_id(),
                 clips: vec![c],
             }],

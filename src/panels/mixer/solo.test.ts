@@ -21,4 +21,15 @@ describe("track changes", () => {
     });
     expect(trackOp(doc, "a", { muted: true }, true)).toEqual({ op: "set_track", id: "a", changes: { muted: true } });
   });
+
+  it("unsolos soloed buses too", () => {
+    const d = { tracks: [{ id: "a", solo: false }], buses: [{ id: "b", solo: true }] } as unknown as SessionDoc;
+    expect(trackOp(d, "a", { solo: true }, true)).toEqual({
+      op: "batch",
+      ops: [
+        { op: "set_track", id: "a", changes: { solo: true } },
+        { op: "set_bus", id: "b", changes: { solo: false } },
+      ],
+    });
+  });
 });

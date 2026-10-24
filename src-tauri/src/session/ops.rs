@@ -15,9 +15,9 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use super::model::{
-    AudioType, ChannelLayout, Clip, ClipLoop, ClipStretch, EffectChain, Envelope, EnvelopePoint,
-    EnvelopeTarget, Fade, Id, Marker, MarkerKind, MediaRef, Session, SessionView, Track, TrackRole,
-    STRETCH_MAX, STRETCH_MIN,
+    AudioType, Bus, ChannelLayout, Clip, ClipLoop, ClipStretch, EffectChain, Envelope,
+    EnvelopePoint, EnvelopeTarget, Fade, Id, Marker, MarkerKind, MediaRef, Output, Send, Session,
+    SessionView, Track, TrackRole, STRETCH_MAX, STRETCH_MIN,
 };
 
 /// Points for one effect setting's envelope on a clip.
@@ -100,6 +100,31 @@ pub struct TrackChanges {
     /// The host profile applied; an empty id clears it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host_profile_id: Option<String>,
+    /// Where the track's sound goes after its fader: the master or a bus.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<Output>,
+}
+
+/// Bus settings to change. Fields left out stay as they are.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct BusChanges {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub muted: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub solo: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<Option<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume_db: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pan: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
+    /// Where the bus's sound goes: the master or another bus.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<Output>,
 }
 
 /// Changes to one clip. Fields left out are unchanged. `track_id` moves
@@ -199,6 +224,7 @@ pub struct MarkerChange {
 pub enum EffectTarget {
     Track(Id),
     Clip(Id),
+    Bus(Id),
     Master,
 }
 
@@ -298,6 +324,38 @@ pub enum Op {
     SetMasterVolume {
         volume_db: f64,
     },
+    /// Adds an empty bus at `index` in the bus list, routed to the master.
+    AddBus {
+        id: Id,
+        name: String,
+        stereo: bool,
+        index: usize,
+    },
+    /// Puts back a removed bus exactly as it was. Routes that pointed at
+    /// it are put back by the ops batched with this one.
+    RestoreBus {
+        bus: Box<Bus>,
+        index: usize,
+    },
+    /// Removes a bus. Tracks and buses that output to it go to the
+    /// master instead, sends to it are removed, and effects keyed by it
+    /// listen to their own input again; undo puts all of that back.
+    RemoveBus {
+        id: Id,
+    },
+    MoveBus {
+        id: Id,
+        to: usize,
+    },
+    SetBus {
+        id: Id,
+        changes: BusChanges,
+    },
+    /// Replaces the aux sends of a track or bus.
+    SetSends {
+        owner: Id,
+        sends: Vec<Send>,
+    },
     /// Several ops as one step. Applied in order, reversed in reverse.
     Batch {
         ops: Vec<Op>,
@@ -330,6 +388,12 @@ pub enum OpError {
     PastSourceEnd,
     #[error("No marker with id {0}.")]
     NoMarker(Id),
+    #[error("No bus with id {0}.")]
+    NoBus(Id),
+    #[error("No track or bus with id {0} to listen to.")]
+    NoKeySource(Id),
+    #[error("That routing would feed the sound back into itself.")]
+    RoutingLoop,
 }
 
 fn track_index(s: &Session, id: Id) -> Result<usize, OpError> {
@@ -337,6 +401,30 @@ fn track_index(s: &Session, id: Id) -> Result<usize, OpError> {
         .iter()
         .position(|t| t.id == id)
         .ok_or(OpError::NoTrack(id))
+}
+
+fn bus_index(s: &Session, id: Id) -> Result<usize, OpError> {
+    s.buses
+        .iter()
+        .position(|b| b.id == id)
+        .ok_or(OpError::NoBus(id))
+}
+
+fn check_output(s: &Session, output: &Output) -> Result<(), OpError> {
+    match output {
+        Output::Master => Ok(()),
+        Output::Bus { bus_id } => bus_index(s, *bus_id).map(|_| ()),
+    }
+}
+
+/// True when `op` can change who feeds whom.
+fn changes_routing(op: &Op) -> bool {
+    match op {
+        Op::SetTrack { changes, .. } => changes.output.is_some(),
+        Op::SetBus { changes, .. } => changes.output.is_some(),
+        Op::SetSends { .. } | Op::SetEffects { .. } | Op::RestoreTrack { .. } => true,
+        _ => false,
+    }
 }
 
 fn id_taken(s: &Session, id: Id) -> bool {
@@ -354,8 +442,23 @@ fn sort_markers(s: &mut Session) {
 
 /// Applies an op and returns its inverse. On error the session is unchanged.
 pub fn apply(s: &mut Session, op: &Op) -> Result<Op, OpError> {
+    let inverse = apply_one(s, op)?;
+    if changes_routing(op) && super::routing::has_loop(s) {
+        apply_one(s, &inverse).expect("an inverse always applies");
+        return Err(OpError::RoutingLoop);
+    }
+    Ok(inverse)
+}
+
+fn apply_one(s: &mut Session, op: &Op) -> Result<Op, OpError> {
     match op {
         Op::SetEffects { target, chain } => {
+            let nodes: Vec<Id> = s
+                .tracks
+                .iter()
+                .map(|t| t.id)
+                .chain(s.buses.iter().map(|b| b.id))
+                .collect();
             let slot = match *target {
                 EffectTarget::Track(id) => {
                     let i = track_index(s, id)?;
@@ -370,8 +473,19 @@ pub fn apply(s: &mut Session, op: &Op) -> Result<Op, OpError> {
                         .ok_or(OpError::NoClip(id))?
                         .effects
                 }
+                EffectTarget::Bus(id) => {
+                    let i = bus_index(s, id)?;
+                    &mut s.buses[i].effects
+                }
                 EffectTarget::Master => &mut s.master.effects,
             };
+            // A key may point at a removed track (undo brings it back), but
+            // a new key must point at a track or bus that exists.
+            let had: Vec<Id> = super::routing::key_sources(slot).collect();
+            let known = |src: Id| had.contains(&src) || nodes.contains(&src);
+            if let Some(src) = super::routing::key_sources(chain).find(|src| !known(*src)) {
+                return Err(OpError::NoKeySource(src));
+            }
             let mut chain = chain.clone();
             chain.slots.truncate(crate::dsp::effects::MAX_SLOTS);
             let old = std::mem::replace(slot, chain);
@@ -424,6 +538,9 @@ pub fn apply(s: &mut Session, op: &Op) -> Result<Op, OpError> {
         }
         Op::SetTrack { id, changes } => {
             let i = track_index(s, *id)?;
+            if let Some(o) = &changes.output {
+                check_output(s, o)?;
+            }
             let t = &mut s.tracks[i];
             let mut old = TrackChanges::default();
             if let Some(v) = &changes.name {
@@ -472,6 +589,9 @@ pub fn apply(s: &mut Session, op: &Op) -> Result<Op, OpError> {
                 let next = Some(v.clone()).filter(|v| !v.is_empty());
                 old.host_profile_id =
                     Some(std::mem::replace(&mut t.host_profile_id, next).unwrap_or_default());
+            }
+            if let Some(v) = changes.output {
+                old.output = Some(std::mem::replace(&mut t.output, v));
             }
             Ok(Op::SetTrack {
                 id: *id,
@@ -738,6 +858,101 @@ pub fn apply(s: &mut Session, op: &Op) -> Result<Op, OpError> {
             let old = std::mem::replace(&mut s.master.volume_db, volume_db.clamp(-96.0, 24.0));
             Ok(Op::SetMasterVolume { volume_db: old })
         }
+        Op::AddBus {
+            id,
+            name,
+            stereo,
+            index,
+        } => {
+            if id_taken(s, *id) {
+                return Err(OpError::DuplicateId(*id));
+            }
+            let layout = if *stereo {
+                ChannelLayout::Stereo
+            } else {
+                ChannelLayout::Mono
+            };
+            let mut b = Bus::new(name.clone(), layout);
+            b.id = *id;
+            s.buses.insert((*index).min(s.buses.len()), b);
+            Ok(Op::RemoveBus { id: *id })
+        }
+        Op::RestoreBus { bus, index } => {
+            if id_taken(s, bus.id) {
+                return Err(OpError::DuplicateId(bus.id));
+            }
+            s.buses.insert((*index).min(s.buses.len()), (**bus).clone());
+            Ok(Op::RemoveBus { id: bus.id })
+        }
+        Op::RemoveBus { id } => remove_bus(s, *id),
+        Op::MoveBus { id, to } => {
+            let from = bus_index(s, *id)?;
+            let b = s.buses.remove(from);
+            let to = (*to).min(s.buses.len());
+            s.buses.insert(to, b);
+            Ok(Op::MoveBus { id: *id, to: from })
+        }
+        Op::SetBus { id, changes } => {
+            let i = bus_index(s, *id)?;
+            if let Some(o) = &changes.output {
+                check_output(s, o)?;
+            }
+            let b = &mut s.buses[i];
+            let mut old = BusChanges::default();
+            if let Some(v) = &changes.name {
+                old.name = Some(std::mem::replace(&mut b.name, v.clone()));
+            }
+            if let Some(v) = changes.muted {
+                old.muted = Some(std::mem::replace(&mut b.muted, v));
+            }
+            if let Some(v) = changes.solo {
+                old.solo = Some(std::mem::replace(&mut b.solo, v));
+            }
+            if let Some(v) = &changes.color {
+                old.color = Some(std::mem::replace(&mut b.color, v.clone()));
+            }
+            if let Some(v) = changes.volume_db {
+                old.volume_db = Some(std::mem::replace(&mut b.volume_db, v));
+            }
+            if let Some(v) = changes.pan {
+                old.pan = Some(std::mem::replace(&mut b.pan, v.clamp(-100.0, 100.0)));
+            }
+            if let Some(v) = changes.height {
+                old.height = Some(std::mem::replace(&mut b.height, v.clamp(40, 600)));
+            }
+            if let Some(v) = changes.output {
+                old.output = Some(std::mem::replace(&mut b.output, v));
+            }
+            Ok(Op::SetBus {
+                id: *id,
+                changes: old,
+            })
+        }
+        Op::SetSends { owner, sends } => {
+            for x in sends {
+                bus_index(s, x.bus_id)?;
+            }
+            let sends: Vec<Send> = sends
+                .iter()
+                .map(|x| Send {
+                    level_db: x.level_db.clamp(-96.0, 12.0),
+                    pan: x.pan.clamp(-100.0, 100.0),
+                    ..x.clone()
+                })
+                .collect();
+            let list = if let Some(t) = s.tracks.iter_mut().find(|t| t.id == *owner) {
+                &mut t.sends
+            } else if let Some(b) = s.buses.iter_mut().find(|b| b.id == *owner) {
+                &mut b.sends
+            } else {
+                return Err(OpError::NoTrack(*owner));
+            };
+            let old = std::mem::replace(list, sends);
+            Ok(Op::SetSends {
+                owner: *owner,
+                sends: old,
+            })
+        }
         Op::Batch { ops } => {
             // Work on a copy so a failure part way leaves nothing half done.
             let mut work = s.clone();
@@ -750,6 +965,93 @@ pub fn apply(s: &mut Session, op: &Op) -> Result<Op, OpError> {
             Ok(Op::Batch { ops: inverses })
         }
     }
+}
+
+/// Removes a bus and everything that pointed at it. The inverse puts the
+/// bus back first, then each route, sends list and chain as it was.
+fn remove_bus(s: &mut Session, id: Id) -> Result<Op, OpError> {
+    let index = bus_index(s, id)?;
+    let mut undo = Vec::new();
+    let to_master = |o: &mut Output| -> Option<Output> {
+        (*o == Output::Bus { bus_id: id }).then(|| std::mem::replace(o, Output::Master))
+    };
+    let unkey = |c: &mut EffectChain| -> Option<EffectChain> {
+        let old = c.clone();
+        let mut hit = false;
+        for slot in &mut c.slots {
+            if slot.sidechain == Some(id) {
+                slot.sidechain = None;
+                hit = true;
+            }
+        }
+        hit.then_some(old)
+    };
+    for t in &mut s.tracks {
+        if let Some(old) = to_master(&mut t.output) {
+            undo.push(Op::SetTrack {
+                id: t.id,
+                changes: TrackChanges {
+                    output: Some(old),
+                    ..TrackChanges::default()
+                },
+            });
+        }
+        if t.sends.iter().any(|x| x.bus_id == id) {
+            let old = t.sends.clone();
+            t.sends.retain(|x| x.bus_id != id);
+            undo.push(Op::SetSends {
+                owner: t.id,
+                sends: old,
+            });
+        }
+        if let Some(old) = unkey(&mut t.effects) {
+            undo.push(Op::SetEffects {
+                target: EffectTarget::Track(t.id),
+                chain: old,
+            });
+        }
+    }
+    let bus = s.buses.remove(index);
+    for b in &mut s.buses {
+        if let Some(old) = to_master(&mut b.output) {
+            undo.push(Op::SetBus {
+                id: b.id,
+                changes: BusChanges {
+                    output: Some(old),
+                    ..BusChanges::default()
+                },
+            });
+        }
+        if b.sends.iter().any(|x| x.bus_id == id) {
+            let old = b.sends.clone();
+            b.sends.retain(|x| x.bus_id != id);
+            undo.push(Op::SetSends {
+                owner: b.id,
+                sends: old,
+            });
+        }
+        if let Some(old) = unkey(&mut b.effects) {
+            undo.push(Op::SetEffects {
+                target: EffectTarget::Bus(b.id),
+                chain: old,
+            });
+        }
+    }
+    if let Some(old) = unkey(&mut s.master.effects) {
+        undo.push(Op::SetEffects {
+            target: EffectTarget::Master,
+            chain: old,
+        });
+    }
+    let restore = Op::RestoreBus {
+        bus: Box::new(bus),
+        index,
+    };
+    if undo.is_empty() {
+        return Ok(restore);
+    }
+    undo.insert(0, restore);
+    Ok(Op::Batch { ops: undo })
 }
 
 fn set_clip(s: &mut Session, ch: &ClipChange) -> Result<ClipChange, OpError> {
@@ -1045,6 +1347,174 @@ mod tests {
     }
 
     #[test]
+    fn buses_route_send_key_and_undo_in_one_step() {
+        let mut s = Session::new("Test", 48_000);
+        let (voice, music, mix, verb) = (new_id(), new_id(), new_id(), new_id());
+        for (i, id) in [voice, music].into_iter().enumerate() {
+            roundtrip(
+                &mut s,
+                Op::AddTrack {
+                    id,
+                    name: "T".into(),
+                    stereo: true,
+                    index: i,
+                },
+            );
+        }
+        for (i, id) in [mix, verb].into_iter().enumerate() {
+            roundtrip(
+                &mut s,
+                Op::AddBus {
+                    id,
+                    name: "B".into(),
+                    stereo: true,
+                    index: i,
+                },
+            );
+        }
+        let to = |bus_id| Some(Output::Bus { bus_id });
+        roundtrip(
+            &mut s,
+            Op::SetTrack {
+                id: voice,
+                changes: TrackChanges {
+                    output: to(mix),
+                    ..TrackChanges::default()
+                },
+            },
+        );
+        roundtrip(
+            &mut s,
+            Op::SetBus {
+                id: verb,
+                changes: BusChanges {
+                    output: to(mix),
+                    volume_db: Some(-3.0),
+                    ..BusChanges::default()
+                },
+            },
+        );
+        let send = Send {
+            id: new_id(),
+            bus_id: verb,
+            level_db: 50.0,
+            pan: 0.0,
+            pre_fader: false,
+            enabled: true,
+        };
+        roundtrip(
+            &mut s,
+            Op::SetSends {
+                owner: voice,
+                sends: vec![send.clone()],
+            },
+        );
+        assert_eq!(s.tracks[0].sends[0].level_db, 12.0, "send level is clamped");
+        // Music ducked by the voice.
+        let mut duck = EffectChain::default();
+        duck.slots.push(crate::session::model::EffectSlot {
+            id: new_id(),
+            effect: "altaudio.dynamics".into(),
+            enabled: true,
+            params: Default::default(),
+            preset: None,
+            sidechain: Some(voice),
+        });
+        roundtrip(
+            &mut s,
+            Op::SetEffects {
+                target: EffectTarget::Track(music),
+                chain: duck.clone(),
+            },
+        );
+        let mut keyed_by_mix = duck.clone();
+        keyed_by_mix.slots[0].sidechain = Some(mix);
+        roundtrip(
+            &mut s,
+            Op::SetEffects {
+                target: EffectTarget::Master,
+                chain: keyed_by_mix.clone(),
+            },
+        );
+
+        roundtrip(
+            &mut s,
+            Op::SetEffects {
+                target: EffectTarget::Bus(verb),
+                chain: EffectChain::default(),
+            },
+        );
+
+        // Loops are refused and leave the session as it was.
+        let before = s.clone();
+        let op = Op::SetEffects {
+            target: EffectTarget::Bus(verb),
+            chain: keyed_by_mix,
+        };
+        assert_eq!(
+            apply(&mut s, &op),
+            Err(OpError::RoutingLoop),
+            "verb feeds mix"
+        );
+        let back = Op::SetBus {
+            id: mix,
+            changes: BusChanges {
+                output: to(verb),
+                ..BusChanges::default()
+            },
+        };
+        assert_eq!(apply(&mut s, &back), Err(OpError::RoutingLoop));
+        assert_eq!(s, before);
+        let mut self_key = duck.clone();
+        self_key.slots[0].sidechain = Some(music);
+        let op = Op::SetEffects {
+            target: EffectTarget::Track(music),
+            chain: self_key,
+        };
+        assert_eq!(apply(&mut s, &op), Err(OpError::RoutingLoop));
+        let mut unknown = duck;
+        unknown.slots[0].sidechain = Some(new_id());
+        let op = Op::SetEffects {
+            target: EffectTarget::Track(music),
+            chain: unknown,
+        };
+        assert!(matches!(apply(&mut s, &op), Err(OpError::NoKeySource(_))));
+        let op = Op::SetSends {
+            owner: voice,
+            sends: vec![Send {
+                bus_id: new_id(),
+                ..send
+            }],
+        };
+        assert!(matches!(apply(&mut s, &op), Err(OpError::NoBus(_))));
+        assert_eq!(s, before);
+
+        // Removing Mix sends its feeders to the master and unkeys the
+        // master's effect; undo puts it all back.
+        let inv = apply(&mut s, &Op::RemoveBus { id: mix }).unwrap();
+        assert_eq!(s.tracks[0].output, Output::Master);
+        assert_eq!(s.buses[0].output, Output::Master);
+        assert_eq!(s.master.effects.slots[0].sidechain, None);
+        apply(&mut s, &inv).unwrap();
+        assert_eq!(s, before);
+        roundtrip(&mut s, Op::RemoveBus { id: mix });
+        roundtrip(&mut s, Op::MoveBus { id: verb, to: 0 });
+        // Removing Reverb takes the voice's send with it.
+        roundtrip(&mut s, Op::RemoveBus { id: verb });
+        assert!(s.tracks[0].sends.is_empty());
+        // A removed track leaves its key in place, and the chain stays editable.
+        apply(&mut s, &Op::RemoveTrack { id: voice }).unwrap();
+        let chain = s.tracks[0].effects.clone();
+        roundtrip(
+            &mut s,
+            Op::SetEffects {
+                target: EffectTarget::Track(music),
+                chain,
+            },
+        );
+    }
+
+    #[test]
     fn voice_chains_set_and_undo() {
         let mut s = Session::new("Test", 48_000);
         let t = new_id();
@@ -1065,6 +1535,7 @@ mod tests {
                 enabled: true,
                 params: Default::default(),
                 preset: None,
+                sidechain: None,
             });
         }
         roundtrip(
@@ -1826,6 +2297,7 @@ mod tests {
                 enabled: true,
                 params: Default::default(),
                 preset: None,
+                sidechain: None,
             });
         let pt = |position, value| EnvelopePoint {
             position,

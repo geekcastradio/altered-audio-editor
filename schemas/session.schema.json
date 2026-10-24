@@ -140,7 +140,7 @@
       ]
     },
     "Bus": {
-      "description": "A bus track. Tracks and other buses can output to it.",
+      "description": "A bus track. Tracks and other buses output or send to it; it runs\nits own Voice Chain and fader on the sum, then outputs to the master\nor another bus. A bus has no clips and no inputs of its own.",
       "type": "object",
       "properties": {
         "channels": {
@@ -184,7 +184,7 @@
           "format": "double"
         },
         "sends": {
-          "description": "Scaffolding (P2).",
+          "description": "Aux sends to other buses.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/Send"
@@ -472,6 +472,14 @@
             "string",
             "null"
           ]
+        },
+        "sidechain": {
+          "description": "Sidechain: the track or bus whose sound drives this effect's\nlevel detector (for ducking music under a voice, for example).\nThe key is that track's or bus's sound after its Voice Chain,\nbefore its fader. Only effects with a detector use it, and only\non track and bus chains. None listens to the effect's own input.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
         }
       },
       "required": [
@@ -909,7 +917,7 @@
       ]
     },
     "Send": {
-      "description": "Scaffolding (P2): an aux send to a bus.",
+      "description": "An aux send: a copy of a track's or bus's sound sent on to a bus at\nits own level, for example to a shared reverb. A pre-fader send\nignores the sender's fader and pan but still follows its mute and solo.",
       "type": "object",
       "properties": {
         "bus_id": {
@@ -1118,7 +1126,7 @@
           "$ref": "#/$defs/TrackRole"
         },
         "sends": {
-          "description": "Scaffolding (P2).",
+          "description": "Aux sends to buses.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/Send"

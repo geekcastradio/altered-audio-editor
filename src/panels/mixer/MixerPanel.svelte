@@ -3,14 +3,17 @@
   Copyright (c) The GeekCast Radio Network, LLC.
   This file is part of Altered Audio Editor.
 
-  Mixer: one strip per track (pan, mute, solo, arm, fader, level meter)
-  and the master strip. Every change is undoable; a fader drag is one
-  undo step.
+  Mixer: one strip per track (pan, mute, solo, arm, fader, level meter),
+  one per bus, and the master strip. Each track and bus strip picks its
+  output (the master or a bus) and holds its aux sends. Every change is
+  undoable; a fader or send drag is one undo step.
 -->
 <script lang="ts">
   import { trackOp } from "./solo";
+  import { busChoices, busOp, isRouted, MASTER_ID, newSend, removeSend, setSend } from "./routing";
+  import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import type { CommandRunner } from "../../stores/media-pool";
-  import type { SessionDoc, SessionStore, TrackDoc } from "../../stores/session";
+  import type { OutputDoc, SendDoc, SessionDoc, SessionStore } from "../../stores/session";
   import type { MeterLevel, TransportState, TransportStore } from "../../stores/transport";
   import { editor } from "../../stores/editor";
   import { dbToFader, faderToDb, formatDb, formatPan } from "./fader";
@@ -44,9 +47,93 @@
   );
 
   const masterDb = $derived(doc?.master?.volume_db ?? 0);
+  const routed = $derived(isRouted(doc));
 
-  function setTrack(t: TrackDoc, changes: Partial<Pick<TrackDoc, "volume_db" | "pan" | "muted" | "solo" | "record_armed">>, label: string) {
-    void session.edit(label, trackOp(doc, t.id, changes), runner).catch(onError);
+  /** A track or bus strip. */
+  interface Strip {
+    kind: "track" | "bus";
+    id: string;
+    name: string;
+    volume_db: number;
+    pan: number;
+    muted: boolean;
+    solo: boolean;
+    record_armed: boolean;
+    output: OutputDoc;
+    sends: SendDoc[];
+  }
+  const strips = $derived<Strip[]>([
+    ...(doc?.tracks ?? [])
+      .filter((x) => !x.hidden)
+      .map((t): Strip => ({ kind: "track", id: t.id, name: t.name, volume_db: t.volume_db, pan: t.pan, muted: t.muted, solo: t.solo, record_armed: t.record_armed, output: t.output ?? { type: "master" }, sends: t.sends ?? [] })),
+    ...(doc?.buses ?? []).map((b): Strip => ({ kind: "bus", id: b.id, name: b.name, volume_db: b.volume_db, pan: b.pan, muted: b.muted, solo: b.solo, record_armed: false, output: b.output, sends: b.sends })),
+  ]);
+
+  type StripChanges = Partial<Pick<Strip, "volume_db" | "pan" | "muted" | "solo" | "record_armed" | "name" | "output">>;
+  function setStrip(st: Strip, changes: StripChanges, label: string) {
+    const what = st.kind === "bus" ? label.replace("Track", "Bus") : label;
+    const op = st.kind === "bus" ? busOp(doc, st.id, changes) : trackOp(doc, st.id, changes);
+    void session.edit(what, op, runner).catch(onError);
+  }
+
+  function setSends(st: Strip, sends: SendDoc[], label: string) {
+    void session.edit(label, { op: "set_sends", owner: st.id, sends }, runner).catch(onError);
+  }
+
+  function setOutput(st: Strip, value: string) {
+    const output: OutputDoc = value === MASTER_ID ? { type: "master" } : { type: "bus", bus_id: value };
+    setStrip(st, { output }, `Route ${st.kind === "bus" ? "Bus" : "Track"} Output`);
+  }
+
+  function addSend(st: Strip, busId: string) {
+    if (!busId) return;
+    setSends(st, [...st.sends, newSend(busId, crypto.randomUUID())], "Add Send");
+  }
+
+  const busName = (id: string) => doc?.buses?.find((b) => b.id === id)?.name ?? "Missing bus";
+
+  /** Horizontal drag on a send's level. Shift for fine steps. */
+  function dragSend(e: PointerEvent, st: Strip, x: SendDoc) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const start = x.level_db;
+    let last = start;
+    const move = (ev: PointerEvent) => {
+      const v = Math.min(12, Math.max(-60, Math.round((start + (ev.clientX - startX) * (ev.shiftKey ? 0.05 : 0.25)) * 10) / 10));
+      if (v !== last) {
+        last = v;
+        setSends(st, setSend(st.sends, x.id, { level_db: v }), "Send Level");
+      }
+    };
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+  }
+
+  let menu = $state<{ x: number; y: number; items: ContextItem[] } | null>(null);
+  let renaming = $state<string | null>(null);
+  function busMenu(e: MouseEvent, st: Strip) {
+    if (st.kind !== "bus") return;
+    e.preventDefault();
+    menu = {
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        { kind: "item", label: "Rename Bus", run: () => (renaming = st.id) },
+        { kind: "item", label: "Delete Bus", run: () => void session.edit("Delete Bus", { op: "remove_bus", id: st.id }, runner).catch(onError) },
+      ],
+    };
+  }
+  function finishRename(st: Strip, value: string) {
+    renaming = null;
+    const name = value.trim();
+    if (name && name !== st.name) setStrip(st, { name }, "Rename Bus");
   }
 
   function setMaster(db: number) {
@@ -93,7 +180,7 @@
     apply(next);
   }
 
-  function dragPan(e: PointerEvent, t: TrackDoc) {
+  function dragPan(e: PointerEvent, t: Strip) {
     if (e.button !== 0) return;
     e.preventDefault();
     const el = e.currentTarget as HTMLElement;
@@ -105,7 +192,7 @@
       const v = Math.min(100, Math.max(-100, Math.round(start + (ev.clientX - startX) * (ev.shiftKey ? 0.25 : 1))));
       if (v !== last) {
         last = v;
-        setTrack(t, { pan: v }, "Track Pan");
+        setStrip(t, { pan: v }, "Track Pan");
       }
     };
     const up = () => {
@@ -125,26 +212,107 @@
 
 <section class="mixer" aria-label="Mixer">
   <div class="strips">
-    {#each (doc?.tracks ?? []).filter((x) => !x.hidden) as t (t.id)}
+    {#each strips as t (t.id)}
       {@const m = tp?.tracks[t.id]}
       <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-      <div class="strip" class:selected={selected === t.id} onclick={() => editor.selectTrack(t.id)}>
-        <div class="name" title={t.name}>{t.name}</div>
+      <div class="strip" class:bus={t.kind === "bus"} class:selected={selected === t.id} onclick={() => editor.selectTrack(t.id)} oncontextmenu={(e) => busMenu(e, t)}>
+        {#if renaming === t.id}
+          <!-- svelte-ignore a11y_autofocus -->
+          <input
+            class="rename"
+            aria-label="Bus name"
+            value={t.name}
+            autofocus
+            onkeydown={(e) => {
+              if (e.key === "Enter") finishRename(t, e.currentTarget.value);
+              if (e.key === "Escape") renaming = null;
+            }}
+            onblur={(e) => finishRename(t, e.currentTarget.value)}
+          />
+        {:else}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="name" title={t.kind === "bus" ? `${t.name} (bus). Double-click to rename, right-click for more.` : t.name} ondblclick={() => t.kind === "bus" && (renaming = t.id)}>
+            {#if t.kind === "bus"}<span class="tag">BUS</span>{/if}{t.name}
+          </div>
+        {/if}
+        {#if doc}
+          {@const choices = busChoices(doc, t.id)}
+          <div class="routing">
+            <select
+              class="out"
+              aria-label="{t.name} output"
+              title="Where this {t.kind}'s sound goes after its fader"
+              value={t.output.type === "bus" ? t.output.bus_id : MASTER_ID}
+              onclick={(e) => e.stopPropagation()}
+              onchange={(e) => setOutput(t, e.currentTarget.value)}
+            >
+              <option value={MASTER_ID}>To Master</option>
+              {#each choices as b (b.id)}<option value={b.id}>To {b.name}</option>{/each}
+              {#if t.output.type === "bus" && !choices.some((b) => t.output.type === "bus" && b.id === t.output.bus_id)}
+                <option value={t.output.bus_id}>To {busName(t.output.bus_id)}</option>
+              {/if}
+            </select>
+            {#each t.sends as x (x.id)}
+              <div class="send" class:off={!x.enabled}>
+                <div class="srow">
+                  <button type="button" class="sbtn" class:on={x.enabled} title={x.enabled ? "Send on: click to turn off" : "Send off: click to turn on"} aria-pressed={x.enabled} onclick={(e) => { e.stopPropagation(); setSends(t, setSend(t.sends, x.id, { enabled: !x.enabled }), x.enabled ? "Turn Off Send" : "Turn On Send"); }}>●</button>
+                  <span class="sname" title="Send to {busName(x.bus_id)}">{busName(x.bus_id)}</span>
+                  <button type="button" class="sbtn" class:on={x.pre_fader} title={x.pre_fader ? "Pre-fader: ignores this fader and pan. Click for post-fader." : "Post-fader: follows this fader. Click for pre-fader."} aria-pressed={x.pre_fader} onclick={(e) => { e.stopPropagation(); setSends(t, setSend(t.sends, x.id, { pre_fader: !x.pre_fader }), "Send Pre or Post Fader"); }}>P</button>
+                  <button type="button" class="sbtn" title="Remove send" aria-label="Remove send" onclick={(e) => { e.stopPropagation(); setSends(t, removeSend(t.sends, x.id), "Remove Send"); }}>✕</button>
+                </div>
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div
+                  class="slevel"
+                  role="slider"
+                  tabindex="-1"
+                  aria-label="Send level to {busName(x.bus_id)}"
+                  aria-valuemin={-60}
+                  aria-valuemax={12}
+                  aria-valuenow={x.level_db}
+                  title="Send level. Drag sideways, Shift for fine steps, double-click for 0 dB."
+                  onpointerdown={(e) => dragSend(e, t, x)}
+                  ondblclick={() => setSends(t, setSend(t.sends, x.id, { level_db: 0 }), "Send Level")}
+                >
+                  <div class="sfill" style:width="{dbToFader(x.level_db) * 100}%"></div>
+                  <span class="sdb">{formatDb(x.level_db)}</span>
+                </div>
+              </div>
+            {/each}
+            {#if choices.length > 0}
+              <select
+                class="out add"
+                aria-label="Add a send"
+                title="Send a copy of this {t.kind}'s sound to a bus, at its own level"
+                value=""
+                onclick={(e) => e.stopPropagation()}
+                onchange={(e) => {
+                  addSend(t, e.currentTarget.value);
+                  e.currentTarget.value = "";
+                }}
+              >
+                <option value="" disabled>+ Send</option>
+                {#each choices as b (b.id)}<option value={b.id}>{b.name}</option>{/each}
+              </select>
+            {/if}
+          </div>
+        {/if}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class="pan"
           title="Pan. Drag left or right, double-click to center."
           onpointerdown={(e) => dragPan(e, t)}
-          ondblclick={() => setTrack(t, { pan: 0 }, "Track Pan")}
+          ondblclick={() => setStrip(t, { pan: 0 }, "Track Pan")}
         >
           <div class="pan-line"></div>
           <div class="pan-dot" style:left="{(t.pan + 100) / 2}%"></div>
           <span>{formatPan(t.pan)}</span>
         </div>
         <div class="buttons">
-          <button type="button" class:on={t.muted} class="m" title="Mute" aria-pressed={t.muted} onclick={() => setTrack(t, { muted: !t.muted }, t.muted ? "Unmute Track" : "Mute Track")}>M</button>
-          <button type="button" class:on={t.solo} class="s" title="Solo" aria-pressed={t.solo} onclick={() => setTrack(t, { solo: !t.solo }, t.solo ? "Unsolo Track" : "Solo Track")}>S</button>
-          <button type="button" class:on={t.record_armed} class="r" title="Arm for recording (recording arrives in P4)" aria-pressed={t.record_armed} onclick={() => setTrack(t, { record_armed: !t.record_armed }, "Arm Track")}>R</button>
+          <button type="button" class:on={t.muted} class="m" title="Mute" aria-pressed={t.muted} onclick={() => setStrip(t, { muted: !t.muted }, t.muted ? "Unmute Track" : "Mute Track")}>M</button>
+          <button type="button" class:on={t.solo} class="s" title={t.kind === "bus" ? "Solo: plays this bus and everything feeding it" : "Solo"} aria-pressed={t.solo} onclick={() => setStrip(t, { solo: !t.solo }, t.solo ? "Unsolo Track" : "Solo Track")}>S</button>
+          {#if t.kind === "track"}
+            <button type="button" class:on={t.record_armed} class="r" title="Arm for recording" aria-pressed={t.record_armed} onclick={() => setStrip(t, { record_armed: !t.record_armed }, "Arm Track")}>R</button>
+          {/if}
         </div>
         <div class="body">
           <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -157,9 +325,9 @@
             aria-valuemax={12}
             aria-valuenow={t.volume_db}
             title="Volume. Drag, or use the mouse wheel. Shift for fine steps. Double-click for 0 dB."
-            onpointerdown={(e) => dragFader(e, t.volume_db, (db) => setTrack(t, { volume_db: db }, "Track Volume"))}
-            onwheel={(e) => wheelFader(e, t.volume_db, (db) => setTrack(t, { volume_db: db }, "Track Volume"))}
-            ondblclick={() => setTrack(t, { volume_db: 0 }, "Track Volume")}
+            onpointerdown={(e) => dragFader(e, t.volume_db, (db) => setStrip(t, { volume_db: db }, "Track Volume"))}
+            onwheel={(e) => wheelFader(e, t.volume_db, (db) => setStrip(t, { volume_db: db }, "Track Volume"))}
+            ondblclick={() => setStrip(t, { volume_db: 0 }, "Track Volume")}
           >
             <div class="slot"></div>
             <div class="unity" style:bottom="{dbToFader(0) * 100}%"></div>
@@ -182,7 +350,8 @@
     {/if}
   </div>
 
-  <div class="strip master">
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  <div class="strip master" class:selected={selected === MASTER_ID} onclick={() => editor.selectTrack(MASTER_ID)} title="Click to show the master's Voice Chain">
     <div class="name">Master</div>
     <div class="body">
       <div class="scale" aria-hidden="true">
@@ -216,8 +385,15 @@
       </div>
     </div>
     <div class="db">{formatDb(masterDb)}</div>
+    {#if routed}
+      <p class="lag" title="The mix uses buses, sends, a master chain or a sidechain, so it is mixed ahead of the speakers. Track and bus faders are heard about half a second after you move them; the master fader is instant.">Faders lag ½ s</p>
+    {/if}
   </div>
 </section>
+
+{#if menu}
+  <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => (menu = null)} />
+{/if}
 
 <style>
   .mixer {
@@ -240,13 +416,135 @@
   .strip {
     display: grid;
     flex: none;
-    grid-template-rows: auto auto auto 1fr auto;
+    grid-template-rows: auto auto auto auto 1fr auto;
     gap: 6px;
-    width: 78px;
+    width: 92px;
     padding: 6px 5px;
     border: 1px solid var(--border);
     background: var(--surface-1);
     box-sizing: border-box;
+  }
+
+  .strip.bus {
+    background: color-mix(in srgb, var(--surface-1) 82%, var(--clip-3) 18%);
+  }
+
+  .tag {
+    margin-right: 3px;
+    padding: 0 2px;
+    border-radius: 2px;
+    background: var(--surface-3);
+    color: var(--text-dim);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  .rename {
+    width: 100%;
+    min-width: 0;
+    font: inherit;
+    font-size: var(--font-size-small);
+    box-sizing: border-box;
+  }
+
+  .routing {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .out {
+    width: 100%;
+    min-width: 0;
+    height: 18px;
+    padding: 0 2px;
+    font: inherit;
+    font-size: 10px;
+  }
+
+  .out.add {
+    color: var(--text-dim);
+  }
+
+  .send {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    font-size: 10px;
+  }
+
+  .send.off .slevel,
+  .send.off .sname {
+    opacity: 0.5;
+  }
+
+  .srow {
+    display: flex;
+    gap: 1px;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .sname {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .slevel {
+    position: relative;
+    height: 12px;
+    overflow: hidden;
+    border-radius: 2px;
+    background: var(--surface-0);
+    cursor: ew-resize;
+  }
+
+  .sfill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    background: var(--accent-dim);
+  }
+
+  .sdb {
+    position: relative;
+    display: block;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    line-height: 12px;
+    text-align: center;
+  }
+
+  .sbtn {
+    flex: none;
+    width: 13px;
+    height: 14px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--text-faint);
+    font: inherit;
+    font-size: 9px;
+    line-height: 1;
+  }
+
+  .sbtn.on {
+    color: var(--accent);
+  }
+
+  .lag {
+    margin: 0;
+    color: var(--text-faint);
+    font-size: 9px;
+    text-align: center;
   }
 
   .strip.selected {
@@ -257,7 +555,7 @@
   .strip.master {
     width: 96px;
     margin: 4px;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto 1fr auto auto;
   }
 
   .name {

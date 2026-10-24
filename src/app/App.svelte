@@ -624,6 +624,21 @@
       .then(() => editor.selectTrack(id));
   }
 
+  /** Multitrack > Add > Bus Track: a stereo bus at the end of the Mixer, shown there. */
+  async function addBus() {
+    const doc = session.current;
+    if (!doc) return;
+    const buses = doc.buses ?? [];
+    const taken = new Set(buses.map((b) => b.name));
+    let n = buses.length + 1;
+    while (taken.has(`Bus ${n}`)) n++;
+    const id = uuid();
+    await session.edit("Add Bus Track", { op: "add_bus", id, name: `Bus ${n}`, stereo: true, index: buses.length }, sessionHistory);
+    editor.selectTrack(id);
+    dock.show("mixer");
+    showNotice(`Added Bus ${n}. Pick it as a track's output or send in the Mixer.`);
+  }
+
   /** Gives every `id` field inside a copied object a new value. */
   function freshIds<T>(value: T): T {
     if (Array.isArray(value)) return value.map(freshIds) as T;
@@ -660,7 +675,7 @@
         reason: () => "Select a track first.",
       }),
       mk("multitrack.vis.show-all", "Show All Tracks", () => true, () => tracks().some((t) => t.hidden), "No tracks are hidden."),
-      mk("multitrack.vis.only-audio", "Show Only Audio Tracks", () => true, () => tracks().some((t) => t.hidden), "Every track is an audio track until bus tracks exist."),
+      mk("multitrack.vis.only-audio", "Show Only Audio Tracks", () => true, () => tracks().some((t) => t.hidden), "Bus tracks live in the Mixer, so the Editor only lists audio tracks."),
       mk("multitrack.vis.only-clips", "Show Only Tracks with Clips", (t) => t.clips.length > 0),
       mk("multitrack.vis.only-selection", "Show Only Tracks with Clips in Selection", (t) => {
         const s = timeSel();
@@ -3023,6 +3038,7 @@
         enabled: () => session.current !== null,
       }),
       actions.register({ id: "multitrack.add.stereo", run: () => addTrack(true) }),
+      actions.register({ id: "multitrack.add.bus", run: () => addBus(), enabled: () => session.current !== null }),
       actions.register({
         id: "multitrack.delete-track",
         run: async () => {
@@ -3271,6 +3287,7 @@
             if (r.chainsLeftOut) left.push(`${r.chainsLeftOut} Voice ${r.chainsLeftOut === 1 ? "Chain" : "Chains"}`);
             if (r.envelopesLeftOut) left.push(`envelopes on ${r.envelopesLeftOut} ${r.envelopesLeftOut === 1 ? "clip" : "clips"}`);
             if (r.clipsSimplified) left.push(`${r.clipsSimplified} looped or stretched ${r.clipsSimplified === 1 ? "clip" : "clips"} (written as plain clips)`);
+            if (r.routingLeftOut) left.push(`bus routing on ${r.routingLeftOut} ${r.routingLeftOut === 1 ? "track or bus" : "tracks and buses"} (every track goes straight to the mix)`);
             if (r.markersLeftOut) left.push(`${r.markersLeftOut} ${r.markersLeftOut === 1 ? "marker" : "markers"}`);
             const name = done.path.split(/[\\/]/).pop();
             showNotice(`Exported ${name}: ${r.tracks} tracks, ${r.clips} clips.${left.length ? ` Left out: ${left.join(", ")}.` : ""} Keep saving your work as .altaudio.`);

@@ -37,6 +37,8 @@ export interface EffectSlotDoc {
   /** Values by parameter key; missing keys take the effect's default. */
   params: Record<string, number>;
   preset: string | null;
+  /** Sidechain: the track or bus this effect's detector listens to. Missing listens to its own input. */
+  sidechain?: string | null;
 }
 
 /** A Voice Chain on a clip, a track or the master. */
@@ -52,7 +54,40 @@ export interface EffectChainDoc {
 export type EffectTarget =
   | { kind: "track"; id: string }
   | { kind: "clip"; id: string }
+  | { kind: "bus"; id: string }
   | { kind: "master" };
+
+/** Where a track or bus sends its sound after its fader. */
+export type OutputDoc = { type: "master" } | { type: "bus"; bus_id: string };
+
+/** An aux send: a copy of the sound sent on to a bus at its own level. */
+export interface SendDoc {
+  id: string;
+  bus_id: string;
+  level_db: number;
+  /** -100 left to 100 right. */
+  pan: number;
+  /** Before the fader: ignores the sender's fader and pan (still follows mute and solo). */
+  pre_fader: boolean;
+  enabled: boolean;
+}
+
+/** A bus track: sums what feeds it, runs its own chain and fader. */
+export interface BusDoc {
+  id: string;
+  name: string;
+  channels: "mono" | "stereo";
+  color: string | null;
+  height: number;
+  volume_db: number;
+  pan: number;
+  muted: boolean;
+  solo: boolean;
+  output: OutputDoc;
+  sends: SendDoc[];
+  effects: EffectChainDoc;
+  [key: string]: unknown;
+}
 
 export interface ClipDoc {
   id: string;
@@ -150,6 +185,8 @@ export interface TrackDoc {
   monitor_input?: boolean;
   input?: string | null;
   effects?: EffectChainDoc;
+  output?: OutputDoc;
+  sends?: SendDoc[];
   clips: ClipDoc[];
   [key: string]: unknown;
 }
@@ -171,6 +208,8 @@ export interface SessionDoc {
   bit_depth: number;
   media: MediaRefDoc[];
   tracks: TrackDoc[];
+  /** Bus tracks, in mixer order. */
+  buses?: BusDoc[];
   markers: MarkerDoc[];
   /** Playlist panel order: ids of range markers. */
   playlist?: string[];
@@ -286,6 +325,18 @@ export interface TrackChanges {
   role?: "standard" | "guest";
   /** The host profile applied; "" clears it. */
   host_profile_id?: string;
+  output?: OutputDoc;
+}
+
+export interface BusChanges {
+  name?: string;
+  muted?: boolean;
+  solo?: boolean;
+  color?: string | null;
+  volume_db?: number;
+  pan?: number;
+  height?: number;
+  output?: OutputDoc;
 }
 
 /** An edit the core understands. */
@@ -316,6 +367,12 @@ export type Op =
   | { op: "set_playlist"; ids: string[] }
   | { op: "set_effects"; target: EffectTarget; chain: EffectChainDoc }
   | { op: "set_master_volume"; volume_db: number }
+  | { op: "add_bus"; id: string; name: string; stereo: boolean; index: number }
+  | { op: "restore_bus"; bus: BusDoc; index: number }
+  | { op: "remove_bus"; id: string }
+  | { op: "move_bus"; id: string; to: number }
+  | { op: "set_bus"; id: string; changes: BusChanges }
+  | { op: "set_sends"; owner: string; sends: SendDoc[] }
   | { op: "batch"; ops: Op[] };
 
 export interface SessionBackend {
@@ -433,7 +490,8 @@ export class SessionStore {
 /** Track settings a fader-style drag changes many times in a row. */
 function mergeKey(op: Op): string | null {
   if (op.op === "set_master_volume") return "master";
-  if (op.op !== "set_track") return null;
+  if (op.op === "set_sends") return `sends:${op.owner}`;
+  if (op.op !== "set_track" && op.op !== "set_bus") return null;
   const keys = Object.keys(op.changes);
   if (keys.length !== 1 || !["volume_db", "pan", "height"].includes(keys[0]!))
     return null;

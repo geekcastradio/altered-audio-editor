@@ -150,7 +150,9 @@ pub enum Output {
     },
 }
 
-/// Scaffolding (P2): an aux send to a bus.
+/// An aux send: a copy of a track's or bus's sound sent on to a bus at
+/// its own level, for example to a shared reverb. A pre-fader send
+/// ignores the sender's fader and pan but still follows its mute and solo.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Send {
     pub id: Id,
@@ -228,7 +230,7 @@ pub struct Track {
     pub input: Option<String>,
 
     pub output: Output,
-    /// Scaffolding (P2).
+    /// Aux sends to buses.
     pub sends: Vec<Send>,
     pub effects: EffectChain,
     /// Clips on this track. Order does not matter; position does.
@@ -267,7 +269,9 @@ impl Track {
     }
 }
 
-/// A bus track. Tracks and other buses can output to it.
+/// A bus track. Tracks and other buses output or send to it; it runs
+/// its own Voice Chain and fader on the sum, then outputs to the master
+/// or another bus. A bus has no clips and no inputs of its own.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Bus {
     pub id: Id,
@@ -280,7 +284,7 @@ pub struct Bus {
     pub muted: bool,
     pub solo: bool,
     pub output: Output,
-    /// Scaffolding (P2).
+    /// Aux sends to other buses.
     pub sends: Vec<Send>,
     pub effects: EffectChain,
     pub envelopes: Vec<Envelope>,
@@ -583,6 +587,13 @@ pub struct EffectSlot {
     pub params: std::collections::BTreeMap<String, f64>,
     /// Name of the preset last loaded, if any.
     pub preset: Option<String>,
+    /// Sidechain: the track or bus whose sound drives this effect's
+    /// level detector (for ducking music under a voice, for example).
+    /// The key is that track's or bus's sound after its Voice Chain,
+    /// before its fader. Only effects with a detector use it, and only
+    /// on track and bus chains. None listens to the effect's own input.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidechain: Option<Id>,
 }
 
 /// A span of the timeline.

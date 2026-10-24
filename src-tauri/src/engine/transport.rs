@@ -6,16 +6,21 @@
 //!
 //! Threads:
 //! - the caller (a Tauri command) starts, stops and updates playback;
-//! - a render thread streams every track's clips a little ahead into one
-//!   lock-free ring buffer per track;
-//! - the device's audio thread mixes those rings with the current track
-//!   gains (atomics), writes the output, and records peak meters.
+//! - a render thread streams every track's clips a little ahead through
+//!   the mix graph (`graph.rs`) into lock-free ring buffers: one per
+//!   track in a plain session, one for the whole mix when routed;
+//! - the device's audio thread mixes those rings with the current gains
+//!   (atomics), applies the master fader, writes the output, and records
+//!   peak meters.
 //!
-//! Fader, pan, mute and solo changes take effect on the next audio
-//! buffer. Voice Chain edits swap into the render thread without a
-//! restart (heard once the audio already rendered ahead has played,
-//! about half a second), unless a chain's look-ahead changes. Edits
-//! that move audio in time restart playback in place.
+//! In a plain session fader, pan, mute and solo changes take effect on
+//! the next audio buffer. When routed (buses, sends, a master chain or a
+//! sidechain), track and bus levels apply on the render thread, so they
+//! are heard once the audio already rendered ahead has played (about
+//! half a second); the master fader stays instant. Voice Chain edits
+//! swap into the render thread without a restart (heard after the same
+//! half second), unless a chain's look-ahead changes. Edits that move
+//! audio in time or change the routing restart playback in place.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
@@ -29,17 +34,18 @@ use cpal::{FromSample, SampleFormat, SizedSample, StreamConfig};
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde::Serialize;
 
-use super::plan::{self, Plan};
+use super::graph::{self, Graph, GraphMeters, Levels, Mix};
+use super::plan::{self, Owner};
 use super::render::{ChainUpdate, Renderer};
 use crate::dsp::effects::ChainProcessor;
 use crate::session::model::{EffectChain, Id, Session};
 
-/// Chain meter readings kept for the status call, at most.
+/// Meter readings from the render thread kept for the status call, at most.
 const METER_QUEUE: usize = 512;
 
-/// Each track chain's peaks for a stretch of rendered audio, tagged
-/// with the rendered frame count at its end.
-type ChainPeaks = (u64, Vec<Option<[f32; 4]>>);
+/// The graph's peaks for a stretch of rendered audio, tagged with the
+/// rendered frame count at its end.
+type BlockPeaks = (u64, GraphMeters);
 
 /// Audio rendered ahead of the device, per track.
 const AHEAD_SECONDS: f64 = 0.5;
@@ -68,8 +74,11 @@ struct Shared {
     underruns: AtomicU64,
     /// Chains edited during playback, waiting for the render thread.
     chains: Mutex<Option<ChainUpdate>>,
-    /// Chain meters, oldest first, released as the device plays them.
-    chain_meters: Mutex<VecDeque<ChainPeaks>>,
+    /// Routed mixes: levels changed during playback, waiting for the
+    /// render thread.
+    levels: Mutex<Option<Levels>>,
+    /// Render-thread meters, oldest first, released as the device plays them.
+    chain_meters: Mutex<VecDeque<BlockPeaks>>,
 }
 
 impl Shared {
@@ -93,8 +102,20 @@ impl Shared {
             master_meter: [AtomicU32::new(0), AtomicU32::new(0)],
             underruns: AtomicU64::new(0),
             chains: Mutex::new(None),
+            levels: Mutex::new(None),
             chain_meters: Mutex::new(VecDeque::new()),
         }
+    }
+
+    /// Routed mixes: hands new levels to the render thread.
+    fn send_levels(&self, levels: Levels) {
+        if let Ok(mut g) = self.levels.lock() {
+            *g = Some(levels);
+        }
+    }
+
+    fn take_levels(&self) -> Option<Levels> {
+        self.levels.try_lock().ok().and_then(|mut g| g.take())
     }
 
     /// Queues edited chains for the render thread, merged with any it
@@ -112,6 +133,13 @@ impl Shared {
             pending.clips.retain(|(i, _)| *i != id);
             pending.clips.push((id, c));
         }
+        for (id, c) in update.buses {
+            pending.buses.retain(|(i, _)| *i != id);
+            pending.buses.push((id, c));
+        }
+        if update.master.is_some() {
+            pending.master = update.master;
+        }
     }
 
     /// The render thread's side: swaps in waiting chains, if any.
@@ -119,37 +147,27 @@ impl Shared {
         self.chains.try_lock().ok().and_then(|mut g| g.take())
     }
 
-    fn push_meters(&self, renderer: &mut Renderer) {
-        let peaks = renderer.take_chain_peaks();
-        if peaks.iter().all(Option::is_none) {
-            return;
-        }
+    fn push_meters(&self, mix: &mut Mix) {
+        let peaks = mix.graph().take_meters();
         if let Ok(mut q) = self.chain_meters.lock() {
-            q.push_back((renderer.rendered(), peaks));
+            q.push_back((mix.rendered(), peaks));
             while q.len() > METER_QUEUE {
                 q.pop_front();
             }
         }
     }
 
-    /// Chain peaks for the audio the device has played since the last
-    /// call, per track.
-    fn played_chain_meters(&self, tracks: usize) -> Vec<Option<[f32; 4]>> {
+    /// Render-thread peaks for the audio the device has played since the
+    /// last call.
+    fn played_meters(&self) -> GraphMeters {
         let played = self.played.load(Ordering::Relaxed);
-        let mut out = vec![None; tracks];
+        let mut out = GraphMeters::default();
         let Ok(mut q) = self.chain_meters.lock() else {
             return out;
         };
         while q.front().is_some_and(|(at, _)| *at <= played) {
             let (_, peaks) = q.pop_front().expect("checked");
-            for (o, p) in out.iter_mut().zip(peaks) {
-                if let Some(p) = p {
-                    let o = o.get_or_insert([0.0; 4]);
-                    for (a, b) in o.iter_mut().zip(p) {
-                        *a = a.max(b);
-                    }
-                }
-            }
+            out.merge(&peaks);
         }
         out
     }
@@ -216,9 +234,12 @@ struct Running {
     out_rate: u32,
     layout: plan::Layout,
     track_ids: Vec<Id>,
+    bus_ids: Vec<Id>,
+    /// The whole mix runs on the render thread.
+    routed: bool,
     /// Fingerprints of the chains playing, and the chains themselves.
     chains: plan::Chains,
-    chain_docs: HashMap<Id, EffectChain>,
+    chain_docs: HashMap<(Id, Owner), EffectChain>,
 }
 
 impl Running {
@@ -254,6 +275,12 @@ pub struct TransportStatus {
     /// in, left out, right out) for the audio just heard; null for a
     /// track whose chain does nothing.
     pub chain_meters: Vec<Option<[f32; 4]>>,
+    /// Buses, in session order, with their levels after the fader and
+    /// their chains' peaks. Empty unless the mix is routed.
+    pub bus_ids: Vec<Id>,
+    pub bus_meters: Vec<[f32; 2]>,
+    pub bus_chain_meters: Vec<Option<[f32; 4]>>,
+    pub master_chain_meter: Option<[f32; 4]>,
 }
 
 #[derive(Default)]
@@ -295,6 +322,10 @@ impl Transport {
             master: [0.0, 0.0],
             underruns: 0,
             chain_meters: Vec::new(),
+            bus_ids: Vec::new(),
+            bus_meters: Vec::new(),
+            bus_chain_meters: Vec::new(),
+            master_chain_meter: None,
         };
         let Ok(cur) = self.current.lock() else {
             return idle;
@@ -303,22 +334,36 @@ impl Transport {
             return idle;
         };
         let take = |a: &AtomicU32| bits_f32(a.swap(0, Ordering::Relaxed));
+        let mut g = r.shared.played_meters();
+        let n = r.track_ids.len();
+        let meters = if r.routed {
+            g.tracks.resize(n, [0.0; 2]);
+            std::mem::take(&mut g.tracks)
+        } else {
+            r.shared
+                .meters
+                .iter()
+                .map(|m| [take(&m[0]), take(&m[1])])
+                .collect()
+        };
+        g.track_chains.resize(n, None);
+        g.buses.resize(r.bus_ids.len(), [0.0; 2]);
+        g.bus_chains.resize(r.bus_ids.len(), None);
         TransportStatus {
             playing: true,
             position: r.position(),
             track_ids: r.track_ids.clone(),
-            meters: r
-                .shared
-                .meters
-                .iter()
-                .map(|m| [take(&m[0]), take(&m[1])])
-                .collect(),
+            meters,
             master: [
                 take(&r.shared.master_meter[0]),
                 take(&r.shared.master_meter[1]),
             ],
             underruns: r.shared.underruns.load(Ordering::Relaxed),
-            chain_meters: r.shared.played_chain_meters(r.track_ids.len()),
+            chain_meters: g.track_chains,
+            bus_ids: r.bus_ids.clone(),
+            bus_meters: g.buses,
+            bus_chain_meters: g.bus_chains,
+            master_chain_meter: g.master_chain,
         }
     }
 
@@ -331,15 +376,29 @@ impl Transport {
             return Ok(());
         };
         if r.layout == plan::layout(session) && r.session_rate == session.sample_rate {
-            r.shared
-                .set_gains(&plan::gains(session), plan::master_gain(session));
+            let master = plan::master_gain(session);
+            if r.routed {
+                r.shared.set_gains(&[[1.0, 1.0]], master);
+                r.shared.send_levels(graph::levels(session));
+            } else {
+                r.shared.set_gains(&plan::gains(session), master);
+            }
             let now = plan::chains(session);
             if now == r.chains {
                 return Ok(());
             }
             if let Some(update) = chain_update(r, session, &now) {
-                for (id, c) in update.tracks.iter().chain(&update.clips) {
-                    r.chain_docs.insert(*id, c.clone());
+                for (id, c) in update.tracks.iter() {
+                    r.chain_docs.insert((*id, Owner::Track), c.clone());
+                }
+                for (id, c) in update.clips.iter() {
+                    r.chain_docs.insert((*id, Owner::Clip), c.clone());
+                }
+                for (id, c) in update.buses.iter() {
+                    r.chain_docs.insert((*id, Owner::Bus), c.clone());
+                }
+                if let Some(c) = &update.master {
+                    r.chain_docs.insert((Id::nil(), Owner::Master), c.clone());
                 }
                 r.shared.send_chains(update);
                 r.chains = now;
@@ -364,33 +423,40 @@ fn chain_update(r: &Running, session: &Session, now: &plan::Chains) -> Option<Ch
     let latency = |c: &EffectChain| ChainProcessor::new(c, r.out_rate).map_or(0, |p| p.latency());
     let empty = EffectChain::default();
     let mut update = ChainUpdate::default();
-    for &(id, track, hash) in now {
-        if r.chains.iter().any(|&(i, _, h)| i == id && h == hash) {
+    for &(id, owner, hash) in now {
+        if r.chains
+            .iter()
+            .any(|&(i, o, h)| i == id && o == owner && h == hash)
+        {
             continue;
         }
-        let new = plan::chain_of(session, id, track)?;
-        let old = r.chain_docs.get(&id).unwrap_or(&empty);
+        let new = plan::chain_of(session, id, owner)?;
+        let old = r.chain_docs.get(&(id, owner)).unwrap_or(&empty);
         if latency(old) != latency(new) {
             return None;
         }
-        let list = if track {
-            &mut update.tracks
-        } else {
-            &mut update.clips
-        };
-        list.push((id, new.clone()));
+        match owner {
+            Owner::Track => update.tracks.push((id, new.clone())),
+            Owner::Clip => update.clips.push((id, new.clone())),
+            Owner::Bus => update.buses.push((id, new.clone())),
+            Owner::Master => update.master = Some(new.clone()),
+        }
     }
     Some(update)
 }
 
-fn chain_docs(session: &Session) -> HashMap<Id, EffectChain> {
+fn chain_docs(session: &Session) -> HashMap<(Id, Owner), EffectChain> {
     let mut m = HashMap::new();
     for t in &session.tracks {
-        m.insert(t.id, t.effects.clone());
+        m.insert((t.id, Owner::Track), t.effects.clone());
         for c in &t.clips {
-            m.insert(c.id, c.effects.clone());
+            m.insert((c.id, Owner::Clip), c.effects.clone());
         }
     }
+    for b in &session.buses {
+        m.insert((b.id, Owner::Bus), b.effects.clone());
+    }
+    m.insert((Id::nil(), Owner::Master), session.master.effects.clone());
     m
 }
 
@@ -403,15 +469,25 @@ impl Drop for Transport {
 fn start(session: Session, from: u64, jump: Option<Jump>) -> Result<Running, String> {
     let from = jump.map_or(from, |j| j.first(from));
     let jump = jump.filter(|j| j.points(from).is_some());
-    let gains = plan::gains(&session);
+    let routed = crate::session::routing::is_routed(&session);
     let master = plan::master_gain(&session);
     let layout = plan::layout(&session);
     let chains = plan::chains(&session);
     let docs = chain_docs(&session);
     let track_ids: Vec<Id> = session.tracks.iter().map(|t| t.id).collect();
+    let bus_ids: Vec<Id> = if routed {
+        session.buses.iter().map(|b| b.id).collect()
+    } else {
+        Vec::new()
+    };
     let session_rate = session.sample_rate;
-    let tracks = track_ids.len().max(1);
-    let shared = Arc::new(Shared::new(tracks, &gains, master));
+    // Routed: one ring for the whole mix, at unity before the master fader.
+    let (rings, gains) = if routed {
+        (1, vec![[1.0, 1.0]])
+    } else {
+        (track_ids.len().max(1), plan::gains(&session))
+    };
+    let shared = Arc::new(Shared::new(rings, &gains, master));
 
     let (ready_tx, ready_rx) = mpsc::channel::<Result<u32, String>>();
     let thread_shared = shared.clone();
@@ -439,13 +515,15 @@ fn start(session: Session, from: u64, jump: Option<Jump>) -> Result<Running, Str
         out_rate,
         layout,
         track_ids,
+        bus_ids,
+        routed,
         chains,
         chain_docs: docs,
     })
 }
 
 fn run(
-    session: Session,
+    mut session: Session,
     from: u64,
     jump: Option<Jump>,
     shared: Arc<Shared>,
@@ -467,44 +545,44 @@ fn run(
     let out_rate = config.sample_rate;
     let channels = usize::from(config.channels);
 
-    let mut p: Plan = plan::build(&session, out_rate);
-    if p.tracks.is_empty() {
+    if session.tracks.is_empty() {
         // Keep the clock running with one silent track.
-        p.tracks.push(plan::TrackPlan {
-            id: crate::session::model::new_id(),
-            clips: Vec::new(),
-            effects: Default::default(),
-        });
+        session.tracks.push(crate::session::model::Track::new(
+            "",
+            crate::session::model::ChannelLayout::Stereo,
+        ));
     }
-    let tracks = p.tracks.len();
+    let routed = crate::session::routing::is_routed(&session);
     let start_frame = plan::to_out(from, session.sample_rate, out_rate);
-    let mut renderer = Renderer::new(p, start_frame);
+    let mut renderer = Renderer::new(plan::build(&session, out_rate), start_frame);
     if let Some((at, to)) = jump.and_then(|j| j.points(from)) {
         let r = session.sample_rate;
         renderer = renderer.with_jump(plan::to_out(at, r, out_rate), plan::to_out(to, r, out_rate));
     }
+    let mut mix = Mix::new(renderer, Graph::new(&session, out_rate, routed));
+    let rings = mix.outputs();
 
     let cap = ((f64::from(out_rate) * AHEAD_SECONDS) as usize).max(BLOCK * 2) * 2;
-    let mut producers = Vec::with_capacity(tracks);
-    let mut consumers = Vec::with_capacity(tracks);
-    for _ in 0..tracks {
+    let mut producers = Vec::with_capacity(rings);
+    let mut consumers = Vec::with_capacity(rings);
+    for _ in 0..rings {
         let (p, c) = RingBuffer::<f32>::new(cap);
         producers.push(p);
         consumers.push(c);
     }
 
     // Fill ahead before the device starts, so playback starts clean.
-    let mut blocks: Vec<Vec<f32>> = vec![Vec::with_capacity(BLOCK * 2); tracks];
+    let mut blocks: Vec<Vec<f32>> = vec![Vec::with_capacity(BLOCK * 2); rings];
     while producers.iter().all(|p| p.slots() >= BLOCK * 2) {
-        renderer.render(BLOCK, &mut blocks);
+        mix.render(BLOCK, &mut blocks);
         push_all(&mut producers, &blocks);
-        shared.push_meters(&mut renderer);
+        shared.push_meters(&mut mix);
     }
 
     let render_shared = shared.clone();
     let render = thread::Builder::new()
         .name("transport-render".into())
-        .spawn(move || render_loop(renderer, producers, blocks, render_shared));
+        .spawn(move || render_loop(mix, producers, blocks, render_shared));
     let render = match render {
         Ok(r) => r,
         Err(e) => {
@@ -546,7 +624,7 @@ fn push_all(producers: &mut [Producer<f32>], blocks: &[Vec<f32>]) {
 }
 
 fn render_loop(
-    mut renderer: Renderer,
+    mut mix: Mix,
     mut producers: Vec<Producer<f32>>,
     mut blocks: Vec<Vec<f32>>,
     shared: Arc<Shared>,
@@ -554,12 +632,15 @@ fn render_loop(
     while !shared.stop.load(Ordering::SeqCst) {
         if let Some(update) = shared.take_chains() {
             // Checked by the caller: every chain here keeps its look-ahead.
-            renderer.set_chains(&update);
+            mix.set_chains(&update);
+        }
+        if let Some(levels) = shared.take_levels() {
+            mix.graph().set_levels(levels);
         }
         if producers.iter().all(|p| p.slots() >= BLOCK * 2) {
-            renderer.render(BLOCK, &mut blocks);
+            mix.render(BLOCK, &mut blocks);
             push_all(&mut producers, &blocks);
-            shared.push_meters(&mut renderer);
+            shared.push_meters(&mut mix);
         } else {
             thread::sleep(Duration::from_millis(5));
         }
@@ -768,27 +849,31 @@ mod tests {
     }
 
     #[test]
-    fn chain_meters_wait_for_the_device_to_play_them() {
+    fn render_meters_wait_for_the_device_to_play_them() {
         let shared = Shared::new(2, &[[1.0, 1.0], [1.0, 1.0]], 1.0);
+        let reading = |c: [f32; 4], bus: f32| GraphMeters {
+            track_chains: vec![Some(c), None],
+            buses: vec![[bus, bus]],
+            ..GraphMeters::default()
+        };
         shared.chain_meters.lock().unwrap().extend([
-            (100, vec![Some([0.5, 0.4, 0.2, 0.1]), None]),
-            (200, vec![Some([0.9, 0.9, 0.3, 0.3]), None]),
+            (100, reading([0.5, 0.4, 0.2, 0.1], 0.3)),
+            (200, reading([0.9, 0.9, 0.3, 0.3], 0.1)),
         ]);
         assert_eq!(
-            shared.played_chain_meters(2),
-            vec![None, None],
+            shared.played_meters(),
+            GraphMeters::default(),
             "nothing played yet"
         );
         shared.played.store(150, Ordering::Relaxed);
-        assert_eq!(
-            shared.played_chain_meters(2),
-            vec![Some([0.5, 0.4, 0.2, 0.1]), None]
-        );
+        assert_eq!(shared.played_meters(), reading([0.5, 0.4, 0.2, 0.1], 0.3));
         shared.played.store(400, Ordering::Relaxed);
-        assert_eq!(shared.played_chain_meters(2)[0], Some([0.9, 0.9, 0.3, 0.3]));
+        let m = shared.played_meters();
+        assert_eq!(m.track_chains[0], Some([0.9, 0.9, 0.3, 0.3]));
+        assert_eq!(m.buses[0], [0.1, 0.1]);
         assert_eq!(
-            shared.played_chain_meters(2)[0],
-            None,
+            shared.played_meters(),
+            GraphMeters::default(),
             "each reading is used once"
         );
     }
@@ -806,16 +891,24 @@ mod tests {
             ..Default::default()
         };
         shared.send_chains(ChainUpdate {
-            tracks: vec![(id, a)],
-            clips: vec![],
+            tracks: vec![(id, a.clone())],
+            master: Some(a),
+            ..ChainUpdate::default()
         });
         shared.send_chains(ChainUpdate {
             tracks: vec![(id, b.clone())],
-            clips: vec![],
+            buses: vec![(id, b.clone())],
+            ..ChainUpdate::default()
         });
         let got = shared.take_chains().unwrap();
         assert_eq!(got.tracks.len(), 1);
         assert_eq!(got.tracks[0].1.input_gain_db, 2.0);
+        assert_eq!(got.buses.len(), 1);
+        assert_eq!(
+            got.master.unwrap().input_gain_db,
+            1.0,
+            "kept until replaced"
+        );
         assert!(shared.take_chains().is_none());
     }
 

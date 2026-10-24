@@ -204,7 +204,7 @@ export const MENUS: readonly Menu[] = [
         item("multitrack.add.stereo", "Stereo Track"),
         item("multitrack.add-tracks", "Add Tracks..."),
         item("multitrack.add.guest", "Guest Track", { pending: P5 }),
-        item("multitrack.add.bus", "Bus Track", { pending: P5 }),
+        item("multitrack.add.bus", "Bus Track"),
       ]),
       item("multitrack.duplicate-track", "Duplicate Track"),
       item("multitrack.delete-track", "Delete Track"),
@@ -215,7 +215,7 @@ export const MENUS: readonly Menu[] = [
         sep,
         item("multitrack.vis.only-audio", "Show Only Audio Tracks"),
         item("multitrack.vis.only-bus", "Show Only Bus Tracks", {
-          pending: P5,
+          pending: "Bus tracks show in the Mixer; lanes for them in the Editor are not built yet.",
         }),
         item("multitrack.vis.only-clips", "Show Only Tracks with Clips"),
         item(

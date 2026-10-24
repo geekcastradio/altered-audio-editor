@@ -11,6 +11,7 @@ pub mod keymap;
 pub mod model;
 pub mod ops;
 pub mod preferences;
+pub mod routing;
 pub mod validate;
 pub mod workspace;
 

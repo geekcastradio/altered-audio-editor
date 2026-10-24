@@ -226,7 +226,7 @@ Spitballed by the project lead: off by default, never required. Local first (a l
 
 ## From the 0.1.6 tester reports (not built yet)
 
-- Master track in the multitrack view, and buses (waiting on the master chain and fader decision).
+- Master track in the multitrack view, and bus lanes in the Editor. Buses, sends, outputs, the master chain and sidechain keys are built (2026-10-24); buses live in the Mixer for now.
 - A per-track Mono button (hear and meter a track summed to mono).
 - Crossfade options for overlapping clips (how the fade weighs each clip) and more fade shapes with adjustable curve in the clip's fade handles.
 - Clip Properties dialog.
@@ -346,7 +346,7 @@ Checked against the code. "Built" means it is in the repo and tested in the sand
 - **VST3 hosting.** The SDK is MIT licensed, so hosting is clean. Plugins run in a separate helper process so a crashing plugin shows an error on its slot and the session carries on. Plugin windows open beside the editor rather than inside it. The `nih-plug` crate is for writing plugins, not hosting them. CLAP is a later option. VST2 is excluded on purpose: Steinberg no longer licenses the SDK, so a public project cannot ship it. This is the largest single piece of work.
 - **MIDI.** First step is small and useful: controller mapping (transport, faders, pan, trigger pads that fire clips) with a MIDI-learn dialog. Piano roll and instrument hosting are a second product and wait on plugin hosting. Control surface protocols (the common mixing-console ones) are fiddly and cannot be tested without the hardware, so they come after generic MIDI-learn.
 - **Video reference track and ADR.** Import video as a reference track, resizable preview, frame-accurate stepping, pre-roll beeps and visual cue, loop regions, audio extraction on import, and writing the finished mix back into the original container without re-encoding the picture. **Catch:** a web view cannot step exact frames, so we need our own decoder path (an LGPL FFmpeg build, dynamically linked, credited in `ATTRIBUTION.md`). Writing audio back is a stream copy and is the easy half.
-- **Auto-ducking.** One setting: music tracks lower while chosen speech tracks are active, with attack, release and depth. A first version can use the speech detection QuickPass already has and write volume envelopes (visible, editable, undoable). The live sidechain version follows with the master chain work.
+- **Auto-ducking.** One setting: music tracks lower while chosen speech tracks are active, with attack, release and depth. A first version can use the speech detection QuickPass already has and write volume envelopes (visible, editable, undoable). The live sidechain is built (2026-10-24: Dynamics or Breath Gate on the music track, Listen to the voice track); the one-setting dialog is still to do.
 - **Multi-mic alignment and bleed.** Estimate each microphone's delay against the others and shift it (Phase Align already shifts by a fixed amount). Bleed removal quality varies; ship alignment first, gate-based bleed reduction second.
 
 ## Menus, settings and behavior build-out (2026-10-20)
@@ -432,7 +432,7 @@ Every effect family with the controls testers expect, then multitrack, clips, au
 - Track visibility: a Tracks panel that lists tracks, hides and shows them, and saves visibility presets. Not built.
 - Wheel over the track headers zooms the track heights; Shift+wheel resizes widths. We currently scroll there. Approved to change (matches the tester ask).
 - Shift-click (with Ctrl) on an input, output, mute, solo, record or monitor button applies it to all tracks. Not built.
-- Routing: buses, sends with pre- or post-fader switch, the Mix track, track EQ on every track, effects pre- or post-fader, outputs to hardware ports. Not built; waits on the master and bus work (decided above). Bus tracks cannot take inputs directly and output only to hardware or other buses.
+- Routing: buses, sends with pre- or post-fader switch, the Mix track, track EQ on every track, effects pre- or post-fader, outputs to hardware ports. Buses, sends (pre or post) and outputs to the master or a bus are built (2026-10-24); outputs to hardware ports and effects after the fader are not. Bus tracks cannot take inputs directly and output only to hardware or other buses.
 - Time display options for sessions: start offset and display format per session. Partly built (time formats).
 
 ### Clips

@@ -417,6 +417,11 @@ export interface TransportStatus {
   underruns: number;
   /** Per track, its Voice Chain's peaks for the audio just heard: left in, right in, left out, right out. Null when the track's chain does nothing. */
   chainMeters?: ([number, number, number, number] | null)[];
+  /** Buses, with their levels after the fader and their chains' peaks. Empty unless the mix is routed. */
+  busIds?: string[];
+  busMeters?: [number, number][];
+  busChainMeters?: ([number, number, number, number] | null)[];
+  masterChainMeter?: [number, number, number, number] | null;
 }
 
 /** How playback treats the time selection. */
@@ -872,6 +877,8 @@ export interface EffectInfo {
   category: string;
   description: string;
   params: EffectParamInfo[];
+  /** Has a level detector that can listen to another track or bus (sidechain). */
+  sidechain?: boolean;
 }
 
 /** Every built-in effect, with its controls. */
@@ -927,6 +934,8 @@ export interface SesxExportReport {
   envelopesLeftOut: number;
   clipsSimplified: number;
   markersLeftOut: number;
+  /** Buses, and tracks routed to a bus, with sends or with a sidechain. */
+  routingLeftOut?: number;
 }
 
 /** File > Export > Multitrack Session (.sesx). Null when cancelled. */

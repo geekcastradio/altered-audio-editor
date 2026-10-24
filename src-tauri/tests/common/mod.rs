@@ -40,6 +40,7 @@ pub fn effect_chain() -> EffectChain {
             enabled: false,
             params,
             preset: Some("Voice leveler".into()),
+            sidechain: None,
         }],
     }
 }

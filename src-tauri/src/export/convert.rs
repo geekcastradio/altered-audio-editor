@@ -362,6 +362,7 @@ mod tests {
                     .map(|(k, v)| (k.to_string(), v))
                     .collect(),
                 preset: None,
+                sidechain: None,
             });
         }
         let fmt = OutputFormat {

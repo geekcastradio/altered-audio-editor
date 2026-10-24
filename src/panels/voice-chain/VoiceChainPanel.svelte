@@ -19,7 +19,8 @@
   import { editor, type EditorState } from "../../stores/editor";
   import type { CommandRunner } from "../../stores/media-pool";
   import type { Preferences } from "../../stores/preferences";
-  import { meterFraction, type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
+  import { MASTER_CHAIN, meterFraction, type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
+  import { keyChoices, MASTER_ID } from "../mixer/routing";
   import type { EffectChainDoc, EffectSlotDoc, EffectTarget, SessionDoc, SessionStore } from "../../stores/session";
   import {
     addsOne,
@@ -131,11 +132,20 @@
   const clip = $derived(oneClip ? clipTrack?.clips.find((c) => c.id === oneClip) : undefined);
   const inWave = $derived(ed.mode === "waveform");
   const waveTrack = $derived(waveDoc?.tracks[0]);
+  // Track Effects also shows a bus's or the master's chain, picked here or in the Mixer.
+  const ownerId = $derived(pickedTrack ?? ed.selectedTrack);
+  const onTrackTab = $derived(!inWave && tab === "track");
+  const bus = $derived(onTrackTab ? doc?.buses?.find((b) => b.id === ownerId) : undefined);
+  const onMaster = $derived(onTrackTab && !!doc && ownerId === MASTER_ID);
   const target = $derived.by((): EffectTarget | null => {
     if (inWave) return waveTrack ? { kind: "track", id: waveTrack.id } : null;
     if (tab === "clip") return clip ? { kind: "clip", id: clip.id } : null;
+    if (onMaster) return { kind: "master" };
+    if (bus) return { kind: "bus", id: bus.id };
     return track ? { kind: "track", id: track.id } : null;
   });
+  /** Whose chain the sidechain choices are for: a track, bus or the master. */
+  const keyOwner = $derived(onMaster ? MASTER_ID : (bus?.id ?? track?.id ?? null));
   const why = $derived(
     inWave
       ? "Open a file in the Waveform editor to try a Voice Chain on it."
@@ -145,8 +155,12 @@
           : "Select a clip to give it effects."
         : "Add a track to the session to give it effects.",
   );
-  const label = $derived(inWave ? "Preview on the open file" : tab === "clip" ? (clip ? `Clip: ${clip.name}` : "") : track ? `Track: ${track.name}` : "");
-  const chain = $derived(chainOf(inWave ? waveTrack?.effects : tab === "clip" ? clip?.effects : track?.effects));
+  const label = $derived(
+    inWave ? "Preview on the open file" : tab === "clip" ? (clip ? `Clip: ${clip.name}` : "") : onMaster ? "Master" : bus ? `Bus: ${bus.name}` : track ? `Track: ${track.name}` : "",
+  );
+  const chain = $derived(
+    chainOf(inWave ? waveTrack?.effects : tab === "clip" ? clip?.effects : onMaster ? doc?.master?.effects : bus ? bus.effects : track?.effects),
+  );
 
   let selectedSlot = $state<string | null>(null);
   const slot = $derived(chain.slots.find((s) => s.id === selectedSlot) ?? chain.slots[0] ?? null);
@@ -373,7 +387,9 @@
     if (chain[key] !== value) commit(label, { ...chain, [key]: value });
   }
 
-  // Noise Print Reducer: learn the print from the time selection.
+  // Noise Print Reducer: learn the print from the time selection. A bus
+  // or the master has no audio of its own to learn from yet.
+  const canLearn = $derived(inWave || target?.kind === "track" || target?.kind === "clip");
   const LEARNS = new Set(["altaudio.noise_print", "altaudio.sound_eraser"]);
   const learnSel = $derived.by(() => {
     const v = inWave ? waveDoc?.view.selection : doc?.view.selection;
@@ -381,9 +397,9 @@
   });
   let learning = $state(false);
   async function learnPrint(s: EffectSlotDoc) {
-    if (!learnSel || !target || learning) return;
+    if (!learnSel || !target || learning || !canLearn) return;
     const source: LearnSource =
-      target.kind === "master" || inWave
+      target.kind === "master" || target.kind === "bus" || inWave
         ? { kind: "wave", start: learnSel.start, end: learnSel.end }
         : { kind: target.kind, id: target.id, start: learnSel.start, end: learnSel.end };
     learning = true;
@@ -409,7 +425,8 @@
     }),
   );
   const meterTrack = $derived(inWave ? waveTrack : tab === "track" ? track : clipTrack);
-  const chainMeter = $derived(meterTrack ? ts?.chains[meterTrack.id] : undefined);
+  const meterKey = $derived(onMaster ? MASTER_CHAIN : bus ? bus.id : meterTrack?.id);
+  const chainMeter = $derived(meterKey ? ts?.chains[meterKey] : undefined);
   const louder = (a?: MeterLevel, b?: MeterLevel) => (a && b ? (a.peak >= b.peak ? a : b) : (a ?? b));
   const dbText = (m: MeterLevel | undefined) => (m && m.peak > 0.00001 ? (20 * Math.log10(m.peak)).toFixed(1) : "-inf");
 
@@ -491,11 +508,20 @@
           </select>
         {/if}
       </div>
-      {#if !inWave && tab === "track" && doc && doc.tracks.length > 1}
+      {#if onTrackTab && doc && (doc.tracks.length > 1 || (doc.buses?.length ?? 0) > 0 || onMaster)}
+        {@const count = (c: EffectChainDoc | undefined) => ((c?.slots.length ?? 0) > 0 ? ` (${c!.slots.length})` : "")}
         <label class="line target">
-          <span>Track</span>
-          <select class="grow" aria-label="Track" value={track?.id ?? ""} onchange={(e) => (pickedTrack = e.currentTarget.value)}>
-            {#each doc.tracks as t (t.id)}<option value={t.id}>{t.name}{(t.effects?.slots.length ?? 0) > 0 ? ` (${t.effects!.slots.length})` : ""}</option>{/each}
+          <span>{onMaster ? "Master" : bus ? "Bus" : "Track"}</span>
+          <select class="grow" aria-label="Track, bus or master" value={onMaster ? MASTER_ID : (bus?.id ?? track?.id ?? "")} onchange={(e) => (pickedTrack = e.currentTarget.value)}>
+            <optgroup label="Tracks">
+              {#each doc.tracks as t (t.id)}<option value={t.id}>{t.name}{count(t.effects)}</option>{/each}
+            </optgroup>
+            {#if doc.buses?.length}
+              <optgroup label="Buses">
+                {#each doc.buses as b (b.id)}<option value={b.id}>{b.name}{count(b.effects)}</option>{/each}
+              </optgroup>
+            {/if}
+            <option value={MASTER_ID}>Master{count(doc.master?.effects)}</option>
           </select>
         </label>
       {:else}
@@ -597,11 +623,23 @@
                 {#if GRAPHED.has(winSlot.effect)}
           <ResponseGraph slot={winSlot} info={winInfo} onPoint={(pf, f, pg, g, done) => dragPoint(winSlot, pf, f, pg, g, done)} />
         {/if}
+        {#if winInfo.sidechain && onTrackTab && doc && keyOwner}
+          <label class="param" title="Sidechain: let another track's or bus's sound drive this effect, for example to duck music under a voice. It listens before that track's fader.">
+            <span class="pname">Listen to</span>
+            <select
+              value={winSlot.sidechain ?? ""}
+              onchange={(e) => commit("Set Sidechain", setSlot(chain, winSlot.id, { sidechain: e.currentTarget.value || null }))}
+            >
+              <option value="">Its own input</option>
+              {#each keyChoices(doc, keyOwner) as k (k.id)}<option value={k.id}>{k.bus ? "Bus: " : ""}{k.name}</option>{/each}
+            </select>
+          </label>
+        {/if}
         {#if LEARNS.has(winSlot.effect)}
           {@const len = winSlot.params.printlen ?? 0}
           {@const what = winSlot.effect === "altaudio.sound_eraser" ? "sound" : "noise"}
           <div class="learn">
-            <button type="button" disabled={!learnSel || learning} title={learnSel ? `Learn the ${what} in the time selection` : `Select a stretch with only the ${what} in it first`} onclick={() => void learnPrint(winSlot)}>
+            <button type="button" disabled={!learnSel || learning || !canLearn} title={!canLearn ? `Learn on a track or clip, or in the Waveform editor; a bus or the master has no ${what} of its own to learn from` : learnSel ? `Learn the ${what} in the time selection` : `Select a stretch with only the ${what} in it first`} onclick={() => void learnPrint(winSlot)}>
               {learning ? "Learning…" : "Learn from Selection"}
             </button>
             <span class="hint">
@@ -699,7 +737,8 @@
           </div>
         {/each}
         <p class="hint">
-          {#if !meterTrack}Meters show a track's chain while playing.
+          {#if onMaster || bus}{#if !ts?.playing}Meters move while playing.{:else if !chainMeter}This chain does nothing yet, or nothing feeds the {onMaster ? "master" : "bus"}.{:else}{onMaster ? "Master" : "Bus"} chain level going in and coming out.{/if}
+          {:else if !meterTrack}Meters show a track's chain while playing.
           {:else if tab === "clip" && !inWave}Meters show the track chain of {meterTrack.name}. Clip chains are not metered yet.
           {:else if !ts?.playing}Meters move while playing.
           {:else if !chainMeter}This track's chain does nothing yet, so there is nothing to meter.

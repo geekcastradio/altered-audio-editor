@@ -35,6 +35,9 @@ pub struct SesxExportReport {
     /// Looped or time-stretched clips, written as plain clips.
     pub clips_simplified: usize,
     pub markers_left_out: usize,
+    /// Buses, plus tracks routed to a bus, with sends, or with a
+    /// sidechain. Every track is written straight to the mix.
+    pub routing_left_out: usize,
 }
 
 fn esc(s: &str) -> String {
@@ -263,6 +266,18 @@ pub fn to_sesx(session: &Session, base: &Path) -> (String, SesxExportReport) {
     if session.master.effects.slots.iter().any(|s| s.enabled) {
         report.chains_left_out += 1;
     }
+    report.routing_left_out = session.buses.len()
+        + session
+            .tracks
+            .iter()
+            .filter(|t| {
+                t.output != crate::session::model::Output::Master
+                    || !t.sends.is_empty()
+                    || crate::session::routing::key_sources(&t.effects)
+                        .next()
+                        .is_some()
+            })
+            .count();
     let master_channel = match session.master.channels {
         crate::session::model::ChannelLayout::Mono => "mono",
         _ => "stereo",
@@ -444,6 +459,7 @@ mod tests {
                 enabled: true,
                 params: Default::default(),
                 preset: None,
+                sidechain: None,
             });
         s.markers.push(crate::session::model::Marker {
             id: new_id(),

@@ -5,12 +5,14 @@
 //! Turns a session into what the playback engine needs: clip positions
 //! in output-device frames, and per-track gains.
 //!
-//! Gains change often (faders, mute, solo) and are applied by the audio
-//! thread from atomics, so they never need a rebuild. Anything that
-//! moves audio in time (clips, tracks, order) changes the `layout` and
+//! Gains change often (faders, mute, solo, sends) and never need a
+//! rebuild: the audio thread applies them from atomics in a plain
+//! session, the mix graph ramps them in when routed. Anything that moves
+//! audio in time (clips, tracks, order) or changes who feeds whom
+//! (outputs, sends, buses, sidechains) changes the `layout`, and
 //! playback restarts from where it was. Voice Chain changes are listed
-//! apart (`chains`): they swap into the running renderer, with no
-//! restart, unless the chain's look-ahead changes.
+//! apart (`chains`): they swap into the running renderer and graph,
+//! with no restart, unless the chain's look-ahead changes.
 
 use std::path::PathBuf;
 
@@ -265,8 +267,6 @@ pub fn fade_curve(shape: FadeShape, t: f32) -> f32 {
 pub struct TrackPlan {
     pub id: Id,
     pub clips: Vec<ClipPlan>,
-    /// Track Voice Chain, run on the track before its fader.
-    pub effects: EffectChain,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -289,7 +289,6 @@ pub fn build(session: &Session, out_rate: u32) -> Plan {
         .iter()
         .map(|t| TrackPlan {
             id: t.id,
-            effects: t.effects.clone(),
             clips: t
                 .clips
                 .iter()
@@ -374,30 +373,14 @@ pub fn to_session(out_frame: u64, session_rate: u32, out_rate: u32) -> u64 {
     convert(out_frame, out_rate, session_rate)
 }
 
-/// Left and right gain for each track, with mute, solo, volume and pan.
-///
-/// Pan is a balance control: centered plays both sides at full level,
-/// and panning turns the far side down. This keeps a centered voice at
-/// exactly the level the fader shows.
+/// Left and right gain for each track, with mute, solo, volume, pan
+/// and polarity: what the audio thread applies in a plain session.
+/// See [`super::graph::levels`] for the rules.
 pub fn gains(session: &Session) -> Vec<[f32; 2]> {
-    let any_solo = session.tracks.iter().any(|t| t.solo);
-    session
+    super::graph::levels(session)
         .tracks
-        .iter()
-        .map(|t| {
-            let audible = !t.muted && (!any_solo || t.solo);
-            if !audible {
-                return [0.0, 0.0];
-            }
-            let mut g = 10f64.powf(t.volume_db.clamp(-96.0, 24.0) / 20.0) as f32;
-            if t.polarity_inverted {
-                g = -g;
-            }
-            let pan = (t.pan.clamp(-100.0, 100.0) / 100.0) as f32;
-            let left = if pan > 0.0 { 1.0 - pan } else { 1.0 };
-            let right = if pan < 0.0 { 1.0 + pan } else { 1.0 };
-            [g * left, g * right]
-        })
+        .into_iter()
+        .map(|l| l.main)
         .collect()
 }
 
@@ -445,37 +428,126 @@ fn envelope_hash(c: &Clip) -> u64 {
     h
 }
 
-/// Per track: track id and its clips, in order. A change restarts
-/// playback from the same spot.
-pub type Layout = Vec<(Id, Vec<ClipKey>)>;
+/// Per track: track id and its clips, in order; then a fingerprint of
+/// the routing. A change restarts playback from the same spot.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Layout {
+    pub tracks: Vec<(Id, Vec<ClipKey>)>,
+    pub routing: u64,
+}
 
-/// Every Voice Chain that plays: owner id, true for a track (false for
-/// a clip), and a fingerprint of the chain.
-pub type Chains = Vec<(Id, bool, u64)>;
+/// Whose Voice Chain it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Owner {
+    Track,
+    Clip,
+    Bus,
+    Master,
+}
+
+/// Every Voice Chain that plays: owner id, whose it is, and a
+/// fingerprint of the chain.
+pub type Chains = Vec<(Id, Owner, u64)>;
 
 pub fn chains(session: &Session) -> Chains {
     let mut out = Vec::new();
     for t in &session.tracks {
-        out.push((t.id, true, chain_hash(&t.effects)));
+        out.push((t.id, Owner::Track, chain_hash(&t.effects)));
         for c in &t.clips {
-            out.push((c.id, false, chain_hash(&c.effects)));
+            out.push((c.id, Owner::Clip, chain_hash(&c.effects)));
         }
     }
+    for b in &session.buses {
+        out.push((b.id, Owner::Bus, chain_hash(&b.effects)));
+    }
+    out.push((
+        Id::nil(),
+        Owner::Master,
+        chain_hash(&session.master.effects),
+    ));
     out
 }
 
-/// The chain of the track or clip `id`.
-pub fn chain_of(session: &Session, id: Id, track: bool) -> Option<&EffectChain> {
-    session.tracks.iter().find_map(|t| {
-        if track {
-            (t.id == id).then_some(&t.effects)
-        } else {
-            t.clips.iter().find(|c| c.id == id).map(|c| &c.effects)
+/// The chain of the track, clip or bus `id`, or the master's.
+pub fn chain_of(session: &Session, id: Id, owner: Owner) -> Option<&EffectChain> {
+    match owner {
+        Owner::Track => session
+            .tracks
+            .iter()
+            .find(|t| t.id == id)
+            .map(|t| &t.effects),
+        Owner::Clip => session
+            .tracks
+            .iter()
+            .flat_map(|t| &t.clips)
+            .find(|c| c.id == id)
+            .map(|c| &c.effects),
+        Owner::Bus => session
+            .buses
+            .iter()
+            .find(|b| b.id == id)
+            .map(|b| &b.effects),
+        Owner::Master => Some(&session.master.effects),
+    }
+}
+
+/// A fingerprint of who feeds whom: whether the mix is routed, the
+/// buses, every output and send (not their levels), and every sidechain.
+fn routing_hash(session: &Session) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut mix = |v: u128| {
+        for b in v.to_le_bytes() {
+            h ^= u64::from(b);
+            h = h.wrapping_mul(0x100_0000_01b3);
         }
-    })
+    };
+    let routed = crate::session::routing::is_routed(session);
+    mix(u128::from(routed));
+    let output = |o: &crate::session::model::Output| match o {
+        crate::session::model::Output::Master => 0,
+        crate::session::model::Output::Bus { bus_id } => bus_id.as_u128(),
+    };
+    let chain = |c: &EffectChain, mix: &mut dyn FnMut(u128)| {
+        for s in crate::session::routing::key_sources(c) {
+            mix(s.as_u128());
+        }
+    };
+    for t in &session.tracks {
+        mix(output(&t.output));
+        for x in &t.sends {
+            mix(x.id.as_u128() ^ x.bus_id.as_u128());
+            mix(u128::from(x.pre_fader));
+        }
+        chain(&t.effects, &mut mix);
+        mix(1);
+    }
+    if routed {
+        for b in &session.buses {
+            mix(b.id.as_u128());
+            mix(u128::from(
+                b.channels == crate::session::model::ChannelLayout::Mono,
+            ));
+            mix(output(&b.output));
+            for x in &b.sends {
+                mix(x.id.as_u128() ^ x.bus_id.as_u128());
+                mix(u128::from(x.pre_fader));
+            }
+            chain(&b.effects, &mut mix);
+            mix(2);
+        }
+        chain(&session.master.effects, &mut mix);
+    }
+    h
 }
 
 pub fn layout(session: &Session) -> Layout {
+    Layout {
+        tracks: clip_layout(session),
+        routing: routing_hash(session),
+    }
+}
+
+fn clip_layout(session: &Session) -> Vec<(Id, Vec<ClipKey>)> {
     session
         .tracks
         .iter()

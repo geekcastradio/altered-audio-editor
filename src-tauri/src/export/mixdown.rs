@@ -4,9 +4,10 @@
 
 //! Session mixdown to WAV, FLAC or MP3.
 //!
-//! Uses the same plan and renderer as playback, at the session sample
-//! rate, so a mixdown sounds exactly like what plays: clip gain, fades,
-//! track volume, pan, mute, solo and master volume all apply. Runs on a
+//! Uses the same plan, renderer and mix graph as playback, at the
+//! session sample rate, so a mixdown sounds exactly like what plays:
+//! clip gain, fades, every Voice Chain, track and bus volume, pan, mute,
+//! solo, outputs, sends, sidechains and master volume all apply. Runs on a
 //! worker thread, reports progress and can be cancelled.
 
 use std::collections::HashSet;
@@ -17,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::encode::{EncodeError, OutputFormat, Writer};
+use crate::engine::graph::{Graph, Mix};
 use crate::engine::plan;
 use crate::engine::render::Renderer;
 use crate::session::model::{Id, Session};
@@ -41,8 +43,9 @@ pub struct MixdownRequest {
     #[serde(default)]
     pub track: Option<Id>,
     /// Bakes only what belongs to the clips (gain, fades, envelopes):
-    /// track volume, pan, mute and the Master are left out. Used by
-    /// Merge Clips, where the track still applies its own settings.
+    /// track volume, pan, mute, routing, buses and the Master are left
+    /// out. Used by Merge Clips, where the track still applies its own
+    /// settings.
     #[serde(default)]
     pub clip_only: bool,
     /// Leaves every Voice Chain out, for measuring the raw audio
@@ -116,6 +119,10 @@ pub fn render_mix(
             t.muted = false;
             t.solo = false;
         }
+        for b in &mut s.buses {
+            b.muted = false;
+            b.solo = false;
+        }
     }
     if let Some(ids) = req.clips.as_ref().filter(|v| !v.is_empty()) {
         let keep: HashSet<Id> = ids.iter().copied().collect();
@@ -132,8 +139,12 @@ pub fn render_mix(
             t.solo = false;
             t.volume_db = 0.0;
             t.pan = 0.0;
+            t.output = crate::session::model::Output::Master;
+            t.sends.clear();
         }
+        s.buses.clear();
         s.master.volume_db = 0.0;
+        s.master.effects = Default::default();
     }
     let rate = s.sample_rate;
     let (start, end) = match req.range {
@@ -146,13 +157,12 @@ pub fn render_mix(
     }
     let total = end - start;
 
-    let gains = plan::gains(&s);
     let master = plan::master_gain(&s);
-    let mut renderer = Renderer::new(plan::build(&s, rate), start);
-    let mut tracks: Vec<Vec<f32>> = vec![Vec::new(); renderer.track_count()];
+    let renderer = Renderer::new(plan::build(&s, rate), start);
+    let mut mix = Mix::new(renderer, Graph::new(&s, rate, true));
+    let mut out = vec![Vec::with_capacity(BLOCK * 2)];
     let mut peak = 0f32;
     let mut done = 0u64;
-    let mut mix = vec![0f32; BLOCK * 2];
     while done < total {
         if cancel.load(Ordering::Relaxed) {
             return Ok(Rendered {
@@ -163,30 +173,14 @@ pub fn render_mix(
             });
         }
         let n = BLOCK.min((total - done) as usize);
-        renderer.render(n, &mut tracks);
-        let out = &mut mix[..n * 2];
-        out.fill(0.0);
-        for (t, buf) in tracks.iter().enumerate() {
-            let g = gains.get(t).copied().unwrap_or([0.0, 0.0]);
-            if g == [0.0, 0.0] {
-                continue;
-            }
-            for (o, s) in out
-                .as_chunks_mut::<2>()
-                .0
-                .iter_mut()
-                .zip(buf.as_chunks::<2>().0)
-            {
-                o[0] += s[0] * g[0];
-                o[1] += s[1] * g[1];
-            }
-        }
+        let got = mix.render(n, &mut out);
+        let out = &mut out[0][..got * 2];
         for v in out.iter_mut() {
             *v *= master;
             peak = peak.max(v.abs());
         }
         sink(out)?;
-        done += n as u64;
+        done += got as u64;
         progress(done, total);
     }
     Ok(Rendered {
@@ -433,6 +427,47 @@ mod tests {
             .collect();
         assert!((v[2 * 1_000] - 0.25).abs() < 0.01, "plays though muted");
         assert!(v[2 * 100_000].abs() < 1e-6, "other tracks left out");
+    }
+
+    #[test]
+    fn mixes_through_buses_and_their_chains() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _, _) = session_with(dir.path());
+        let mut bus = crate::session::model::Bus::new("Voices", ChannelLayout::Stereo);
+        bus.volume_db = -6.0206;
+        bus.effects.output_gain_db = -6.0206;
+        let bid = bus.id;
+        s.buses.push(bus);
+        s.tracks[0].output = crate::session::model::Output::Bus { bus_id: bid };
+        let out = dir.path().join("bus.wav");
+        let req = MixdownRequest {
+            range: Some((0, 48_000)),
+            bit_depth: Some(32),
+            ..MixdownRequest::default()
+        };
+        mixdown(&s, &req, &out, &AtomicBool::new(false), |_, _| {}).unwrap();
+        let v: Vec<f32> = hound::WavReader::open(&out)
+            .unwrap()
+            .into_samples::<f32>()
+            .map(|x| x.unwrap())
+            .collect();
+        // 0.25 through the bus chain (-6 dB) and the bus fader (-6 dB).
+        assert!((v[2_000] - 0.0625).abs() < 0.002, "got {}", v[2_000]);
+        // A stem of the routed track still goes through its bus.
+        let req = MixdownRequest {
+            range: Some((0, 48_000)),
+            bit_depth: Some(32),
+            track: Some(s.tracks[0].id),
+            ..MixdownRequest::default()
+        };
+        s.buses[0].muted = true;
+        mixdown(&s, &req, &out, &AtomicBool::new(false), |_, _| {}).unwrap();
+        let v: Vec<f32> = hound::WavReader::open(&out)
+            .unwrap()
+            .into_samples::<f32>()
+            .map(|x| x.unwrap())
+            .collect();
+        assert!((v[2_000] - 0.0625).abs() < 0.002, "stem got {}", v[2_000]);
     }
 
     #[test]
