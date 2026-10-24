@@ -2,6 +2,11 @@
 
 Newest first. Each entry: date, decision, reason.
 
+## 2026-10-24: first outside contributor, and how his agreement is recorded
+
+Decision: nwh212 (Discord: Broman) is the project's first outside contributor, listed in `CONTRIBUTORS.md`. On Discord on 2026-10-24 he wrote that he has read `CLA.md` and agrees to it for his pull request and his future contributions, licensed under GPL v3.0 or later as `CLA.md` describes. His work (MIDI tracks and the piano roll, plug-in hosting in a separate process, buses, sends and sidechain, the Phase Wheel and Properties panels, session import fixes) is merged on the `next` branch.
+Reason: the agreement bot is the normal way to agree, but he agreed in writing before the merge. A screenshot of the message is kept in the private `private/cla-records/` folder (never committed). For the public record, `CONTRIBUTORS.md` names the agreement. Ask him to also confirm in a comment on the pull request so the agreement lives on GitHub too.
+
 ## 2026-10-14: Formats in and out, Batch Convert, Export Mixdown dialog, per-speaker tracks, system audio, bulk trim, track meters
 
 Decision:
