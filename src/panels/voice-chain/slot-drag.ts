@@ -145,8 +145,8 @@ export function effectMenu(catalog: readonly EffectInfo[], plugins: readonly Men
       .filter((c) => !catalog.some((e) => e.category === c && e.plugin))
       .map((c): MenuItem => ({ kind: "sub", label: c, items: catalog.filter((e) => e.category === c).map((e): MenuItem => ({ kind: "item", label: e.name, run: () => pick(e.id) })) })),
     { kind: "sep" },
+    { kind: "item", label: "VST", disabled: true, reason: "Not supported: Steinberg no longer licenses VST2. Most plug-ins also come as VST3.", run: () => {} },
     vst,
-    { kind: "item", label: "VST (version 2)", disabled: true, reason: "Not supported: Steinberg no longer licenses VST2. Most plug-ins also come as VST3.", run: () => {} },
   ];
 }
 
