@@ -7,6 +7,7 @@
  * never `invoke` directly, so the command surface stays in one place.
  */
 
+import { listen } from "@tauri-apps/api/event";
 import type { OutputFormat } from "./output-format";
 import { invoke } from "@tauri-apps/api/core";
 import type { EffectChainDoc, MediaRefDoc } from "../stores/session";
@@ -249,6 +250,52 @@ export function peaksLevel(path: string, level: number): Promise<ArrayBuffer> {
   return invoke<ArrayBuffer>("peaks_level", { path, level });
 }
 
+/**
+ * Raw bytes from a command, as a fresh Uint8Array. Some webviews hand raw
+ * bytes back as an ArrayBuffer, others as a typed view or a plain array.
+ */
+export function rawBytes(buf: unknown): Uint8Array {
+  if (buf instanceof ArrayBuffer) return new Uint8Array(buf.slice(0));
+  if (ArrayBuffer.isView(buf)) return new Uint8Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+  return Uint8Array.from(buf as ArrayLike<number>);
+}
+
+/** Exact samples of a file: `count` frames from frame `start` at its own rate, interleaved. */
+export async function mediaFrames(path: string, start: number, count: number): Promise<{ channels: number; data: Float32Array }> {
+  const bytes = rawBytes(await invoke<unknown>("media_frames", { path, start: Math.max(0, Math.floor(start)), count: Math.max(0, Math.ceil(count)) }));
+  if (bytes.byteLength < 4) return { channels: 1, data: new Float32Array(0) };
+  const channels = new DataView(bytes.buffer).getUint32(0, true) || 1;
+  const n = Math.floor((bytes.byteLength - 4) / 4);
+  return { channels, data: new Float32Array(bytes.buffer.slice(4, 4 + n * 4)) };
+}
+
+/** What the Phase Wheel compares. */
+export type ScopeSignal = "left" | "right" | "mid" | "side";
+
+/**
+ * The Phase Wheel's picture of what is playing now: the correlation of
+ * `a` and `b`, and per frequency band the phase of `b` relative to `a`
+ * (radians, 0 in phase), its level, its pitch (20 Hz to 20 kHz, log) and
+ * how consistent its phase is (each 0 to 1), packed in fours.
+ */
+export async function scopePhase(size: number, a: ScopeSignal, b: ScopeSignal): Promise<{ correlation: number; bins: Float32Array }> {
+  const bytes = rawBytes(await invoke<unknown>("scope_phase", { size, a, b }));
+  if (bytes.byteLength < 4) return { correlation: 0, bins: new Float32Array(0) };
+  const all = new Float32Array(bytes.buffer, 0, Math.floor(bytes.byteLength / 4));
+  return { correlation: all[0] ?? 0, bins: all.subarray(1) };
+}
+
+/**
+ * The same picture while stopped: the `size` frames of the session (or the
+ * Waveform editor's file, with `wave`) that end at `position`.
+ */
+export async function scopePhaseAt(position: number, size: number, a: ScopeSignal, b: ScopeSignal, wave: boolean): Promise<{ correlation: number; bins: Float32Array }> {
+  const bytes = rawBytes(await invoke<unknown>("scope_phase_at", { position: Math.max(0, Math.round(position)), size, a, b, wave }));
+  if (bytes.byteLength < 4) return { correlation: 0, bins: new Float32Array(0) };
+  const all = new Float32Array(bytes.buffer, 0, Math.floor(bytes.byteLength / 4));
+  return { correlation: all[0] ?? 0, bins: all.subarray(1) };
+}
+
 /** The Waveform editor's file: its edit list as a one-track session. */
 export interface WaveDocRaw<S> {
   session: S;
@@ -398,6 +445,15 @@ export interface SesxReport {
   tracks: number;
   clips: number;
   skippedEffects: number;
+  /** Names of the effects left out, each once. */
+  skippedNames?: string[];
+  buses?: number;
+  /** VST3 plug-ins brought in with their settings. */
+  plugins?: number;
+  /** Plug-ins brought in that this computer has not scanned. */
+  missingPlugins?: string[];
+  /** Clips with a time stretch or pitch change. */
+  stretched?: number;
   missingFiles: string[];
 }
 
@@ -417,6 +473,11 @@ export interface TransportStatus {
   underruns: number;
   /** Per track, its Voice Chain's peaks for the audio just heard: left in, right in, left out, right out. Null when the track's chain does nothing. */
   chainMeters?: ([number, number, number, number] | null)[];
+  /** Buses, with their levels after the fader and their chains' peaks. Empty unless the mix is routed. */
+  busIds?: string[];
+  busMeters?: [number, number][];
+  busChainMeters?: ([number, number, number, number] | null)[];
+  masterChainMeter?: [number, number, number, number] | null;
 }
 
 /** How playback treats the time selection. */
@@ -429,6 +490,11 @@ export function transportPlay(from?: number, mode: PlayMode = "normal"): Promise
 /** Stops playback. Resolves to the position reached, or null if it was not playing. */
 export function transportStop(): Promise<number | null> {
   return invoke<number | null>("transport_stop");
+}
+
+/** Mono check: hear everything folded to mono. Listening only. */
+export function setMonoCheck(on: boolean): Promise<void> {
+  return invoke<void>("transport_set_mono_check", { on });
 }
 
 export function transportStatus(): Promise<TransportStatus> {
@@ -559,6 +625,11 @@ export function templateDelete(path: string): Promise<void> {
 /** Documents/Altered Audio/Sessions. */
 export function sessionDefaultFolder(): Promise<string> {
   return invoke<string>("session_default_folder");
+}
+
+/** The first "`base` N" with no session folder of that name in `folder` yet. */
+export function sessionNextName(folder: string, base: string): Promise<string> {
+  return invoke<string>("session_next_name", { folder, base });
 }
 
 /** Measures the mix's loudness. Progress arrives as `export-progress`; `exportCancel` stops it. */
@@ -872,6 +943,82 @@ export interface EffectInfo {
   category: string;
   description: string;
   params: EffectParamInfo[];
+  /** Has a level detector that can listen to another track or bus (sidechain). */
+  sidechain?: boolean;
+  /** A VST3 plug-in. */
+  plugin?: boolean;
+  /** A plug-in with a window of its own. */
+  hasWindow?: boolean;
+}
+
+/** The Plug-in Manager's list. */
+export interface PluginRegistry {
+  folders: { path: string; standard: boolean; on: boolean }[];
+  plugins: { effect: string; name: string; vendor: string; version: string; kind: string; bundle: string; latency: number; hasWindow: boolean; instrument: boolean; note?: string | null; controls: number }[];
+  failed: { bundle: string; error: string }[];
+}
+
+/** What one running plug-in reported. */
+export interface PluginEvents {
+  slotId: string;
+  /** Controls moved in its window: [key, value 0 to 1]. */
+  edits: [string, number][];
+  dirty: boolean;
+  windowClosed: boolean;
+  latencyChanged: boolean;
+  /** Why it stopped (crashed or hung); it is bypassed. */
+  stopped: string | null;
+}
+
+export function pluginsRegistry(): Promise<PluginRegistry> {
+  return invoke<PluginRegistry>("plugins_registry");
+}
+
+/** Scans the plug-in folders; `all` also rescans bundles that did not change. */
+/** Scan progress: bundles read so far, of how many, and the latest one's name. */
+export interface PluginScanProgress {
+  done: number;
+  total: number;
+  name: string;
+}
+
+/** Calls `fn` as a scan goes; resolves to a function that stops listening. */
+export function onPluginScanProgress(fn: (p: PluginScanProgress) => void): Promise<() => void> {
+  return listen<PluginScanProgress>("plugins-scan-progress", (e) => fn(e.payload));
+}
+
+/** Stops the scan in progress; what it read so far is kept. */
+export function pluginsScanStop(): Promise<void> {
+  return invoke<void>("plugins_scan_stop");
+}
+
+export function pluginsScan(all: boolean): Promise<[{ scanned: number; found: number; failed: number; stopped: boolean }, PluginRegistry]> {
+  return invoke("plugins_scan", { all });
+}
+
+/** Adds or removes a plug-in folder (a standard one is turned off or on). */
+export function pluginsSetFolder(path: string, on: boolean): Promise<PluginRegistry> {
+  return invoke<PluginRegistry>("plugins_set_folder", { path, on });
+}
+
+export function pluginOpenWindow(slot: import("../stores/session").EffectSlotDoc, title: string): Promise<void> {
+  return invoke<void>("plugin_open_window", { slot, title });
+}
+
+export function pluginCloseWindow(slotId: string): Promise<void> {
+  return invoke<void>("plugin_close_window", { slotId });
+}
+
+export function pluginEvents(): Promise<PluginEvents[]> {
+  return invoke<PluginEvents[]>("plugin_events");
+}
+
+export function pluginState(slotId: string): Promise<string | null> {
+  return invoke<string | null>("plugin_state", { slotId });
+}
+
+export function pluginRestart(slotId: string): Promise<void> {
+  return invoke<void>("plugin_restart", { slotId });
 }
 
 /** Every built-in effect, with its controls. */
@@ -927,6 +1074,8 @@ export interface SesxExportReport {
   envelopesLeftOut: number;
   clipsSimplified: number;
   markersLeftOut: number;
+  /** Buses, and tracks routed to a bus, with sends or with a sidechain. */
+  routingLeftOut?: number;
 }
 
 /** File > Export > Multitrack Session (.sesx). Null when cancelled. */

@@ -32,6 +32,9 @@ pub use dynamics::{Compressor, DeEsser, Gate, Limiter, SpeechLeveler};
 pub use eq::{HumCut, ParametricEq};
 pub use restore::{find_spots, repair_spots, Spots};
 
+/// Effects with a level detector that can listen to a sidechain key.
+pub const KEYED: [&str; 2] = ["altaudio.dynamics", "altaudio.breath_gate"];
+
 /// Most effects a chain holds.
 pub const MAX_SLOTS: usize = 16;
 
@@ -210,6 +213,9 @@ pub fn ui_catalog() -> Vec<EffectInfo> {
                 enabled: true,
                 params: [(key.to_string(), v)].into_iter().collect(),
                 preset: None,
+                sidechain: None,
+                plugin_state: None,
+                position: None,
             };
             build(&slot, 48_000).map_or(0, |p| p.latency())
         };
@@ -222,7 +228,42 @@ pub fn ui_catalog() -> Vec<EffectInfo> {
 }
 
 pub fn info(id: &str) -> Option<EffectInfo> {
+    if crate::plugins::is_plugin(id) {
+        return crate::plugins::find(id).map(|f| crate::plugins::effect_info(&f));
+    }
     catalog().into_iter().find(|e| e.id == id)
+}
+
+/// The built-in effects and the installed plug-ins, for the editor.
+pub fn full_catalog() -> Vec<EffectInfo> {
+    let mut all = ui_catalog();
+    all.extend(crate::plugins::catalog());
+    all
+}
+
+/// A chain's total look-ahead, without starting any plug-in (a running
+/// one reports its own; otherwise the scan's figure).
+pub fn chain_latency(chain: &EffectChain, rate: u32) -> usize {
+    if !chain.enabled {
+        return 0;
+    }
+    chain
+        .slots
+        .iter()
+        .take(MAX_SLOTS)
+        .filter(|s| s.enabled)
+        .map(|s| {
+            if crate::plugins::is_plugin(&s.effect) {
+                if crate::plugins::find(&s.effect).is_some() {
+                    crate::plugins::instance::latency(s)
+                } else {
+                    0
+                }
+            } else {
+                build(s, rate).map_or(0, |p| p.latency())
+            }
+        })
+        .sum()
 }
 
 /// A slot's parameter values, each clamped to its range, with defaults
@@ -246,6 +287,11 @@ impl Params {
                 })
                 .collect(),
         )
+    }
+
+    /// Every value by key.
+    pub fn values(&self) -> impl Iterator<Item = (&'static str, f64)> + '_ {
+        self.0.iter().map(|(k, v)| (*k, *v))
     }
 
     pub fn get(&self, key: &str) -> f64 {
@@ -275,6 +321,54 @@ pub trait Processor: Send {
     fn update(&mut self, _p: &Params) -> bool {
         false
     }
+    /// True for a VST3 plug-in, which keeps running between chain builds
+    /// and must not hear the same audio twice.
+    fn is_plugin(&self) -> bool {
+        false
+    }
+    /// Runs with a sidechain key, as long as `buf`: an effect with a
+    /// level detector listens to `key` instead of its own input. Others
+    /// ignore the key.
+    fn process_keyed(&mut self, buf: &mut [f32], _key: &[f32]) {
+        self.process(buf);
+    }
+}
+
+/// A fixed delay for a stereo interleaved stream.
+#[derive(Debug, Clone, Default)]
+pub struct Delay {
+    ring: Vec<f32>,
+    at: usize,
+}
+
+impl Delay {
+    pub fn new(frames: usize) -> Self {
+        Self {
+            ring: vec![0.0; frames * 2],
+            at: 0,
+        }
+    }
+
+    pub fn frames(&self) -> usize {
+        self.ring.len() / 2
+    }
+
+    /// Delays `buf` in place.
+    pub fn run(&mut self, buf: &mut [f32]) {
+        let n = self.ring.len();
+        if n == 0 {
+            return;
+        }
+        for s in buf.iter_mut() {
+            std::mem::swap(s, &mut self.ring[self.at]);
+            self.at = (self.at + 1) % n;
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.ring.fill(0.0);
+        self.at = 0;
+    }
 }
 
 struct Gain(f32);
@@ -296,8 +390,13 @@ pub(crate) fn db_to_gain(db: f64) -> f32 {
     10f64.powf(db / 20.0) as f32
 }
 
-/// Builds the processor for one slot, or None for an unknown effect.
+/// Builds the processor for one slot, or None for an unknown effect (or a
+/// plug-in that is not installed or would not start).
 pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
+    if crate::plugins::is_plugin(&slot.effect) {
+        return crate::plugins::instance::processor(slot, rate)
+            .map(|p| Box::new(p) as Box<dyn Processor>);
+    }
     let info = info(&slot.effect)?;
     let p = Params::resolve(&info, &slot.params);
     Some(match info.id {
@@ -330,10 +429,28 @@ pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
     })
 }
 
+/// True when `chain` would change the sound: the same test
+/// [`ChainProcessor::new`] makes, without building anything.
+pub fn is_active(chain: &EffectChain) -> bool {
+    chain.enabled
+        && (chain.input_gain_db.clamp(-48.0, 24.0) != 0.0
+            || chain.output_gain_db.clamp(-48.0, 24.0) != 0.0
+            || chain
+                .slots
+                .iter()
+                .take(MAX_SLOTS)
+                .any(|s| s.enabled && info(&s.effect).is_some()))
+}
+
 /// A Voice Chain ready to run: input gain, each enabled effect in order,
 /// output gain, then the dry/wet mix.
 pub struct ChainProcessor {
     stages: Vec<Box<dyn Processor>>,
+    /// Per stage: the track or bus keying it, and a delay that holds the
+    /// key back by the look-ahead of the stages before it, so key and
+    /// signal still line up when they reach it.
+    keys: Vec<Option<(Id, Delay)>>,
+    key_buf: Vec<f32>,
     /// Per stage: its slot id, what it is and its current settings, so
     /// automation can change one setting while it plays.
     slots: Vec<(Id, EffectInfo, BTreeMap<String, f64>)>,
@@ -358,8 +475,12 @@ impl ChainProcessor {
         }
         let mut stages: Vec<Box<dyn Processor>> = Vec::new();
         let mut slots = Vec::new();
+        let mut keys = Vec::new();
+        let mut before = 0;
         for s in chain.slots.iter().take(MAX_SLOTS).filter(|s| s.enabled) {
             if let (Some(p), Some(i)) = (build(s, rate), info(&s.effect)) {
+                keys.push(s.sidechain.map(|id| (id, Delay::new(before))));
+                before += p.latency();
                 stages.push(p);
                 slots.push((s.id, i, s.params.clone()));
             }
@@ -373,6 +494,8 @@ impl ChainProcessor {
         let latency = stages.iter().map(|s| s.latency()).sum();
         Some(Self {
             stages,
+            keys,
+            key_buf: Vec::new(),
             slots,
             rate,
             input,
@@ -387,6 +510,12 @@ impl ChainProcessor {
 
     pub fn latency(&self) -> usize {
         self.latency
+    }
+
+    /// True when a stage is a running plug-in, which must not be warmed up
+    /// on audio it has already heard.
+    pub fn has_plugins(&self) -> bool {
+        self.stages.iter().any(|s| s.is_plugin())
     }
 
     /// Changes one setting of one effect while it plays (automation). An
@@ -411,6 +540,9 @@ impl ChainProcessor {
             enabled: true,
             params: params.clone(),
             preset: None,
+            sidechain: None,
+            plugin_state: None,
+            position: None,
         };
         if let Some(fresh) = build(&slot, self.rate) {
             if fresh.latency() == self.stages[i].latency() {
@@ -423,11 +555,25 @@ impl ChainProcessor {
         for s in &mut self.stages {
             s.reset();
         }
+        for (_, d) in self.keys.iter_mut().flatten() {
+            d.clear();
+        }
         self.dry_delay.fill(0.0);
         self.dry_at = 0;
     }
 
+    /// The tracks and buses this chain's effects listen to.
+    pub fn key_sources(&self) -> impl Iterator<Item = Id> + '_ {
+        self.keys.iter().flatten().map(|(id, _)| *id)
+    }
+
     pub fn process(&mut self, buf: &mut [f32]) {
+        self.process_keyed(buf, &[]);
+    }
+
+    /// Runs the chain with sidechain keys by source id, each as long as
+    /// `buf`. A stage whose source has no key here listens to its input.
+    pub fn process_keyed(&mut self, buf: &mut [f32], keys: &[(Id, &[f32])]) {
         let blend = self.mix < 1.0;
         if blend {
             self.dry.clear();
@@ -446,8 +592,21 @@ impl ChainProcessor {
                 *s *= self.input;
             }
         }
-        for st in &mut self.stages {
-            st.process(buf);
+        for (st, key) in self.stages.iter_mut().zip(&mut self.keys) {
+            let found = key.as_mut().and_then(|(id, delay)| {
+                keys.iter()
+                    .find(|(k, b)| k == id && b.len() == buf.len())
+                    .map(|(_, b)| (delay, *b))
+            });
+            match found {
+                Some((delay, k)) => {
+                    self.key_buf.clear();
+                    self.key_buf.extend_from_slice(k);
+                    delay.run(&mut self.key_buf);
+                    st.process_keyed(buf, &self.key_buf);
+                }
+                None => st.process(buf),
+            }
         }
         let out = self.output;
         if blend {
@@ -506,6 +665,16 @@ mod tests {
             enabled: true,
             params: params.iter().map(|(k, v)| ((*k).to_string(), *v)).collect(),
             preset: None,
+            sidechain: None,
+            plugin_state: None,
+            position: None,
+        }
+    }
+
+    #[test]
+    fn keyed_effects_exist() {
+        for id in KEYED {
+            assert!(info(id).is_some(), "{id}");
         }
     }
 
@@ -571,6 +740,46 @@ mod tests {
         c.enabled = false;
         c.slots[0].enabled = true;
         assert!(ChainProcessor::new(&c, 48_000).is_none(), "chain power off");
+    }
+
+    #[test]
+    fn sidechain_key_drives_the_detector_after_earlier_look_ahead() {
+        let src = new_id();
+        let mut c = EffectChain::default();
+        // A limiter with 1 ms look-ahead, then a gate keyed by `src`.
+        c.slots.push(slot(
+            "altaudio.limiter",
+            &[("lookahead", 1.0), ("ceiling", 0.0)],
+        ));
+        let mut gate = slot(
+            "altaudio.breath_gate",
+            &[("threshold", -20.0), ("attack", 0.1), ("range", -100.0)],
+        );
+        gate.sidechain = Some(src);
+        c.slots.push(gate);
+        let mut p = ChainProcessor::new(&c, 48_000).unwrap();
+        assert_eq!(p.key_sources().collect::<Vec<_>>(), vec![src]);
+        let frames = 4_000;
+        // Steady signal; the key is silent, then loud from frame 2,000.
+        let mut buf = vec![0.3f32; frames * 2];
+        let mut key = vec![0f32; frames * 2];
+        key[4_000..].fill(0.5);
+        p.process_keyed(&mut buf, &[(src, &key)]);
+        let lat = p.latency();
+        assert!(
+            buf[(1_500 + lat) * 2].abs() < 1e-6,
+            "closed while the key is quiet"
+        );
+        assert!(buf[(2_100 + lat) * 2] > 0.29, "open once the key is loud");
+        assert!(
+            buf[(2_000 + lat - 5) * 2].abs() < 1e-6,
+            "and not before: the key is held back by the limiter's look-ahead"
+        );
+        // Without its key the gate hears its own input and stays open.
+        let mut p = ChainProcessor::new(&c, 48_000).unwrap();
+        let mut buf = vec![0.3f32; frames * 2];
+        p.process(&mut buf);
+        assert!(buf[(1_500 + lat) * 2] > 0.29);
     }
 
     #[test]

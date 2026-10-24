@@ -202,9 +202,11 @@ export const MENUS: readonly Menu[] = [
       sub("Add Track", [
         item("multitrack.add.mono", "Mono Track"),
         item("multitrack.add.stereo", "Stereo Track"),
+        item("multitrack.add.midi", "MIDI Track"),
         item("multitrack.add-tracks", "Add Tracks..."),
         item("multitrack.add.guest", "Guest Track", { pending: P5 }),
-        item("multitrack.add.bus", "Bus Track", { pending: P5 }),
+        item("multitrack.add.bus", "Bus Track"),
+        item("multitrack.add.bus-mono", "Mono Bus Track"),
       ]),
       item("multitrack.duplicate-track", "Duplicate Track"),
       item("multitrack.delete-track", "Delete Track"),
@@ -215,7 +217,7 @@ export const MENUS: readonly Menu[] = [
         sep,
         item("multitrack.vis.only-audio", "Show Only Audio Tracks"),
         item("multitrack.vis.only-bus", "Show Only Bus Tracks", {
-          pending: P5,
+          pending: "Not built yet: bus tracks always show below the audio tracks.",
         }),
         item("multitrack.vis.only-clips", "Show Only Tracks with Clips"),
         item(
@@ -334,6 +336,7 @@ export const MENUS: readonly Menu[] = [
         item("clip.ungroup", "Ungroup Selected Clips"),
       ]),
       item("clip.stretch", "Time Stretch..."),
+      item("clip.properties", "Stretch and Pitch..."),
       item("clip.music-fit", "Fit Music to Length..."),
       item("clip.stretch-reset", "Remove Stretch"),
       item("clip.phase-align", "Phase Align"),
@@ -438,7 +441,7 @@ export const MENUS: readonly Menu[] = [
           placeholder: true,
         }),
       ]),
-      item("fx.plugin-manager", "Plug-in Manager...", { pending: P5 }),
+      item("fx.plugin-manager", "Plug-in Manager..."),
     ],
   },
   {

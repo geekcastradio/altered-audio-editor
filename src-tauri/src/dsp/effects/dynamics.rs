@@ -152,20 +152,31 @@ impl Compressor {
     }
 }
 
-impl Processor for Compressor {
-    fn process(&mut self, buf: &mut [f32]) {
-        for f in buf.as_chunks_mut::<2>().0 {
+impl Compressor {
+    /// Compresses `buf`, detecting the level of `key` (or of `buf` itself).
+    fn run(&mut self, buf: &mut [f32], key: Option<&[f32]>) {
+        for (i, f) in buf.as_chunks_mut::<2>().0.iter_mut().enumerate() {
+            let k = key.map_or([f[0], f[1]], |k| [k[i * 2], k[i * 2 + 1]]);
             if self.linked {
-                let g = self.follow(0, f[0].abs().max(f[1].abs()));
+                let g = self.follow(0, k[0].abs().max(k[1].abs()));
                 f[0] *= g;
                 f[1] *= g;
             } else {
-                let gl = self.follow(0, f[0].abs());
-                let gr = self.follow(1, f[1].abs());
+                let gl = self.follow(0, k[0].abs());
+                let gr = self.follow(1, k[1].abs());
                 f[0] *= gl;
                 f[1] *= gr;
             }
         }
+    }
+}
+
+impl Processor for Compressor {
+    fn process(&mut self, buf: &mut [f32]) {
+        self.run(buf, None);
+    }
+    fn process_keyed(&mut self, buf: &mut [f32], key: &[f32]) {
+        self.run(buf, Some(key));
     }
     fn reset(&mut self) {
         self.gr = [0.0; 2];
@@ -360,9 +371,27 @@ impl Gate {
 
 impl Processor for Gate {
     fn process(&mut self, buf: &mut [f32]) {
+        self.run(buf, None);
+    }
+    fn process_keyed(&mut self, buf: &mut [f32], key: &[f32]) {
+        self.run(buf, Some(key));
+    }
+    fn reset(&mut self) {
+        self.env = 0.0;
+        self.held = 0;
+        self.gain = self.floor;
+    }
+}
+
+impl Gate {
+    /// Gates `buf`, opening on the level of `key` (or of `buf` itself).
+    fn run(&mut self, buf: &mut [f32], key: Option<&[f32]>) {
         let span = 1.0 - self.floor;
-        for f in buf.as_chunks_mut::<2>().0 {
-            let x = f[0].abs().max(f[1].abs());
+        for (i, f) in buf.as_chunks_mut::<2>().0.iter_mut().enumerate() {
+            let x = match key {
+                Some(k) => k[i * 2].abs().max(k[i * 2 + 1].abs()),
+                None => f[0].abs().max(f[1].abs()),
+            };
             self.env = x.max(self.env * self.env_decay);
             let open = if self.env >= self.open_at {
                 self.held = self.hold;
@@ -381,11 +410,6 @@ impl Processor for Gate {
             f[0] *= self.gain;
             f[1] *= self.gain;
         }
-    }
-    fn reset(&mut self) {
-        self.env = 0.0;
-        self.held = 0;
-        self.gain = self.floor;
     }
 }
 

@@ -10,24 +10,40 @@
 <script lang="ts">
   import { settings, zoomRatios } from "../../stores/settings";
   import { trackOp } from "../mixer/solo";
-  import { onDestroy } from "svelte";
+  import { busChoices, busOp, MASTER_ID, newSend } from "../mixer/routing";
+  import SendList from "../mixer/SendList.svelte";
+  import { onDestroy, tick as nextFrame } from "svelte";
   import type { ActionRegistry } from "../../app/actions";
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import type { FileDropRouter } from "../../app/filedrop";
   import { editor, type EditorState } from "../../stores/editor";
   import type { PeakStore } from "../../stores/peaks";
   import type { CommandRunner } from "../../stores/media-pool";
-  import { clipLength, stretchOf, type ClipChange, type ClipDoc, type SessionDoc, type SessionStore, type TrackChanges, type TrackDoc } from "../../stores/session";
+  import { BPM_MAX, BPM_MIN, clipLength, isMidi, midiEnd, stretchOf, tempoOf, type BusDoc, type ClipChange, type ClipDoc, type MidiClipDoc, type SessionDoc, type SessionStore, type TrackChanges, type TrackDoc } from "../../stores/session";
+  import MidiLane from "./MidiLane.svelte";
+  import PianoRollDialog from "./PianoRollDialog.svelte";
+  import { duplicateClips, replaceClip } from "./midi";
+  import { effectsCatalog, pluginOpenWindow, pluginsRegistry, type EffectInfo } from "../../app/core";
+  import HeaderFx from "./HeaderFx.svelte";
+  import { rowTarget } from "../voice-chain/slot-drag";
+  import type { MenuPlugin } from "../voice-chain/chain";
+  import { effectWindowRequest } from "../voice-chain/effect-window";
+  import type { EffectSlotDoc, Op } from "../../stores/session";
+  import { pluginsVersion } from "../../stores/plugins";
   import { stretchTo } from "./stretch";
-  import { clipsAt, fadeClip, LockedError, MIN_CLIP, moveClips, nearest, previewTracks, snapTargets, splitClips, trimClip, withCrossfades, withGroups } from "./clip-edit";
+  import { clipsAt, copyMoved, fadeClip, LockedError, MIN_CLIP, moveClips, nearest, previewTracks, snapTargets, splitClips, trimClip, withCrossfades, withGroups } from "./clip-edit";
   import { shownTracks as listedTracks } from "./visibility";
   import { addPoint, chipBox, chipLabel, envChange, envName, formatValue, fxChoices, fxLaneOf, fxParam, levelAt, movePoint, pointsOf, rangeOf, restValue, snapValue, valueToY, yToValue, type EnvKind } from "./envelope";
   import LaneCanvas from "./LaneCanvas.svelte";
+  import ClipColorDialog from "../../app/ClipColorDialog.svelte";
+  import { laneRows, moveRowOps } from "./rows";
+  import { monoCheck } from "../../stores/mono-check";
+  import { chainTarget } from "../../stores/chain-target";
   import Dial from "./Dial.svelte";
   import TrackMeter from "./TrackMeter.svelte";
   import { inputLevels, liveTakes, type LiveTakes } from "../../stores/record";
   import { keepLast } from "../../app/settings/device-cache";
-  import { audioInputs, openSoundSettings, type AudioInput } from "../../app/core";
+  import { audioInputs, openSoundSettings, probeMedia, type AudioInput } from "../../app/core";
   import WaveformView from "./WaveformView.svelte";
   import TransportBar, { type ZoomKind } from "./TransportBar.svelte";
   import type { Readable } from "svelte/store";
@@ -56,6 +72,8 @@
     waveTransport?: TransportStore;
     /** Waveform editor quick level: dB for the selection or whole file. */
     onWaveLevel?: (db: number) => void;
+    /** Brings the Voice Chain panel forward. */
+    onShowChain?: () => void;
   }
 
   const {
@@ -73,6 +91,7 @@
     waveFile,
     waveTransport,
     onWaveLevel = () => {},
+    onShowChain = () => {},
   }: Props = $props();
 
   let wf = $state<WaveFile | null>(null);
@@ -119,11 +138,26 @@
 
   /** Nothing in the session yet and nothing chosen: show a start screen instead of six empty tracks. */
   let startDismissed = $state(false);
-  const showStart = $derived(
-    !startDismissed && doc != null && !session.path && doc.markers.length === 0 && doc.tracks.every((t) => t.clips.length === 0),
-  );
+  // Only the blank session the app opened with shows the start screen; a
+  // new or opened session, or any track or clip added, puts the tracks up.
+  const showStart = $derived(!startDismissed && doc != null && session.isScratch(doc));
   const shown = $derived(listedTracks(doc?.tracks ?? []));
   const headerTracks = $derived(showStart ? [] : shown);
+  const listedIds = $derived(new Set(shown.map((t) => t.id)));
+  /** Tracks with bus tracks placed among them, top to bottom. */
+  const laneList = $derived(laneRows(doc, listedIds));
+  const headerRows = $derived(showStart ? [] : laneList);
+  /** Bus tracks, listed after the audio tracks. They hold no clips. */
+  const buses = $derived(showStart ? [] : (doc?.buses ?? []));
+  /** What the track headers show: the mix controls, or the output and sends. */
+  /** What the headers show: mix controls (with input, output and sends as room allows) or the effects. */
+  let headerView = $state<"mix" | "fx">("mix");
+  const busHeight = (b: BusDoc) => Math.max(72, b.height);
+  /** Header heights at which each extra row shows. */
+  const ROW_INPUT = 76;
+  const ROW_OUTPUT = 98;
+  const ROW_AUTO = 120;
+  const ROW_SENDS = 146;
   const can = (id: string) => {
     void tick;
     return actions.isEnabled(id);
@@ -139,8 +173,152 @@
   let ruler = $state<HTMLCanvasElement | null>(null);
   let dropping = $state(false);
   let menu = $state<{ x: number; y: number; items: ContextItem[] } | null>(null);
+
+  // A newly selected track or bus (a new one is always selected) scrolls into
+  // view if it is off screen, so adding a track below the visible ones shows it.
+  let lastSelected: string | null = null;
+  $effect(() => {
+    const id = ed.selectedTrack;
+    void doc?.tracks.length;
+    void doc?.buses?.length;
+    if (!id || id === lastSelected) return;
+    void nextFrame().then(() => {
+      const row = scroller?.querySelector<HTMLElement>(`[data-row="${CSS.escape(id)}"]`);
+      if (!row) return; // Not drawn yet: tried again when the rows change.
+      lastSelected = id;
+      row.scrollIntoView({ block: "nearest" });
+    });
+  });
+
+  // MIDI tracks: the instruments to pick from, the piano roll, the tempo.
+  let instruments = $state<{ effect: string; name: string; vendor: string; hasWindow: boolean }[]>([]);
+  /** For the headers' Effects view: every effect, and the effect plug-ins for the Add menu. */
+  let fxCatalog = $state<EffectInfo[]>([]);
+  let fxPlugins = $state<MenuPlugin[]>([]);
+  $effect(() =>
+    pluginsVersion.subscribe(() => {
+      void pluginsRegistry()
+        .then((r) => {
+          // One per id, whatever the list holds, so the picker can never break.
+          instruments = r.plugins.filter((p, i, all) => p.instrument && all.findIndex((q) => q.effect.toUpperCase() === p.effect.toUpperCase()) === i);
+          fxPlugins = r.plugins.filter((p) => !p.instrument);
+        })
+        .catch(() => (instruments = []));
+      void effectsCatalog()
+        .then((c) => (fxCatalog = c))
+        .catch(() => (fxCatalog = []));
+    }),
+  );
+
+  /** Opens an effect from a header: a plug-in in its own window, anything else in the Voice Chain. */
+  function openHeaderEffect(rowId: string, rowName: string, slot: EffectSlotDoc) {
+    const info = fxCatalog.find((e) => e.id === slot.effect);
+    if (info?.plugin && info.hasWindow) {
+      void pluginOpenWindow(slot, `${info.name} - ${rowName}`).catch(onError);
+      return;
+    }
+    editor.selectTrack(rowId);
+    onShowChain();
+    effectWindowRequest.set(slot.id);
+  }
+  function headerEdit(label: string, op: Op) {
+    void session.edit(label, op, runner).catch(onError);
+  }
+  /** Where a track's or bus's sound goes: the master or a bus. */
+  function setOutput(kind: "track" | "bus", id: string, value: string) {
+    const o = value === MASTER_ID ? { type: "master" as const } : { type: "bus" as const, bus_id: value };
+    headerEdit(kind === "bus" ? "Route Bus Output" : "Route Track Output", kind === "bus" ? busOp(doc, id, { output: o }) : trackOp(doc, id, { output: o }));
+  }
+  const outName = (o: { type: string; bus_id?: string } | undefined) => (o?.type === "bus" ? (doc?.buses?.find((b) => b.id === o.bus_id)?.name ?? "Missing bus") : "Master");
+  let pianoRoll = $state<{ trackId: string; clipId: string } | null>(null);
+  const tempo = $derived(doc ? tempoOf(doc) : { bpm: 120, beats_per_bar: 4 });
+
+  function setMidiClips(track: TrackDoc, clips: MidiClipDoc[], label: string) {
+    void session.edit(label, { op: "set_midi_clips", track_id: track.id, clips }, runner).catch(onError);
+  }
+
+  function setInstrument(track: TrackDoc, effect: string) {
+    if (!effect) {
+      setTrack(track, { clear_instrument: true }, "Remove Instrument");
+      return;
+    }
+    const slot = { id: crypto.randomUUID(), effect, enabled: true, params: {}, preset: null };
+    setTrack(track, { instrument: slot }, "Set Instrument");
+  }
+
+  function openInstrument(track: TrackDoc) {
+    if (!track.instrument) return;
+    const name = instruments.find((i) => i.effect === track.instrument!.effect)?.name ?? "Instrument";
+    void pluginOpenWindow(track.instrument, `${name}: ${track.name}`).catch(onError);
+  }
+
+  function setTempo(bpm: number, beatsPerBar: number) {
+    const b = Math.min(BPM_MAX, Math.max(BPM_MIN, Math.round(bpm * 100) / 100));
+    const n = Math.min(32, Math.max(1, Math.round(beatsPerBar)));
+    if (!Number.isFinite(b) || (b === tempo.bpm && n === tempo.beats_per_bar)) return;
+    void session.edit("Tempo", { op: "set_tempo", bpm: b, beats_per_bar: n }, runner).catch(onError);
+  }
+
+  function midiClipItems(track: TrackDoc, clip: MidiClipDoc | null, beat: number): ContextItem[] {
+    const clips = track.midi_clips ?? [];
+    if (!clip) {
+      return [
+        {
+          kind: "item",
+          label: "New MIDI Clip Here",
+          run: () => {
+            const id = crypto.randomUUID();
+            const start = Math.floor(beat / tempo.beats_per_bar) * tempo.beats_per_bar;
+            setMidiClips(track, [...clips, { id, name: "MIDI", start, length: tempo.beats_per_bar, notes: [] }].sort((a, b) => a.start - b.start), "New MIDI Clip");
+            editor.selectClips([id], track.id);
+          },
+        },
+      ];
+    }
+    const ids = new Set(clips.filter((c) => ed.selectedClips.has(c.id)).map((c) => c.id));
+    if (!ids.size) ids.add(clip.id);
+    const many = ids.size > 1;
+    return [
+      { kind: "item", label: "Edit Notes...", run: () => (pianoRoll = { trackId: track.id, clipId: clip.id }) },
+      { kind: "sep" },
+      {
+        kind: "item",
+        label: many ? `Duplicate ${ids.size} Clips` : "Duplicate Clip",
+        run: () => {
+          const d = duplicateClips(clips, ids, () => crypto.randomUUID());
+          setMidiClips(track, d.clips, many ? "Duplicate Clips" : "Duplicate Clip");
+          editor.selectClips(d.added, track.id);
+        },
+      },
+      {
+        kind: "item",
+        label: clip.muted ? "Unmute Clip" : "Mute Clip",
+        run: () => setMidiClips(track, clips.map((c) => (ids.has(c.id) ? { ...c, muted: !clip.muted } : c)), clip.muted ? "Unmute Clip" : "Mute Clip"),
+      },
+      {
+        kind: "item",
+        label: "Rename Clip...",
+        run: () =>
+          void prompt("Rename Clip", "Name", clip.name).then((name) => {
+            if (name && name.trim() && name.trim() !== clip.name) setMidiClips(track, replaceClip(clips, { ...clip, name: name.trim() }), "Rename Clip");
+          }),
+      },
+      { kind: "sep" },
+      {
+        kind: "item",
+        label: many ? `Delete ${ids.size} Clips` : "Delete Clip",
+        shortcut: shortcutFor("edit.delete"),
+        run: () => {
+          setMidiClips(track, clips.filter((c) => !ids.has(c.id)), many ? "Delete Clips" : "Delete Clip");
+          editor.selectClips([], track.id);
+        },
+      },
+    ];
+  }
   let renaming = $state<string | null>(null);
   let dragTrack = $state<{ id: string; overIndex: number; y: number } | null>(null);
+  /** The track or bus whose color is being picked. */
+  let colorFor = $state<{ kind: "track" | "bus"; id: string; current: string | null } | null>(null);
   /** A marker being dragged on the ruler: its id and where it is now. */
   let markerDrag = $state<{ id: string; position: number } | null>(null);
   const shownMarkers = $derived(
@@ -164,22 +342,42 @@
   const mediaMap = $derived(new Map((doc?.media ?? []).map((m) => [m.id, m])));
   const contentEnd = $derived.by(() => {
     if (!doc) return 0;
-    let end = 0;
+    let end = midiEnd(doc, rate);
     for (const t of doc.tracks)
       for (const c of t.clips) end = Math.max(end, c.start + clipLength(c, mediaMap.get(c.media_id), rate));
     return end;
   });
 
   // Follow Playhead: during playback, page the lanes when the playhead
-  // nears the right edge or falls off either side.
+  // nears the right edge or falls off either side. Moving the view away
+  // from the playhead yourself (overview bar, wheel, scrollbar) pauses
+  // that until the playhead is back in view or playback starts again, so
+  // you can look at another part of the session while it plays.
+  let followHeld = false;
+  let wasPlaying = false;
   $effect(() => {
-    if (!tp?.playing || !ed.followPlayhead || lanesWidth <= 0) return;
+    const playingNow = !!tp?.playing;
+    if (playingNow && !wasPlaying) followHeld = false;
+    wasPlaying = playingNow;
+    if (!playingNow || !ed.followPlayhead || lanesWidth <= 0) return;
     const x = xOf(playhead, view);
-    if (x > lanesWidth * 0.92 || x < 0) setView({ scroll: playhead - lanesWidth * 0.08 * view.spp });
+    const inView = x >= 0 && x <= lanesWidth;
+    if (followHeld) {
+      if (!inView) return;
+      // Back in view: follow again from here.
+      followHeld = false;
+    }
+    if (x > lanesWidth * 0.92 || x < 0) setView({ scroll: playhead - lanesWidth * 0.08 * view.spp }, true);
   });
 
-  function setView(v: Partial<{ spp: number; scroll: number; playhead: number }>) {
+  /** Changes the view. `auto` is the follow's own paging; anything else is the user's. */
+  function setView(v: Partial<{ spp: number; scroll: number; playhead: number }>, auto = false) {
     if (!doc) return;
+    if (!auto && tp?.playing && v.playhead === undefined && (v.scroll !== undefined || v.spp !== undefined)) {
+      const spp = v.spp ?? doc.view.samples_per_pixel;
+      const x = (playhead - (v.scroll ?? doc.view.scroll)) / spp;
+      followHeld = x < 0 || x > lanesWidth;
+    }
     session.setView({
       ...doc.view,
       samples_per_pixel: v.spp ?? doc.view.samples_per_pixel,
@@ -193,6 +391,7 @@
     return router.register({
       element: lanesEl,
       onHover: (over) => (dropping = over),
+      onMove: (paths, at) => showDropGhost(paths, at),
       onDrop: (paths, at) => {
         const { trackId, sample } = hitLanes(at.x, at.y);
         onPlaceFiles(paths, trackId, sample);
@@ -201,6 +400,51 @@
   });
 
   /** Track and sample under a window point. */
+  /**
+   * While files hover over the lanes: where each would land if dropped
+   * here (one after another from the pointer, on the track under it, or
+   * on a new track below the last), with its name and length.
+   */
+  let dropGhost = $state<{ top: number; height: number; newTrack: boolean; items: { name: string; x: number; w: number }[] } | null>(null);
+  const probed = new Map<string, Promise<{ name: string; len: number } | null>>();
+  let ghostSeq = 0;
+  function probeLength(path: string): Promise<{ name: string; len: number } | null> {
+    let p = probed.get(path);
+    if (!p) {
+      p = probeMedia(path)
+        .then((i) => ({ name: i.name, len: Math.round((i.length * rate) / Math.max(1, i.sampleRate)) }))
+        .catch(() => null);
+      probed.set(path, p);
+    }
+    return p;
+  }
+  function showDropGhost(paths: string[], at: { x: number; y: number } | null) {
+    const seq = ++ghostSeq;
+    if (!at || paths.length === 0 || !lanesEl || !doc) {
+      dropGhost = null;
+      return;
+    }
+    const { trackId, sample } = hitLanes(at.x, at.y);
+    const track = trackId ? doc.tracks.find((t) => t.id === trackId) : null;
+    const lanesBox = lanesEl.getBoundingClientRect();
+    const row = track && !isMidi(track) ? lanesEl.querySelector<HTMLElement>(`[data-track="${CSS.escape(track.id)}"]`) : null;
+    const rows = [...lanesEl.querySelectorAll<HTMLElement>("[data-track]")];
+    const lastBottom = rows.length ? rows[rows.length - 1]!.getBoundingClientRect().bottom - lanesBox.top : 0;
+    const top = row ? row.getBoundingClientRect().top - lanesBox.top : lastBottom;
+    const height = row ? row.offsetHeight - TRACK_GAP : 60;
+    void Promise.all(paths.map(probeLength)).then((infos) => {
+      if (seq !== ghostSeq) return;
+      let pos = Math.max(0, sample);
+      const items = [];
+      for (const i of infos) {
+        if (!i) continue;
+        items.push({ name: i.name, x: xOf(pos, view), w: Math.max(4, i.len / view.spp) });
+        pos += i.len;
+      }
+      dropGhost = items.length ? { top, height, newTrack: !row, items } : null;
+    });
+  }
+
   function hitLanes(x: number, y: number): { trackId: string | null; sample: number } {
     const rect = lanesEl!.getBoundingClientRect();
     const sample = sampleAt(x - rect.left, view);
@@ -333,12 +577,7 @@
     const left = (e.currentTarget as HTMLElement).getBoundingClientRect().left;
     const hit = markerAt(doc.markers ?? [], e.clientX - left, (s) => xOf(s, view));
     if (!hit) {
-      // Dragging the ruler slides the timeline; a plain click puts the playhead there.
-      startPan(e, false, (clientX) => {
-        const cur = session.current;
-        if (cur?.view.selection) session.setView({ ...cur.view, selection: null });
-        void transport.seek(sampleAt(clientX - left, view));
-      });
+      scrubRuler(e, left);
       return;
     }
     e.preventDefault();
@@ -365,6 +604,34 @@
       }
       if (d && d.position !== hit.position)
         void session.edit("Move Marker", { op: "set_markers", changes: [{ id: hit.id, position: d.position }] }, runner).catch(onError);
+    };
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", up, true);
+  }
+
+  /**
+   * Click or drag on the ruler: the playhead goes to the mouse and follows
+   * it. While playing, playback moves there when the button is let go.
+   * The middle mouse button still slides the timeline.
+   */
+  function scrubRuler(e: PointerEvent, left: number) {
+    e.preventDefault();
+    const cur = session.current;
+    if (cur?.view.selection) session.setView({ ...cur.view, selection: null });
+    const at = (clientX: number) => Math.max(0, sampleAt(Math.max(0, Math.min(lanesWidth, clientX - left)), view));
+    const wasPlaying = tp?.playing ?? false;
+    let last = at(e.clientX);
+    if (!wasPlaying) void transport.seek(last);
+    document.body.style.cursor = "ew-resize";
+    const move = (ev: PointerEvent) => {
+      last = at(ev.clientX);
+      if (!wasPlaying) void transport.seek(last);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", up, true);
+      document.body.style.cursor = "";
+      void transport.seek(last);
     };
     window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerup", up, true);
@@ -434,11 +701,11 @@
   }
 
   /**
-   * The mouse wheel. Over the ruler it zooms the timeline; over a track's
-   * header it makes the track taller or shorter (Shift: all tracks); over
-   * the lanes it scrolls the tracks up and down. Alt + wheel scales the
-   * waveforms, Ctrl + wheel zooms the timeline, Shift + wheel (or a
-   * sideways wheel) scrolls along the timeline.
+   * The mouse wheel. Over the ruler and the overview it zooms the
+   * timeline; over the lanes and headers it scrolls the tracks up and
+   * down. Alt + wheel makes the track under the pointer taller or shorter,
+   * Alt + Shift + wheel scales the waveforms, Ctrl + wheel zooms the
+   * timeline, Shift + wheel (or a sideways wheel) scrolls along it.
    */
   function onWheel(e: WheelEvent) {
     if (!lanesEl) return;
@@ -453,8 +720,12 @@
       setView({ spp: z.spp, scroll: z.scroll });
     };
     if (e.clientX < left && !overRuler) {
-      e.preventDefault();
-      wheelResizeTracks(e);
+      // Over the track headers: the wheel scrolls the tracks (Alt+wheel resizes them, below).
+      if (e.altKey) {
+        e.preventDefault();
+        wheelResizeTracks(e);
+      }
+      return;
     } else if (e.altKey && e.shiftKey) {
       e.preventDefault();
       onZoom(e.deltaY < 0 ? "amp-in" : "amp-out");
@@ -462,14 +733,57 @@
       // Alt+wheel over the lanes makes the track under the pointer taller or shorter.
       e.preventDefault();
       wheelResizeTracks(e);
-    } else if (overRuler || e.ctrlKey) {
-      zoomTime();
     } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
       e.preventDefault();
       const d = e.shiftKey ? e.deltaY : e.deltaX;
       setView({ scroll: view.scroll + d * view.spp });
+    } else if (overRuler || e.ctrlKey) {
+      // Over the ruler (and the overview above it) the wheel zooms in time;
+      // Ctrl+wheel zooms anywhere.
+      zoomTime();
     }
-    // Otherwise the wheel scrolls the tracks, which the scroller does by itself.
+    // Over the lanes and headers the wheel scrolls the tracks, which the
+    // scroller does by itself. The track scrollbar zooms them (onVbarWheel).
+  }
+
+  /**
+   * The wheel over the track scrollbar zooms vertically: every open track
+   * the same height, taller or shorter, as dragging the thumb's ends does.
+   * One undoable step once the wheel stops.
+   */
+  let vbarTimer: ReturnType<typeof setTimeout> | undefined;
+  function onVbarWheel(e: WheelEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const open = shown.filter((t) => !t.collapsed);
+    if (!open.length || !scroller) return;
+    const cur = uniformPreview ?? open[0]!.height;
+    const h = Math.max(40, Math.min(600, Math.round(cur * (e.deltaY < 0 ? 1.12 : 1 / 1.12))));
+    if (h === cur) return;
+    // Keep the middle of the view on the same spot.
+    const sc = scroller;
+    const mid = (sc.scrollTop + sc.clientHeight / 2) / Math.max(1, sc.scrollHeight);
+    uniformPreview = h;
+    void nextFrame().then(() => {
+      sc.scrollTop = mid * sc.scrollHeight - sc.clientHeight / 2;
+    });
+    clearTimeout(vbarTimer);
+    vbarTimer = setTimeout(() => {
+      const size = uniformPreview;
+      if (size === null) return;
+      const ops = open.filter((t) => t.height !== size).map((t) => ({ op: "set_track" as const, id: t.id, changes: { height: size } }));
+      if (!ops.length) {
+        uniformPreview = null;
+        return;
+      }
+      void session
+        .edit("Track Height", { op: "batch", ops }, runner)
+        .then(() => (uniformPreview = null))
+        .catch((err) => {
+          uniformPreview = null;
+          onError(err);
+        });
+    }, 350);
   }
 
   function clipAt(track: TrackDoc, x: number): ClipDoc | null {
@@ -487,7 +801,9 @@
   const EDGE_PX = 6;
   const TITLE_H = 15;
   const SNAP_PX = 8;
-  type Gesture = "move" | "trim-left" | "trim-right" | "fade-in" | "fade-out" | "env-line" | "env-point";
+  type Gesture = "move" | "trim-left" | "trim-right" | "stretch-left" | "stretch-right" | "fade-in" | "fade-out" | "env-line" | "env-point";
+  /** Stretch handles: triangles this many pixels wide in a clip's top corners (see LaneCanvas). */
+  const STRETCH_PX = 11;
   let preview = $state<ClipChange[]>([]);
   /** While Alt-dragging a clip edge: the stretch it would get. */
   let stretchHint = $state<string | null>(null);
@@ -530,6 +846,8 @@
     move: "grab",
     "trim-left": trimCursor(true),
     "trim-right": trimCursor(false),
+    "stretch-left": "ew-resize",
+    "stretch-right": "ew-resize",
     "fade-in": "ew-resize",
     "fade-out": "ew-resize",
     "env-line": "crosshair",
@@ -545,6 +863,11 @@
     const x0 = xOf(clip.start, view);
     const x1 = xOf(clip.start + clipLength(clip, mediaMap.get(clip.media_id), rate), view);
     const w = x1 - x0;
+    // Stretch handles fill the title bar's corners when they are shown.
+    if (ed.stretchHandles && y <= TITLE_H + 1 && w > 2 * STRETCH_PX + 4 && !clip.looped && !clip.locked) {
+      if (x - x0 <= STRETCH_PX) return { kind: "stretch-left", clip };
+      if (x1 - x <= STRETCH_PX) return { kind: "stretch-right", clip };
+    }
     // Fade handles sit just under the title bar (see LaneCanvas).
     if (y > TITLE_H && y <= TITLE_H + 21 && w > 30) {
       const hit = (hx: number) => Math.abs(x - Math.min(Math.max(hx, x0 + 8), x1 - 8)) <= 8;
@@ -947,7 +1270,10 @@
     window.addEventListener("pointerup", up, true);
   }
 
-  function startGesture(e: PointerEvent, d0: SessionDoc, track: TrackDoc, kind: Gesture, clip: ClipDoc) {
+  function startGesture(e: PointerEvent, d0: SessionDoc, track: TrackDoc, gesture: Gesture, clip: ClipDoc) {
+    // A stretch handle works like Alt on the clip's edge.
+    const handle = gesture === "stretch-left" || gesture === "stretch-right";
+    const kind: Gesture = gesture === "stretch-left" ? "trim-left" : gesture === "stretch-right" ? "trim-right" : gesture;
     const startX = e.clientX;
     const startY = e.clientY;
     const selected = editor.current().selectedClips;
@@ -961,7 +1287,7 @@
     let moved = false;
     let changes: ClipChange[] = [];
     // Alt while grabbing an edge stretches the clip instead of trimming it.
-    const stretching = e.altKey && (kind === "trim-left" || kind === "trim-right") && !clip.looped && !clip.locked;
+    const stretching = (handle || e.altKey) && (kind === "trim-left" || kind === "trim-right") && !clip.looped && !clip.locked;
     let lastEv: PointerEvent | null = null;
     const move = (ev: PointerEvent) => {
       lastEv = ev;
@@ -975,6 +1301,8 @@
         if (over) row = d0.tracks.findIndex((t) => t.id === over);
         changes = moveClips(d0, ids, dx, row - startRow, targets, tol).changes;
         if (ed.autoCrossfade) changes = withCrossfades(d0, changes);
+        // Alt held: the drop makes copies and leaves the originals.
+        stretchHint = ev.altKey ? (ids.length > 1 ? `Copy ${ids.length} clips` : "Copy") : null;
       } else if (stretching) {
         const m = mediaMap.get(clip.media_id);
         let edge = (kind === "trim-left" ? clip.start : end) + dx;
@@ -984,7 +1312,7 @@
         const right = kind === "trim-right" ? Math.max(clip.start + MIN_CLIP, edge) : end;
         const r = stretchTo(clip, m, rate, right - left, clip.stretch?.keep_pitch ?? true);
         changes = r ? [left !== clip.start ? { ...r.change, start: left } : r.change] : [];
-        stretchHint = r ? `${Math.round(r.ratio * 1000) / 10}%${r.limited ? " (limit)" : ""}` : null;
+        stretchHint = r ? `Stretch ${Math.round(r.ratio * 1000) / 10}%${r.limited ? " (limit)" : ""}` : null;
       } else if (kind === "trim-left" || kind === "trim-right") {
         const side = kind === "trim-left" ? "left" : "right";
         const c = trimClip(d0, clip, side, dx, targets, tol);
@@ -1029,6 +1357,15 @@
       preview = [];
       stretchHint = null;
       if (!moved || changes.length === 0) return;
+      if (kind === "move" && lastEv?.altKey) {
+        // Alt+drag: copies where they were dropped; the originals stay.
+        const copy = copyMoved(d0, ids, changes, () => crypto.randomUUID());
+        void session
+          .edit(copy.ids.length > 1 ? `Copy ${copy.ids.length} Clips` : "Copy Clip", copy.op, runner)
+          .then(() => editor.selectClips(copy.ids))
+          .catch(onError);
+        return;
+      }
       const label = stretching
         ? "Stretch Clip"
         : kind === "move"
@@ -1100,6 +1437,7 @@
           ],
         },
         act("Time Stretch...", "clip.stretch"),
+        act("Stretch and Pitch...", "clip.properties"),
         act(actions.isChecked("clip.fade-in") ? "Remove Fade In" : "Fade In", "clip.fade-in"),
         act(actions.isChecked("clip.fade-out") ? "Remove Fade Out" : "Fade Out", "clip.fade-out"),
         { kind: "sep" },
@@ -1170,11 +1508,12 @@
       sub("Track", [
         act("Add Mono Audio Track", "multitrack.add.mono"),
         act("Add Stereo Audio Track", "multitrack.add.stereo"),
+        act("Add MIDI Track", "multitrack.add.midi"),
         act("Add Tracks...", "multitrack.add-tracks"),
         off("Add 5.1 Audio Track", "Surround tracks are not planned."),
         sep,
-        off("Add Mono Bus Track", "Bus tracks arrive with effects (P5)."),
-        off("Add Stereo Bus Track", "Bus tracks arrive with effects (P5)."),
+        act("Add Mono Bus Track", "multitrack.add.bus-mono"),
+        act("Add Stereo Bus Track", "multitrack.add.bus"),
         off("Add 5.1 Bus Track", "Surround tracks are not planned."),
         sep,
         act("Delete Empty Tracks", "multitrack.delete-empty"),
@@ -1190,7 +1529,7 @@
         act("Show Only Tracks with Clips within Time Selection", "multitrack.vis.only-selection"),
         act("Show Only Tracks with Clips at Playhead", "multitrack.vis.only-playhead"),
         sep,
-        off("Show Only Bus Tracks", "Bus tracks arrive with effects (P5)."),
+        off("Show Only Bus Tracks", "Not built yet: bus tracks always show below the audio tracks."),
         off("Load and Save Visibility Presets", "Not built yet."),
       ]),
       sub("Insert", [
@@ -1228,16 +1567,77 @@
     ];
   }
 
+  /** Output and send choices for a track's right-click menu. */
+  function routingItems(track: TrackDoc): ContextItem[] {
+    if (!doc) return [];
+    const choices = busChoices(doc, track.id);
+    const sends = track.sends ?? [];
+    const out = track.output ?? { type: "master" as const };
+    const none = (doc.buses?.length ?? 0) === 0 ? "Add a bus first: Multitrack > Add > Bus Track." : "No bus can take this track without feeding back into it.";
+    return [
+      {
+        kind: "sub",
+        label: "Output To",
+        items: [
+          { kind: "item", label: "Master", checked: out.type === "master", run: () => setTrack(track, { output: { type: "master" } }, "Route Track Output") },
+          ...choices.map((b): ContextItem => ({ kind: "item", label: b.name, checked: out.type === "bus" && out.bus_id === b.id, run: () => setTrack(track, { output: { type: "bus", bus_id: b.id } }, "Route Track Output") })),
+        ],
+      },
+      {
+        kind: "sub",
+        label: "Add Send To",
+        disabled: choices.length === 0,
+        reason: choices.length === 0 ? none : null,
+        items: choices.map((b): ContextItem => ({
+          kind: "item",
+          label: b.name,
+          run: () => {
+            // Tall enough to show the send in the header.
+            const ops: Op[] = [{ op: "set_sends", owner: track.id, sends: [...sends, newSend(b.id, crypto.randomUUID())] }];
+            if (!track.collapsed && track.height < ROW_SENDS + 24) ops.push({ op: "set_track", id: track.id, changes: { height: ROW_SENDS + 24 } } as Op);
+            void session.edit("Add Send", ops.length === 1 ? ops[0]! : { op: "batch", ops }, runner).catch(onError);
+            headerView = "mix";
+          },
+        })),
+      },
+    ];
+  }
+
+  function busItems(b: BusDoc): ContextItem[] {
+    return [
+      { kind: "item", label: "Rename Bus", run: () => (renaming = b.id) },
+      { kind: "item", label: "Bus Color...", run: () => (colorFor = { kind: "bus", id: b.id, current: b.color }) },
+      { kind: "item", label: "Delete Bus", run: () => void session.edit("Delete Bus", { op: "remove_bus", id: b.id }, runner).catch(onError) },
+      { kind: "sep" },
+      { kind: "item", label: "Add Bus Track", run: () => run("multitrack.add.bus") },
+    ];
+  }
+
+  function setBus(b: BusDoc, changes: Record<string, unknown>, label: string) {
+    void session.edit(label, busOp(doc, b.id, changes), runner).catch(onError);
+  }
+
+  function commitBusRename(b: BusDoc, value: string) {
+    renaming = null;
+    const v = value.trim();
+    if (v && v !== b.name) setBus(b, { name: v }, "Rename Bus");
+  }
+
   function trackItems(track: TrackDoc): ContextItem[] {
     return [
       { kind: "item", label: "Select All Clips on Track", disabled: track.clips.length === 0, run: () => editor.selectClips(withGroups(doc!, track.clips.map((c) => c.id)), track.id) },
       { kind: "sep" },
       { kind: "item", label: "Rename Track", run: () => (renaming = track.id) },
+      { kind: "item", label: "Track Color...", run: () => (colorFor = { kind: "track", id: track.id, current: track.color ?? null }) },
       { kind: "item", label: "Duplicate Track", run: () => { editor.selectTrack(track.id); run("multitrack.duplicate-track"); } },
       { kind: "item", label: "Delete Track", run: () => { editor.selectTrack(track.id); run("multitrack.delete-track"); } },
       { kind: "sep" },
       { kind: "item", label: "Add Mono Track", run: () => { editor.selectTrack(track.id); run("multitrack.add.mono"); } },
       { kind: "item", label: "Add Stereo Track", run: () => { editor.selectTrack(track.id); run("multitrack.add.stereo"); } },
+      { kind: "item", label: "Add MIDI Track", run: () => { editor.selectTrack(track.id); run("multitrack.add.midi"); } },
+      { kind: "item", label: "Add Bus Track", run: () => run("multitrack.add.bus") },
+      { kind: "sep" },
+      ...routingItems(track),
     ];
   }
 
@@ -1261,28 +1661,38 @@
 
   // Track reordering by dragging the header.
   function onHeaderPointer(e: PointerEvent, track: TrackDoc) {
-    if (e.button !== 0 || (e.target as HTMLElement).closest("button, input")) return;
+    // Controls work as controls; only the rest of the header picks up and drags the track.
+    if (e.button !== 0 || (e.target as HTMLElement).closest("button, input, select, textarea, label, a")) return;
+    startRowDrag(e, track.id, "Move Track");
+  }
+
+  /** Drags a track or bus row (by its header or grab strip) to a new place among all rows. */
+  function startRowDrag(e: PointerEvent, id: string, label: string) {
+    if (e.button !== 0) return;
     e.preventDefault();
-    editor.selectTrack(track.id);
+    e.stopPropagation();
+    editor.selectTrack(id);
     const startY = e.clientY;
     let moved = false;
-    const headers = () => [...(scroller?.querySelectorAll<HTMLElement>("[data-header]") ?? [])];
+    const list = () => [...(scroller?.querySelectorAll<HTMLElement>("[data-row]") ?? [])];
+    let beforeId: string | null = null;
     const move = (ev: PointerEvent) => {
       if (!moved && Math.abs(ev.clientY - startY) < 5) return;
       moved = true;
-      const list = headers();
-      let over = list.length;
-      for (let i = 0; i < list.length; i++) {
-        const b = list[i]!.getBoundingClientRect();
-        if (ev.clientY < b.top + b.height / 2) {
+      const rows = list();
+      let over = rows.length;
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i]!.getBoundingClientRect();
+        if (ev.clientY < r.top + r.height / 2) {
           over = i;
           break;
         }
       }
+      beforeId = rows[over]?.dataset.row ?? null;
       const sb = scroller!.getBoundingClientRect();
-      const ref = list[over] ?? list[list.length - 1];
-      const y = ref ? (over < list.length ? ref.getBoundingClientRect().top : ref.getBoundingClientRect().bottom) - sb.top + scroller!.scrollTop : 0;
-      dragTrack = { id: track.id, overIndex: over, y };
+      const ref = rows[over] ?? rows[rows.length - 1];
+      const y = ref ? (over < rows.length ? ref.getBoundingClientRect().top : ref.getBoundingClientRect().bottom) - sb.top + scroller!.scrollTop : 0;
+      dragTrack = { id, overIndex: over, y };
     };
     const up = () => {
       window.removeEventListener("pointermove", move, true);
@@ -1290,16 +1700,16 @@
       const d = dragTrack;
       dragTrack = null;
       if (!moved || !d || !doc) return;
-      // overIndex counts the listed (shown) tracks; map it back to the full list.
-      const full = doc.tracks;
-      const from = full.findIndex((t) => t.id === d.id);
-      const before = shown[d.overIndex];
-      const target = before ? full.findIndex((t) => t.id === before.id) : full.length;
-      const to = target > from ? target - 1 : target;
-      if (to !== from) void session.edit("Move Track", { op: "move_track", id: d.id, to }, runner).catch(onError);
+      const ops = moveRowOps(doc, listedIds, id, beforeId);
+      if (ops.length === 0) return;
+      void session.edit(label, ops.length === 1 ? ops[0]! : { op: "batch", ops }, runner).catch(onError);
     };
     window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerup", up, true);
+  }
+
+  function setMasterVolume(db: number) {
+    void session.edit("Master Volume", { op: "set_master_volume", volume_db: db }, runner).catch(onError);
   }
 
   // Length the overview strip scrolls over.
@@ -1378,24 +1788,38 @@
     const y = e.clientY;
     const zoom = y - thumbTop < 6 && y >= thumbTop - 2 ? "top" : thumbBottom - y < 6 && y <= thumbBottom + 2 ? "bottom" : null;
     if (zoom) {
-      // Dragging an end of the thumb makes every track taller or shorter.
-      const start = (doc?.tracks ?? []).map((t) => ({ t, h: t.height }));
+      // Dragging an end of the thumb zooms vertically: the thumb covers the
+      // share of the session that fits the view, and every (open) track gets
+      // the same height so that it does.
+      const open = shown.filter((t) => !t.collapsed);
+      if (!open.length) return;
+      const content = [...(scroller.querySelectorAll<HTMLElement>(".headers > *") ?? [])].reduce((sum, el) => sum + el.offsetHeight, 0);
+      const fixed = Math.max(0, content - open.reduce((sum, t) => sum + shownHeight(t), 0));
       const span0 = Math.max(8, thumbBottom - thumbTop);
-      let factor = 1;
+      const topShare = (thumbTop - bar.top) / bar.height;
+      const bottomShare = (thumbBottom - bar.top) / bar.height;
+      let h = open[0]!.height;
       const move = (ev: PointerEvent) => {
         const d = zoom === "bottom" ? ev.clientY - y : y - ev.clientY;
-        factor = Math.max(0.25, Math.min(4, span0 / Math.max(8, span0 + d)));
-        heightPreview = factor;
+        const share = Math.min(1, Math.max(8, span0 + d) / bar.height);
+        h = Math.max(40, Math.min(600, Math.round((scrollerH / share - fixed) / open.length)));
+        uniformPreview = h;
       };
       const up = () => {
         window.removeEventListener("pointermove", move, true);
         window.removeEventListener("pointerup", up, true);
-        heightPreview = 1;
-        const ops = start
-          .map(({ t, h }) => ({ t, h: Math.max(40, Math.min(600, Math.round(h * factor))) }))
-          .filter(({ t, h }) => h !== t.height)
-          .map(({ t, h }) => ({ op: "set_track" as const, id: t.id, changes: { height: h } }));
-        if (ops.length) void session.edit("Track Height", { op: "batch", ops }, runner).catch(onError);
+        uniformPreview = null;
+        const ops = open.filter((t) => t.height !== h).map((t) => ({ op: "set_track" as const, id: t.id, changes: { height: h } }));
+        if (!ops.length) return;
+        const total = fixed + h * open.length;
+        void session
+          .edit("Track Height", { op: "batch", ops }, runner)
+          .then(() => nextFrame())
+          .then(() => {
+            // Keep the end not dragged where it was.
+            if (scroller) scroller.scrollTop = zoom === "bottom" ? topShare * total : bottomShare * total - scrollerH;
+          })
+          .catch(onError);
       };
       window.addEventListener("pointermove", move, true);
       window.addEventListener("pointerup", up, true);
@@ -1414,13 +1838,37 @@
     window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerup", up, true);
   }
-  /** Live scale for all track heights while an end of the track scrollbar is dragged. */
+  /** Live scale for all track heights (vertical zoom keys). */
   let heightPreview = $state(1);
+  /** The one height every open track takes while an end of the track scrollbar is dragged. */
+  let uniformPreview = $state<number | null>(null);
+
+  /** Over the track scrollbar: a resize cursor near the thumb's ends. */
+  function onVbarHover(e: PointerEvent) {
+    const el = e.currentTarget as HTMLElement;
+    const bar = el.getBoundingClientRect();
+    const scale = rowsH / Math.max(1, bar.height);
+    const top = bar.top + scrollTop / scale;
+    const bottom = top + scrollerH / scale;
+    const near = Math.abs(e.clientY - top) < 7 || Math.abs(e.clientY - bottom) < 7;
+    el.style.cursor = near ? "ns-resize" : "pointer";
+  }
+
+  /** Double-click the track scrollbar: every open track the same height, all fitting the view. */
+  function fitAllTracks() {
+    const open = shown.filter((t) => !t.collapsed);
+    if (!open.length || !scroller) return;
+    const content = [...scroller.querySelectorAll<HTMLElement>(".headers > *")].reduce((sum, el) => sum + el.offsetHeight, 0);
+    const fixed = Math.max(0, content - open.reduce((sum, t) => sum + shownHeight(t), 0));
+    const h = Math.max(40, Math.min(600, Math.floor((scrollerH - fixed) / open.length)));
+    const ops = open.filter((t) => t.height !== h).map((t) => ({ op: "set_track" as const, id: t.id, changes: { height: h } }));
+    if (ops.length) void session.edit("Track Height", { op: "batch", ops }, runner).catch(onError);
+  }
 
   /** A track being resized by its bottom edge: its live height. */
   let resizing = $state<{ id: string; h: number } | null>(null);
   const shownHeight = (t: TrackDoc) =>
-    resizing?.id === t.id ? resizing.h : t.collapsed ? trackHeight(t) : heightPreview !== 1 ? Math.max(40, Math.min(600, Math.round(t.height * heightPreview))) : t.height;
+    resizing?.id === t.id ? resizing.h : t.collapsed ? trackHeight(t) : uniformPreview !== null ? uniformPreview : heightPreview !== 1 ? Math.max(40, Math.min(600, Math.round(t.height * heightPreview))) : t.height;
 
   function startResize(e: PointerEvent, track: TrackDoc) {
     if (e.button !== 0) return;
@@ -1485,7 +1933,30 @@
   <div class="toolbar">
     <button type="button" class="tool text" title={tip("Add Mono Track", "multitrack.add.mono")} onclick={() => run("multitrack.add.mono")}>+ Mono</button>
     <button type="button" class="tool text" title={tip("Add Stereo Track", "multitrack.add.stereo")} onclick={() => run("multitrack.add.stereo")}>+ Stereo</button>
+    <button type="button" class="tool text" title={tip("Add MIDI Track", "multitrack.add.midi")} onclick={() => run("multitrack.add.midi")}>+ MIDI</button>
+    <button type="button" class="tool text" title={tip("Add Bus Track", "multitrack.add.bus")} onclick={() => run("multitrack.add.bus")}>+ Bus</button>
     <span class="spacer"></span>
+    {#if doc}
+      <label class="tempo" title="Session tempo. MIDI clips and notes follow it.">
+        <input
+          type="number"
+          min={BPM_MIN}
+          max={BPM_MAX}
+          step="1"
+          aria-label="Tempo in beats per minute"
+          value={tempo.bpm}
+          onchange={(e) => setTempo(Number(e.currentTarget.value), tempo.beats_per_bar)}
+          onkeydown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Enter") e.currentTarget.blur();
+          }}
+        />
+        <span>BPM</span>
+        <select aria-label="Beats per bar" title="Beats per bar" value={tempo.beats_per_bar} onchange={(e) => setTempo(tempo.bpm, Number(e.currentTarget.value))}>
+          {#each [2, 3, 4, 5, 6, 7, 9, 12] as n (n)}<option value={n}>{n}/4</option>{/each}
+        </select>
+      </label>
+    {/if}
     {#if doc}<span class="rate" title="Session sample rate">{(rate / 1000).toLocaleString("en-US")} kHz</span>{/if}
   </div>
 
@@ -1509,20 +1980,17 @@
   <div class="ruler-row">
     <div class="corner header-views" style:width="{HEADER_W}px">
       <!-- What the track headers show. Only the mix controls exist so far; the
-           other views arrive with recording (P4) and effects and buses (P5). -->
+           other views arrive with recording (P4) and effects (P5). -->
       {#if ed.selectedClips.size > 1}<span class="selcount" aria-live="polite">{ed.selectedClips.size} clips selected</span>{/if}
       <div class="views" role="radiogroup" aria-label="Track header view">
-        <button type="button" class="view on" role="radio" aria-checked="true" title="Mix: volume, pan, mute, solo and arm">
+        <button type="button" class="view" class:on={headerView === "mix"} role="radio" aria-checked={headerView === "mix"} title="Mix: volume, pan, mute, solo and arm, then input, output and sends as the track gets taller" onclick={() => (headerView = "mix")}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2v12M8 2v12M12 2v12" stroke="currentColor" stroke-width="1" opacity="0.6" /><rect x="2.5" y="8" width="3" height="2" fill="currentColor" /><rect x="6.5" y="4.5" width="3" height="2" fill="currentColor" /><rect x="10.5" y="10" width="3" height="2" fill="currentColor" /></svg>
         </button>
         <button type="button" class="view" role="radio" aria-checked="false" disabled title="Inputs and Outputs: arrives with recording (P4)">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8h9M7.5 5l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M13 3v10" stroke="currentColor" stroke-width="1.4" /></svg>
         </button>
-        <button type="button" class="view" role="radio" aria-checked="false" disabled title="Effects: arrives with the Voice Chain (P5)">
+        <button type="button" class="view" class:on={headerView === "fx"} role="radio" aria-checked={headerView === "fx"} title="Effects: each track's Voice Chain in its header. Drag an effect to move it, or onto another track to copy it." onclick={() => (headerView = "fx")}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><text x="1.5" y="12" font-size="10" font-style="italic" font-family="serif" fill="currentColor">fx</text></svg>
-        </button>
-        <button type="button" class="view" role="radio" aria-checked="false" disabled title="Sends: arrives with buses (P5)">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 12h5V4h6M10 1.5L13 4l-3 2.5" fill="none" stroke="currentColor" stroke-width="1.3" /></svg>
         </button>
         <button type="button" class="view" role="radio" aria-checked="false" disabled title="EQ: arrives with the Voice Chain (P5)">
           <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="7" width="2.5" height="7" fill="currentColor" /><rect x="6.75" y="3" width="2.5" height="11" fill="currentColor" /><rect x="11.5" y="9" width="2.5" height="5" fill="currentColor" /></svg>
@@ -1542,6 +2010,17 @@
           onclick={() => editor.setFollowPlayhead(!ed.followPlayhead)}
         >
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v12" stroke="currentColor" stroke-width="1.3" /><path d="M1.5 8h4M3.5 6l2 2-2 2M14.5 8h-4M12.5 6l-2 2 2 2" fill="none" stroke="currentColor" stroke-width="1.2" /></svg>
+        </button>
+        <button
+          type="button"
+          class="view"
+          class:on={ed.stretchHandles}
+          title="Stretch Handles: each clip shows a triangle in its top corners; drag one to stretch the clip (no Alt needed)"
+          aria-label="Stretch handles"
+          aria-pressed={ed.stretchHandles}
+          onclick={() => editor.setStretchHandles(!ed.stretchHandles)}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="9" r="5" fill="none" stroke="currentColor" stroke-width="1.3" /><path d="M8 9V6.2M8 9l2 1.4M6.5 2h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></svg>
         </button>
         <button
           type="button"
@@ -1602,14 +2081,19 @@
   >
     <div class="rows" bind:clientHeight={rowsH}>
       <div class="headers" style:width="{HEADER_W}px">
-        {#each headerTracks as track, i (track.id)}
+        {#each headerRows as row (row.id)}
+          {#if row.kind === "track"}
+          {@const track = row.track}
+          {@const i = row.i}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div
             class="header"
             class:alt={i % 2 === 1}
             class:selected={ed.selectedTrack === track.id}
+            class:fx={$chainTarget === track.id}
             style:--track-color={trackColor(track.color, i)}
             data-header={track.id}
+            data-row={track.id}
             style:height="{shownHeight(track)}px"
             onpointerdown={(e) => onHeaderPointer(e, track)}
             oncontextmenu={(e) => {
@@ -1618,6 +2102,9 @@
               menu = { x: e.clientX, y: e.clientY, items: trackItems(track) };
             }}
           >
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="grab" title="Click to select the track (its effects show in the Voice Chain). Drag to move it up or down." onpointerdown={(e) => onHeaderPointer(e, track)}></div>
+            {#if $chainTarget === track.id}<span class="fx-tag" title="The Voice Chain is showing this track's effects">FX</span>{/if}
             <div class="line">
               <button
                 type="button"
@@ -1630,9 +2117,6 @@
               >
                 <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4" /></svg>
               </button>
-              <span class="grip" aria-hidden="true" title="Drag to reorder">
-                <svg viewBox="0 0 8 12"><circle cx="2" cy="2" r="1" /><circle cx="6" cy="2" r="1" /><circle cx="2" cy="6" r="1" /><circle cx="6" cy="6" r="1" /><circle cx="2" cy="10" r="1" /><circle cx="6" cy="10" r="1" /></svg>
-              </span>
               {#if renaming === track.id}
                 <!-- svelte-ignore a11y_autofocus -->
                 <input
@@ -1653,6 +2137,7 @@
               {/if}
               <button type="button" class="ms" class:on={track.muted} title="Mute" aria-pressed={track.muted} onclick={() => setTrack(track, { muted: !track.muted }, track.muted ? "Unmute Track" : "Mute Track")}>M</button>
               <button type="button" class="ms solo" class:on={track.solo} title="Solo" aria-pressed={track.solo} onclick={() => setTrack(track, { solo: !track.solo }, track.solo ? "Unsolo Track" : "Solo Track")}>S</button>
+              {#if !isMidi(track)}
               <button type="button" class="ms rec" class:on={track.record_armed} title="Arm for recording: Record records this track's input" aria-pressed={track.record_armed} onclick={() => setTrack(track, { record_armed: !track.record_armed }, "Arm Track")}>R</button>
               <button
                 type="button"
@@ -1664,8 +2149,22 @@
               >
                 <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="1.6" fill="currentColor" /><path d="M5 5a4.2 4.2 0 0 0 0 6M11 5a4.2 4.2 0 0 1 0 6" fill="none" stroke="currentColor" stroke-width="1.3" /></svg>
               </button>
+              {/if}
+              <button type="button" class="ms mono short" class:on={!!track.mono} title="Mono: folds this track's left and right into one centered signal, after its effects and before its fader and pan. Part of the mix, so exports hear it too." aria-pressed={!!track.mono} onclick={() => setTrack(track, { mono: !track.mono }, track.mono ? "Track Stereo" : "Track Mono")}>MO</button>
             </div>
-            {#if !track.collapsed}
+            {#if !track.collapsed && headerView === "fx" && doc}
+              <HeaderFx
+                {doc}
+                target={rowTarget(track.id, false)}
+                chain={track.effects}
+                catalog={fxCatalog}
+                plugins={fxPlugins}
+                onEdit={headerEdit}
+                onOpen={(slot) => openHeaderEffect(track.id, track.name, slot)}
+                onMenu={(x, y, items) => (menu = { x, y, items: items as ContextItem[] })}
+              />
+            {/if}
+            {#if !track.collapsed && headerView === "mix"}
             <div class="line">
               <Dial
                 value={track.volume_db}
@@ -1691,7 +2190,23 @@
               </button>
             </div>
             {/if}
-            {#if !track.collapsed && shownHeight(track) >= 76}
+            {#if !track.collapsed && isMidi(track)}
+              {@const inst = track.instrument ? instruments.find((x) => x.effect === track.instrument!.effect) : null}
+              <div class="line">
+                <select
+                  class="instrument"
+                  title={track.instrument && !inst ? "This instrument is not installed (or not scanned yet). Effects > Plug-in Manager." : "The VST3 instrument that plays this track's notes"}
+                  value={track.instrument?.effect ?? ""}
+                  onchange={(e) => setInstrument(track, e.currentTarget.value)}
+                >
+                  <option value="">{instruments.length ? "No instrument" : "No instruments found. Scan in Effects > Plug-in Manager."}</option>
+                  {#if track.instrument && !inst}<option value={track.instrument.effect}>Missing instrument</option>{/if}
+                  {#each instruments as x, k (k)}<option value={x.effect}>{x.name}{x.vendor ? ` (${x.vendor})` : ""}</option>{/each}
+                </select>
+                <button type="button" class="ms" title="Open the instrument's window" aria-label="Open the instrument's window" disabled={!track.instrument || !inst} onclick={() => openInstrument(track)}>◳</button>
+              </div>
+            {/if}
+            {#if !track.collapsed && headerView === "mix" && shownHeight(track) >= ROW_INPUT && !isMidi(track)}
               <div class="line">
                 <button type="button" class="pick" title="The input this track records from" onclick={(e) => void openInputMenu(e, track)}>
                   <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8h9M7.5 5l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.4" /></svg>
@@ -1700,7 +2215,20 @@
                 </button>
               </div>
             {/if}
-            {#if !track.collapsed && shownHeight(track) >= 94}
+            {#if !track.collapsed && headerView === "mix" && shownHeight(track) >= ROW_OUTPUT && doc}
+              {@const out = track.output ?? { type: "master" }}
+              <div class="line">
+                <label class="pick outpick" title="Where this track's sound goes after its fader: the master or a bus">
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M14.5 8h-9M8.5 5l-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M3 3v10" stroke="currentColor" stroke-width="1.4" /></svg>
+                  <select aria-label="{track.name} output" value={out.type === "bus" ? out.bus_id : MASTER_ID} onchange={(e) => setOutput("track", track.id, e.currentTarget.value)}>
+                    <option value={MASTER_ID}>Master</option>
+                    {#each busChoices(doc, track.id) as bc (bc.id)}<option value={bc.id}>{bc.name}</option>{/each}
+                    {#if out.type === "bus" && !busChoices(doc, track.id).some((bc) => out.type === "bus" && bc.id === out.bus_id)}<option value={out.bus_id}>{outName(out)}</option>{/if}
+                  </select>
+                </label>
+              </div>
+            {/if}
+            {#if !track.collapsed && headerView === "mix" && shownHeight(track) >= ROW_AUTO}
               <div class="line">
                 <select class="auto" value="read" title="Automation mode. Read plays back the track's automation; Off, Write, Latch and Touch arrive with automation (P5).">
                   <option value="off" disabled>Off (arrives with automation)</option>
@@ -1711,6 +2239,11 @@
                 </select>
               </div>
             {/if}
+            {#if !track.collapsed && headerView === "mix" && shownHeight(track) >= ROW_SENDS && doc}
+              <div class="sendview">
+                <SendList {doc} {session} {runner} {onError} kind="track" id={track.id} name={track.name} output={track.output ?? { type: "master" }} sends={track.sends ?? []} noOutput />
+              </div>
+            {/if}
             {#if !track.collapsed}
               <!-- svelte-ignore a11y_no_static_element_interactions -->
               <div class="resize" title="Drag to change the track height" onpointerdown={(e) => startResize(e, track)}></div>
@@ -1718,11 +2251,125 @@
             <!-- Level meter: the input while armed, otherwise playback. -->
             <TrackMeter levels={meterOf(track)} armed={track.record_armed} onClear={() => transport.clearOver(track.id)} />
           </div>
+          {:else}
+          {@const b = row.bus}
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+          <div
+            class="header bus"
+            class:selected={ed.selectedTrack === b.id}
+            class:fx={$chainTarget === b.id}
+            style:--track-color={b.color ? trackColor(b.color, 0) : "var(--clip-3)"}
+            style:height="{busHeight(b)}px"
+            data-bus-header={b.id}
+            data-row={b.id}
+            onclick={() => editor.selectTrack(b.id)}
+            oncontextmenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              menu = { x: e.clientX, y: e.clientY, items: busItems(b) };
+            }}
+          >
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="grab" title="Drag to move the bus up or down" onpointerdown={(e) => startRowDrag(e, b.id, "Move Bus")}></div>
+            <div class="line">
+              <span class="bus-tag" title="Bus track: sums the tracks routed or sent to it, then runs its own Voice Chain and fader">BUS</span>
+              {#if renaming === b.id}
+                <!-- svelte-ignore a11y_autofocus -->
+                <input
+                  class="rename"
+                  type="text"
+                  value={b.name}
+                  autofocus
+                  onblur={(e) => commitBusRename(b, e.currentTarget.value)}
+                  onkeydown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter") commitBusRename(b, e.currentTarget.value);
+                    if (e.key === "Escape") renaming = null;
+                  }}
+                />
+              {:else}
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <span class="name" title="Double-click to rename" ondblclick={() => (renaming = b.id)}>{b.name}</span>
+              {/if}
+              <button type="button" class="ms" class:on={b.muted} title="Mute" aria-pressed={b.muted} onclick={() => setBus(b, { muted: !b.muted }, b.muted ? "Unmute Bus" : "Mute Bus")}>M</button>
+              <button type="button" class="ms solo" class:on={b.solo} title="Solo: plays this bus and everything feeding it" aria-pressed={b.solo} onclick={() => setBus(b, { solo: !b.solo }, b.solo ? "Unsolo Bus" : "Solo Bus")}>S</button>
+            </div>
+            {#if headerView === "mix"}
+              <div class="line">
+                <Dial value={b.volume_db} min={-60} max={12} step={0.1} origin={0} label="Volume" icon="volume" format={(v) => `${formatDb(v)}`} onChange={(v) => setBus(b, { volume_db: v }, "Bus Volume")} />
+                <Dial value={b.pan} min={-100} max={100} step={1} origin={0} label="Pan" icon="pan" format={formatPan} onChange={(v) => setBus(b, { pan: v }, "Bus Pan")} />
+                <button type="button" class="ms mono" class:on={!!b.mono} title="Mono: folds this bus's left and right into one centered signal, after its effects and before its fader and pan. Part of the mix, so exports hear it too." aria-pressed={!!b.mono} onclick={() => setBus(b, { mono: !b.mono }, b.mono ? "Bus Stereo" : "Bus Mono")}>MONO</button>
+              </div>
+              {#if busHeight(b) >= ROW_OUTPUT - 8 && doc}
+                <div class="line">
+                  <label class="pick outpick" title="Where this bus's sound goes after its fader: the master or another bus">
+                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M14.5 8h-9M8.5 5l-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M3 3v10" stroke="currentColor" stroke-width="1.4" /></svg>
+                    <select aria-label="{b.name} output" value={b.output.type === "bus" ? b.output.bus_id : MASTER_ID} onchange={(e) => setOutput("bus", b.id, e.currentTarget.value)}>
+                      <option value={MASTER_ID}>Master</option>
+                      {#each busChoices(doc, b.id) as bc (bc.id)}<option value={bc.id}>{bc.name}</option>{/each}
+                    </select>
+                  </label>
+                </div>
+              {/if}
+              {#if busHeight(b) >= ROW_SENDS - 30 && doc}
+                <div class="sendview">
+                  <SendList {doc} {session} {runner} {onError} kind="bus" id={b.id} name={b.name} output={b.output} sends={b.sends} noOutput />
+                </div>
+              {/if}
+            {:else if doc}
+              <HeaderFx
+                {doc}
+                target={rowTarget(b.id, true)}
+                chain={b.effects}
+                catalog={fxCatalog}
+                plugins={fxPlugins}
+                onEdit={headerEdit}
+                onOpen={(slot) => openHeaderEffect(b.id, b.name, slot)}
+                onMenu={(x, y, items) => (menu = { x, y, items: items as ContextItem[] })}
+              />
+            {/if}
+            <TrackMeter levels={meterOf(b as unknown as TrackDoc)} armed={false} onClear={() => transport.clearOver(b.id)} />
+          </div>
+          {/if}
         {/each}
+        {#if doc && !showStart}
+          {@const mfx = doc.master?.effects?.slots.filter((x) => x.enabled).length ?? 0}
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+          <div
+            class="header master"
+            class:selected={ed.selectedTrack === MASTER_ID}
+            class:fx={$chainTarget === MASTER_ID}
+            style:height="72px"
+            title="Master: every track and bus ends here. Click to show its Voice Chain."
+            onclick={() => editor.selectTrack(MASTER_ID)}
+            oncontextmenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+          >
+            <div class="line">
+              <span class="bus-tag">OUT</span>
+              <span class="name">Master</span>
+              <button type="button" class="ms fx" class:on={mfx > 0} title={mfx > 0 ? `Master Voice Chain: ${mfx} effect${mfx === 1 ? "" : "s"}. Click to edit.` : "Master Voice Chain: empty. Click to add effects."} onclick={() => editor.selectTrack(MASTER_ID)}>fx</button>
+            </div>
+            <div class="line">
+              <Dial value={doc.master?.volume_db ?? 0} min={-60} max={12} step={0.1} origin={0} label="Volume" icon="volume" format={(v) => `${formatDb(v)}`} onChange={setMasterVolume} />
+              <button type="button" class="ms mono check" class:on={$monoCheck} title="Mono check: hear the whole mix folded to mono, to check how it holds up. Listening only: exports are not changed (to write a mono file, pick Mono in Export)." aria-pressed={$monoCheck} onclick={(e) => { e.stopPropagation(); void monoCheck.toggle().catch(onError); }}>MONO</button>
+            </div>
+            <TrackMeter levels={tp?.master ?? null} armed={false} onClear={() => transport.clearOver()} />
+          </div>
+        {/if}
       </div>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="lanes" class:dropping bind:this={lanesEl} bind:clientWidth={lanesWidth} onpointerleave={() => (razor = null)}>
-        {#if stretchHint}<div class="stretch-hint" aria-live="polite">Stretch {stretchHint}</div>{/if}
+        {#if stretchHint}<div class="stretch-hint" aria-live="polite">{stretchHint}</div>{/if}
+        {#if dropGhost && dropping}
+          {#each dropGhost.items as g, k (k)}
+            <div class="drop-ghost" style:left="{g.x}px" style:width="{g.w}px" style:top="{dropGhost.top + 1}px" style:height="{dropGhost.height - 2}px">
+              <span>{g.name}{dropGhost.newTrack && k === 0 ? " (new track)" : ""}</span>
+            </div>
+          {/each}
+        {/if}
         {#if selBox}
           <div class="selBox" style:left="{selBox.x}px" style:top="{selBox.y}px" style:width="{selBox.w}px" style:height="{selBox.h}px"></div>
         {/if}
@@ -1736,7 +2383,28 @@
           ></div>
         {/if}
         {#if doc}
-          {#each shown as track, i (track.id)}
+          {#each laneList as row (row.id)}
+            {#if row.kind === "track" && isMidi(row.track)}
+            {@const track = row.track}
+            <div class="lane" data-track={track.id} data-lane={track.id}>
+              <MidiLane
+                {track}
+                {tempo}
+                {rate}
+                {view}
+                width={lanesWidth}
+                height={shownHeight(track)}
+                color={trackColor(track.color, row.i)}
+                selected={ed.selectedClips}
+                onSelect={(ids) => editor.selectClips(ids, track.id)}
+                onSetClips={(clips, label) => setMidiClips(track, clips, label)}
+                onOpen={(clipId) => (pianoRoll = { trackId: track.id, clipId })}
+                onMenu={(e, clip, beat) => (menu = { x: e.clientX, y: e.clientY, items: midiClipItems(track, clip, beat) })}
+              />
+            </div>
+            {:else if row.kind === "track"}
+            {@const track = row.track}
+            {@const i = row.i}
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
               class="lane"
@@ -1752,7 +2420,7 @@
               ondblclick={(e) => onLaneDouble(e, track)}
             >
               <LaneCanvas
-                track={resizing?.id === track.id || heightPreview !== 1 ? { ...(shownTracks?.[i] ?? track), height: shownHeight(track) } : (shownTracks?.[i] ?? track)}
+                track={resizing?.id === track.id || heightPreview !== 1 || uniformPreview !== null ? { ...(shownTracks?.[i] ?? track), height: shownHeight(track) } : (shownTracks?.[i] ?? track)}
                 media={mediaMap}
                 sessionRate={rate}
                 {view}
@@ -1769,9 +2437,31 @@
                 showPan={ed.showPan}
                 showFx={ed.showFx}
                 fxLanes={ed.fxLanes}
+                stretchHandles={ed.stretchHandles}
               />
             </div>
+            {:else}
+            {@const b = row.bus}
+            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+            <div
+              class="lane bus-lane"
+              class:selected={ed.selectedTrack === b.id}
+              style:height="{busHeight(b)}px"
+              onclick={() => editor.selectTrack(b.id)}
+              oncontextmenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                menu = { x: e.clientX, y: e.clientY, items: busItems(b) };
+              }}
+            >
+              <span>Bus {b.name}: no clips. Route tracks here with their output or a send (in the track header when it is tall enough, the track's right-click menu, or the Mixer).</span>
+            </div>
+            {/if}
           {/each}
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+          <div class="lane bus-lane master-lane" class:selected={ed.selectedTrack === MASTER_ID} style:height="72px" onclick={() => editor.selectTrack(MASTER_ID)}>
+            <span>Master: the whole mix, after every track and bus. Its fader and Voice Chain apply last.</span>
+          </div>
           {#each shownMarkers as m (m.id)}
             {@const mx = xOf(m.position, view)}
             {#if mx >= 0 && mx <= lanesWidth}
@@ -1809,11 +2499,11 @@
   <!-- Track scrollbar: each track's color, the visible part as the thumb.
        Drag the thumb to scroll; drag its ends to make every track taller or shorter. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="vbar" bind:clientHeight={vbarH} onpointerdown={onVbarPointer}>
+  <div class="vbar" bind:clientHeight={vbarH} onpointerdown={onVbarPointer} onpointermove={onVbarHover} ondblclick={fitAllTracks} onwheel={onVbarWheel} title="Drag to scroll the tracks. Drag the thumb's ends, or use the mouse wheel here, to zoom: every track the same height. Double-click to fit them all.">
     {#each shown as track, i (track.id)}
       <div class="vseg" style:height="{(shownHeight(track) / Math.max(1, rowsH)) * 100}%" style:background={trackColor(track.color, i)}></div>
     {/each}
-    {#if rowsH > scrollerH + 1}
+    {#if rowsH > 0}
       <div class="vthumb" style:top="{(scrollTop / rowsH) * 100}%" style:height="{(scrollerH / rowsH) * 100}%">
         <span class="vend top"></span>
         <span class="vend bottom"></span>
@@ -1838,6 +2528,41 @@
 
 {#if envTip}
   <div class="env-tip" style:left="{envTip.x}px" style:top="{envTip.y}px">{envTip.text}</div>
+{/if}
+
+{#if colorFor}
+  {@const target = colorFor}
+  <ClipColorDialog
+    title={target.kind === "bus" ? "Bus Color" : "Track Color"}
+    noneLabel="Default Color"
+    current={target.current}
+    onDone={(c) => {
+      colorFor = null;
+      if (c === null) return;
+      const color = c === "" ? null : c;
+      const op = target.kind === "bus" ? busOp(doc, target.id, { color }) : trackOp(doc, target.id, { color });
+      void session.edit(target.kind === "bus" ? "Bus Color" : "Track Color", op, runner).catch(onError);
+    }}
+  />
+{/if}
+
+{#if pianoRoll && doc}
+  {@const pr = pianoRoll}
+  {@const prTrack = doc.tracks.find((t) => t.id === pr.trackId)}
+  {@const prClip = prTrack?.midi_clips?.find((c) => c.id === pr.clipId)}
+  {#if prTrack && prClip}
+    <PianoRollDialog
+      clip={prClip}
+      {tempo}
+      instrument={prTrack.instrument ? (instruments.find((x) => x.effect === prTrack.instrument!.effect)?.name ?? null) : null}
+      onApply={(c) => {
+        const t = prTrack;
+        setMidiClips(t, replaceClip(t.midi_clips ?? [], c), "Edit Notes");
+        pianoRoll = null;
+      }}
+      onClose={() => (pianoRoll = null)}
+    />
+  {/if}
 {/if}
 
 {#if menu}
@@ -1995,6 +2720,43 @@
     margin-left: auto;
   }
 
+  .toolbar .tempo {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    margin-right: 6px;
+    color: var(--text-faint);
+    font-size: var(--font-size-small);
+  }
+
+  .toolbar .tempo input,
+  .toolbar .tempo select {
+    height: 20px;
+    box-sizing: border-box;
+    padding: 0 3px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: var(--surface-2);
+    color: var(--text);
+    font: inherit;
+  }
+
+  .toolbar .tempo input {
+    width: 52px;
+  }
+
+  select.instrument {
+    flex: 1;
+    min-width: 0;
+    height: 20px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: var(--surface-2);
+    color: var(--text);
+    font: inherit;
+    font-size: var(--font-size-small);
+  }
+
   .toolbar .rate {
     padding: 0 4px;
     color: var(--text-faint);
@@ -2027,8 +2789,10 @@
     border-bottom-color: var(--danger);
   }
 
+  /* Exactly as wide as the lanes (set in code), never stretched, so the
+     playhead's triangle sits on its line whatever sits to the right. */
   .ruler {
-    flex: 1;
+    flex: none;
     min-width: 0;
     cursor: text;
     border-bottom: 1px solid var(--border);
@@ -2096,7 +2860,7 @@
     display: flex;
     flex: none;
     flex-direction: column;
-    width: 12px;
+    width: 14px;
     border-left: 1px solid var(--border);
     background: var(--surface-0);
     cursor: pointer;
@@ -2121,20 +2885,23 @@
     pointer-events: none;
   }
 
+  /* Grips on the thumb's ends: drag them to zoom vertically. */
   .vend {
     position: absolute;
-    left: 2px;
-    right: 2px;
-    height: 2px;
-    border-top: 1px solid #b4b4bc;
+    left: 1px;
+    right: 1px;
+    height: 5px;
+    border-radius: 2px;
+    background: repeating-linear-gradient(180deg, #d0d0d6 0 1px, transparent 1px 2px);
+    opacity: 0.85;
   }
 
   .vend.top {
-    top: 2px;
+    top: 1px;
   }
 
   .vend.bottom {
-    bottom: 2px;
+    bottom: 1px;
   }
 
   .rows {
@@ -2152,8 +2919,8 @@
     display: flex;
     flex-direction: column;
     gap: 3px;
-    padding: 3px 24px 3px 9px;
-    border-left: 5px solid var(--track-color, var(--border-strong));
+    padding: 3px 24px 3px 14px;
+    border-left: 0;
     border-bottom: 3px solid var(--track-gap);
     box-sizing: border-box;
     position: relative;
@@ -2183,6 +2950,35 @@
 
   .header.selected {
     background: var(--lane-selected);
+  }
+
+  /* The row whose effects the Voice Chain shows. */
+  .header.fx::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border: 1px solid var(--accent);
+    border-left-width: 3px;
+    pointer-events: none;
+  }
+
+  /* On the grab strip, written sideways, so it never covers a control. */
+  .fx-tag {
+    position: absolute;
+    bottom: 3px;
+    left: 0;
+    z-index: 2;
+    width: 10px;
+    padding: 2px 0;
+    background: var(--accent);
+    color: #fff;
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 10px;
+    text-align: center;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    pointer-events: none;
   }
 
   .header.selected .name {
@@ -2291,20 +3087,6 @@
     color: var(--text);
   }
 
-  .grip {
-    flex: none;
-    display: grid;
-    place-items: center;
-    width: 8px;
-    color: var(--text-faint);
-  }
-
-  .grip svg {
-    width: 6px;
-    height: 10px;
-    fill: currentColor;
-  }
-
   .pick,
   .auto {
     flex: 1;
@@ -2407,6 +3189,134 @@
 
   .lane {
     cursor: default;
+  }
+
+  /* Where dragged-in files would land. */
+  .drop-ghost {
+    position: absolute;
+    z-index: 5;
+    box-sizing: border-box;
+    overflow: hidden;
+    border: 1px dashed var(--accent);
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+    pointer-events: none;
+  }
+
+  .drop-ghost span {
+    display: block;
+    padding: 1px 4px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--accent) 55%, transparent);
+    color: #fff;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .bus-lane {
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    border-bottom: 3px solid var(--track-gap);
+    box-sizing: border-box;
+    background: repeating-linear-gradient(135deg, transparent 0 10px, color-mix(in srgb, var(--clip-3) 7%, transparent) 10px 20px);
+    color: var(--text-faint);
+    font-size: var(--font-size-small);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .bus-lane.selected {
+    background-color: color-mix(in srgb, var(--accent) 6%, transparent);
+  }
+
+  .grab {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1;
+    width: 10px;
+    background: var(--track-color, var(--border-strong));
+    background-image: repeating-linear-gradient(180deg, transparent 0 3px, rgba(0, 0, 0, 0.28) 3px 4px);
+    cursor: grab;
+  }
+
+  .grab:hover {
+    filter: brightness(1.25);
+  }
+
+  .grab:active {
+    cursor: grabbing;
+  }
+
+  .header.master {
+    border-left: 10px solid var(--accent);
+    padding-left: 4px;
+    background: color-mix(in srgb, var(--header-a) 80%, var(--accent) 20%);
+    cursor: default;
+  }
+
+  .ms.mono {
+    width: auto;
+    padding: 0 3px;
+    font-size: 8px;
+    letter-spacing: 0.03em;
+  }
+
+  .ms.mono.short {
+    width: 20px;
+    padding: 0;
+  }
+
+  .ms.mono.check.on {
+    background: var(--clip-5);
+    color: #111;
+  }
+
+  .ms.fx {
+    font-style: italic;
+  }
+
+  .master-lane {
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+  }
+
+  .header.bus {
+    background: color-mix(in srgb, var(--header-a) 82%, var(--clip-3) 18%);
+    cursor: default;
+  }
+
+  .bus-tag {
+    flex: none;
+    padding: 0 3px;
+    border-radius: 2px;
+    background: var(--surface-3);
+    color: var(--text-dim);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  .outpick {
+    position: relative;
+  }
+  .outpick select {
+    flex: 1;
+    min-width: 0;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+  }
+
+  .sendview {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
   }
 
   .below {

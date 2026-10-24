@@ -40,6 +40,9 @@ pub fn effect_chain() -> EffectChain {
             enabled: false,
             params,
             preset: Some("Voice leveler".into()),
+            sidechain: None,
+            plugin_state: None,
+            position: None,
         }],
     }
 }
@@ -116,6 +119,7 @@ pub fn track() -> Track {
     Track {
         id: id(200),
         name: "Host".into(),
+        kind: Default::default(),
         role: TrackRole::Standard,
         host_profile_id: Some("host".into()),
         channels: ChannelLayout::Mono,
@@ -128,6 +132,7 @@ pub fn track() -> Track {
         muted: false,
         solo: true,
         polarity_inverted: false,
+        mono: false,
         record_armed: true,
         monitor_input: false,
         input: Some("Mic 1".into()),
@@ -142,6 +147,8 @@ pub fn track() -> Track {
         }],
         effects: effect_chain(),
         clips: vec![clip()],
+        instrument: None,
+        midi_clips: Vec::new(),
         envelopes: vec![envelope()],
     }
 }
@@ -161,6 +168,8 @@ pub fn bus() -> Bus {
         sends: Vec::new(),
         effects: EffectChain::default(),
         envelopes: Vec::new(),
+        position: None,
+        mono: false,
     }
 }
 
@@ -191,6 +200,7 @@ pub fn session() -> Session {
         bit_depth: 32,
         created: date(),
         modified: date(),
+        tempo: Default::default(),
         media: vec![MediaRef {
             id: id(100),
             path: "C:/GCRN/Show/412/host.wav".into(),

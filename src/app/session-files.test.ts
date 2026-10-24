@@ -7,7 +7,7 @@ import { UndoStack } from "../commands";
 import { MediaPool } from "../stores/media-pool";
 import { SessionStore, type SessionDoc } from "../stores/session";
 import type { Recoverable, SessionResult } from "./core";
-import { displayName, planOpen, SessionFiles, type Choice, type SessionFileBackend } from "./session-files";
+import { displayName, isBlank, planOpen, SessionFiles, type Choice, type SessionFileBackend } from "./session-files";
 
 function doc(name = "Untitled Session", media: SessionDoc["media"] = []): SessionDoc {
   return {
@@ -31,7 +31,10 @@ const result = (session: SessionDoc, path: string | null, missing: string[] = []
   missing,
 });
 
-function setup(opts: { choice?: Choice; pickSave?: string | null; recoverable?: Recoverable[]; recover?: boolean } = {}) {
+/** A session with something in it worth saving (a marker). */
+const withContent = (d: SessionDoc): SessionDoc => ({ ...d, markers: [{ id: "mk", name: "Intro", kind: "cue", start: 0 } as unknown as SessionDoc["markers"][number]] });
+
+function setup(opts: { choice?: Choice; pickSave?: string | null; recoverable?: Recoverable[]; recover?: boolean; blank?: boolean } = {}) {
   const calls: string[] = [];
   let recent: string[] = [];
   const notices: string[] = [];
@@ -67,7 +70,7 @@ function setup(opts: { choice?: Choice; pickSave?: string | null; recoverable?: 
     },
     setView: async () => {},
   });
-  session.set(doc(), null);
+  session.set(opts.blank ? doc() : withContent(doc()), null);
   const pool = new MediaPool({ expand: async (p) => p, probe: async () => ({ path: "", name: "", format: "WAV", codec: "PCM", sampleRate: 48000, channels: 2, length: 10, bitDepth: 16, fileSize: 1 }) });
   const stack = new UndoStack();
   const files = new SessionFiles({
@@ -92,7 +95,7 @@ describe("SessionFiles", () => {
     expect(session.path).toBeNull();
     expect(stack.current.dirty).toBe(true);
     expect(notices.at(-1)).toBe(
-      "Imported 6 tracks and 6 clips. 19 effects were left out; rebuild them in Voice Chain (P5). 1 media file was not found.",
+      "Imported 6 tracks and 6 clips. 19 built-in effects were left out; rebuild them in Voice Chain. 1 media file was not found.",
     );
   });
 
@@ -102,6 +105,36 @@ describe("SessionFiles", () => {
     await makeDirty();
     expect(files.title()).toBe("Untitled Session * - Altered Audio Editor");
     expect(displayName("C:\\Shows\\Show 440.altaudio", null)).toBe("Show 440");
+  });
+
+  it("the blank session the app opened with is not one to save", async () => {
+    const { files, calls, makeDirty, session } = setup({ blank: true });
+    await session.load();
+    // Files imported into the Files panel only: no star, no question, no recovery copy.
+    await makeDirty();
+    expect(files.dirty).toBe(true);
+    expect(files.unsaved).toBe(false);
+    expect(files.title()).toBe("Untitled Session - Altered Audio Editor");
+    expect(await files.autosaveNow()).toBe(false);
+    expect(await files.newSession()).toBe(true);
+    expect(calls).toEqual(["create"]);
+    expect(isBlank(withContent(doc()))).toBe(false);
+  });
+
+  it("a new session, or a track added, is a real session (tester report: tracks would not show)", async () => {
+    const { files, session, makeDirty } = setup({ blank: true });
+    await session.load();
+    expect(session.isScratch()).toBe(true);
+    // A track added to the launch session ends it being scratch.
+    session.set({ ...doc(), tracks: [{ id: "t1", name: "Track 1", clips: [] } as unknown as SessionDoc["tracks"][number]] });
+    expect(session.isScratch()).toBe(false);
+    // So does a session made with New Session, even with nothing in it.
+    await files.newSession();
+    expect(session.current?.id).toBe("id-Untitled Session");
+    session.set({ ...doc(), id: "fresh" });
+    await makeDirty();
+    expect(session.isScratch()).toBe(false);
+    expect(files.unsaved).toBe(true);
   });
 
   it("asks where to save the first time, then saves in place", async () => {
