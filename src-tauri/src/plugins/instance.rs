@@ -14,7 +14,7 @@
 //! fails to start, its slot passes audio through untouched and reports
 //! the problem; the editor and every other plug-in carry on.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -26,13 +26,13 @@ use std::time::Duration;
 
 use altered_plughost::protocol::{
     decode_samples, encode_audio, read_frame, write_frame, Message, NoteEvent, ParamInfo, Request,
-    AUDIO, CONTROL,
+    AUDIO, CONTROL, SELECT,
 };
 use serde::Serialize;
 
 use super::{find, host_program, param_id, Found};
 use crate::dsp::effects::{Params, Processor};
-use crate::session::model::{EffectSlot, Id, Tempo};
+use crate::session::model::{EffectSlot, Id, Tempo, TempoSegment};
 
 /// Longest a plug-in may take to process one block before it counts as hung.
 pub const PROCESS_TIMEOUT: Duration = Duration::from_secs(4);
@@ -64,29 +64,29 @@ impl Events {
     }
 }
 
-pub struct Host {
-    child: Child,
-    stdin: ChildStdin,
-    audio: Receiver<Vec<f32>>,
-    replies: Receiver<Message>,
-    events: Arc<Mutex<Events>>,
+/// One host process and its pipes. Usually it runs one plug-in; plug-ins
+/// from a maker set to run together (see [`set_shared_makers`]) share one,
+/// so they can find each other (an immersive panner and its renderer, for
+/// example). A crash or hang stops every plug-in in the process.
+struct Conn {
+    child: Mutex<Child>,
+    /// The pipe in, and which plug-in its last frames were for.
+    stdin: Mutex<(ChildStdin, u32)>,
+    routes: Arc<Mutex<HashMap<u32, Route>>>,
     dead: Arc<AtomicBool>,
-    /// The control values the plug-in has: sent from here or moved in its window.
-    known: Arc<Mutex<HashMap<u32, f64>>>,
-    pub latency: usize,
-    pub params: Vec<ParamInfo>,
-    pub has_editor: bool,
-    buf: Vec<u8>,
+    next_id: std::sync::atomic::AtomicU32,
 }
 
-impl Host {
-    /// Starts a host and loads `found` into it.
-    pub fn start(
-        found: &Found,
-        rate: u32,
-        state: Option<String>,
-        params: Vec<(u32, f64)>,
-    ) -> Result<Host, String> {
+/// Where one plug-in's answers go.
+struct Route {
+    audio: mpsc::Sender<Vec<f32>>,
+    replies: mpsc::Sender<Message>,
+    events: Arc<Mutex<Events>>,
+    known: Arc<Mutex<HashMap<u32, f64>>>,
+}
+
+impl Conn {
+    fn spawn() -> Result<Arc<Conn>, String> {
         let exe = host_program().ok_or("The plug-in host could not be found.")?;
         let mut child = Command::new(exe)
             .arg("--plugin-host")
@@ -100,35 +100,38 @@ impl Host {
             .stdout
             .take()
             .ok_or("No pipe from the plug-in host.")?;
-        let (atx, arx) = mpsc::channel();
-        let (rtx, rrx) = mpsc::channel();
-        let events = Arc::new(Mutex::new(Events::default()));
+        let routes: Arc<Mutex<HashMap<u32, Route>>> = Arc::new(Mutex::new(HashMap::new()));
         let dead = Arc::new(AtomicBool::new(false));
-        let known = Arc::new(Mutex::new(
-            params.iter().copied().collect::<HashMap<u32, f64>>(),
-        ));
-        let (ev, dd, kn) = (events.clone(), dead.clone(), known.clone());
+        let (rt, dd) = (routes.clone(), dead.clone());
         thread::Builder::new()
             .name("plugin-pipe".into())
             .spawn(move || {
                 let mut buf = Vec::new();
-                loop {
-                    match read_frame(&mut stdout, &mut buf) {
-                        Ok(Some(AUDIO)) => {
+                let mut cur = 0u32;
+                while let Ok(Some(kind)) = read_frame(&mut stdout, &mut buf) {
+                    if kind == SELECT {
+                        if let Some(b) = buf.get(..4) {
+                            cur = u32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+                        }
+                        continue;
+                    }
+                    let Ok(routes) = rt.lock() else { break };
+                    // Answers for a plug-in already unloaded are dropped.
+                    let Some(r) = routes.get(&cur) else { continue };
+                    match kind {
+                        AUDIO => {
                             let mut s = Vec::new();
                             decode_samples(&buf, &mut s);
-                            if atx.send(s).is_err() {
-                                break;
-                            }
+                            let _ = r.audio.send(s);
                         }
-                        Ok(Some(CONTROL)) => {
+                        CONTROL => {
                             let Ok(m) = serde_json::from_slice::<Message>(&buf) else {
                                 continue;
                             };
-                            let Ok(mut e) = ev.lock() else { break };
+                            let Ok(mut e) = r.events.lock() else { continue };
                             match m {
                                 Message::ParamEdited { id, value } => {
-                                    if let Ok(mut k) = kn.lock() {
+                                    if let Ok(mut k) = r.known.lock() {
                                         k.insert(id, value);
                                     }
                                     e.edits.push((super::param_key(id), value));
@@ -141,35 +144,228 @@ impl Host {
                                 Message::LatencyChanged { .. } => e.latency_changed = true,
                                 reply => {
                                     drop(e);
-                                    if rtx.send(reply).is_err() {
-                                        break;
-                                    }
+                                    let _ = r.replies.send(reply);
                                 }
                             }
                         }
-                        _ => break,
+                        _ => {}
                     }
                 }
-                if !dd.swap(true, Ordering::SeqCst) {
-                    if let Ok(mut e) = ev.lock() {
-                        e.stopped
-                            .get_or_insert_with(|| "The plug-in crashed and is bypassed.".into());
+                // The process ended: every plug-in in it is bypassed, and
+                // anyone waiting on an answer hears at once (the channels close).
+                let first = !dd.swap(true, Ordering::SeqCst);
+                if let Ok(mut routes) = rt.lock() {
+                    if first {
+                        for r in routes.values() {
+                            if let Ok(mut e) = r.events.lock() {
+                                e.stopped.get_or_insert_with(|| {
+                                    "The plug-in crashed and is bypassed.".into()
+                                });
+                            }
+                        }
                     }
+                    routes.clear();
                 }
             })
             .map_err(|e| e.to_string())?;
+        Ok(Arc::new(Conn {
+            child: Mutex::new(child),
+            stdin: Mutex::new((stdin, 0)),
+            routes,
+            dead,
+            next_id: std::sync::atomic::AtomicU32::new(0),
+        }))
+    }
+
+    /// Writes a frame for plug-in `id`. False when the process is gone.
+    fn write(&self, id: u32, kind: u8, payload: &[u8]) -> bool {
+        let Ok(mut g) = self.stdin.lock() else {
+            return false;
+        };
+        let (pipe, selected) = &mut *g;
+        if *selected != id {
+            if write_frame(pipe, SELECT, &id.to_le_bytes()).is_err() {
+                return false;
+            }
+            *selected = id;
+        }
+        write_frame(pipe, kind, payload).is_ok()
+    }
+
+    /// Stops the process: every plug-in in it is bypassed with `why`.
+    fn kill(&self, why: &str) {
+        if !self.dead.swap(true, Ordering::SeqCst) {
+            if let Ok(routes) = self.routes.lock() {
+                for r in routes.values() {
+                    if let Ok(mut e) = r.events.lock() {
+                        e.stopped.get_or_insert_with(|| why.to_string());
+                    }
+                }
+            }
+        }
+        if let Ok(mut c) = self.child.lock() {
+            let _ = c.kill();
+        }
+    }
+}
+
+impl Drop for Conn {
+    fn drop(&mut self) {
+        if let Ok(mut g) = self.stdin.lock() {
+            let _ = g.0.flush();
+        }
+        if let Ok(mut c) = self.child.lock() {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
+    }
+}
+
+/// Makers known to need their plug-ins in one process: their immersive
+/// tools (a panner per track and a renderer on the mix) talk to each other.
+pub fn default_shared_makers() -> Vec<String> {
+    vec!["fiedler audio".to_string()]
+}
+
+/// Makers whose plug-ins run together in one process, lower case.
+fn shared_makers() -> &'static Mutex<HashSet<String>> {
+    static S: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    S.get_or_init(|| Mutex::new(default_shared_makers().into_iter().collect()))
+}
+
+/// Sets the makers whose plug-ins run together in one process (from the
+/// Plug-in Manager). Playback's running plug-ins from a maker whose choice
+/// changed stop, so they start again the new way at the next playback
+/// (from the settings saved in the session; fetch those first).
+pub fn set_shared_makers(makers: Vec<String>) {
+    let new: HashSet<String> = makers
+        .into_iter()
+        .map(|m| m.trim().to_lowercase())
+        .filter(|m| !m.is_empty())
+        .collect();
+    let changed: HashSet<String> = match shared_makers().lock() {
+        Ok(mut s) => {
+            let changed = s.symmetric_difference(&new).cloned().collect();
+            *s = new;
+            changed
+        }
+        Err(_) => return,
+    };
+    if changed.is_empty() {
+        return;
+    }
+    if let Ok(mut p) = pool().lock() {
+        p.retain(|_, e| {
+            find(&e.effect).is_none_or(|f| !changed.contains(&f.info.vendor.trim().to_lowercase()))
+        });
+    }
+}
+
+/// The makers whose plug-ins run together.
+pub fn shared_maker_list() -> Vec<String> {
+    let mut v: Vec<String> = shared_makers()
+        .lock()
+        .map(|s| s.iter().cloned().collect())
+        .unwrap_or_default();
+    v.sort();
+    v
+}
+
+/// Running shared processes: (scope, maker, rate) to the process, while
+/// any of its plug-ins runs. Scope 0 is playback; each mixdown has its own.
+type SharedConns = Mutex<HashMap<(u64, String, u32), std::sync::Weak<Conn>>>;
+fn shared_conns() -> &'static SharedConns {
+    static C: OnceLock<SharedConns> = OnceLock::new();
+    C.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// The process a plug-in by `vendor` runs in: a shared one for makers set
+/// to run together, otherwise a new one of its own.
+fn conn_for(vendor: &str, rate: u32) -> Result<Arc<Conn>, String> {
+    let maker = vendor.trim().to_lowercase();
+    let shared = shared_makers().lock().is_ok_and(|s| s.contains(&maker));
+    if !shared {
+        return Conn::spawn();
+    }
+    let key = (SCOPE.with(Cell::get), maker, rate);
+    let mut map = shared_conns().lock().map_err(|e| e.to_string())?;
+    map.retain(|_, w| w.strong_count() > 0);
+    if let Some(c) = map.get(&key).and_then(std::sync::Weak::upgrade) {
+        if !c.dead.load(Ordering::SeqCst) {
+            return Ok(c);
+        }
+    }
+    let c = Conn::spawn()?;
+    SHARED_STARTED.fetch_add(1, Ordering::SeqCst);
+    map.insert(key, Arc::downgrade(&c));
+    Ok(c)
+}
+
+static SHARED_STARTED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// How many shared processes have been started (for tests).
+pub fn shared_processes_started() -> u64 {
+    SHARED_STARTED.load(Ordering::SeqCst)
+}
+
+/// One plug-in running in a host process, driven over its pipes.
+pub struct Host {
+    conn: Arc<Conn>,
+    id: u32,
+    audio: Receiver<Vec<f32>>,
+    replies: Receiver<Message>,
+    events: Arc<Mutex<Events>>,
+    dead: Arc<AtomicBool>,
+    /// The control values the plug-in has: sent from here or moved in its window.
+    known: Arc<Mutex<HashMap<u32, f64>>>,
+    pub latency: usize,
+    pub params: Vec<ParamInfo>,
+    pub has_editor: bool,
+    buf: Vec<u8>,
+    rate: u32,
+    /// The stretch of the tempo map the plug-in was last told.
+    told: Option<TempoSegment>,
+}
+
+impl Host {
+    /// Starts `found` in a host process (its own, or its maker's shared one).
+    pub fn start(
+        found: &Found,
+        rate: u32,
+        state: Option<String>,
+        params: Vec<(u32, f64)>,
+    ) -> Result<Host, String> {
+        let conn = conn_for(&found.info.vendor, rate)?;
+        let id = conn.next_id.fetch_add(1, Ordering::SeqCst);
+        let (atx, arx) = mpsc::channel();
+        let (rtx, rrx) = mpsc::channel();
+        let events = Arc::new(Mutex::new(Events::default()));
+        let known = Arc::new(Mutex::new(
+            params.iter().copied().collect::<HashMap<u32, f64>>(),
+        ));
+        conn.routes.lock().map_err(|e| e.to_string())?.insert(
+            id,
+            Route {
+                audio: atx,
+                replies: rtx,
+                events: events.clone(),
+                known: known.clone(),
+            },
+        );
         let mut host = Host {
-            child,
-            stdin,
+            dead: conn.dead.clone(),
+            conn,
+            id,
             audio: arx,
             replies: rrx,
             events,
-            dead,
             known,
             latency: 0,
             params: Vec::new(),
             has_editor: false,
             buf: Vec::new(),
+            rate,
+            told: None,
         };
         let load = Request::Load {
             path: found.bundle.to_string_lossy().into_owned(),
@@ -200,12 +396,7 @@ impl Host {
     }
 
     fn stop(&mut self, why: &str) {
-        if !self.dead.swap(true, Ordering::SeqCst) {
-            if let Ok(mut e) = self.events.lock() {
-                e.stopped.get_or_insert_with(|| why.to_string());
-            }
-        }
-        let _ = self.child.kill();
+        self.conn.kill(why);
     }
 
     /// Sends a request and waits for its reply.
@@ -214,7 +405,7 @@ impl Host {
             return None;
         }
         let json = serde_json::to_vec(r).ok()?;
-        if write_frame(&mut self.stdin, CONTROL, &json).is_err() {
+        if !self.conn.write(self.id, CONTROL, &json) {
             self.stop("The plug-in crashed and is bypassed.");
             return None;
         }
@@ -238,8 +429,21 @@ impl Host {
                 k.extend(changes.iter().copied());
             }
         }
-        encode_audio(&mut self.buf, changes, notes, io);
-        if write_frame(&mut self.stdin, AUDIO, &self.buf).is_err() {
+        let position = block_position();
+        if position >= 0 {
+            // Tempo changes reach the plug-in as playback crosses them.
+            if let Some(seg) = BLOCK_TEMPO.with(|t| {
+                t.borrow()
+                    .as_ref()
+                    .map(|t| t.segment_at_seconds(position as f64 / f64::from(self.rate.max(1))))
+            }) {
+                if self.told != Some(seg) {
+                    self.tell_tempo(seg);
+                }
+            }
+        }
+        encode_audio(&mut self.buf, position, changes, notes, io);
+        if !self.conn.write(self.id, AUDIO, &self.buf) {
             self.stop("The plug-in crashed and is bypassed.");
             return false;
         }
@@ -282,10 +486,13 @@ impl Host {
         }
     }
 
-    pub fn open_window(&mut self, title: &str) -> Result<(), String> {
+    /// Opens the plug-in's window, owned by `owner` (the main window's
+    /// handle on Windows, 0 for none) so it stays above it.
+    pub fn open_window(&mut self, title: &str, owner: u64) -> Result<(), String> {
         match self.request(
             &Request::OpenEditor {
                 title: title.into(),
+                owner,
             },
             REQUEST_TIMEOUT,
         ) {
@@ -303,11 +510,21 @@ impl Host {
         let _ = self.request(&Request::Reset, REQUEST_TIMEOUT);
     }
 
-    pub fn set_tempo(&mut self, tempo: Tempo) {
+    /// Tells the plug-in the tempo and time signature where playback starts.
+    pub fn set_tempo(&mut self, tempo: &Tempo) {
+        let seg = tempo.segments().next().expect("never empty");
+        self.tell_tempo(seg);
+    }
+
+    fn tell_tempo(&mut self, seg: TempoSegment) {
+        self.told = Some(seg);
         let _ = self.request(
             &Request::Tempo {
-                bpm: tempo.bpm,
-                beats_per_bar: tempo.beats_per_bar,
+                bpm: seg.bpm,
+                beats_per_bar: seg.beats_per_bar,
+                beat_unit: seg.beat_unit,
+                start: (seg.seconds * f64::from(self.rate)).round() as i64,
+                start_music: seg.beat,
             },
             REQUEST_TIMEOUT,
         );
@@ -316,10 +533,48 @@ impl Host {
 
 impl Drop for Host {
     fn drop(&mut self) {
-        let _ = self.stdin.flush();
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        // Others in a shared process carry on; the process ends with its last plug-in.
+        if !self.is_dead() {
+            if let Ok(json) = serde_json::to_vec(&Request::Unload) {
+                let _ = self.conn.write(self.id, CONTROL, &json);
+            }
+        }
+        if let Ok(mut r) = self.conn.routes.lock() {
+            r.remove(&self.id);
+        }
     }
+}
+
+thread_local! {
+    /// The timeline frame of the block being rendered on this thread, for
+    /// plug-ins' song position; -1 when unknown (previews, auditions).
+    static BLOCK_POS: Cell<i64> = const { Cell::new(-1) };
+}
+
+thread_local! {
+    /// The tempo map of the mix being rendered on this thread, so
+    /// plug-ins follow its tempo and time signature changes.
+    static BLOCK_TEMPO: RefCell<Option<Arc<Tempo>>> = const { RefCell::new(None) };
+}
+
+/// Sets the tempo map of the mix rendered on this thread.
+pub fn set_block_tempo(tempo: Option<Arc<Tempo>>) {
+    BLOCK_TEMPO.with(|t| *t.borrow_mut() = tempo);
+}
+
+/// The tempo map of the mix rendered on this thread.
+pub fn block_tempo() -> Option<Arc<Tempo>> {
+    BLOCK_TEMPO.with(|t| t.borrow().clone())
+}
+
+/// Sets the timeline frame of the block about to be rendered on this thread.
+pub fn set_block_position(frame: i64) {
+    BLOCK_POS.with(|c| c.set(frame));
+}
+
+/// The timeline frame of the block being rendered on this thread (-1 when unknown).
+pub fn block_position() -> i64 {
+    BLOCK_POS.with(Cell::get)
 }
 
 struct Pooled {
@@ -335,13 +590,18 @@ fn pool() -> &'static Mutex<HashMap<Id, Pooled>> {
 
 thread_local! {
     static FRESH: Cell<bool> = const { Cell::new(false) };
+    /// Which shared processes plug-ins join: 0 for playback, a new number per mixdown.
+    static SCOPE: Cell<u64> = const { Cell::new(0) };
 }
 
 /// Runs `f` with fresh plug-in hosts instead of playback's (a mixdown).
 pub fn fresh<T>(f: impl FnOnce() -> T) -> T {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     let was = FRESH.with(|c| c.replace(true));
+    let scope = SCOPE.with(|c| c.replace(NEXT.fetch_add(1, Ordering::SeqCst)));
     let out = f();
     FRESH.with(|c| c.set(was));
+    SCOPE.with(|c| c.set(scope));
     out
 }
 
@@ -611,7 +871,7 @@ pub struct Instrument {
 impl Instrument {
     /// Starts (or picks up) the slot's instrument, told the session's
     /// tempo, with every note let go.
-    pub fn start(slot: &EffectSlot, rate: u32, tempo: Tempo) -> Instrument {
+    pub fn start(slot: &EffectSlot, rate: u32, tempo: &Tempo) -> Instrument {
         let host = host_for(slot, rate);
         let (latency, pending) = match host.as_ref().and_then(|h| h.lock().ok()) {
             Some(mut h) => {

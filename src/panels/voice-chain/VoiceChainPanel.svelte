@@ -54,6 +54,14 @@
   } from "./chain";
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import ResponseGraph from "./ResponseGraph.svelte";
+  import EqGraph from "./EqGraph.svelte";
+  import PhaseCurveGraph from "./PhaseCurveGraph.svelte";
+  import EffectControls from "./EffectControls.svelte";
+  import NoiseShapeGraph from "./NoiseShapeGraph.svelte";
+  import TubePanel from "./TubePanel.svelte";
+  import { settings } from "../../stores/settings";
+  import AmpPanel from "./AmpPanel.svelte";
+  import { groupShown, PHASE_CURVE } from "./phase-curve";
   import { GRAPHED } from "./graph";
   import { clampBox, effectWindowRequest, portal, type WindowBox } from "./effect-window";
   import { dropEdit, effectMenu, ownerKey, slotOver, startSlotDrag, type SlotSpot } from "./slot-drag";
@@ -142,6 +150,14 @@
   const byId = $derived(new Map(catalog.map((e) => [e.id, e])));
   const known = $derived(new Set(catalog.map((e) => e.id)));
   const categories = $derived([...new Set(catalog.map((e) => e.category))]);
+  // Music tools are offered in the Add effect menus only with Music Mode on; a slot that already holds one keeps working.
+  let music = $state(settings.current.musicMode);
+  $effect(() =>
+    settings.subscribe((v) => {
+      music = v.musicMode;
+    }),
+  );
+  const menuCatalog = $derived(music ? catalog : catalog.filter((e) => e.id !== "altaudio.amp_model"));
 
   let userPresets = $state<ChainPreset[]>([]);
   let tab = $state<"clip" | "track">("track");
@@ -155,8 +171,11 @@
     prefs.set(KEY_TAB, t);
   }
 
-  // What the chain belongs to.
-  const oneClip = $derived(ed.selectedClips.size === 1 ? [...ed.selectedClips][0]! : null);
+  // What the chain belongs to. While an effect's window is open, the panel
+  // stays on that chain, so clicking another track or clip in the editor
+  // does not take the window away.
+  let hold = $state<{ owner: string | null; clip: string | null } | null>(null);
+  const oneClip = $derived(hold ? hold.clip : ed.selectedClips.size === 1 ? [...ed.selectedClips][0]! : null);
   const clipTrack = $derived(oneClip ? doc?.tracks.find((t) => t.clips.some((c) => c.id === oneClip)) : undefined);
   // The track picked in the panel wins; otherwise the selected track,
   // the selected clip's track, or the first track, so the chain is never
@@ -166,19 +185,23 @@
   // selection, not on every editor update.
   const selTrack = $derived(ed.selectedTrack);
   $effect(() => {
-    // A new selection in the editor takes over from the panel's pick.
+    // A new selection in the editor takes over from the panel's pick (not while a window holds it).
     void selTrack;
     void oneClip;
-    pickedTrack = null;
+    if (!hold) pickedTrack = null;
   });
   const track = $derived(
-    doc?.tracks.find((t) => t.id === pickedTrack) ?? doc?.tracks.find((t) => t.id === ed.selectedTrack) ?? clipTrack ?? doc?.tracks[0],
+    (hold ? doc?.tracks.find((t) => t.id === hold!.owner) : undefined) ??
+      doc?.tracks.find((t) => t.id === pickedTrack) ??
+      doc?.tracks.find((t) => t.id === ed.selectedTrack) ??
+      clipTrack ??
+      doc?.tracks[0],
   );
   const clip = $derived(oneClip ? clipTrack?.clips.find((c) => c.id === oneClip) : undefined);
   const inWave = $derived(ed.mode === "waveform");
   const waveTrack = $derived(waveDoc?.tracks[0]);
   // Track Effects also shows a bus's or the master's chain, picked here or in the Mixer.
-  const ownerId = $derived(pickedTrack ?? ed.selectedTrack);
+  const ownerId = $derived(hold ? hold.owner : (pickedTrack ?? ed.selectedTrack));
   const onTrackTab = $derived(!inWave && tab === "track");
   const bus = $derived(onTrackTab ? doc?.buses?.find((b) => b.id === ownerId) : undefined);
   const onMaster = $derived(onTrackTab && !!doc && ownerId === MASTER_ID);
@@ -227,6 +250,11 @@
     selectedSlot = id;
     winOpen = true;
   }
+  // Hold the chain while a window is open; let go when it closes.
+  $effect(() => {
+    if (winOpen && !hold) hold = { owner: onMaster ? MASTER_ID : (bus?.id ?? track?.id ?? null), clip: tab === "clip" ? (clip?.id ?? null) : null };
+    if (!winOpen && hold) hold = null;
+  });
   // Effects added from the Effects menu open here too.
   $effect(() => {
     const id = $effectWindowRequest;
@@ -329,7 +357,7 @@
   }
   /** The effects of each family as submenus, for adding or replacing a slot. */
   function familyItems(pick: (id: string) => void): ContextItem[] {
-    return effectMenu(catalog, menuPlugins, pick) as ContextItem[];
+    return effectMenu(menuCatalog, menuPlugins, pick) as ContextItem[];
   }
   /** The menu for a slot, empty or not: Edit and Remove first, then the effects to put there. */
   function slotItems(s: EffectSlotDoc | undefined, at: number): ContextItem[] {
@@ -454,6 +482,16 @@
     } else live(apply);
   }
 
+  /** Several controls of one effect moved together (the EQ graph's nodes); one undoable step on release. */
+  function dragParams(s: EffectSlotDoc, changes: [EffectParamInfo, number][], label: string, done: boolean) {
+    const id = s.id;
+    const apply = () => commit(label, changes.reduce((c, [p, v]) => setParam(c, id, p, v), chain));
+    if (done) {
+      settle();
+      apply();
+    } else live(apply);
+  }
+
   /** Input, output and mix: the same, on the chain itself. */
   function dragChain(key: "input_gain_db" | "output_gain_db" | "mix", label: string, shownValue: number, value: number) {
     draft = { key: `chain.${key}`, value: shownValue };
@@ -470,7 +508,9 @@
   // Noise Print Reducer: learn the print from the time selection. A bus
   // or the master has no audio of its own to learn from yet.
   const canLearn = $derived(inWave || target?.kind === "track" || target?.kind === "clip");
-  const LEARNS = new Set(["altaudio.noise_print", "altaudio.sound_eraser"]);
+  /** Effects whose window draws all of its own controls. */
+  const OWN_CONTROLS = new Set(["altaudio.shaped_noise", "altaudio.opto_leveler", "altaudio.tube_preamp", "altaudio.amp_model"]);
+  const LEARNS = new Set(["altaudio.noise_print", "altaudio.sound_eraser", "altaudio.shaped_noise"]);
   const learnSel = $derived.by(() => {
     const v = inWave ? waveDoc?.view.selection : doc?.view.selection;
     return v && v.end > v.start ? v : null;
@@ -514,17 +554,6 @@
   const mixShown = $derived(draft?.key === "chain.mix" ? draft.value : Math.round(chain.mix * 100));
   const MIX: EffectParamInfo = { key: "mix", name: "Mix", unit: "%", min: 0, max: 100, default: 100, step: 1, log: false, toggle: false };
 
-  const groups = (info: EffectInfo) => {
-    const out: { name: string; params: EffectParamInfo[] }[] = [];
-    for (const p of info.params) {
-      if (p.hidden) continue;
-      const g = p.group ?? "";
-      const last = out[out.length - 1];
-      if (last && last.name === g) last.params.push(p);
-      else out.push({ name: g, params: [p] });
-    }
-    return out;
-  };
 </script>
 
 <section class="vc" aria-label="Voice Chain">
@@ -681,7 +710,38 @@
         </header>
         <div class="editor">
       {#if winSlot && winInfo}
-                {#if GRAPHED.has(winSlot.effect)}
+                {#if winSlot.effect === "altaudio.parametric_eq"}
+          <EqGraph
+            slot={winSlot}
+            info={winInfo}
+            playing={!!ts?.playing}
+            playhead={ts?.playing ? ts.position : ((inWave ? waveDoc : doc)?.view.playhead ?? 0)}
+            wave={inWave}
+            onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)}
+          />
+        {:else if winSlot.effect === "altaudio.shaped_noise"}
+          <NoiseShapeGraph
+            slot={winSlot}
+            info={winInfo}
+            playing={!!ts?.playing}
+            playhead={ts?.playing ? ts.position : ((inWave ? waveDoc : doc)?.view.playhead ?? 0)}
+            wave={inWave}
+            onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)}
+          />
+        {:else if winSlot.effect === "altaudio.opto_leveler" || winSlot.effect === "altaudio.tube_preamp"}
+          <TubePanel slot={winSlot} info={winInfo} onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)} />
+        {:else if winSlot.effect === "altaudio.amp_model"}
+          <AmpPanel
+            slot={winSlot}
+            info={winInfo}
+            rate={(inWave ? waveDoc : doc)?.sample_rate ?? 48000}
+            onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)}
+            onData={(data, label) => commit(label, setSlot(chain, winSlot.id, { data }))}
+            {onError}
+          />
+        {:else if winSlot.effect === PHASE_CURVE}
+          <PhaseCurveGraph slot={winSlot} info={winInfo} onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)} />
+        {:else if GRAPHED.has(winSlot.effect)}
           <ResponseGraph slot={winSlot} info={winInfo} onPoint={(pf, f, pg, g, done) => dragPoint(winSlot, pf, f, pg, g, done)} />
         {/if}
         {#if winInfo.sidechain && onTrackTab && doc && keyOwner}
@@ -719,35 +779,13 @@
             </span>
           </div>
         {/if}
-        {#each groups(winInfo) as g (g.name)}
-          {#if g.name}<h3>{g.name}</h3>{/if}
-          {#each g.params as p (p.key)}
-            {@const v = shown(winSlot, p)}
-            <label class="param">
-              <span class="pname">{p.name}</span>
-              {#if p.toggle}
-                <input type="checkbox" checked={v >= 0.5} onchange={(e) => setValue(winSlot, p, e.currentTarget.checked ? 1 : 0)} />
-              {:else if p.choices?.length}
-                <select value={String(Math.round(v))} onchange={(e) => setValue(winSlot, p, Number(e.currentTarget.value))}>
-                  {#each p.choices as c, ci (c)}<option value={String(p.min + ci)}>{c}</option>{/each}
-                </select>
-              {:else}
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.001"
-                  value={toSlider(p, v)}
-                  oninput={(e) => drag(winSlot, p, fromSlider(p, Number(e.currentTarget.value)))}
-                  onchange={(e) => setValue(winSlot, p, fromSlider(p, Number(e.currentTarget.value)))}
-                  ondblclick={() => setValue(winSlot, p, p.default)}
-                  title="Double-click for the default"
-                />
-              {/if}
-              <span class="val">{formatParam(p, v)}</span>
-            </label>
-          {/each}
-        {/each}
+        {#if !OWN_CONTROLS.has(winSlot.effect)}<EffectControls
+          info={winInfo}
+          value={(p) => shown(winSlot, p)}
+          shown={(g) => groupShown(winSlot.effect, winSlot, g)}
+          oninput={(p, v) => drag(winSlot, p, v)}
+          oncommit={(p, v) => setValue(winSlot, p, v)}
+        />{/if}
       {:else}
         <p class="hint">This effect is not built in. It stays in the file and is skipped on playback.</p>
       {/if}
@@ -1010,6 +1048,18 @@
     position: fixed;
     z-index: 900;
     width: 380px;
+    /* Graph editors (the Parametric EQ) get room to work in. */
+    &:has(:global(.eq)),
+    &:has(:global(.pc)) {
+      width: 560px;
+    }
+    &:has(:global(.ns)) {
+      width: 660px;
+    }
+    &:has(:global(.tube)),
+    &:has(:global(.amp)) {
+      width: 620px;
+    }
     max-width: calc(100vw - 16px);
     max-height: calc(100vh - 40px);
     display: flex;
@@ -1057,14 +1107,6 @@
   }
   .bottom {
     border-top: 1px solid var(--border);
-  }
-  h3 {
-    margin: 4px 0 0;
-    font-size: 12px;
-  }
-  h3 {
-    color: var(--text-dim);
-    font-weight: normal;
   }
   .param {
     display: grid;

@@ -61,6 +61,11 @@ pub struct Session {
     /// follow it. Files from before MIDI tracks get the default.
     #[serde(default, skip_serializing_if = "Tempo::is_default")]
     pub tempo: Tempo,
+    /// 3D Space sessions: the speaker layout the mix is placed onto, each
+    /// track and bus at a spot in the room instead of a pan. None for an
+    /// ordinary stereo (or mono) session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub space: Option<Space>,
     pub markers: Vec<Marker>,
     /// Playlist panel: range markers in the order they play and export.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -104,6 +109,7 @@ impl Session {
             buses: Vec::new(),
             master: MasterTrack::default(),
             tempo: Tempo::default(),
+            space: None,
             markers: Vec::new(),
             playlist: Vec::new(),
             view: SessionView::default(),
@@ -120,13 +126,42 @@ impl Session {
     }
 }
 
-/// The session's tempo and meter.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+/// The session's tempo and meter: where it starts, and any changes later
+/// in the song. MIDI clips, bars and beats, and the metronome follow it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Tempo {
     /// Beats (quarter notes) per minute.
     pub bpm: f64,
-    /// Beats in a bar, for example 4 in 4/4 or 3 in 3/4.
+    /// Beats in a bar, the top of the time signature: 4 in 4/4, 6 in 6/8.
     pub beats_per_bar: u32,
+    /// The note one beat is, the bottom of the time signature: 4 in 4/4,
+    /// 8 in 6/8. Files from before time signature changes get 4.
+    #[serde(default = "quarter", skip_serializing_if = "is_quarter")]
+    pub beat_unit: u32,
+    /// Tempo and time signature changes, in bar order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub changes: Vec<TempoChange>,
+}
+
+fn quarter() -> u32 {
+    4
+}
+
+fn is_quarter(v: &u32) -> bool {
+    *v == 4
+}
+
+/// A tempo and time signature change at the start of a bar.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct TempoChange {
+    pub id: Id,
+    /// Bars from the start of the session where it takes over: 1 is the
+    /// second bar. Always 1 or more.
+    pub bar: u32,
+    pub bpm: f64,
+    pub beats_per_bar: u32,
+    #[serde(default = "quarter")]
+    pub beat_unit: u32,
 }
 
 impl Default for Tempo {
@@ -134,6 +169,8 @@ impl Default for Tempo {
         Self {
             bpm: 120.0,
             beats_per_bar: 4,
+            beat_unit: 4,
+            changes: Vec::new(),
         }
     }
 }
@@ -142,19 +179,170 @@ impl Default for Tempo {
 pub const BPM_MIN: f64 = 20.0;
 pub const BPM_MAX: f64 = 400.0;
 
+/// One stretch of the tempo map with a single tempo and time signature.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TempoSegment {
+    /// Bars from the session start where it begins.
+    pub bar: u32,
+    /// Beats (quarter notes) from the session start where it begins.
+    pub beat: f64,
+    /// Seconds from the session start where it begins.
+    pub seconds: f64,
+    pub bpm: f64,
+    pub beats_per_bar: u32,
+    pub beat_unit: u32,
+}
+
+impl TempoSegment {
+    /// Quarter notes in one bar.
+    pub fn bar_beats(&self) -> f64 {
+        f64::from(self.beats_per_bar) * 4.0 / f64::from(self.beat_unit)
+    }
+
+    /// Quarter notes in one beat of the time signature (0.5 in 6/8).
+    pub fn unit_beats(&self) -> f64 {
+        4.0 / f64::from(self.beat_unit)
+    }
+
+    fn seconds_at(&self, beats: f64) -> f64 {
+        self.seconds + (beats - self.beat) * 60.0 / self.bpm
+    }
+}
+
+/// A beat unit the time signature can use: a power of two from 1 to 32.
+pub fn tidy_beat_unit(unit: u32) -> u32 {
+    match unit {
+        0..=1 => 1,
+        u if u >= 32 => 32,
+        u => {
+            let up = u.next_power_of_two();
+            if up - u <= u - up / 2 {
+                up
+            } else {
+                up / 2
+            }
+        }
+    }
+}
+
+fn tidy_bpm(bpm: f64) -> f64 {
+    if bpm.is_finite() {
+        bpm.clamp(BPM_MIN, BPM_MAX)
+    } else {
+        120.0
+    }
+}
+
 impl Tempo {
     pub fn is_default(&self) -> bool {
         *self == Tempo::default()
     }
 
+    /// The same map with every value in range and the changes in bar
+    /// order, one per bar (the later one wins), none at the first bar.
+    pub fn tidy(&self) -> Tempo {
+        let mut changes: Vec<TempoChange> = self
+            .changes
+            .iter()
+            .filter(|c| c.bar >= 1)
+            .map(|c| TempoChange {
+                id: c.id,
+                bar: c.bar.min(100_000),
+                bpm: tidy_bpm(c.bpm),
+                beats_per_bar: c.beats_per_bar.clamp(1, 32),
+                beat_unit: tidy_beat_unit(c.beat_unit),
+            })
+            .collect();
+        changes.reverse();
+        changes.sort_by_key(|c| c.bar);
+        changes.dedup_by_key(|c| c.bar);
+        Tempo {
+            bpm: tidy_bpm(self.bpm),
+            beats_per_bar: self.beats_per_bar.clamp(1, 32),
+            beat_unit: tidy_beat_unit(self.beat_unit),
+            changes,
+        }
+    }
+
+    /// The stretches of the map, in order. Never empty.
+    pub fn segments(&self) -> impl Iterator<Item = TempoSegment> + '_ {
+        let first = TempoSegment {
+            bar: 0,
+            beat: 0.0,
+            seconds: 0.0,
+            bpm: tidy_bpm(self.bpm),
+            beats_per_bar: self.beats_per_bar.max(1),
+            beat_unit: self.beat_unit.max(1),
+        };
+        let mut prev: Option<TempoSegment> = None;
+        let mut next = 0;
+        std::iter::from_fn(move || {
+            let Some(p) = prev else {
+                prev = Some(first);
+                return prev;
+            };
+            // Changes out of order (a hand-edited file) are passed over.
+            while let Some(c) = self.changes.get(next) {
+                next += 1;
+                if c.bar <= p.bar {
+                    continue;
+                }
+                let beat = p.beat + f64::from(c.bar - p.bar) * p.bar_beats();
+                let seg = TempoSegment {
+                    bar: c.bar,
+                    beat,
+                    seconds: p.seconds_at(beat),
+                    bpm: tidy_bpm(c.bpm),
+                    beats_per_bar: c.beats_per_bar.max(1),
+                    beat_unit: c.beat_unit.max(1),
+                };
+                prev = Some(seg);
+                return prev;
+            }
+            None
+        })
+    }
+
+    /// The stretch playing at `beats` from the start.
+    pub fn segment_at_beat(&self, beats: f64) -> TempoSegment {
+        let mut seg = self.segments().next().expect("never empty");
+        for s in self.segments().skip(1) {
+            if s.beat > beats {
+                break;
+            }
+            seg = s;
+        }
+        seg
+    }
+
+    /// The stretch playing `seconds` from the start.
+    pub fn segment_at_seconds(&self, seconds: f64) -> TempoSegment {
+        let mut seg = self.segments().next().expect("never empty");
+        for s in self.segments().skip(1) {
+            if s.seconds > seconds {
+                break;
+            }
+            seg = s;
+        }
+        seg
+    }
+
+    /// Beats to seconds.
+    pub fn seconds(&self, beats: f64) -> f64 {
+        let beats = beats.max(0.0);
+        self.segment_at_beat(beats).seconds_at(beats)
+    }
+
     /// Beats to samples at `rate`.
     pub fn samples(&self, beats: f64, rate: u32) -> u64 {
-        (beats.max(0.0) * 60.0 / self.bpm.clamp(BPM_MIN, BPM_MAX) * f64::from(rate)).round() as u64
+        (self.seconds(beats) * f64::from(rate)).round() as u64
     }
 
     /// Samples at `rate` to beats.
     pub fn beats(&self, samples: u64, rate: u32) -> f64 {
-        samples as f64 / f64::from(rate.max(1)) * self.bpm.clamp(BPM_MIN, BPM_MAX) / 60.0
+        let t = samples as f64 / f64::from(rate.max(1));
+        let s = self.segment_at_seconds(t);
+        s.beat + (t - s.seconds) * s.bpm / 60.0
     }
 }
 
@@ -202,7 +390,15 @@ pub struct MidiClip {
     /// `#rrggbb` or a palette token. None uses the track color.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    /// Clip level in dB: notes play harder or softer by this much (their
+    /// velocity is scaled), up to the hardest a note can play.
+    #[serde(default, skip_serializing_if = "is_zero_db")]
+    pub gain_db: f64,
     pub notes: Vec<Note>,
+}
+
+fn is_zero_db(v: &f64) -> bool {
+    *v == 0.0
 }
 
 /// A source audio file referenced by clips.
@@ -301,6 +497,10 @@ pub struct Track {
     /// Folded down to its name row in the Editor. Left out of the file when off.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub collapsed: bool,
+    /// Its automation lanes show under it in the Editor. Left out of the
+    /// file when off.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub show_automation: bool,
     /// Hidden from the Editor and Mixer lists. The track still plays and
     /// mixes. Left out of the file when off.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -319,6 +519,10 @@ pub struct Track {
     /// file when off.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mono: bool,
+    /// 3D Space sessions: where the track sits in the room (in place of
+    /// its pan). None sits at the front center.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub space: Option<SpacePos>,
 
     /// Scaffolding (P4): armed for recording.
     pub record_armed: bool,
@@ -357,6 +561,7 @@ impl Track {
             color: None,
             height: 96,
             collapsed: false,
+            show_automation: false,
             hidden: false,
             volume_db: 0.0,
             pan: 0.0,
@@ -364,6 +569,7 @@ impl Track {
             solo: false,
             polarity_inverted: false,
             mono: false,
+            space: None,
             record_armed: false,
             monitor_input: false,
             input: None,
@@ -414,6 +620,10 @@ pub struct Bus {
     /// Voice Chain and before its fader and pan. Left out of the file when off.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mono: bool,
+    /// 3D Space sessions: where the bus sits in the room, when it feeds
+    /// the master (in place of its pan).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub space: Option<SpacePos>,
 }
 
 impl Bus {
@@ -435,6 +645,139 @@ impl Bus {
             envelopes: Vec::new(),
             position: None,
             mono: false,
+            space: None,
+        }
+    }
+}
+
+/// A speaker layout a 3D Space session can be placed onto. Spots are
+/// kept in room terms, so any session plays and exports in any layout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum SpaceLayout {
+    #[serde(rename = "2.0")]
+    Stereo20,
+    #[serde(rename = "5.1")]
+    Surround51,
+    #[serde(rename = "7.1")]
+    Surround71,
+    #[serde(rename = "5.1.2")]
+    Surround512,
+    #[serde(rename = "7.1.2")]
+    Surround712,
+    #[serde(rename = "5.1.4")]
+    Surround514,
+    #[serde(rename = "7.1.4")]
+    Surround714,
+}
+
+impl SpaceLayout {
+    pub const ALL: [SpaceLayout; 7] = [
+        SpaceLayout::Stereo20,
+        SpaceLayout::Surround51,
+        SpaceLayout::Surround71,
+        SpaceLayout::Surround512,
+        SpaceLayout::Surround712,
+        SpaceLayout::Surround514,
+        SpaceLayout::Surround714,
+    ];
+}
+
+/// How a 3D Space session is heard while working.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SpaceListen {
+    /// Each sound folded to stereo by where it sits left to right.
+    #[default]
+    Stereo,
+    /// The layout's speakers heard as if around a head, for headphones.
+    Binaural,
+}
+
+/// What makes a session a 3D Space session.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Space {
+    /// The layout it plays in and exports to unless an export picks another.
+    pub layout: SpaceLayout,
+    #[serde(default)]
+    pub listen: SpaceListen,
+}
+
+/// A spot in the room. x runs left (-1) to right (1), y back (-1) to
+/// front (1), z ear level (0) to ceiling (1), and below ear level down
+/// to -1.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct SpacePos {
+    pub x: f64,
+    pub y: f64,
+    #[serde(default)]
+    pub z: f64,
+    /// 0 is a point; 1 fills the room.
+    #[serde(default)]
+    pub size: f64,
+    /// Stereo sources: how far left and right of the spot their two
+    /// sides sit, 0 (together) to 1 (a full room width apart each way).
+    #[serde(default = "full_width")]
+    pub width: f64,
+    /// Stereo sources: the pair turned around its spot, in degrees,
+    /// clockwise seen from above (90 puts the left side in front).
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub rotation: f64,
+    /// How much of it also feeds the low-frequency channel, 0 (none) to 1
+    /// (full level), low-passed at 120 Hz.
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub lfe: f64,
+    /// How much of it is spread through the room as a diffuse field
+    /// (decorrelated copies on every speaker in use), 0 (none) to 1 (all).
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub spread: f64,
+    /// Stereo sources: how much of the difference between its sides is
+    /// sent, delayed and decorrelated, to the surround and height
+    /// speakers, with what the sides share fed to the center, 0 to 1.
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub spatialize: f64,
+}
+
+fn is_zero_f64(v: &f64) -> bool {
+    *v == 0.0
+}
+
+fn full_width() -> f64 {
+    1.0
+}
+
+impl Default for SpacePos {
+    /// Front center, as wide as the front speakers.
+    fn default() -> Self {
+        Self {
+            x: 0.0,
+            y: 1.0,
+            z: 0.0,
+            size: 0.0,
+            width: 1.0,
+            rotation: 0.0,
+            lfe: 0.0,
+            spread: 0.0,
+            spatialize: 0.0,
+        }
+    }
+}
+
+impl SpacePos {
+    /// The same spot with every value in range.
+    pub fn tidy(&self) -> SpacePos {
+        let c = |v: f64, lo: f64, hi: f64, d: f64| if v.is_finite() { v.clamp(lo, hi) } else { d };
+        SpacePos {
+            x: c(self.x, -1.0, 1.0, 0.0),
+            y: c(self.y, -1.0, 1.0, 1.0),
+            // Below 0 is below ear level: speaker layouts play it from their
+            // ear-level speakers, having none lower.
+            z: c(self.z, -1.0, 1.0, 0.0),
+            size: c(self.size, 0.0, 1.0, 0.0),
+            width: c(self.width, 0.0, 1.0, 1.0),
+            rotation: c(self.rotation, -180.0, 180.0, 0.0),
+            lfe: c(self.lfe, 0.0, 1.0, 0.0),
+            spread: c(self.spread, 0.0, 1.0, 0.0),
+            spatialize: c(self.spatialize, 0.0, 1.0, 0.0),
         }
     }
 }
@@ -650,6 +993,53 @@ pub enum EnvelopeTarget {
         slot_id: Id,
         param: String,
     },
+    /// 3D Space sessions: one setting of the owner's spot in the room.
+    Space {
+        param: SpaceParam,
+    },
+}
+
+/// A setting of a spot in the room that automation can move. Values use
+/// the spot's own units (see `SpacePos`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SpaceParam {
+    X,
+    Y,
+    Z,
+    Size,
+    Width,
+    Rotation,
+    Lfe,
+    Spread,
+    Spatialize,
+}
+
+impl SpaceParam {
+    /// The range its values take.
+    pub fn range(self) -> (f64, f64) {
+        match self {
+            SpaceParam::X | SpaceParam::Y | SpaceParam::Z => (-1.0, 1.0),
+            SpaceParam::Rotation => (-180.0, 180.0),
+            _ => (0.0, 1.0),
+        }
+    }
+
+    /// `pos` with this setting at `v`.
+    pub fn set(self, pos: &mut SpacePos, v: f64) {
+        let slot = match self {
+            SpaceParam::X => &mut pos.x,
+            SpaceParam::Y => &mut pos.y,
+            SpaceParam::Z => &mut pos.z,
+            SpaceParam::Size => &mut pos.size,
+            SpaceParam::Width => &mut pos.width,
+            SpaceParam::Rotation => &mut pos.rotation,
+            SpaceParam::Lfe => &mut pos.lfe,
+            SpaceParam::Spread => &mut pos.spread,
+            SpaceParam::Spatialize => &mut pos.spatialize,
+        };
+        *slot = v;
+    }
 }
 
 /// How the value moves from one point to the next.
@@ -777,6 +1167,11 @@ pub struct EffectSlot {
     /// plug-in saved them, base64. Only on plug-in slots (`vst3:` effects).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plugin_state: Option<String>,
+    /// A built-in effect's own data that is not a setting, as JSON text:
+    /// the Amp Model's capture and cabinet. Saved with the session and in
+    /// presets, so they never depend on a file elsewhere.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<String>,
     /// Which of the numbered slots it shows in (0 is the first), so a chain
     /// can leave gaps. Effects still run in list order. None follows the
     /// one before.
@@ -843,6 +1238,81 @@ pub struct EpisodeMetadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn space_settings_round_trip_and_stay_out_of_plain_files() {
+        let mut s = Session::new("t", 48_000);
+        s.tracks.push(Track::new("A", ChannelLayout::Stereo));
+        let plain = serde_json::to_string(&s).unwrap();
+        assert!(!plain.contains("space"));
+        s.space = Some(Space {
+            layout: SpaceLayout::Surround712,
+            listen: SpaceListen::Binaural,
+        });
+        s.tracks[0].space = Some(SpacePos {
+            x: -0.5,
+            y: 0.25,
+            z: 0.75,
+            size: 0.1,
+            width: 0.5,
+            rotation: 30.0,
+            lfe: 0.25,
+            spread: 0.4,
+            spatialize: 0.6,
+        });
+        let text = serde_json::to_string(&s).unwrap();
+        assert!(text.contains(r#""layout":"7.1.2""#));
+        let back: Session = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, s);
+    }
+
+    #[test]
+    fn tempo_map_follows_changes_at_bars() {
+        // Two bars of 4/4 at 120 (4 s), then 6/8 at 60.
+        let t = Tempo {
+            changes: vec![TempoChange {
+                id: new_id(),
+                bar: 2,
+                bpm: 60.0,
+                beats_per_bar: 6,
+                beat_unit: 8,
+            }],
+            ..Tempo::default()
+        };
+        let segs: Vec<_> = t.segments().map(|s| (s.bar, s.beat, s.seconds)).collect();
+        assert_eq!(segs, vec![(0, 0.0, 0.0), (2, 8.0, 4.0)]);
+        assert_eq!(t.samples(8.0, 1_000), 4_000);
+        // A quarter note at 60 is a second.
+        assert_eq!(t.samples(11.0, 1_000), 7_000);
+        assert!((t.beats(7_000, 1_000) - 11.0).abs() < 1e-9);
+        assert_eq!(t.segment_at_seconds(3.9).bpm, 120.0);
+        assert_eq!(t.segment_at_seconds(4.0).beat_unit, 8);
+        // Files from before time signatures read as 4/4 with no changes.
+        let old: Tempo = serde_json::from_str(r#"{"bpm":90,"beats_per_bar":3}"#).unwrap();
+        assert_eq!((old.beat_unit, old.changes.len()), (4, 0));
+    }
+
+    #[test]
+    fn tidy_tempo_keeps_one_change_per_bar_in_order() {
+        let c = |bar, bpm| TempoChange {
+            id: new_id(),
+            bar,
+            bpm,
+            beats_per_bar: 4,
+            beat_unit: 4,
+        };
+        let t = Tempo {
+            changes: vec![c(5, 90.0), c(0, 70.0), c(2, 100.0), c(5, 95.0)],
+            beat_unit: 3,
+            ..Tempo::default()
+        }
+        .tidy();
+        let got: Vec<_> = t.changes.iter().map(|c| (c.bar, c.bpm)).collect();
+        assert_eq!(got, vec![(2, 100.0), (5, 95.0)]);
+        assert_eq!(t.beat_unit, 4);
+        assert_eq!(tidy_beat_unit(6), 8);
+        assert_eq!(tidy_beat_unit(64), 32);
+    }
 
     #[test]
     fn strip_effects_clears_every_chain() {

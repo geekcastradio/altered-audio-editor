@@ -387,13 +387,14 @@ pub struct MidiPlan {
 }
 
 /// What a MIDI track plays, or None when it has no instrument (silent).
-fn midi_plan(t: &Track, tempo: Tempo, out_rate: u32) -> Option<MidiPlan> {
+fn midi_plan(t: &Track, tempo: &Tempo, out_rate: u32) -> Option<MidiPlan> {
     if t.kind != TrackKind::Midi {
         return None;
     }
     let instrument = t.instrument.clone()?;
     let mut notes: Vec<NotePlan> = Vec::new();
     for c in t.midi_clips.iter().filter(|c| !c.muted) {
+        let level = 10f32.powf(c.gain_db.clamp(-96.0, 24.0) as f32 / 20.0);
         for n in &c.notes {
             if n.start >= c.length || n.length <= 0.0 {
                 continue;
@@ -404,7 +405,8 @@ fn midi_plan(t: &Track, tempo: Tempo, out_rate: u32) -> Option<MidiPlan> {
                 on,
                 off: off.max(on + 1),
                 pitch: n.pitch.min(127),
-                velocity: f32::from(n.velocity.clamp(1, 127)) / 127.0,
+                velocity: (f32::from(n.velocity.clamp(1, 127)) / 127.0 * level)
+                    .clamp(1.0 / 127.0, 1.0),
             });
         }
     }
@@ -413,7 +415,7 @@ fn midi_plan(t: &Track, tempo: Tempo, out_rate: u32) -> Option<MidiPlan> {
     offs.sort_unstable();
     Some(MidiPlan {
         instrument,
-        tempo,
+        tempo: tempo.clone(),
         notes,
         offs,
     })
@@ -454,7 +456,7 @@ pub fn build(session: &Session, out_rate: u32) -> Plan {
         .iter()
         .map(|t| TrackPlan {
             id: t.id,
-            midi: midi_plan(t, session.tempo, out_rate),
+            midi: midi_plan(t, &session.tempo, out_rate),
             clips: t
                 .clips
                 .iter()
@@ -607,6 +609,7 @@ fn envelope_hash(c: &Clip) -> u64 {
             EnvelopeTarget::Volume => 1,
             EnvelopeTarget::Pan => 2,
             EnvelopeTarget::EffectParam { .. } => 3,
+            EnvelopeTarget::Space { .. } => 4,
         });
         mix(u64::from(e.enabled));
         for p in &e.points {
@@ -694,6 +697,19 @@ fn routing_hash(session: &Session) -> u64 {
     };
     let routed = crate::session::routing::is_routed(session);
     mix(u128::from(routed));
+    mix(session.space.map_or(0, |s| s.layout as u128 + 1));
+    mix(session.space.map_or(0, |s| s.listen as u128));
+    // Automation edits restart playback in place, so they are heard.
+    for envs in session
+        .tracks
+        .iter()
+        .map(|t| &t.envelopes)
+        .chain(session.buses.iter().map(|b| &b.envelopes))
+    {
+        for b in serde_json::to_vec(envs).unwrap_or_default() {
+            mix(u128::from(b));
+        }
+    }
     let output = |o: &crate::session::model::Output| match o {
         crate::session::model::Output::Master => 0,
         crate::session::model::Output::Bus { bus_id } => bus_id.as_u128(),
@@ -748,8 +764,12 @@ fn midi_hash(session: &Session) -> u64 {
         h ^= v;
         h = h.wrapping_mul(0x100_0000_01b3);
     };
-    mix(session.tempo.bpm.to_bits());
-    mix(u64::from(session.tempo.beats_per_bar));
+    for seg in session.tempo.segments() {
+        mix(u64::from(seg.bar));
+        mix(seg.bpm.to_bits());
+        mix(u64::from(seg.beats_per_bar));
+        mix(u64::from(seg.beat_unit));
+    }
     for t in session.tracks.iter().filter(|t| t.kind == TrackKind::Midi) {
         mix(t.id.as_u128() as u64);
         if let Some(i) = &t.instrument {

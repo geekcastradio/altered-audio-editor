@@ -6,13 +6,16 @@
   A MIDI track's lane: its clips over a bar and beat grid. Double-click
   empty space for a new one-bar clip; double-click a clip to edit its
   notes. Drag a clip to move it and its right edge to change its length;
-  both snap to beats. Clips and notes are in beats, so they follow the
-  session tempo.
+  both snap to beats. Drag a clip up or down onto another MIDI track to
+  move it there (Alt: a copy); its notes go along and that track's
+  instrument plays them. Clips and notes are in beats, so they follow
+  the session tempo.
 -->
 <script lang="ts">
+  import { dragGain, gainText } from "./clip-gain";
   import type { MidiClipDoc, TempoDoc, TrackDoc } from "../../stores/session";
   import { beatsToSamples, clipAtBeat, moveClips, newClip, pitchRange, resizeClip, samplesToBeats, snap, sorted } from "./midi";
-  import { xOf, type Viewport } from "./timeline";
+  import { gridLines, xOf, type Viewport } from "./timeline";
 
   interface Props {
     track: TrackDoc;
@@ -32,9 +35,20 @@
     onOpen: (clipId: string) => void;
     /** Right-click: on a clip, or on empty space at a beat. */
     onMenu: (e: MouseEvent, clip: MidiClipDoc | null, beat: number) => void;
+    /** Clips dragged onto another MIDI track: moved (or copied) there, `delta` beats later. */
+    onTransfer?: (ids: string[], delta: number, toTrack: string, copy: boolean) => void;
+    /** The MIDI track a drag is over, for highlighting it; null when none. */
+    onDragOver?: (trackId: string | null) => void;
+    /** Highlighted as the place a dragged clip would land. */
+    dropTarget?: boolean;
   }
 
-  const { track, tempo, rate, view, width, height, color, selected, onSelect, onSetClips, onOpen, onMenu }: Props = $props();
+  const { track, tempo, rate, view, width, height, color, selected, onSelect, onSetClips, onOpen, onMenu, onTransfer = () => {}, onDragOver = () => {}, dropTarget = false }: Props = $props();
+
+  /** The MIDI track lane under a point, if any. */
+  function midiTrackAt(x: number, y: number): string | null {
+    return document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-midi-lane]")?.dataset.midiLane ?? null;
+  }
 
   const clips = $derived(track.midi_clips ?? []);
   const xOfBeat = (b: number) => xOf(beatsToSamples(b, tempo, rate), view);
@@ -44,6 +58,32 @@
   /** A drag in progress: clips moving by `delta` beats, or one clip's new length. */
   let drag = $state<{ ids: Set<string>; delta: number } | null>(null);
   let sizing = $state<{ id: string; length: number } | null>(null);
+  /** The level handle being dragged: the clip and its new level. */
+  let leveling = $state<{ id: string; db: number } | null>(null);
+  const levelOf = (c: MidiClipDoc) => (leveling?.id === c.id ? leveling.db : (c.gain_db ?? 0));
+
+  /** The level handle: up or right raises the clip's level (how hard its notes play), down or left lowers it. */
+  function onLevelDown(e: PointerEvent, c: MidiClipDoc) {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const start = c.gain_db ?? 0;
+    const sx = e.clientX;
+    const sy = e.clientY;
+    leveling = { id: c.id, db: start };
+    const move = (ev: PointerEvent) => {
+      leveling = { id: c.id, db: dragGain(start, ev.clientX - sx, ev.clientY - sy, ev.shiftKey) };
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", up, true);
+      const db = leveling?.db ?? start;
+      leveling = null;
+      if (db !== start) onSetClips(clips.map((x) => (x.id === c.id ? { ...x, gain_db: db } : x)), "Clip Level");
+    };
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", up, true);
+  }
 
   function shown(c: MidiClipDoc): { start: number; length: number } {
     if (drag?.ids.has(c.id)) return { start: Math.max(0, c.start + drag.delta), length: c.length };
@@ -76,16 +116,28 @@
       onSelect([...ids]);
       drag = { ids: new Set([...ids].filter((id) => clips.some((c) => c.id === id))), delta: 0 };
     }
+    let over: string | null = null;
     const move = (ev: PointerEvent) => {
       const beats = (ev.clientX - startX) / Math.max(1e-9, pxPerBeat);
       if (sizing) sizing = { ...sizing, length: Math.max(0.25, snap(hit.length + beats, 1) || 1) };
-      if (drag) drag = { ...drag, delta: snap(beats, 1) };
+      if (drag) {
+        drag = { ...drag, delta: snap(beats, 1) };
+        // Over another MIDI track: it lights up as the place the clips land.
+        const t = midiTrackAt(ev.clientX, ev.clientY);
+        const next = t && t !== track.id ? t : null;
+        if (next !== over) {
+          over = next;
+          onDragOver(over);
+        }
+      }
     };
-    const up = () => {
+    const up = (ev: PointerEvent) => {
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", up, true);
       if (sizing && sizing.length !== hit.length) onSetClips(resizeClip(clips, sizing.id, sizing.length), "Clip Length");
-      if (drag && drag.delta !== 0) onSetClips(moveClips(clips, drag.ids, drag.delta), drag.ids.size > 1 ? "Move Clips" : "Move Clip");
+      if (drag && over) onTransfer([...drag.ids], drag.delta, over, ev.altKey);
+      else if (drag && drag.delta !== 0) onSetClips(moveClips(clips, drag.ids, drag.delta), drag.ids.size > 1 ? "Move Clips" : "Move Clip");
+      if (over) onDragOver(null);
       sizing = null;
       drag = null;
     };
@@ -115,13 +167,8 @@
     onMenu(e, hit, beat);
   }
 
-  /** Bar and beat lines, drawn as a background that scrolls with the view. */
-  const grid = $derived.by(() => {
-    const beat = pxPerBeat;
-    const bar = beat * Math.max(1, tempo.beats_per_bar);
-    const offset = -((view.scroll / view.spp) % bar);
-    return { beat, bar, offset, beats: beat >= 6 };
-  });
+  /** Bar and beat lines, following tempo and time signature changes. */
+  const lines = $derived(gridLines(view, width, rate, tempo));
 
   function noteBoxes(c: MidiClipDoc) {
     const [lo, hi] = pitchRange(c.notes);
@@ -141,16 +188,17 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="midi-lane"
+  class:drop={dropTarget}
+  data-midi-lane={track.id}
   style:height="{height}px"
-  style:--grid-bar="{grid.bar}px"
-  style:--grid-beat="{grid.beat}px"
-  style:--grid-x="{grid.offset}px"
   style:--track-color={color}
-  class:beats={grid.beats}
   onpointerdown={onDown}
   ondblclick={onDouble}
   oncontextmenu={onContext}
 >
+  <svg class="grid" width={width} height={height} aria-hidden="true">
+    {#each lines as l, i (i)}<line x1={Math.round(l.x) + 0.5} x2={Math.round(l.x) + 0.5} y1="0" y2={height} class:bar={l.bar} />{/each}
+  </svg>
   {#each clips as c (c.id)}
     {@const s = shown(c)}
     {@const left = xOfBeat(s.start)}
@@ -173,6 +221,14 @@
             {/each}
           </svg>
         {/if}
+        {#if w > 40 && height > 30}
+          {@const db = levelOf(c)}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="lvl" title="Clip level: drag up or right to make the notes play harder, down or left softer (Shift for fine steps)." onpointerdown={(e) => onLevelDown(e, c)} ondblclick={(e) => e.stopPropagation()}>
+            <svg viewBox="0 0 14 12" aria-hidden="true"><path d="M7 2.5v7M4.5 5L7 2.5 9.5 5M4.5 7L7 9.5 9.5 7" fill="none" stroke="currentColor" stroke-width="1.2" /></svg>
+          </div>
+          {#if db !== 0}<span class="lvltext">{gainText(db)}</span>{/if}
+        {/if}
         <div class="edge" title="Drag to change the clip's length"></div>
       </div>
     {/if}
@@ -188,21 +244,22 @@
     overflow: hidden;
     box-sizing: border-box;
     border-bottom: 3px solid var(--track-gap);
-    background-image: linear-gradient(to right, color-mix(in srgb, var(--text) 13%, transparent) 1px, transparent 1px);
-    background-size: var(--grid-bar) 100%;
-    background-position: var(--grid-x) 0;
     user-select: none;
   }
-  .midi-lane.beats {
-    background-image:
-      linear-gradient(to right, color-mix(in srgb, var(--text) 13%, transparent) 1px, transparent 1px),
-      linear-gradient(to right, color-mix(in srgb, var(--text) 5%, transparent) 1px, transparent 1px);
-    background-size:
-      var(--grid-bar) 100%,
-      var(--grid-beat) 100%;
-    background-position:
-      var(--grid-x) 0,
-      var(--grid-x) 0;
+  .midi-lane.drop {
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+  .grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .grid line {
+    stroke: color-mix(in srgb, var(--text) 5%, transparent);
+    stroke-width: 1;
+  }
+  .grid line.bar {
+    stroke: color-mix(in srgb, var(--text) 13%, transparent);
   }
   .clip {
     position: absolute;
@@ -238,8 +295,45 @@
     width: calc(100% - 4px);
     height: calc(100% - 19px);
   }
+  /* Notes in the clip's own color (its track's, unless the clip has one), outlined so they stand out from the clip body. */
   .notes rect {
-    fill: color-mix(in srgb, var(--clip-color) 40%, white);
+    fill: var(--clip-color);
+    stroke: color-mix(in srgb, var(--clip-color) 35%, white);
+    stroke-width: 0.6px;
+    vector-effect: non-scaling-stroke;
+  }
+  .lvl {
+    position: absolute;
+    left: 4px;
+    bottom: 3px;
+    width: 14px;
+    height: 12px;
+    border-radius: 3px;
+    background: rgba(14, 14, 16, 0.5);
+    color: rgba(255, 255, 255, 0.9);
+    cursor: ns-resize;
+  }
+  .lvl:hover {
+    background: rgba(255, 255, 255, 0.85);
+    color: #0e0e10;
+  }
+  .lvl svg {
+    display: block;
+    width: 14px;
+    height: 12px;
+  }
+  .lvltext {
+    position: absolute;
+    left: 21px;
+    bottom: 3px;
+    height: 12px;
+    padding: 0 4px;
+    border-radius: 3px;
+    background: rgba(14, 14, 16, 0.55);
+    color: #f2f2f2;
+    font-size: 10px;
+    line-height: 12px;
+    pointer-events: none;
   }
   .edge {
     position: absolute;

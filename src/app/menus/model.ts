@@ -53,6 +53,9 @@ const NEXT_FX = "Arrives in the next effects batch.";
 const P7 = "Arrives with podcast publishing (P7).";
 const LATER = "Not built yet.";
 
+/** Effects > Plug-ins slots, one per scanned effect plug-in. Unused slots are hidden. */
+export const PLUGIN_SLOTS = 120;
+
 /** Open Recent slots. Unused slots are hidden. */
 export const RECENT_SLOTS = 10;
 /** Menu slots for workspaces: the built-in ones plus the user's own. */
@@ -93,6 +96,7 @@ export const MENUS: readonly Menu[] = [
       item("file.close", "Close"),
       item("file.close-all", "Close All"),
       item("file.close-unused", "Close Unused Media"),
+      item("file.collect-media", "Collect Session Media"),
       sep,
       sub("Export", [
         item("file.export.mixdown", "Session Mixdown..."),
@@ -263,6 +267,7 @@ export const MENUS: readonly Menu[] = [
       item("multitrack.record-options", "Recording Options..."),
       sep,
       item("multitrack.speaker-balance", "Speaker Balance"),
+      item("multitrack.space", "3D Space..."),
       sub("Host Profile", [
         item("multitrack.profile.close-mic", "Close Mic"),
         item("multitrack.profile.standard-mic", "Standard Mic"),
@@ -436,8 +441,13 @@ export const MENUS: readonly Menu[] = [
       ]),
       sep,
       sub("Plug-ins", [
+        ...Array.from({ length: PLUGIN_SLOTS }, (_, i) =>
+          item(`fx.plugins.${i + 1}`, `Plug-in ${i + 1}`, {
+            placeholder: true,
+          }),
+        ),
         item("fx.plugins.none", "No plug-ins scanned", {
-          pending: P5,
+          pending: "Scan for plug-ins in Effects > Plug-in Manager. Effect plug-ins it finds appear here.",
           placeholder: true,
         }),
       ]),
@@ -463,10 +473,12 @@ export const MENUS: readonly Menu[] = [
       item("view.zoom-in-vertical", "Zoom In Vertically", { pending: LATER }),
       item("view.zoom-out-vertical", "Zoom Out Vertically", { pending: LATER }),
       item("view.hud", "Show HUD", { pending: LATER }),
-      item("wave.channel-left", "Activate Left Channel", { pending: LATER }),
-      item("wave.channel-right", "Activate Right Channel", { pending: LATER }),
+      item("wave.channel-left", "Activate Left Channel"),
+      item("wave.channel-right", "Activate Right Channel"),
       sub("Time Format", [
         item("view.time.decimal", "Minutes and Seconds"),
+        item("view.time.seconds", "Seconds"),
+        item("view.time.bars", "Bars and Beats"),
         item("view.time.samples", "Samples"),
         item("view.time.timecode", "Timecode (30 fps)"),
       ]),

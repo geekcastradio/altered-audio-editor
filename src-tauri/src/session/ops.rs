@@ -17,7 +17,7 @@ use uuid::Uuid;
 use super::model::{
     AudioType, Bus, ChannelLayout, Clip, ClipLoop, ClipStretch, EffectChain, EffectSlot, Envelope,
     EnvelopePoint, EnvelopeTarget, Fade, Id, Marker, MarkerKind, MediaRef, MidiClip, Output, Send,
-    Session, SessionView, Tempo, Track, TrackKind, TrackRole, BPM_MAX, BPM_MIN, STRETCH_MAX,
+    Session, SessionView, Space, SpacePos, Tempo, Track, TrackKind, TrackRole, STRETCH_MAX,
     STRETCH_MIN,
 };
 
@@ -84,6 +84,9 @@ pub struct TrackChanges {
     pub volume_db: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pan: Option<f64>,
+    /// 3D Space sessions: where the track sits in the room.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub space: Option<SpacePos>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub polarity_inverted: Option<bool>,
     /// Folds the track to mono after its Voice Chain.
@@ -91,6 +94,9 @@ pub struct TrackChanges {
     pub mono: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub collapsed: Option<bool>,
+    /// Shows or hides its automation lanes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_automation: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hidden: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -109,7 +115,7 @@ pub struct TrackChanges {
     pub output: Option<Output>,
     /// MIDI tracks: the instrument plug-in that plays the notes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub instrument: Option<EffectSlot>,
+    pub instrument: Option<Box<EffectSlot>>,
     /// MIDI tracks: takes the instrument out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clear_instrument: Option<bool>,
@@ -130,6 +136,9 @@ pub struct BusChanges {
     pub volume_db: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pan: Option<f64>,
+    /// 3D Space sessions: where the bus sits in the room.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub space: Option<SpacePos>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub height: Option<u32>,
     /// Where the bus's sound goes: the master or another bus.
@@ -210,6 +219,11 @@ pub struct ClipChange {
     /// Clears the clip's audio type.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clear_audio_type: Option<bool>,
+    /// Where the clip sits in its track's stacking order after the change:
+    /// 0 is the bottom; past the end puts it on top. Later clips play over
+    /// earlier ones where they overlap.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layer: Option<u32>,
 }
 
 /// Changes to one marker. Fields left out are unchanged.
@@ -380,8 +394,18 @@ pub enum Op {
     },
     /// The session's tempo and meter. MIDI clips and notes follow it.
     SetTempo {
-        bpm: f64,
-        beats_per_bar: u32,
+        tempo: Tempo,
+    },
+    /// Replaces the automation envelopes of a track or bus (volume, pan
+    /// and effect settings over the session's timeline).
+    SetEnvelopes {
+        owner: Id,
+        envelopes: Vec<Envelope>,
+    },
+    /// Makes the session a 3D Space session with this speaker layout, or
+    /// an ordinary one again (None). Track and bus spots are kept.
+    SetSpace {
+        space: Option<Space>,
     },
     /// Replaces the aux sends of a track or bus.
     SetSends {
@@ -605,6 +629,9 @@ fn apply_one(s: &mut Session, op: &Op) -> Result<Op, OpError> {
             if let Some(v) = changes.pan {
                 old.pan = Some(std::mem::replace(&mut t.pan, v.clamp(-100.0, 100.0)));
             }
+            if let Some(v) = changes.space {
+                old.space = Some(t.space.replace(v.tidy()).unwrap_or_default());
+            }
             if let Some(v) = changes.polarity_inverted {
                 old.polarity_inverted = Some(std::mem::replace(&mut t.polarity_inverted, v));
             }
@@ -613,6 +640,9 @@ fn apply_one(s: &mut Session, op: &Op) -> Result<Op, OpError> {
             }
             if let Some(v) = changes.collapsed {
                 old.collapsed = Some(std::mem::replace(&mut t.collapsed, v));
+            }
+            if let Some(v) = changes.show_automation {
+                old.show_automation = Some(std::mem::replace(&mut t.show_automation, v));
             }
             if let Some(v) = changes.hidden {
                 old.hidden = Some(std::mem::replace(&mut t.hidden, v));
@@ -641,10 +671,10 @@ fn apply_one(s: &mut Session, op: &Op) -> Result<Op, OpError> {
                 let new = if changes.clear_instrument == Some(true) {
                     None
                 } else {
-                    changes.instrument.clone()
+                    changes.instrument.as_deref().cloned()
                 };
                 match std::mem::replace(&mut t.instrument, new) {
-                    Some(v) => old.instrument = Some(v),
+                    Some(v) => old.instrument = Some(Box::new(v)),
                     None => old.clear_instrument = Some(true),
                 }
             }
@@ -975,6 +1005,9 @@ fn apply_one(s: &mut Session, op: &Op) -> Result<Op, OpError> {
             if let Some(v) = changes.pan {
                 old.pan = Some(std::mem::replace(&mut b.pan, v.clamp(-100.0, 100.0)));
             }
+            if let Some(v) = changes.space {
+                old.space = Some(b.space.replace(v.tidy()).unwrap_or_default());
+            }
             if let Some(v) = changes.height {
                 old.height = Some(std::mem::replace(&mut b.height, v.clamp(40, 600)));
             }
@@ -1018,22 +1051,28 @@ fn apply_one(s: &mut Session, op: &Op) -> Result<Op, OpError> {
                 clips: old,
             })
         }
-        Op::SetTempo { bpm, beats_per_bar } => {
-            let old = std::mem::replace(
-                &mut s.tempo,
-                Tempo {
-                    bpm: if bpm.is_finite() {
-                        bpm.clamp(BPM_MIN, BPM_MAX)
-                    } else {
-                        120.0
-                    },
-                    beats_per_bar: (*beats_per_bar).clamp(1, 16),
-                },
-            );
-            Ok(Op::SetTempo {
-                bpm: old.bpm,
-                beats_per_bar: old.beats_per_bar,
+        Op::SetEnvelopes { owner, envelopes } => {
+            let tidy: Vec<Envelope> = envelopes.iter().map(tidy_envelope).collect();
+            let slot = if let Some(t) = s.tracks.iter_mut().find(|t| t.id == *owner) {
+                &mut t.envelopes
+            } else if let Some(b) = s.buses.iter_mut().find(|b| b.id == *owner) {
+                &mut b.envelopes
+            } else {
+                return Err(OpError::NoTrack(*owner));
+            };
+            let old = std::mem::replace(slot, tidy);
+            Ok(Op::SetEnvelopes {
+                owner: *owner,
+                envelopes: old,
             })
+        }
+        Op::SetSpace { space } => {
+            let old = std::mem::replace(&mut s.space, *space);
+            Ok(Op::SetSpace { space: old })
+        }
+        Op::SetTempo { tempo } => {
+            let old = std::mem::replace(&mut s.tempo, tempo.tidy());
+            Ok(Op::SetTempo { tempo: old })
         }
         Op::SetSends { owner, sends } => {
             for x in sends {
@@ -1092,6 +1131,11 @@ fn tidy_midi_clip(c: &MidiClip) -> MidiClip {
     MidiClip {
         start: ok(c.start, 0.0),
         length: ok(c.length, 1.0 / 16.0),
+        gain_db: if c.gain_db.is_finite() {
+            c.gain_db.clamp(-96.0, 24.0)
+        } else {
+            0.0
+        },
         notes,
         ..c.clone()
     }
@@ -1333,10 +1377,23 @@ fn set_clip(s: &mut Session, ch: &ClipChange) -> Result<ClipChange, OpError> {
         }
     }
 
+    let mut at = (ti, ci);
     if let Some(to) = to_track.filter(|t| *t != ti) {
         let clip = s.tracks[ti].clips.remove(ci);
         s.tracks[to].clips.push(clip);
         inv.track_id = Some(s.tracks[ti].id);
+        // Undo puts it back where it was in the old track's order.
+        inv.layer = Some(ci as u32);
+        at = (to, s.tracks[to].clips.len() - 1);
+    }
+    if let Some(layer) = ch.layer {
+        let (t, i) = at;
+        let clip = s.tracks[t].clips.remove(i);
+        let to = (layer as usize).min(s.tracks[t].clips.len());
+        s.tracks[t].clips.insert(to, clip);
+        if inv.layer.is_none() {
+            inv.layer = Some(i as u32);
+        }
     }
     Ok(inv)
 }
@@ -1385,6 +1442,7 @@ fn set_points(
             .and_then(|s| crate::dsp::effects::info(&s.effect))
             .and_then(|i| i.params.into_iter().find(|p| p.key == param.as_str()))
             .map_or((f64::MIN, f64::MAX), |p| (p.min, p.max)),
+        EnvelopeTarget::Space { param } => param.range(),
     };
     let i = c.envelopes.iter().position(|e| e.target == target);
     let old = i.map(|i| c.envelopes[i].points.clone()).unwrap_or_default();
@@ -1456,6 +1514,30 @@ pub fn set_view(s: &mut Session, view: SessionView) {
     s.view = view;
 }
 
+/// An automation envelope with its points in time order and its values
+/// in range: volume -96 to +24 dB, pan -100 to 100.
+fn tidy_envelope(e: &Envelope) -> Envelope {
+    let (lo, hi) = match e.target {
+        EnvelopeTarget::Volume => (-96.0, 24.0),
+        EnvelopeTarget::Pan => (-100.0, 100.0),
+        EnvelopeTarget::EffectParam { .. } => (f64::MIN, f64::MAX),
+        EnvelopeTarget::Space { param } => param.range(),
+    };
+    let mut points: Vec<EnvelopePoint> = e
+        .points
+        .iter()
+        .filter(|p| p.value.is_finite())
+        .map(|p| EnvelopePoint {
+            value: p.value.clamp(lo, hi),
+            ..*p
+        })
+        .collect();
+    points.sort_by_key(|p| p.position);
+    Envelope {
+        points,
+        ..e.clone()
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1515,6 +1597,7 @@ mod tests {
             length: 4.0,
             muted: false,
             color: None,
+            gain_db: 0.0,
             notes: vec![
                 Note {
                     pitch: 67,
@@ -1575,6 +1658,7 @@ mod tests {
             preset: None,
             sidechain: None,
             plugin_state: None,
+            data: None,
             position: None,
         };
         roundtrip(
@@ -1582,7 +1666,7 @@ mod tests {
             Op::SetTrack {
                 id: midi,
                 changes: TrackChanges {
-                    instrument: Some(inst.clone()),
+                    instrument: Some(Box::new(inst.clone())),
                     ..TrackChanges::default()
                 },
             },
@@ -1600,7 +1684,7 @@ mod tests {
         let wrong = Op::SetTrack {
             id: audio,
             changes: TrackChanges {
-                instrument: Some(inst),
+                instrument: Some(Box::new(inst)),
                 ..TrackChanges::default()
             },
         };
@@ -1609,19 +1693,29 @@ mod tests {
         roundtrip(
             &mut s,
             Op::SetTempo {
-                bpm: 90.0,
-                beats_per_bar: 3,
+                tempo: Tempo {
+                    bpm: 90.0,
+                    beats_per_bar: 3,
+                    ..Tempo::default()
+                },
             },
         );
         apply(
             &mut s,
             &Op::SetTempo {
-                bpm: 9_000.0,
-                beats_per_bar: 0,
+                tempo: Tempo {
+                    bpm: 9_000.0,
+                    beats_per_bar: 0,
+                    beat_unit: 6,
+                    changes: Vec::new(),
+                },
             },
         )
         .unwrap();
-        assert_eq!((s.tempo.bpm, s.tempo.beats_per_bar), (400.0, 1));
+        assert_eq!(
+            (s.tempo.bpm, s.tempo.beats_per_bar, s.tempo.beat_unit),
+            (400.0, 1, 8)
+        );
         assert_eq!(s.tempo.samples(1.0, 48_000), 7_200);
     }
 
@@ -1700,6 +1794,7 @@ mod tests {
             preset: None,
             sidechain: Some(voice),
             plugin_state: None,
+            data: None,
             position: None,
         });
         roundtrip(
@@ -1852,6 +1947,7 @@ mod tests {
                 preset: None,
                 sidechain: None,
                 plugin_state: None,
+                data: None,
                 position: None,
             });
         }
@@ -2185,6 +2281,56 @@ mod tests {
             }],
         };
         assert_eq!(apply(&mut s, &mv), Err(OpError::ClipLocked));
+    }
+
+    #[test]
+    fn layer_moves_a_clip_in_the_stacking_order_and_undo_puts_it_back() {
+        let mut s = Session::new("t", 48_000);
+        let (t, m) = (new_id(), new_id());
+        let ids = [new_id(), new_id(), new_id()];
+        let mut ops = vec![
+            Op::AddMedia { media: media(m) },
+            Op::AddTrack {
+                id: t,
+                name: "T".into(),
+                stereo: false,
+                index: 0,
+                midi: false,
+            },
+        ];
+        ops.push(Op::AddClips {
+            track_id: t,
+            clips: ids
+                .iter()
+                .enumerate()
+                .map(|(i, id)| ClipSpec {
+                    id: *id,
+                    name: "c".into(),
+                    media_id: m,
+                    start: i as u64 * 1000,
+                    source_in: 0,
+                    source_out: 10_000,
+                })
+                .collect(),
+        });
+        apply(&mut s, &Op::Batch { ops }).unwrap();
+        let order = |s: &Session| s.tracks[0].clips.iter().map(|c| c.id).collect::<Vec<_>>();
+        let before = order(&s);
+        let inv = apply(
+            &mut s,
+            &Op::SetClips {
+                changes: vec![ClipChange {
+                    id: ids[0],
+                    start: Some(5_000),
+                    layer: Some(u32::MAX),
+                    ..ClipChange::default()
+                }],
+            },
+        )
+        .unwrap();
+        assert_eq!(order(&s), vec![ids[1], ids[2], ids[0]], "moved to the top");
+        apply(&mut s, &inv).unwrap();
+        assert_eq!(order(&s), before, "undo restores the order");
     }
 
     #[test]
@@ -2630,6 +2776,7 @@ mod tests {
                 preset: None,
                 sidechain: None,
                 plugin_state: None,
+                data: None,
                 position: None,
             });
         let pt = |position, value| EnvelopePoint {

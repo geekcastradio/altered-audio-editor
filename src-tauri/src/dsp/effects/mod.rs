@@ -14,13 +14,17 @@
 //! effects may keep state but must not block. Effects with look-ahead
 //! report a latency, which the renderer compensates for.
 
+pub mod amp;
 mod dynamics;
 mod eq;
 mod filters;
 mod phase;
+pub mod phase_curve;
 mod pitch;
 pub mod print;
 mod restore;
+pub mod shaped;
+pub mod tube;
 
 use std::collections::BTreeMap;
 
@@ -174,16 +178,21 @@ pub fn catalog() -> Vec<EffectInfo> {
         filters::precision_info(),
         filters::curve_info(),
         phase::phase_info(),
+        phase_curve::phase_curve_info(),
         dynamics::compressor_info(),
         dynamics::limiter_info(),
         dynamics::gate_info(),
         dynamics::deesser_info(),
         dynamics::leveler_info(),
+        tube::opto_info(),
+        tube::preamp_info(),
         filters::center_info(),
         pitch::pitch_info(),
         restore::noise_info(),
         print::print_info(),
         print::eraser_info(),
+        shaped::shaped_info(),
+        amp::amp_info(),
         restore::hiss_info(),
         restore::room_info(),
         restore::click_info(),
@@ -215,6 +224,7 @@ pub fn ui_catalog() -> Vec<EffectInfo> {
                 preset: None,
                 sidechain: None,
                 plugin_state: None,
+                data: None,
                 position: None,
             };
             build(&slot, 48_000).map_or(0, |p| p.latency())
@@ -411,6 +421,18 @@ pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
         "altaudio.noise_reducer" => Box::new(restore::noise_reducer(&p, rate)),
         "altaudio.noise_print" => Box::new(print::print_reducer(&p, rate)),
         "altaudio.sound_eraser" => Box::new(print::sound_eraser(&p, rate)),
+        shaped::SHAPED_NOISE => Box::new(shaped::shaped_reducer(&p, rate)),
+        amp::AMP => Box::new(amp::AmpModel::new(&p, rate, slot.data.as_deref())),
+        tube::OPTO => Box::new(tube::Opto::new(
+            &p,
+            rate,
+            crate::dsp::meters::for_slot(slot.id),
+        )),
+        tube::PREAMP => Box::new(tube::Preamp::new(
+            &p,
+            rate,
+            crate::dsp::meters::for_slot(slot.id),
+        )),
         "altaudio.hiss_reducer" => Box::new(restore::hiss_reducer(&p, rate)),
         "altaudio.room_reducer" => Box::new(restore::room_reducer(&p, rate)),
         "altaudio.click_repair" => Box::new(restore::GapRepair::clicks(&p, rate)),
@@ -425,6 +447,7 @@ pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
         "altaudio.center_remover" => Box::new(filters::CenterRemover::new(&p, rate)),
         "altaudio.pitch_shift" => Box::new(pitch::PitchShift::new(&p, rate)),
         "altaudio.phase_rotate" => Box::new(phase::PhaseRotate::new(&p, rate)),
+        "altaudio.phase_curve" => Box::new(phase_curve::PhaseCurve::new(&p, rate)),
         _ => return None,
     })
 }
@@ -444,6 +467,10 @@ pub fn is_active(chain: &EffectChain) -> bool {
 
 /// A Voice Chain ready to run: input gain, each enabled effect in order,
 /// output gain, then the dry/wet mix.
+/// A running stage's slot: id, effect, settings and its own data, kept
+/// so a stage can be rebuilt when automation needs it.
+type SlotState = (Id, EffectInfo, BTreeMap<String, f64>, Option<String>);
+
 pub struct ChainProcessor {
     stages: Vec<Box<dyn Processor>>,
     /// Per stage: the track or bus keying it, and a delay that holds the
@@ -453,7 +480,7 @@ pub struct ChainProcessor {
     key_buf: Vec<f32>,
     /// Per stage: its slot id, what it is and its current settings, so
     /// automation can change one setting while it plays.
-    slots: Vec<(Id, EffectInfo, BTreeMap<String, f64>)>,
+    slots: Vec<SlotState>,
     rate: u32,
     input: f32,
     output: f32,
@@ -482,7 +509,7 @@ impl ChainProcessor {
                 keys.push(s.sidechain.map(|id| (id, Delay::new(before))));
                 before += p.latency();
                 stages.push(p);
-                slots.push((s.id, i, s.params.clone()));
+                slots.push((s.id, i, s.params.clone(), s.data.clone()));
             }
         }
         let input = db_to_gain(chain.input_gain_db.clamp(-48.0, 24.0));
@@ -525,7 +552,7 @@ impl ChainProcessor {
         let Some(i) = self.slots.iter().position(|s| s.0 == slot) else {
             return;
         };
-        let (id, info, params) = &mut self.slots[i];
+        let (id, info, params, data) = &mut self.slots[i];
         if params.get(key).is_some_and(|v| (v - value).abs() < 1e-6) {
             return;
         }
@@ -542,6 +569,7 @@ impl ChainProcessor {
             preset: None,
             sidechain: None,
             plugin_state: None,
+            data: data.clone(),
             position: None,
         };
         if let Some(fresh) = build(&slot, self.rate) {
@@ -667,6 +695,7 @@ mod tests {
             preset: None,
             sidechain: None,
             plugin_state: None,
+            data: None,
             position: None,
         }
     }

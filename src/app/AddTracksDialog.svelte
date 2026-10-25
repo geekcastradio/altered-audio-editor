@@ -33,7 +33,7 @@
     onClose: () => void;
   }
 
-  const { existing, afterName, onApply, onClose }: Props = $props();
+  const { existing, afterName, music = false, onApply, onClose }: Props = $props();
   let count = $state(2);
   let kind = $state<Kind>("mono");
   let base = $state("");

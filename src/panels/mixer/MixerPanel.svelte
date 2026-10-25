@@ -16,6 +16,7 @@
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import type { CommandRunner } from "../../stores/media-pool";
   import type { OutputDoc, SendDoc, SessionDoc, SessionStore } from "../../stores/session";
+  import { channelNames } from "../space/space";
   import type { MeterLevel, TransportState, TransportStore } from "../../stores/transport";
   import { editor } from "../../stores/editor";
   import { dbToFader, faderToDb, formatDb, formatPan } from "./fader";
@@ -30,6 +31,8 @@
   const { session, transport, runner, onError = console.error }: Props = $props();
 
   let doc = $state<SessionDoc | null>(null);
+  /** 3D Space sessions: the master's speaker channel names, in order. */
+  const bedNames = $derived(doc?.space ? channelNames(doc.space.layout) : []);
   $effect(() =>
     session.subscribe((d) => {
       doc = d;
@@ -201,6 +204,9 @@
         {#if doc}
           <SendList {doc} {session} {runner} {onError} kind={t.kind} id={t.id} name={t.name} output={t.output} sends={t.sends} />
         {/if}
+        {#if doc?.space}
+          <div class="pan space3d" title="3D Space session: this plays at a spot in the room instead of a pan. Place it in the 3D Space panel (Multitrack > 3D Space).">3D</div>
+        {:else}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class="pan"
@@ -212,6 +218,7 @@
           <div class="pan-dot" style:left="{(t.pan + 100) / 2}%"></div>
           <span>{formatPan(t.pan)}</span>
         </div>
+        {/if}
         <div class="buttons">
           <button type="button" class:on={t.muted} class="m" title="Mute" aria-pressed={t.muted} onclick={() => setStrip(t, { muted: !t.muted }, t.muted ? "Unmute Track" : "Mute Track")}>M</button>
           <button type="button" class:on={t.solo} class="s" title={t.kind === "bus" ? "Solo: plays this bus and everything feeding it" : "Solo"} aria-pressed={t.solo} onclick={() => setStrip(t, { solo: !t.solo }, t.solo ? "Unsolo Track" : "Solo Track")}>S</button>
@@ -282,14 +289,27 @@
         <div class="unity" style:bottom="{dbToFader(0) * 100}%"></div>
         <div class="cap" style:bottom="{dbToFader(masterDb) * 100}%"></div>
       </div>
-      <div class="meter wide" aria-hidden="true">
-        {#each [0, 1] as const as ch (ch)}
-          <div class="mbar">
-            <div class="mcover" style:height="{100 - levelOf(tp?.master[ch])}%"></div>
-            {#if (tp?.master[ch].peak ?? 0) > 0}<div class="mpeak" style:bottom="{peakOf(tp?.master[ch])}%"></div>{/if}
-          </div>
-        {/each}
-      </div>
+      {#if bedNames.length > 2}
+        <!-- 3D Space sessions: one bar per speaker channel, named on hover. -->
+        <div class="meter bed" aria-hidden="true">
+          {#each bedNames as name, k (k)}
+            {@const m = tp?.bed?.length === bedNames.length ? tp.bed[k] : undefined}
+            <div class="mbar" title={name}>
+              <div class="mcover" style:height="{100 - levelOf(m)}%"></div>
+              {#if (m?.peak ?? 0) > 0}<div class="mpeak" style:bottom="{peakOf(m)}%"></div>{/if}
+            </div>
+          {/each}
+        </div>
+      {:else}
+        <div class="meter wide" aria-hidden="true">
+          {#each [0, 1] as const as ch (ch)}
+            <div class="mbar">
+              <div class="mcover" style:height="{100 - levelOf(tp?.master[ch])}%"></div>
+              {#if (tp?.master[ch].peak ?? 0) > 0}<div class="mpeak" style:bottom="{peakOf(tp?.master[ch])}%"></div>{/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
     </div>
     <div class="db">{formatDb(masterDb)}</div>
     {#if routed}
@@ -303,6 +323,14 @@
 {/if}
 
 <style>
+  .pan.space3d {
+    display: grid;
+    place-items: center;
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 700;
+  }
+
   .mixer {
     display: flex;
     height: 100%;
@@ -543,6 +571,10 @@
 
   .meter.wide .mbar {
     width: 8px;
+  }
+
+  .meter.bed .mbar {
+    width: 3px;
   }
 
   .mcover {

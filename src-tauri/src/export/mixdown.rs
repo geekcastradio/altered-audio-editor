@@ -59,6 +59,62 @@ pub struct MixdownRequest {
     /// rate, using `bit_depth` and `channels` above.
     #[serde(default)]
     pub format: Option<OutputFormat>,
+    /// Renders at playback speed rather than as fast as possible, for
+    /// plug-ins that only work in real time (pitch correction, immersive
+    /// panners and other tools that follow the clock).
+    #[serde(default)]
+    pub realtime: bool,
+    /// 3D Space sessions: the speaker layout to write (None uses the
+    /// session's). 2.0 writes stereo.
+    #[serde(default)]
+    pub space_layout: Option<crate::session::model::SpaceLayout>,
+    /// 3D Space sessions: a stereo file for headphones, the session's
+    /// layout heard around a head.
+    #[serde(default)]
+    pub binaural: bool,
+}
+
+/// What a 3D Space export writes: every speaker of `layout`, or stereo.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SpaceOut {
+    Bed(crate::session::model::SpaceLayout),
+    Stereo,
+}
+
+/// How a request renders a 3D Space session, and the session to render
+/// (with the layout and listening the export asked for). None for a
+/// session that is not one, or a request that is not a whole mix.
+fn space_out(
+    session: &Session,
+    req: &MixdownRequest,
+) -> Option<(SpaceOut, crate::session::model::Space)> {
+    use crate::session::model::{SpaceLayout, SpaceListen};
+    let sp = session.space?;
+    if req.track.is_some() || req.clip_only || req.dry || req.channels == Some(1) {
+        return None;
+    }
+    if req.binaural {
+        return Some((
+            SpaceOut::Stereo,
+            crate::session::model::Space {
+                listen: SpaceListen::Binaural,
+                ..sp
+            },
+        ));
+    }
+    let layout = req.space_layout.unwrap_or(sp.layout);
+    let space = crate::session::model::Space {
+        layout,
+        listen: SpaceListen::Stereo,
+    };
+    Some((
+        if layout == SpaceLayout::Stereo20 {
+            SpaceOut::Stereo
+        } else {
+            SpaceOut::Bed(layout)
+        },
+        space,
+    ))
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -159,6 +215,26 @@ fn render_mix_inner(
         s.master.volume_db = 0.0;
         s.master.effects = Default::default();
     }
+    // 3D Space sessions: the layout and listening the export asked for.
+    // Stems and clip mixes are placed as an ordinary stereo mix would be.
+    let bed = match space_out(session, req) {
+        Some((out, sp)) => {
+            s.space = Some(sp);
+            match out {
+                SpaceOut::Bed(l) => crate::dsp::space::speakers(l).len(),
+                SpaceOut::Stereo => 0,
+            }
+        }
+        None => {
+            if s.space.is_some() {
+                s.space = Some(crate::session::model::Space {
+                    listen: crate::session::model::SpaceListen::Stereo,
+                    ..s.space.expect("checked")
+                });
+            }
+            0
+        }
+    };
     let rate = s.sample_rate;
     let (start, end) = match req.range {
         Some((a, b)) => (a.min(b), a.max(b)),
@@ -176,11 +252,23 @@ fn render_mix_inner(
 
     let master = plan::master_gain(&s);
     let renderer = Renderer::new(plan::build(&s, rate), start);
-    let mut mix = Mix::new(renderer, Graph::new(&s, rate, true));
+    let mut graph = Graph::new(&s, rate, true);
+    graph.set_want_bed(bed > 0);
+    let mut mix = Mix::new(renderer, graph);
     let mut out = vec![Vec::with_capacity(BLOCK * 2)];
+    let mut bed_buf: Vec<f32> = Vec::new();
     let mut peak = 0f32;
     let mut done = 0u64;
+    let clock = std::time::Instant::now();
     while done < total {
+        if req.realtime {
+            // Stay no more than a block ahead of the wall clock, as playback does.
+            let due = std::time::Duration::from_secs_f64(done as f64 / f64::from(rate));
+            let ahead = due.saturating_sub(clock.elapsed());
+            if ahead > std::time::Duration::from_millis(20) {
+                std::thread::sleep(ahead - std::time::Duration::from_millis(10));
+            }
+        }
         if cancel.load(Ordering::Relaxed) {
             return Ok(Rendered {
                 frames: done,
@@ -191,12 +279,23 @@ fn render_mix_inner(
         }
         let n = BLOCK.min((total - done) as usize);
         let got = mix.render(n, &mut out);
-        let out = &mut out[0][..got * 2];
-        for v in out.iter_mut() {
-            *v *= master;
-            peak = peak.max(v.abs());
+        if bed > 0 {
+            // Every speaker channel, after the master fader.
+            bed_buf.clear();
+            bed_buf.extend_from_slice(&mix.graph().bed()[..got * bed]);
+            for v in bed_buf.iter_mut() {
+                *v *= master;
+                peak = peak.max(v.abs());
+            }
+            sink(&bed_buf)?;
+        } else {
+            let out = &mut out[0][..got * 2];
+            for v in out.iter_mut() {
+                *v *= master;
+                peak = peak.max(v.abs());
+            }
+            sink(out)?;
         }
-        sink(out)?;
         done += got as u64;
         progress(done, total);
     }
@@ -242,6 +341,9 @@ pub fn mixdown(
     if render_mix(session, req, &AtomicBool::new(true), |_, _| {}, |_| Ok(())).is_err() {
         return Err(MixdownError::Empty);
     }
+    if let Some((SpaceOut::Bed(layout), _)) = space_out(session, req) {
+        return mixdown_bed(session, req, path, cancel, progress, layout, fmt.bits);
+    }
     let mut w = Writer::create(path, &fmt, session.sample_rate, 2).map_err(enc_err)?;
     let r = render_mix(session, req, cancel, progress, |stereo| {
         w.write(stereo).map_err(enc_err)
@@ -256,6 +358,54 @@ pub fn mixdown(
         frames: r.frames,
         sample_rate: r.sample_rate,
         bit_depth: fmt.bits,
+        peak: r.peak,
+        cancelled: r.cancelled,
+    })
+}
+
+/// A 3D Space session to a multichannel WAV, one channel per speaker of
+/// `layout`, labeled so other software knows which is which.
+fn mixdown_bed(
+    session: &Session,
+    req: &MixdownRequest,
+    path: &Path,
+    cancel: &AtomicBool,
+    progress: impl FnMut(u64, u64),
+    layout: crate::session::model::SpaceLayout,
+    bits: u16,
+) -> Result<MixdownResult, MixdownError> {
+    if req
+        .format
+        .as_ref()
+        .is_some_and(|f| f.kind != super::encode::FormatKind::Wav)
+    {
+        return Err(MixdownError::Write(
+            "Speaker layouts are written as WAV. Pick WAV, or 2.0 or binaural for other formats."
+                .into(),
+        ));
+    }
+    let werr = |e: std::io::Error| MixdownError::Write(e.to_string());
+    let ch = crate::dsp::space::speakers(layout).len() as u16;
+    let mask = crate::dsp::space::channel_mask(layout);
+    let mut w = super::wav_multi::MultiWav::create(path, session.sample_rate, ch, mask, bits)
+        .map_err(werr)?;
+    let r = render_mix(session, req, cancel, progress, |bed| {
+        w.write(bed).map_err(werr)
+    })?;
+    if r.cancelled {
+        drop(w);
+        let _ = std::fs::remove_file(path);
+    } else {
+        w.finish().map_err(werr)?;
+    }
+    Ok(MixdownResult {
+        frames: r.frames,
+        sample_rate: r.sample_rate,
+        bit_depth: if [16, 24, 32].contains(&bits) {
+            bits
+        } else {
+            24
+        },
         peak: r.peak,
         cancelled: r.cancelled,
     })
@@ -306,6 +456,63 @@ mod tests {
         }
         w.finalize().unwrap();
         path
+    }
+
+    #[test]
+    fn a_3d_session_writes_every_speaker_or_stereo_as_asked() {
+        use crate::session::model::{Space, SpaceLayout, SpaceListen, SpacePos};
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, _, _) = session_with(dir.path());
+        s.space = Some(Space {
+            layout: SpaceLayout::Surround51,
+            listen: SpaceListen::Stereo,
+        });
+        // A at the front left speaker, B at the back center.
+        s.tracks[0].space = Some(SpacePos {
+            x: -1.0,
+            y: 1.0,
+            lfe: 1.0,
+            ..SpacePos::default()
+        });
+        s.tracks[1].space = Some(SpacePos {
+            x: 0.0,
+            y: -1.0,
+            ..SpacePos::default()
+        });
+        let path = dir.path().join("bed.wav");
+        let req = MixdownRequest {
+            bit_depth: Some(32),
+            ..MixdownRequest::default()
+        };
+        mixdown(&s, &req, &path, &AtomicBool::new(false), |_, _| {}).unwrap();
+        let r = hound::WavReader::open(&path).unwrap();
+        assert_eq!(r.spec().channels, 6);
+        let x: Vec<f32> = r.into_samples::<f32>().map(Result::unwrap).collect();
+        let at = |frame: usize, ch: usize| (x[frame * 6 + ch] * 1_000.0).round() / 1_000.0;
+        assert_eq!((at(1_000, 0), at(1_000, 1), at(1_000, 2)), (0.25, 0.0, 0.0));
+        // A's level is steady (no frequency at all), and the low-frequency
+        // channel's 20 Hz high pass keeps such offsets out of the subwoofer.
+        assert_eq!(at(10_000, 3), 0.0);
+        assert_eq!(at(100_000, 3), 0.0);
+        // B shares the two surrounds at -3 dB each.
+        assert_eq!((at(100_000, 4), at(100_000, 5)), (0.177, 0.177));
+        assert_eq!(at(100_000, 0), 0.0);
+        // The same session to 7.1.4, then to stereo, then for headphones.
+        for (layout, binaural, ch) in [
+            (Some(SpaceLayout::Surround714), false, 12),
+            (Some(SpaceLayout::Stereo20), false, 2),
+            (None, true, 2),
+        ] {
+            let p = dir.path().join(format!("o{ch}{binaural}.wav"));
+            let req = MixdownRequest {
+                space_layout: layout,
+                binaural,
+                ..MixdownRequest::default()
+            };
+            mixdown(&s, &req, &p, &AtomicBool::new(false), |_, _| {}).unwrap();
+            let r = hound::WavReader::open(&p).unwrap();
+            assert_eq!(r.spec().channels, ch);
+        }
     }
 
     fn session_with(dir: &Path) -> (Session, Id, Id) {
@@ -374,6 +581,26 @@ mod tests {
     }
 
     #[test]
+    fn a_realtime_mixdown_takes_as_long_as_the_audio() {
+        let dir = tempfile::tempdir().unwrap();
+        let (s, _a, _b) = session_with(dir.path());
+        let req = MixdownRequest {
+            range: Some((0, 24_000)),
+            realtime: true,
+            ..Default::default()
+        };
+        let at = std::time::Instant::now();
+        let r = render_mix(&s, &req, &AtomicBool::new(false), |_, _| {}, |_| Ok(())).unwrap();
+        assert_eq!(r.frames, 24_000);
+        // Paced a block at a time: done no sooner than the audio, less the last block.
+        assert!(
+            at.elapsed() >= std::time::Duration::from_millis(250),
+            "{:?}",
+            at.elapsed()
+        );
+    }
+
+    #[test]
     fn mixes_a_range_or_selected_clips_and_can_cancel() {
         let dir = tempfile::tempdir().unwrap();
         let (s, _a, b) = session_with(dir.path());
@@ -387,6 +614,9 @@ mod tests {
             dry: false,
             channels: None,
             format: None,
+            realtime: false,
+            space_layout: None,
+            binaural: false,
         };
         let r = mixdown(&s, &req, &out, &AtomicBool::new(false), |_, _| {}).unwrap();
         assert_eq!(r.frames, 10_000);
@@ -505,6 +735,9 @@ mod tests {
             dry: false,
             channels: Some(1),
             format: None,
+            realtime: false,
+            space_layout: None,
+            binaural: false,
         };
         mixdown(&s, &req, &out, &AtomicBool::new(false), |_, _| {}).unwrap();
         let rd = hound::WavReader::open(&out).unwrap();

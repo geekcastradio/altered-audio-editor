@@ -14,7 +14,7 @@ use std::sync::atomic::AtomicBool;
 use altered_audio_editor_lib::export::mixdown::{render_mix, MixdownRequest};
 use altered_audio_editor_lib::plugins::{self, instance};
 use altered_audio_editor_lib::session::model::{
-    new_id, ChannelLayout, EffectSlot, MediaRef, MidiClip, Note, Session, Track,
+    new_id, ChannelLayout, EffectSlot, MediaRef, MidiClip, Note, Session, Tempo, Track,
 };
 use altered_audio_editor_lib::session::ops::{apply, ClipSpec, Op};
 
@@ -93,6 +93,7 @@ fn slot(params: &[(&str, f64)]) -> EffectSlot {
         preset: None,
         sidechain: None,
         plugin_state: None,
+        data: None,
         position: None,
     }
 }
@@ -210,6 +211,30 @@ fn plug_ins_scan_mix_keep_settings_and_survive_crashes() {
     let s = session(dir.path(), slot(&[("p0", 0.5)]));
     assert_eq!(peak(&mix(&s)), (6_000, 0.5));
 
+    // A maker set to run together: two of its plug-ins share one process,
+    // each keeping its own settings (half, then half again).
+    let vendor = plugins::snapshot()
+        .plugins
+        .iter()
+        .find(|p| p.info.name == "Altered Test Gain")
+        .unwrap()
+        .info
+        .vendor
+        .clone();
+    instance::set_shared_makers(vec![vendor]);
+    let t0 = std::time::Instant::now();
+    let before = instance::shared_processes_started();
+    let mut two = session(dir.path(), slot(&[("p0", 0.5)]));
+    two.tracks[0].effects.slots.push(slot(&[("p0", 0.5)]));
+    assert_eq!(peak(&mix(&two)), (6_000, 0.25));
+    assert_eq!(
+        instance::shared_processes_started() - before,
+        1,
+        "one process for both"
+    );
+    instance::set_shared_makers(vec![]);
+    eprintln!("SHARED TOOK {:?}", t0.elapsed());
+
     // Playback's pooled host: settings come back out and load into a new one.
     let mut fx = slot(&[("p0", 0.25)]);
     let p = instance::processor(&fx, 48_000).expect("starts");
@@ -284,6 +309,7 @@ fn plug_ins_scan_mix_keep_settings_and_survive_crashes() {
                 length: 1.0,
                 muted: false,
                 color: None,
+                gain_db: 0.0,
                 notes: vec![Note {
                     pitch: 60,
                     velocity: 127,
@@ -333,8 +359,10 @@ fn plug_ins_scan_mix_keep_settings_and_survive_crashes() {
     apply(
         &mut s,
         &Op::SetTempo {
-            bpm: 60.0,
-            beats_per_bar: 4,
+            tempo: Tempo {
+                bpm: 60.0,
+                ..Tempo::default()
+            },
         },
     )
     .unwrap();
@@ -440,6 +468,7 @@ fn a_real_reverb_rings_on_a_midi_track() {
                 length: 4.0,
                 muted: false,
                 color: None,
+                gain_db: 0.0,
                 notes: vec![Note {
                     pitch: 60,
                     velocity: 127,

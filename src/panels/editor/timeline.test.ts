@@ -144,3 +144,42 @@ describe("ruler range and zoom limit", () => {
     expect(z.spp).toBeCloseTo((4 * 3600 * rate) / w, 0);
   });
 });
+
+describe("bars and beats", () => {
+  it("shows and reads bar.beat.tick at the tempo", async () => {
+    const { formatBars, parseBars, barTicks } = await import("./timeline");
+    const t = { bpm: 120, beats_per_bar: 4 };
+    // 120 bpm: a beat is half a second.
+    expect(formatBars(0, 48_000, t)).toBe("1.1.000");
+    expect(formatBars(24_000, 48_000, t)).toBe("1.2.000");
+    expect(formatBars(96_000 + 12_000, 48_000, t)).toBe("2.1.480");
+    expect(parseBars("2.1.480", 48_000, t)).toBe(108_000);
+    expect(parseBars("3", 48_000, t)).toBe(192_000);
+    expect(parseBars("0.1", 48_000, t)).toBeNull();
+    // A bar is 2 s = 96,000 samples; at 1,000 samples a pixel, bars are 96 px apart and labeled.
+    const ticks = barTicks({ spp: 1000, scroll: 0 }, 400, 48_000, t);
+    expect(ticks.filter((k) => k.label).map((k) => k.label)).toEqual(["1", "2", "3", "4", "5"]);
+  });
+
+  it("follows tempo and time signature changes", async () => {
+    const { formatBars, parseBars, barTicks, gridLines } = await import("./timeline");
+    // Two bars of 4/4 at 120 (4 s), then 6/8 at 60: an eighth is half a second, a bar 3 s.
+    const t = { bpm: 120, beats_per_bar: 4, changes: [{ id: "a", bar: 2, bpm: 60, beats_per_bar: 6, beat_unit: 8 }] };
+    const rate = 1_000;
+    expect(formatBars(4_000, rate, t)).toBe("3.1.000");
+    expect(formatBars(4_500, rate, t)).toBe("3.2.000");
+    expect(formatBars(7_000, rate, t)).toBe("4.1.000");
+    expect(parseBars("4", rate, t)).toBe(7_000);
+    expect(parseBars("3.3", rate, t)).toBe(5_000);
+    const labels = barTicks({ spp: 10, scroll: 0 }, 1_000, rate, t).filter((k) => k.label);
+    expect(labels.map((k) => [k.label, Math.round(k.x)])).toEqual([
+      ["1", 0],
+      ["2", 200],
+      ["3", 400],
+      ["4", 700],
+      ["5", 1_000],
+    ]);
+    const bars = gridLines({ spp: 10, scroll: 0 }, 1_000, rate, t).filter((l) => l.bar);
+    expect(bars.map((l) => Math.round(l.x))).toEqual([0, 200, 400, 700, 1_000]);
+  });
+});

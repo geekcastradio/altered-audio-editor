@@ -9,7 +9,7 @@
   view draws the result and turns gestures into actions.
 -->
 <script lang="ts">
-  import { settings, zoomRatios } from "../../stores/settings";
+  import { settings, wheelAnchorX, zoomRatios } from "../../stores/settings";
   import ColorPairPopover from "../../app/ColorPairPopover.svelte";
   import { SPECTRUM_HIGH, SPECTRUM_LOW } from "../../app/colors";
   import { KIND_COLORS } from "../markers/markers";
@@ -22,8 +22,11 @@
   import type { TransportState, TransportStore } from "../../stores/transport";
   import { onDestroy } from "svelte";
   import { waveZoom, type WaveFile } from "../../stores/wave";
+  import { BOTH, toggleChannel, waveChannels } from "./wave-channels";
+  import { laneWidths } from "../time-info/time-info";
+  import { timeDisplayItems } from "./time-menu";
   import { levelAt, pointsOf } from "./envelope";
-  import { fit, formatIn, peakRange, pickLevel, rulerTicks, sampleAt, SAMPLE_SPP, xOf, zoomAround, type Viewport } from "./timeline";
+  import { fit, formatIn, peakRange, pickLevel, rulerTicks, ticksFor, sampleAt, SAMPLE_SPP, xOf, zoomAround, type Viewport } from "./timeline";
   import { mediaFrames } from "../../app/core";
   import TransportBar from "./TransportBar.svelte";
   import SpectrumView from "./SpectrumView.svelte";
@@ -43,6 +46,19 @@
 
   const RULER_H = 22;
   const SCALE_W = 46;
+  $effect(() => {
+    const w = width;
+    laneWidths.update((l) => (l.waveform === w ? l : { ...l, waveform: w }));
+  });
+  // Each file opens with both channels on.
+  let channelFile: string | null = null;
+  $effect(() => {
+    const p = file?.path ?? null;
+    if (p !== channelFile) {
+      channelFile = p;
+      waveChannels.set(BOTH);
+    }
+  });
 
   let doc = $state<SessionDoc | null>(null);
   $effect(() =>
@@ -107,9 +123,10 @@
 
   function setView(v: Partial<{ spp: number; scroll: number; playhead: number; selection: { start: number; end: number } | null }>, auto = false) {
     if (!doc) return;
-    if (!auto && tp?.playing && v.playhead === undefined && (v.scroll !== undefined || v.spp !== undefined)) {
-      const x = (tp.position - (v.scroll ?? doc.view.scroll)) / (v.spp ?? doc.view.samples_per_pixel);
-      followHeld = x < 0 || x > width;
+    // Scrolling or zooming by hand while playing stops the following until playback starts again or the playhead is moved.
+    if (!auto && tp?.playing) {
+      if (v.playhead !== undefined) followHeld = false;
+      else if ((v.scroll !== undefined && v.scroll !== doc.view.scroll) || (v.spp !== undefined && v.spp !== doc.view.samples_per_pixel)) followHeld = true;
     }
     const maxScroll = Math.max(0, total - width * (v.spp ?? view.spp) * 0.5);
     wave.setView({
@@ -139,9 +156,9 @@
     setView({ spp: f.spp, scroll: 0 });
   });
 
-  // Keep the playhead in view while playing, unless the view was moved
-  // away from it by hand: then wait until it is back in view (or playback
-  // starts again).
+  // Keep the playhead in view while playing, unless the view was scrolled
+  // or zoomed by hand: then leave it be until playback starts again or the
+  // playhead is moved.
   let followHeld = false;
   let wasPlaying = false;
   $effect(() => {
@@ -150,10 +167,7 @@
     wasPlaying = playingNow;
     if (!playingNow || !tp || width <= 0) return;
     const x = xOf(tp.position, view);
-    if (followHeld) {
-      if (x < 0 || x > width) return;
-      followHeld = false;
-    }
+    if (followHeld) return;
     if (x > width - 20 || x < 0) setView({ scroll: tp.position - 20 * view.spp }, true);
   });
 
@@ -286,7 +300,7 @@
     // Time grid at the ruler's labeled ticks.
     g.strokeStyle = "rgba(255, 255, 255, 0.05)";
     g.lineWidth = 1;
-    for (const t of rulerTicks(view, w, rate)) {
+    for (const t of ticksFor(view, w, rate, ed.timeFormat)) {
       if (!t.label) continue;
       const x = Math.round(t.x) + 0.5;
       g.beginPath();
@@ -473,11 +487,6 @@
         g.fillText(db === 0 ? " 0" : String(db), w + 8, mid + a * half);
       }
       g.fillText("-∞", w + 8, mid);
-      if (channels === 2) {
-        g.fillStyle = css("--text-faint");
-        g.fillText(ch === 0 ? "L" : "R", w + 34, top + 10);
-        g.fillStyle = css("--text-dim");
-      }
     }
   });
 
@@ -501,13 +510,13 @@
     g.strokeStyle = css("--border-strong");
     g.font = `10px ${css("--font-ui")}`;
     g.textBaseline = "top";
-    for (const t of rulerTicks(view, w, rate)) {
+    for (const t of ticksFor(view, w, rate, ed.timeFormat)) {
       const x = Math.round(t.x) + 0.5;
       g.beginPath();
       g.moveTo(x, t.label ? 8 : 15);
       g.lineTo(x, RULER_H);
       g.stroke();
-      if (t.label) g.fillText(ed.timeFormat === "time" ? t.label : formatIn(sampleAt(t.x, view), rate, ed.timeFormat), x + 3, 2);
+      if (t.label) g.fillText(ed.timeFormat === "time" || ed.timeFormat === "bars" ? t.label : formatIn(sampleAt(t.x, view), rate, ed.timeFormat), x + 3, 2);
     }
     if (selection) {
       const a = Math.max(0, xOf(selection.start, view));
@@ -597,13 +606,15 @@
   function onWheel(e: WheelEvent) {
     if (!area) return;
     const x = Math.max(0, Math.min(width, xIn(e, area)));
+    // Over the time ruler the wheel always zooms, toward the pointer.
+    const overRuler = e.currentTarget === ruler;
     if (e.altKey) {
       e.preventDefault();
       zoom(e.deltaY < 0 ? "amp-in" : "amp-out");
-    } else if (e.ctrlKey || (settings.current.wheelZooms && !e.shiftKey && Math.abs(e.deltaY) >= Math.abs(e.deltaX))) {
+    } else if (overRuler || e.ctrlKey || (settings.current.wheelZooms && !e.shiftKey && Math.abs(e.deltaY) >= Math.abs(e.deltaX))) {
       e.preventDefault();
       const r = zoomRatios();
-      const at = settings.current.wheelAnchor === "playhead" ? Math.max(0, Math.min(width, xOf(playhead, view))) : x;
+      const at = wheelAnchorX(x, width, xOf(playhead, view), overRuler);
       const z = zoomAround(view, e.deltaY > 0 ? r.zoomOut : r.zoomIn, at, outermost(), SAMPLE_SPP);
       setView({ spp: z.spp, scroll: z.scroll });
     } else {
@@ -755,7 +766,16 @@
 
   {#if doc && file}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <canvas class="ruler" bind:this={ruler} onpointerdown={onRulerPointer} onwheel={onWheel}></canvas>
+    <canvas
+      class="ruler"
+      bind:this={ruler}
+      onpointerdown={onRulerPointer}
+      onwheel={onWheel}
+      oncontextmenu={(e) => {
+        e.preventDefault();
+        menu = { x: e.clientX, y: e.clientY, items: timeDisplayItems() };
+      }}
+    ></canvas>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="area" bind:this={area} bind:clientHeight={height} onwheel={onWheel} oncontextmenu={onMenu}>
       <div class="measure" bind:clientWidth={width} style:right="{SCALE_W}px"></div>
@@ -767,6 +787,22 @@
         </span>
         <span class="val">{level > 0 ? "+" : ""}{level.toFixed(1)} dB</span>
       </div>
+      {#if channels === 2}
+        {#each [0, 1] as const as ch (ch)}
+          {@const name = ch === 0 ? "left" : "right"}
+          {@const on = $waveChannels[name]}
+          {#if !on}<div class="chdim" style:top="{(ch * height) / 2}px" style:height="{height / 2}px" style:right="{SCALE_W}px"></div>{/if}
+          <button
+            type="button"
+            class="chbtn"
+            class:on
+            style:top="{(ch * height) / 2 + 4}px"
+            aria-pressed={on}
+            title={on ? `Switch the ${name} channel off: edits, effects, copy and paste then reach only the other channel (${ch === 0 ? "Up" : "Down"} picks this channel alone)` : `Switch the ${name} channel back on`}
+            onclick={() => waveChannels.update((c) => toggleChannel(c, name))}>{ch === 0 ? "L" : "R"}</button
+          >
+        {/each}
+      {/if}
     </div>
     {#if ed.showSpectrum || ed.showPitch}
       <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -787,6 +823,8 @@
         onSelectTime={(sel) => setView({ selection: sel })}
         {run}
         {tip}
+        onTimeWheel={onWheel}
+        onColors={(x, y) => (colorPop = { x, y })}
       />
     {/if}
     <div class="hbar">
@@ -906,6 +944,32 @@
     position: relative;
     min-height: 0;
     overflow: hidden;
+  }
+  /* A channel switched off: edits pass it by. */
+  .chdim {
+    position: absolute;
+    left: 0;
+    background: rgba(0, 0, 0, 0.55);
+    pointer-events: none;
+  }
+  .chbtn {
+    position: absolute;
+    right: 2px;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--surface-1, #111);
+    color: var(--text-faint);
+    font: inherit;
+    font-size: 10px;
+    line-height: 14px;
+    cursor: pointer;
+  }
+  .chbtn.on {
+    border-color: var(--accent);
+    color: var(--accent);
   }
 
   .measure {

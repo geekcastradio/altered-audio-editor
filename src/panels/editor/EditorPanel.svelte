@@ -8,7 +8,7 @@
   management and zoom. Playback arrives in P2, clip editing in P3.
 -->
 <script lang="ts">
-  import { settings, zoomRatios } from "../../stores/settings";
+  import { settings, wheelAnchorX, zoomRatios } from "../../stores/settings";
   import { trackOp } from "../mixer/solo";
   import { busChoices, busOp, MASTER_ID, newSend } from "../mixer/routing";
   import SendList from "../mixer/SendList.svelte";
@@ -19,19 +19,22 @@
   import { editor, type EditorState } from "../../stores/editor";
   import type { PeakStore } from "../../stores/peaks";
   import type { CommandRunner } from "../../stores/media-pool";
-  import { BPM_MAX, BPM_MIN, clipLength, isMidi, midiEnd, stretchOf, tempoOf, type BusDoc, type ClipChange, type ClipDoc, type MidiClipDoc, type SessionDoc, type SessionStore, type TrackChanges, type TrackDoc } from "../../stores/session";
+  import { clipLength, isMidi, midiEnd, stretchOf, tempoOf, type BusDoc, type ClipChange, type ClipDoc, type MidiClipDoc, type SessionDoc, type SessionStore, type TempoDoc, type TrackChanges, type TrackDoc } from "../../stores/session";
   import MidiLane from "./MidiLane.svelte";
   import PianoRollDialog from "./PianoRollDialog.svelte";
-  import { duplicateClips, replaceClip } from "./midi";
+  import { duplicateClips, newClip, replaceClip, transferClips } from "./midi";
   import { effectsCatalog, midiAudition, pluginOpenWindow, pluginsRegistry, type EffectInfo } from "../../app/core";
   import HeaderFx from "./HeaderFx.svelte";
   import { rowTarget } from "../voice-chain/slot-drag";
   import { pluginMenuGroups, type MenuPlugin } from "../voice-chain/chain";
   import { effectWindowRequest } from "../voice-chain/effect-window";
-  import type { EffectSlotDoc, Op } from "../../stores/session";
+  import type { EffectSlotDoc, EnvelopeDoc, Op } from "../../stores/session";
   import { pluginsVersion } from "../../stores/plugins";
   import { stretchTo } from "./stretch";
-  import { clipsAt, copyMoved, fadeClip, LockedError, MIN_CLIP, moveClips, nearest, previewTracks, snapTargets, splitClips, trimClip, withCrossfades, withGroups } from "./clip-edit";
+  import { timeDisplayItems } from "./time-menu";
+  import { dragGain, gainBox, gainText } from "./clip-gain";
+  import { clipsAt, copyMoved, fadeClip, LockedError, MIN_CLIP, moveClips, nearest, previewTracks, snapTargets, splitClips, trimClip, withCrossfades,
+    withLayers, withGroups } from "./clip-edit";
   import { shownTracks as listedTracks } from "./visibility";
   import { addPoint, chipBox, chipLabel, envChange, envName, formatValue, fxChoices, fxLaneOf, fxParam, levelAt, movePoint, pointsOf, rangeOf, restValue, snapValue, valueToY, yToValue, type EnvKind } from "./envelope";
   import LaneCanvas from "./LaneCanvas.svelte";
@@ -44,14 +47,22 @@
   import { inputLevels, liveTakes, type LiveTakes } from "../../stores/record";
   import { keepLast } from "../../app/settings/device-cache";
   import { audioInputs, openSoundSettings, probeMedia, type AudioInput } from "../../app/core";
+  import { laneWidths } from "../time-info/time-info";
   import WaveformView from "./WaveformView.svelte";
   import TransportBar, { type ZoomKind } from "./TransportBar.svelte";
+  import TempoStrip from "./TempoStrip.svelte";
+  import MetronomeRow from "./MetronomeRow.svelte";
+  import AutoLane from "./AutoLane.svelte";
+  import { AUTO_H, autoAt, autoChoices, autoMode, autoName, autoRange, autoRest, dropLane, isOrphan, newLane, nextTarget, putLane, setMode, shownLanes, targetKey, type AutoTarget } from "./automation";
+  import { setMetronomePrefs } from "../../stores/metronome";
+  import { addChange, nearestBar, secondsToBeats } from "../../stores/tempo";
   import type { Readable } from "svelte/store";
   import type { WaveFile } from "../../stores/wave";
   import OverviewStrip from "./OverviewStrip.svelte";
   import { KIND_COLORS, markerAt, markerCss } from "../markers/markers";
-  import { type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
-  import { defaultTrackColor, trackHeight, formatIn, maxSppFor, rulerTicks, sampleAt, xOf, zoomAround, type Viewport, TRACK_GAP } from "./timeline";
+  import { quiet, type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
+  import { channelNames } from "../space/space";
+  import { defaultTrackColor, trackHeight, formatIn, maxSppFor, rulerTicks, ticksFor, setDisplayTempo, sampleAt, xOf, zoomAround, type Viewport, TRACK_GAP } from "./timeline";
 
   interface Props {
     session: SessionStore;
@@ -138,6 +149,15 @@
 
   /** Nothing in the session yet and nothing chosen: show a start screen instead of six empty tracks. */
   let startDismissed = $state(false);
+  // A new empty start (the last session closed) shows the start screen again.
+  let startFor: string | null = null;
+  $effect(() => {
+    const id = doc?.id ?? null;
+    if (id !== startFor) {
+      startFor = id;
+      startDismissed = false;
+    }
+  });
   // Only the blank session the app opened with shows the start screen; a
   // new or opened session, or any track or clip added, puts the tracks up.
   const showStart = $derived(!startDismissed && doc != null && session.isScratch(doc));
@@ -168,6 +188,10 @@
   };
 
   let lanesWidth = $state(800);
+  $effect(() => {
+    const w = lanesWidth;
+    laneWidths.update((l) => (l.multitrack === w ? l : { ...l, multitrack: w }));
+  });
   let lanesEl = $state<HTMLElement | null>(null);
   let scroller = $state<HTMLElement | null>(null);
   let ruler = $state<HTMLCanvasElement | null>(null);
@@ -233,6 +257,24 @@
   let pianoRoll = $state<{ trackId: string; clipId: string } | null>(null);
   const tempo = $derived(doc ? tempoOf(doc) : { bpm: 120, beats_per_bar: 4 });
 
+  /** The MIDI track a dragged MIDI clip is over, highlighted. */
+  let midiDrop = $state<string | null>(null);
+
+  /** MIDI clips dragged onto another MIDI track: moved (or copied) there as one undoable edit. */
+  function transferMidiClips(from: TrackDoc, ids: string[], delta: number, toId: string, copy: boolean) {
+    const to = doc?.tracks.find((t) => t.id === toId);
+    if (!to || !isMidi(to)) return;
+    const r = transferClips(from.midi_clips ?? [], to.midi_clips ?? [], new Set(ids), delta, copy, () => crypto.randomUUID());
+    const n = ids.length;
+    const what = n > 1 ? `${n} MIDI Clips` : "MIDI Clip";
+    const ops: Op[] = [{ op: "set_midi_clips", track_id: to.id, clips: r.to }];
+    if (!copy) ops.unshift({ op: "set_midi_clips", track_id: from.id, clips: r.from });
+    void session
+      .edit(`${copy ? "Copy" : "Move"} ${what} to ${to.name}`, { op: "batch", ops }, runner)
+      .then(() => editor.selectClips(copy ? r.to.filter((c) => !(to.midi_clips ?? []).some((o) => o.id === c.id)).map((c) => c.id) : ids, to.id))
+      .catch(onError);
+  }
+
   function setMidiClips(track: TrackDoc, clips: MidiClipDoc[], label: string) {
     void session.edit(label, { op: "set_midi_clips", track_id: track.id, clips }, runner).catch(onError);
   }
@@ -271,11 +313,20 @@
     void pluginOpenWindow(track.instrument, `${name}: ${track.name}`).catch(onError);
   }
 
-  function setTempo(bpm: number, beatsPerBar: number) {
-    const b = Math.min(BPM_MAX, Math.max(BPM_MIN, Math.round(bpm * 100) / 100));
-    const n = Math.min(32, Math.max(1, Math.round(beatsPerBar)));
-    if (!Number.isFinite(b) || (b === tempo.bpm && n === tempo.beats_per_bar)) return;
-    void session.edit("Tempo", { op: "set_tempo", bpm: b, beats_per_bar: n }, runner).catch(onError);
+  // The metronome's on/off (app settings, not the session): it shows its track while on.
+  // The metronome is a music tool: it is offered, and shows, only with View > Music Mode on.
+  let music = $state(settings.current.musicMode);
+  let metOn = $state(settings.current.musicMode && settings.current.metronome.on);
+  $effect(() =>
+    settings.subscribe((v) => {
+      music = v.musicMode;
+      metOn = v.musicMode && v.metronome.on;
+    }),
+  );
+
+  /** Replaces the tempo map (tempo, time signature and their changes) as one undoable step. */
+  function setTempoMap(t: TempoDoc, label: string) {
+    void session.edit(label, { op: "set_tempo", tempo: { bpm: t.bpm, beats_per_bar: t.beats_per_bar, beat_unit: t.beat_unit ?? 4, changes: t.changes ?? [] } }, runner).catch(onError);
   }
 
   function midiClipItems(track: TrackDoc, clip: MidiClipDoc | null, beat: number): ContextItem[] {
@@ -287,8 +338,7 @@
           label: "New MIDI Clip Here",
           run: () => {
             const id = crypto.randomUUID();
-            const start = Math.floor(beat / tempo.beats_per_bar) * tempo.beats_per_bar;
-            setMidiClips(track, [...clips, { id, name: "MIDI", start, length: tempo.beats_per_bar, notes: [] }].sort((a, b) => a.start - b.start), "New MIDI Clip");
+            setMidiClips(track, [...clips, newClip(id, beat, tempo)].sort((a, b) => a.start - b.start), "New MIDI Clip");
             editor.selectClips([id], track.id);
           },
         },
@@ -368,23 +418,35 @@
   });
 
   // Follow Playhead: during playback, page the lanes when the playhead
-  // nears the right edge or falls off either side. Moving the view away
-  // from the playhead yourself (overview bar, wheel, scrollbar) pauses
-  // that until the playhead is back in view or playback starts again, so
-  // you can look at another part of the session while it plays.
+  // nears the right edge or falls off either side. Scrolling or zooming
+  // yourself while it plays (overview bar, wheel, scrollbar) lets go of it,
+  // so you can look at another part of the session while it plays. It
+  // follows again once you stop moving the view with the playhead in view
+  // (or when playback starts, or the playhead is moved).
+  // Bars and beats everywhere follow the session tempo.
+  $effect(() => setDisplayTempo(doc?.tempo));
   let followHeld = false;
   let wasPlaying = false;
+  /** When you last moved the view yourself (ms). */
+  let userViewAt = 0;
+  // Switching Follow Playhead on picks the following up again at once
+  // (only on the switch: the editor state changes for many other reasons).
+  let followWas = editor.current().followPlayhead;
+  $effect(() => {
+    const on = ed.followPlayhead;
+    if (on && !followWas) followHeld = false;
+    followWas = on;
+  });
   $effect(() => {
     const playingNow = !!tp?.playing;
     if (playingNow && !wasPlaying) followHeld = false;
     wasPlaying = playingNow;
     if (!playingNow || !ed.followPlayhead || lanesWidth <= 0) return;
     const x = xOf(playhead, view);
-    const inView = x >= 0 && x <= lanesWidth;
     if (followHeld) {
-      if (!inView) return;
-      // Back in view: follow again from here.
-      followHeld = false;
+      // Back in view and left alone for a moment: follow it again.
+      if (x >= 0 && x <= lanesWidth && performance.now() - userViewAt > 400) followHeld = false;
+      return;
     }
     if (x > lanesWidth * 0.92 || x < 0) setView({ scroll: playhead - lanesWidth * 0.08 * view.spp }, true);
   });
@@ -392,10 +454,12 @@
   /** Changes the view. `auto` is the follow's own paging; anything else is the user's. */
   function setView(v: Partial<{ spp: number; scroll: number; playhead: number }>, auto = false) {
     if (!doc) return;
-    if (!auto && tp?.playing && v.playhead === undefined && (v.scroll !== undefined || v.spp !== undefined)) {
-      const spp = v.spp ?? doc.view.samples_per_pixel;
-      const x = (playhead - (v.scroll ?? doc.view.scroll)) / spp;
-      followHeld = x < 0 || x > lanesWidth;
+    if (!auto && tp?.playing) {
+      if (v.playhead !== undefined) followHeld = false;
+      else if ((v.scroll !== undefined && v.scroll !== doc.view.scroll) || (v.spp !== undefined && v.spp !== doc.view.samples_per_pixel)) {
+        followHeld = true;
+        userViewAt = performance.now();
+      }
     }
     session.setView({
       ...doc.view,
@@ -413,7 +477,7 @@
       onMove: (paths, at) => showDropGhost(paths, at),
       onDrop: (paths, at) => {
         const { trackId, sample } = hitLanes(at.x, at.y);
-        onPlaceFiles(paths, trackId, sample);
+        onPlaceFiles(paths, trackId, dropSample(sample));
       },
     });
   });
@@ -453,15 +517,32 @@
     const height = row ? row.offsetHeight - TRACK_GAP : 60;
     void Promise.all(paths.map(probeLength)).then((infos) => {
       if (seq !== ghostSeq) return;
-      let pos = Math.max(0, sample);
+      const start = dropSample(sample);
+      let pos = start;
       const items = [];
+      const side = settings.current.dropMany === "tracks" && infos.filter(Boolean).length > 1;
       for (const i of infos) {
         if (!i) continue;
         items.push({ name: i.name, x: xOf(pos, view), w: Math.max(4, i.len / view.spp) });
+        // Side by side, the ghost shows the first file; the rest start at the same time below.
+        if (side) break;
         pos += i.len;
       }
+      const more = side ? infos.filter(Boolean).length - 1 : 0;
+      if (more > 0) items[0]!.name = `${items[0]!.name} (+${more} on the tracks below)`;
       dropGhost = items.length ? { top, height, newTrack: !row, items } : null;
     });
+  }
+
+  /**
+   * Where dropped files start: with snapping on, the usual targets, and the
+   * session start from further away (a drop near it is meant for it).
+   */
+  function dropSample(sample: number): number {
+    const p = Math.max(0, Math.round(sample));
+    if (!doc || !ed.snap.on) return p;
+    if (p <= SNAP_PX * 3 * view.spp) return 0;
+    return nearest(p, targetsFor(doc, new Set()), SNAP_PX * view.spp) ?? p;
   }
 
   function hitLanes(x: number, y: number): { trackId: string | null; sample: number } {
@@ -496,14 +577,14 @@
     g.strokeStyle = cs.getPropertyValue("--border-strong");
     g.font = `10px ${cs.getPropertyValue("--font-ui")}`;
     g.textBaseline = "top";
-    for (const t of rulerTicks(view, w, rate)) {
+    for (const t of ticksFor(view, w, rate, ed.timeFormat)) {
       const x = Math.round(t.x) + 0.5;
       g.beginPath();
       g.moveTo(x, t.label ? 8 : 15);
       g.lineTo(x, RULER_H);
       g.stroke();
       if (t.label) {
-        const text = ed.timeFormat === "time" ? t.label : formatIn(sampleAt(t.x, view), rate, ed.timeFormat);
+        const text = ed.timeFormat === "time" || ed.timeFormat === "bars" ? t.label : formatIn(sampleAt(t.x, view), rate, ed.timeFormat);
         g.fillText(text, x + 3, 2);
       }
     }
@@ -685,6 +766,17 @@
             },
           },
           { kind: "item", label: "Add Range Marker", disabled: !can("edit.marker.range"), run: () => run("edit.marker.range") },
+          {
+            kind: "item",
+            label: "Add Tempo Change at Nearest Bar",
+            run: () => {
+              const bar = Math.max(1, nearestBar(tempo, secondsToBeats(tempo, at / rate)));
+              const r = addChange(tempo, bar, crypto.randomUUID());
+              if (r.tempo !== tempo) setTempoMap(r.tempo, "Add Tempo Change");
+            },
+          },
+          { kind: "sep" },
+          ...timeDisplayItems(),
         ];
     menu = { x: e.clientX, y: e.clientY, items };
   }
@@ -721,8 +813,8 @@
 
   /**
    * The mouse wheel. Over the ruler and the overview it zooms the
-   * timeline; over the lanes and headers it scrolls the tracks up and
-   * down. Alt + wheel makes the track under the pointer taller or shorter,
+   * timeline; over the lanes it scrolls the tracks up and down; over the
+   * headers it zooms the tracks (as the track scrollbar does). Alt + wheel makes the track under the pointer taller or shorter,
    * Alt + Shift + wheel scales the waveforms, Ctrl + wheel zooms the
    * timeline, Shift + wheel (or a sideways wheel) scrolls along it.
    */
@@ -734,15 +826,20 @@
       e.preventDefault();
       const r = zoomRatios();
       const mouse = Math.max(0, e.clientX - left);
-      const at = settings.current.wheelAnchor === "playhead" ? Math.max(0, Math.min(lanesEl!.clientWidth, xOf(playhead, view))) : mouse;
+      // Over the ruler the zoom always goes toward the pointer.
+      const at = wheelAnchorX(mouse, lanesEl!.clientWidth, xOf(playhead, view), overRuler);
       const z = zoomAround(view, e.deltaY > 0 ? r.zoomOut : r.zoomIn, at, maxSppFor(lanesWidth, contentEnd, rate));
       setView({ spp: z.spp, scroll: z.scroll });
     };
     if (e.clientX < left && !overRuler) {
-      // Over the track headers: the wheel scrolls the tracks (Alt+wheel resizes them, below).
+      // Over the track headers the wheel zooms the tracks, as over the track
+      // scrollbar: every open track taller or shorter. Alt+wheel resizes only
+      // the one under the pointer. (Over a header's effect slots it scrolls.)
       if (e.altKey) {
         e.preventDefault();
         wheelResizeTracks(e);
+      } else if (!e.shiftKey && Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
+        onVbarWheel(e);
       }
       return;
     } else if (e.altKey && e.shiftKey) {
@@ -779,12 +876,16 @@
     const cur = uniformPreview ?? open[0]!.height;
     const h = Math.max(40, Math.min(600, Math.round(cur * (e.deltaY < 0 ? 1.12 : 1 / 1.12))));
     if (h === cur) return;
-    // Keep the middle of the view on the same spot.
+    // Zoom toward the track the pointer is over on the bar: that spot of
+    // the session keeps its place in the view.
     const sc = scroller;
-    const mid = (sc.scrollTop + sc.clientHeight / 2) / Math.max(1, sc.scrollHeight);
+    const bar = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const share = Math.min(1, Math.max(0, (e.clientY - bar.top) / Math.max(1, bar.height)));
+    const spot = share * sc.scrollHeight;
+    const offset = Math.min(sc.clientHeight, Math.max(0, spot - sc.scrollTop));
     uniformPreview = h;
     void nextFrame().then(() => {
-      sc.scrollTop = mid * sc.scrollHeight - sc.clientHeight / 2;
+      sc.scrollTop = share * sc.scrollHeight - offset;
     });
     clearTimeout(vbarTimer);
     vbarTimer = setTimeout(() => {
@@ -820,7 +921,7 @@
   const EDGE_PX = 6;
   const TITLE_H = 15;
   const SNAP_PX = 8;
-  type Gesture = "move" | "trim-left" | "trim-right" | "stretch-left" | "stretch-right" | "fade-in" | "fade-out" | "env-line" | "env-point";
+  type Gesture = "move" | "trim-left" | "trim-right" | "stretch-left" | "stretch-right" | "fade-in" | "fade-out" | "env-line" | "env-point" | "gain";
   /** Stretch handles: triangles this many pixels wide in a clip's top corners (see LaneCanvas). */
   const STRETCH_PX = 11;
   let preview = $state<ClipChange[]>([]);
@@ -871,6 +972,7 @@
     "fade-out": "ew-resize",
     "env-line": "crosshair",
     "env-point": "move",
+    gain: "ns-resize",
   };
 
   /** The y range the volume envelope uses inside a lane of `height` pixels. Matches LaneCanvas. */
@@ -887,6 +989,9 @@
       if (x - x0 <= STRETCH_PX) return { kind: "stretch-left", clip };
       if (x1 - x <= STRETCH_PX) return { kind: "stretch-right", clip };
     }
+    // The level handle in the bottom-left corner (see clip-gain.ts).
+    const gb = gainBox(x0, x1, trackHeight(track) - TRACK_GAP - 2, TITLE_H + 1);
+    if (gb && !clip.locked && x >= gb.x - 2 && x <= gb.x + gb.w + 2 && y >= gb.y - 2 && y <= gb.y + gb.h + 2) return { kind: "gain", clip };
     // Fade handles sit just under the title bar (see LaneCanvas).
     if (y > TITLE_H && y <= TITLE_H + 21 && w > 30) {
       const hit = (hx: number) => Math.abs(x - Math.min(Math.max(hx, x0 + 8), x1 - 8)) <= 8;
@@ -1197,8 +1302,19 @@
   /** Snap targets for a drag, leaving out the dragged clips. */
   function targetsFor(d: SessionDoc, exclude: ReadonlySet<string>): number[] {
     const t = snapTargets(d, exclude, playhead, ed.snap);
-    if (ed.snap.ruler) for (const tick of rulerTicks(view, lanesWidth, rate)) t.push(sampleAt(tick.x, view));
+    if (ed.snap.ruler) for (const tick of ticksFor(view, lanesWidth, rate, ed.timeFormat)) t.push(sampleAt(tick.x, view));
     return t;
+  }
+
+  /**
+   * A press on a bus or master lane, or below the last track: the same
+   * drag as on empty track space, so a selection can start anywhere (a
+   * box with the Move tool, a time range otherwise) and sweep over tracks.
+   */
+  function startSelectFromLane(e: PointerEvent) {
+    if (e.button !== 0) return;
+    if (ed.tool === "move") startBoxSelect(e);
+    else startRange(e);
   }
 
   /** Drag on empty lane space selects a time range; a plain click moves the playhead and clears it. */
@@ -1312,6 +1428,13 @@
       lastEv = ev;
       if (!moved && Math.abs(ev.clientX - startX) < 3 && Math.abs(ev.clientY - startY) < 3) return;
       moved = true;
+      if (kind === "gain") {
+        const db = dragGain(clip.gain_db, ev.clientX - startX, ev.clientY - startY, ev.shiftKey);
+        changes = [{ id: clip.id, gain_db: db }];
+        preview = changes;
+        envTip = { x: ev.clientX, y: ev.clientY, text: db === 0 ? "0.0 dB" : gainText(db) };
+        return;
+      }
       // The timeline may have scrolled under the drag (see the timer below), so add what it moved.
       const dx = (ev.clientX - startX) * v.spp + (view.scroll - v.scroll);
       const tol = ev.shiftKey || !ed.snap.on ? 0 : SNAP_PX * v.spp;
@@ -1320,6 +1443,7 @@
         if (over) row = d0.tracks.findIndex((t) => t.id === over);
         changes = moveClips(d0, ids, dx, row - startRow, targets, tol).changes;
         if (ed.autoCrossfade) changes = withCrossfades(d0, changes);
+        changes = withLayers(d0, changes);
         // Alt held: the drop makes copies and leaves the originals.
         stretchHint = ev.altKey ? (ids.length > 1 ? `Copy ${ids.length} clips` : "Copy") : null;
       } else if (stretching) {
@@ -1375,6 +1499,7 @@
       window.removeEventListener("pointerup", up, true);
       preview = [];
       stretchHint = null;
+      if (kind === "gain") envTip = null;
       if (!moved || changes.length === 0) return;
       if (kind === "move" && lastEv?.altKey) {
         // Alt+drag: copies where they were dropped; the originals stay.
@@ -1385,7 +1510,9 @@
           .catch(onError);
         return;
       }
-      const label = stretching
+      const label = kind === "gain"
+        ? "Clip Level"
+        : stretching
         ? "Stretch Clip"
         : kind === "move"
           ? ids.length > 1
@@ -1647,6 +1774,7 @@
       { kind: "item", label: "Select All Clips on Track", disabled: track.clips.length === 0, run: () => editor.selectClips(withGroups(doc!, track.clips.map((c) => c.id)), track.id) },
       { kind: "sep" },
       { kind: "item", label: "Rename Track", run: () => (renaming = track.id) },
+      { kind: "item", label: track.show_automation ? "Hide Automation Lanes" : "Show Automation Lanes", run: () => toggleLanes(track) },
       { kind: "item", label: "Track Color...", run: () => (colorFor = { kind: "track", id: track.id, current: track.color ?? null }) },
       { kind: "item", label: "Duplicate Track", run: () => { editor.selectTrack(track.id); run("multitrack.duplicate-track"); } },
       { kind: "item", label: "Delete Track", run: () => { editor.selectTrack(track.id); run("multitrack.delete-track"); } },
@@ -1662,6 +1790,69 @@
 
   function setTrack(track: TrackDoc, changes: TrackChanges, label: string) {
     void session.edit(label, trackOp(doc, track.id, changes as Record<string, unknown>), runner).catch(onError);
+  }
+
+  // Automation lanes under a track.
+  const lanesHeight = (t: TrackDoc) => (t.show_automation && !t.collapsed ? shownLanes(t).length * AUTO_H : 0);
+
+  function setLanes(track: TrackDoc, envelopes: EnvelopeDoc[], label: string) {
+    void session.edit(label, { op: "set_envelopes", owner: track.id, envelopes }, runner).catch(onError);
+  }
+
+  function toggleLanes(track: TrackDoc) {
+    setTrack(track, { show_automation: !track.show_automation }, track.show_automation ? "Hide Automation Lanes" : "Show Automation Lanes");
+  }
+
+  function addLane(track: TrackDoc, target: AutoTarget | null = nextTarget(track, fxCatalog, !!doc?.space)) {
+    if (!target) return;
+    // The starting Volume lane is not saved until it has points; keep it when adding another.
+    const base = (track.envelopes?.length ?? 0) === 0 ? [newLane({ type: "volume" })] : (track.envelopes ?? []);
+    const envelopes = [...base, newLane(target)];
+    const ops: Op[] = [{ op: "set_envelopes", owner: track.id, envelopes }];
+    if (!track.show_automation) ops.push({ op: "set_track", id: track.id, changes: { show_automation: true } });
+    void session.edit("Add Automation Lane", ops.length === 1 ? ops[0]! : { op: "batch", ops }, runner).catch(onError);
+  }
+
+  /** Points a lane at another setting. Its points are kept only when the value range is the same kind. */
+  function pickTarget(track: TrackDoc, lane: EnvelopeDoc, key: string) {
+    const c = autoChoices(track, fxCatalog, !!doc?.space).find((x) => targetKey(x.target) === key);
+    if (!c || targetKey(c.target) === targetKey(lane.target)) return;
+    const same = c.target.type === lane.target.type && c.target.type !== "effect_param";
+    setLanes(track, putLane(track, { ...lane, target: c.target, points: same ? lane.points : [] }), `Automate ${c.label}`);
+  }
+
+  function laneItems(track: TrackDoc, lane: EnvelopeDoc, index: number): ContextItem[] {
+    const name = autoName(track, fxCatalog, lane.target);
+    const at = (v: number) => putLane(track, { ...lane, points: lane.points.filter((_, k) => k !== v) });
+    return [
+      { kind: "item", label: "Delete Point", disabled: index < 0, run: () => setLanes(track, at(index), "Delete Automation Point") },
+      {
+        kind: "item",
+        label: "Add Point at Playhead",
+        run: () => {
+          const v = lane.points.length ? autoAt(lane.points, playhead, autoRest(track, fxCatalog, lane.target)) : autoRest(track, fxCatalog, lane.target);
+          const pts = lane.points.filter((p) => p.position !== Math.round(playhead)).concat({ position: Math.max(0, Math.round(playhead)), value: v, curve: "linear" as const });
+          pts.sort((a, b) => a.position - b.position);
+          setLanes(track, putLane(track, { ...lane, points: pts }), "Add Automation Point");
+        },
+      },
+      {
+        kind: "item",
+        label: "Delete Points in Time Selection",
+        disabled: !doc?.view.selection || !lane.points.some((p) => p.position >= doc!.view.selection!.start && p.position <= doc!.view.selection!.end),
+        run: () => {
+          const sel = doc?.view.selection;
+          if (!sel) return;
+          setLanes(track, putLane(track, { ...lane, points: lane.points.filter((p) => p.position < sel.start || p.position > sel.end) }), "Delete Automation Points");
+        },
+      },
+      { kind: "item", label: `Clear ${name} Lane`, disabled: lane.points.length === 0, run: () => setLanes(track, putLane(track, { ...lane, points: [] }), "Clear Automation Lane") },
+      { kind: "sep" },
+      { kind: "item", label: lane.enabled ? "Turn Lane Off" : "Turn Lane On", disabled: !lane.id, run: () => setLanes(track, putLane(track, { ...lane, enabled: !lane.enabled }), lane.enabled ? "Automation Lane Off" : "Automation Lane On") },
+      { kind: "item", label: "Add Lane", disabled: !nextTarget(track, fxCatalog, !!doc?.space), run: () => addLane(track) },
+      { kind: "item", label: "Remove Lane", disabled: !lane.id, run: () => setLanes(track, dropLane(track, lane.id), "Remove Automation Lane") },
+      { kind: "item", label: "Hide Automation Lanes", run: () => toggleLanes(track) },
+    ];
   }
 
   const formatDb = (v: number) => (v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1));
@@ -1955,27 +2146,6 @@
     <button type="button" class="tool text" title={tip("Add MIDI Track", "multitrack.add.midi")} onclick={() => run("multitrack.add.midi")}>+ MIDI</button>
     <button type="button" class="tool text" title={tip("Add Bus Track", "multitrack.add.bus")} onclick={() => run("multitrack.add.bus")}>+ Bus</button>
     <span class="spacer"></span>
-    {#if doc}
-      <label class="tempo" title="Session tempo. MIDI clips and notes follow it.">
-        <input
-          type="number"
-          min={BPM_MIN}
-          max={BPM_MAX}
-          step="1"
-          aria-label="Tempo in beats per minute"
-          value={tempo.bpm}
-          onchange={(e) => setTempo(Number(e.currentTarget.value), tempo.beats_per_bar)}
-          onkeydown={(e) => {
-            e.stopPropagation();
-            if (e.key === "Enter") e.currentTarget.blur();
-          }}
-        />
-        <span>BPM</span>
-        <select aria-label="Beats per bar" title="Beats per bar" value={tempo.beats_per_bar} onchange={(e) => setTempo(tempo.bpm, Number(e.currentTarget.value))}>
-          {#each [2, 3, 4, 5, 6, 7, 9, 12] as n (n)}<option value={n}>{n}/4</option>{/each}
-        </select>
-      </label>
-    {/if}
     {#if doc}<span class="rate" title="Session sample rate">{(rate / 1000).toLocaleString("en-US")} kHz</span>{/if}
   </div>
 
@@ -2016,9 +2186,17 @@
         </button>
       </div>
       <div class="toggles" role="group" aria-label="Timeline options">
-        <button type="button" class="view" disabled title="Metronome: arrives with recording (P4)" aria-label="Metronome">
+        {#if music}<button
+          type="button"
+          class="view"
+          class:on={metOn}
+          title="Metronome: a click on every beat while playing and recording, on its own track at the top (never in an export)"
+          aria-label="Metronome"
+          aria-pressed={metOn}
+          onclick={() => setMetronomePrefs({ on: !metOn })}
+        >
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2h4l3 12H3z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" /><path d="M8 11l3.5-6" stroke="currentColor" stroke-width="1.3" /></svg>
-        </button>
+        </button>{/if}
         <button
           type="button"
           class="view"
@@ -2065,6 +2243,15 @@
       {/if}
     </div>
   </div>
+  {#if doc && metOn}
+    <MetronomeRow {tempo} {view} width={lanesWidth} {rate} {playhead} headerW={HEADER_W} onTempo={setTempoMap} />
+  {/if}
+  {#if doc && ((tempo.changes?.length ?? 0) > 0 || ed.timeFormat === "bars")}
+    <div class="ruler-row tempo-row">
+      <div class="corner tempo-corner" style:width="{HEADER_W}px" title="Tempo and time signature changes. The tempo and time signature where the playhead is are next to the metronome, under the tracks.">Tempo</div>
+      <TempoStrip {tempo} {view} width={lanesWidth} {rate} onChange={setTempoMap} onMenu={(e, items) => (menu = { x: e.clientX, y: e.clientY, items })} />
+    </div>
+  {/if}
 
   <div class="vwrap">
   {#if showStart}
@@ -2196,7 +2383,19 @@
                 format={(v) => `${formatDb(v)}`}
                 onChange={(v) => setValue(track, "volume_db", v)}
               />
-              <Dial value={track.pan} min={-100} max={100} step={1} origin={0} label="Pan" icon="pan" format={formatPan} onChange={(v) => setValue(track, "pan", v)} />
+              {#if doc?.space}
+                <button
+                  type="button"
+                  class="ms space3d"
+                  title="3D Space session: this track plays at a spot in the room instead of a pan. Click to place it in the 3D Space panel."
+                  onclick={() => {
+                    editor.selectTrack(track.id);
+                    run("multitrack.space");
+                  }}>3D</button
+                >
+              {:else}
+                <Dial value={track.pan} min={-100} max={100} step={1} origin={0} label="Pan" icon="pan" format={formatPan} onChange={(v) => setValue(track, "pan", v)} />
+              {/if}
               <button
                 type="button"
                 class="ms pol"
@@ -2245,17 +2444,24 @@
                     {#if out.type === "bus" && !busChoices(doc, track.id).some((bc) => out.type === "bus" && bc.id === out.bus_id)}<option value={out.bus_id}>{outName(out)}</option>{/if}
                   </select>
                 </label>
+                {#if shownHeight(track) < ROW_AUTO}{@render lanesToggle(track)}{/if}
               </div>
             {/if}
             {#if !track.collapsed && headerView === "mix" && shownHeight(track) >= ROW_AUTO}
               <div class="line">
-                <select class="auto" value="read" title="Automation mode. Read plays back the track's automation; Off, Write, Latch and Touch arrive with automation (P5).">
-                  <option value="off" disabled>Off (arrives with automation)</option>
+                <select
+                  class="auto"
+                  value={autoMode(track)}
+                  title="Automation mode. Read plays the track's automation lanes; Off plays none of them (the fader, pan and effects hold still). Write, Latch and Touch (recording moves while playing) are not built yet."
+                  onchange={(e) => setLanes(track, setMode(track, e.currentTarget.value === "off" ? "off" : "read"), "Automation Mode")}
+                >
+                  <option value="off" disabled={(track.envelopes?.length ?? 0) === 0}>Off</option>
                   <option value="read">Read</option>
-                  <option value="write" disabled>Write (arrives with automation)</option>
-                  <option value="latch" disabled>Latch (arrives with automation)</option>
-                  <option value="touch" disabled>Touch (arrives with automation)</option>
+                  <option value="write" disabled>Write (not built yet)</option>
+                  <option value="latch" disabled>Latch (not built yet)</option>
+                  <option value="touch" disabled>Touch (not built yet)</option>
                 </select>
+                {@render lanesToggle(track)}
               </div>
             {/if}
             {#if !track.collapsed && headerView === "mix" && shownHeight(track) >= ROW_SENDS && doc}
@@ -2270,6 +2476,42 @@
             <!-- Level meter: the input while armed, otherwise playback. -->
             <TrackMeter levels={meterOf(track)} armed={track.record_armed} onClear={() => transport.clearOver(track.id)} />
           </div>
+          {#if track.show_automation && !track.collapsed}
+            {@const lanes = shownLanes(track)}
+            {#each lanes as lane, k (lane.id || "new")}
+              <div class="header auto-head" class:alt={i % 2 === 1} style:--track-color={trackColor(track.color, i)} style:height="{AUTO_H}px">
+                <div class="line">
+                  <select
+                    class="auto-pick"
+                    value={targetKey(lane.target)}
+                    title="The setting this lane moves"
+                    onchange={(e) => pickTarget(track, lane, e.currentTarget.value)}
+                  >
+                    {#if isOrphan(track, fxCatalog, lane.target)}<option value={targetKey(lane.target)}>Removed effect</option>{/if}
+                    {#each autoChoices(track, fxCatalog, !!doc?.space) as c (targetKey(c.target))}
+                      <option value={targetKey(c.target)} disabled={targetKey(c.target) !== targetKey(lane.target) && lanes.some((l) => targetKey(l.target) === targetKey(c.target))}>{c.label}</option>
+                    {/each}
+                  </select>
+                </div>
+                <div class="line">
+                  <button
+                    type="button"
+                    class="ms wide"
+                    class:on={lane.enabled}
+                    title={lane.enabled ? "This lane plays (Read). Click to turn it off and hold the setting still." : "This lane is off. Click to play it."}
+                    aria-pressed={lane.enabled}
+                    disabled={!lane.id}
+                    onclick={() => setLanes(track, putLane(track, { ...lane, enabled: !lane.enabled }), lane.enabled ? "Automation Lane Off" : "Automation Lane On")}
+                  >{lane.enabled ? "Read" : "Off"}</button>
+                  <span class="auto-count">{lane.points.length === 0 ? "Click the lane to add points" : `${lane.points.length} point${lane.points.length === 1 ? "" : "s"}`}</span>
+                  {#if k === lanes.length - 1}
+                    <button type="button" class="ms" title="Add a lane for another setting" disabled={!nextTarget(track, fxCatalog, !!doc?.space)} onclick={() => addLane(track)}>+</button>
+                  {/if}
+                  <button type="button" class="ms" title="Remove this lane and its points" disabled={!lane.id} onclick={() => setLanes(track, dropLane(track, lane.id), "Remove Automation Lane")}>×</button>
+                </div>
+              </div>
+            {/each}
+          {/if}
           {:else}
           {@const b = row.bus}
           <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -2375,7 +2617,12 @@
               <Dial value={doc.master?.volume_db ?? 0} min={-60} max={12} step={0.1} origin={0} label="Volume" icon="volume" format={(v) => `${formatDb(v)}`} onChange={setMasterVolume} />
               <button type="button" class="ms mono check" class:on={$monoCheck} title="Mono check: hear the whole mix folded to mono, to check how it holds up. Listening only: exports are not changed (to write a mono file, pick Mono in Export)." aria-pressed={$monoCheck} onclick={(e) => { e.stopPropagation(); void monoCheck.toggle().catch(onError); }}>MONO</button>
             </div>
-            <TrackMeter levels={tp?.master ?? null} armed={false} onClear={() => transport.clearOver()} />
+            {#if doc.space && channelNames(doc.space.layout).length > 2}
+              {@const names = channelNames(doc.space.layout)}
+              <TrackMeter levels={tp?.bed?.length === names.length ? tp.bed : names.map(() => quiet())} {names} armed={false} onClear={() => transport.clearOver()} />
+            {:else}
+              <TrackMeter levels={tp?.master ?? null} armed={false} onClear={() => transport.clearOver()} />
+            {/if}
           </div>
         {/if}
       </div>
@@ -2419,8 +2666,12 @@
                 onSetClips={(clips, label) => setMidiClips(track, clips, label)}
                 onOpen={(clipId) => (pianoRoll = { trackId: track.id, clipId })}
                 onMenu={(e, clip, beat) => (menu = { x: e.clientX, y: e.clientY, items: midiClipItems(track, clip, beat) })}
+                onTransfer={(ids, delta, to, copy) => transferMidiClips(track, ids, delta, to, copy)}
+                onDragOver={(id) => (midiDrop = id)}
+                dropTarget={midiDrop === track.id}
               />
             </div>
+            {@render autoLanes(track, row.i)}
             {:else if row.kind === "track"}
             {@const track = row.track}
             {@const i = row.i}
@@ -2459,6 +2710,7 @@
                 stretchHandles={ed.stretchHandles}
               />
             </div>
+            {@render autoLanes(track, i)}
             {:else}
             {@const b = row.bus}
             <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -2466,6 +2718,7 @@
               class="lane bus-lane"
               class:selected={ed.selectedTrack === b.id}
               style:height="{busHeight(b)}px"
+              onpointerdown={startSelectFromLane}
               onclick={() => editor.selectTrack(b.id)}
               oncontextmenu={(e) => {
                 e.preventDefault();
@@ -2478,7 +2731,7 @@
             {/if}
           {/each}
           <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-          <div class="lane bus-lane master-lane" class:selected={ed.selectedTrack === MASTER_ID} style:height="72px" onclick={() => editor.selectTrack(MASTER_ID)}>
+          <div class="lane bus-lane master-lane" class:selected={ed.selectedTrack === MASTER_ID} style:height="72px" onpointerdown={startSelectFromLane} onclick={() => editor.selectTrack(MASTER_ID)}>
             <span>Master: the whole mix, after every track and bus. Its fader and Voice Chain apply last.</span>
           </div>
           {#each shownMarkers as m (m.id)}
@@ -2501,11 +2754,7 @@
             <div
               class="below"
               title="Drop files here to add a new track. Drag here to select a time range."
-              onpointerdown={(e) => {
-                if (e.button !== 0) return;
-                if (ed.tool === "move") startBoxSelect(e);
-                else startRange(e);
-              }}
+              onpointerdown={startSelectFromLane}
             ></div>
           {/if}
         {/if}
@@ -2520,7 +2769,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="vbar" bind:clientHeight={vbarH} onpointerdown={onVbarPointer} onpointermove={onVbarHover} ondblclick={fitAllTracks} onwheel={onVbarWheel} title="Drag to scroll the tracks. Drag the thumb's ends, or use the mouse wheel here, to zoom: every track the same height. Double-click to fit them all.">
     {#each shown as track, i (track.id)}
-      <div class="vseg" style:height="{(shownHeight(track) / Math.max(1, rowsH)) * 100}%" style:background={trackColor(track.color, i)}></div>
+      <div class="vseg" style:height="{((shownHeight(track) + lanesHeight(track)) / Math.max(1, rowsH)) * 100}%" style:background={trackColor(track.color, i)}></div>
     {/each}
     {#if rowsH > 0}
       <div class="vthumb" style:top="{(scrollTop / rowsH) * 100}%" style:height="{(scrollerH / rowsH) * 100}%">
@@ -2544,6 +2793,39 @@
   />
 </section>
 {/if}
+
+{#snippet lanesToggle(track: TrackDoc)}
+<button
+  type="button"
+  class="ms autos"
+  class:on={!!track.show_automation}
+  class:has={(track.envelopes?.length ?? 0) > 0}
+  title={track.show_automation ? "Hide automation lanes" : (track.envelopes?.length ?? 0) > 0 ? `Show automation lanes (${track.envelopes!.length})` : "Show automation lanes: draw volume, pan or effect settings over time"}
+  aria-pressed={!!track.show_automation}
+  onclick={() => toggleLanes(track)}
+>
+  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 11.5L5 6l4 3.5 5.5-6" fill="none" stroke="currentColor" stroke-width="1.4" /><circle cx="5" cy="6" r="1.4" fill="currentColor" /><circle cx="9" cy="9.5" r="1.4" fill="currentColor" /></svg>
+</button>
+{/snippet}
+
+{#snippet autoLanes(track: TrackDoc, i: number)}
+  {#if track.show_automation && !track.collapsed}
+    {#each shownLanes(track) as lane (lane.id || "new")}
+      <AutoLane
+        {lane}
+        range={autoRange(track, fxCatalog, lane.target)}
+        rest={autoRest(track, fxCatalog, lane.target)}
+        {view}
+        width={lanesWidth}
+        height={AUTO_H}
+        color={trackColor(track.color, i)}
+        {playhead}
+        onPoints={(points, label) => setLanes(track, putLane(track, { ...lane, points }), label)}
+        onMenu={(e, index) => (menu = { x: e.clientX, y: e.clientY, items: laneItems(track, lane, index) })}
+      />
+    {/each}
+  {/if}
+{/snippet}
 
 {#if envTip}
   <div class="env-tip" style:left="{envTip.x}px" style:top="{envTip.y}px">{envTip.text}</div>
@@ -2573,6 +2855,7 @@
     <PianoRollDialog
       clip={prClip}
       {tempo}
+      color={prClip.color ? (prClip.color.startsWith("--") ? `var(${prClip.color})` : prClip.color) : trackColor(prTrack.color, doc.tracks.indexOf(prTrack))}
       instrument={prTrack.instrument ? (instruments.find((x) => x.effect === prTrack.instrument!.effect)?.name ?? null) : null}
       onApply={(c) => {
         const t = prTrack;
@@ -2604,10 +2887,11 @@
     white-space: nowrap;
   }
 
+  /* A column: the strips above and below keep their height and only the
+     tracks stretch, however many strips (metronome, tempo) show. */
   .editor {
-    display: grid;
-    grid-template-rows: auto auto auto 1fr auto auto;
-    grid-template-columns: minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
     height: 100%;
     overflow: hidden;
     background: var(--surface-0);
@@ -2740,31 +3024,6 @@
     margin-left: auto;
   }
 
-  .toolbar .tempo {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    margin-right: 6px;
-    color: var(--text-faint);
-    font-size: var(--font-size-small);
-  }
-
-  .toolbar .tempo input,
-  .toolbar .tempo select {
-    height: 20px;
-    box-sizing: border-box;
-    padding: 0 3px;
-    border: 1px solid var(--border);
-    border-radius: 2px;
-    background: var(--surface-2);
-    color: var(--text);
-    font: inherit;
-  }
-
-  .toolbar .tempo input {
-    width: 52px;
-  }
-
   button.instrument {
     display: flex;
     flex: 1;
@@ -2803,6 +3062,15 @@
     min-width: 0;
   }
 
+  .tempo-corner {
+    height: 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-faint);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
   .razor-mark {
     position: absolute;
     top: 0;
@@ -2828,6 +3096,15 @@
     min-width: 0;
     cursor: text;
     border-bottom: 1px solid var(--border);
+  }
+
+  .editor > :global(*) {
+    flex: none;
+    min-width: 0;
+  }
+
+  .editor > .vwrap {
+    flex: 1 1 0;
   }
 
   .vwrap {
@@ -3061,6 +3338,56 @@
   .ms.on {
     background: var(--accent-dim);
     color: #fff;
+  }
+
+  .ms.autos {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ms.autos svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .ms.autos.has:not(.on) {
+    color: var(--accent);
+  }
+
+  .ms.wide {
+    width: auto;
+    padding: 0 6px;
+  }
+
+  .header.auto-head {
+    justify-content: center;
+    padding-left: 22px;
+    background: color-mix(in srgb, var(--header-a) 88%, var(--track-color) 12%);
+    cursor: default;
+  }
+
+  .auto-pick {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--font-size-small);
+  }
+
+  .auto-count {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-faint);
+    font-size: var(--font-size-small);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ms.space3d {
+    width: 30px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent);
   }
 
   .ms.solo.on {

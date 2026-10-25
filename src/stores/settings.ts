@@ -11,7 +11,7 @@
 
 /** A fade curve, as the session stores it. */
 export type FadeShape = "linear" | "logarithmic" | "cosine";
-export type WheelAnchor = "mouse" | "playhead";
+export type WheelAnchor = "mouse" | "between" | "playhead";
 
 export interface AppColors {
   /** Waveforms in the Waveform editor. Empty keeps the theme color. */
@@ -36,6 +36,8 @@ export interface AppSettings {
   wheelZooms: boolean;
   /** Shape a new fade starts with. */
   fadeShape: FadeShape;
+  /** Several files dropped on the Editor: one after another on one track, or each on its own track from the same time. */
+  dropMany: "sequence" | "tracks";
   /** What the space bar does to a playing session. */
   colors: AppColors;
   /** System name of the output; null is the system default. */
@@ -51,6 +53,8 @@ export interface AppSettings {
   waveInput: string | null;
   autosave: boolean;
   autosaveMinutes: number;
+  /** Mix down sessions that use VST3 plug-ins at playback speed, for plug-ins that only work in real time. */
+  realtimePlugins: boolean;
   /** Show the Voice Chain when an effect is added from the Effects menu. */
   openChainOnAdd: boolean;
   /** Soloing a track unsolos the others. */
@@ -61,6 +65,14 @@ export interface AppSettings {
   /** Keep older copies of the session file in a Backups folder when saving. */
   backups: boolean;
   backupCount: number;
+  /** Copy audio imported into a saved session into its folder: always, ask each time, or never. */
+  copyMedia: "always" | "ask" | "never";
+  /** The folder in the session folder that copies go into. */
+  mediaFolder: string;
+  /** When saving, copy in any audio the session uses from outside its folder. */
+  collectOnSave: boolean;
+  /** Leave files from libraries where they are: libraries keep their own copies. */
+  leaveLibraryFiles: boolean;
   /** Seconds counted down before recording starts; 0 starts at once. */
   countdownSec: number;
   /** Name new markers start with, numbered after it. */
@@ -71,7 +83,39 @@ export interface AppSettings {
   phaseWheel: PhaseWheelPrefs;
   /** View > Music Mode: offers the music tools (MIDI tracks, the Amp Model, the metronome). Off keeps them out of the way. */
   musicMode: boolean;
+  /** The metronome, kept between runs. */
+  metronome: MetronomePrefs;
+  /** 3D Space: dots snap to speakers, the center lines and a grid; turns snap to 15 degrees. */
+  spaceSnap: boolean;
 }
+
+export type MetronomeSound = "tick" | "wood" | "beep" | "shaker";
+export type MetronomeSubdivide = "none" | "halves" | "triplets" | "quarters";
+export interface MetronomePrefs {
+  /** The metronome is on: its track shows and it clicks (unless muted). */
+  on: boolean;
+  /** Its track's mute: silent, but the track stays. */
+  muted: boolean;
+  /** Click during playback and recording, or while recording only. */
+  when: "always" | "recording";
+  levelDb: number;
+  sound: MetronomeSound;
+  /** The first beat of each bar clicks higher. */
+  accent: boolean;
+  subdivide: MetronomeSubdivide;
+}
+export const METRONOME_SOUNDS: { value: MetronomeSound; label: string }[] = [
+  { value: "tick", label: "Tick" },
+  { value: "wood", label: "Wood" },
+  { value: "beep", label: "Beep" },
+  { value: "shaker", label: "Shaker" },
+];
+export const METRONOME_SUBDIVIDE: { value: MetronomeSubdivide; label: string }[] = [
+  { value: "none", label: "Beats only" },
+  { value: "halves", label: "Halves" },
+  { value: "triplets", label: "Triplets" },
+  { value: "quarters", label: "Quarters" },
+];
 
 export type PhaseSignal = "left" | "right" | "mid" | "side";
 export interface PhaseWheelPrefs {
@@ -101,9 +145,10 @@ export const NO_COLORS: AppColors = {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   zoomStep: 25,
-  wheelAnchor: "mouse",
+  wheelAnchor: "between",
   wheelZooms: true,
   fadeShape: "cosine",
+  dropMany: "sequence",
   colors: { ...NO_COLORS },
   output: null,
   waveInput: null,
@@ -114,16 +159,23 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autosave: true,
   autosaveMinutes: 2,
   openChainOnAdd: true,
+  realtimePlugins: false,
   soloExclusive: false,
   meterYellowDb: -12,
   meterRedDb: -3,
   backups: false,
   backupCount: 5,
+  copyMedia: "always",
+  mediaFolder: "Audio",
+  collectOnSave: true,
+  leaveLibraryFiles: true,
   countdownSec: 0,
   markerName: "Marker",
   timecodeFps: 30,
   phaseWheel: { size: 4096, fps: 60, a: "left", b: "right" },
   musicMode: false,
+  spaceSnap: true,
+  metronome: { on: false, muted: false, when: "always", levelDb: -6, sound: "tick", accent: true, subdivide: "none" },
 };
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -148,8 +200,9 @@ export function sanitizeSettings(raw: unknown): AppSettings {
   const yellow = num(o.meterYellowDb, -40, -1, d.meterYellowDb);
   return {
     zoomStep: Math.round(num(o.zoomStep, 5, 100, d.zoomStep)),
-    wheelAnchor: o.wheelAnchor === "playhead" ? "playhead" : "mouse",
+    wheelAnchor: o.wheelAnchor === "playhead" || o.wheelAnchor === "between" || o.wheelAnchor === "mouse" ? o.wheelAnchor : d.wheelAnchor,
     wheelZooms: bool(o.wheelZooms, d.wheelZooms),
+    dropMany: o.dropMany === "tracks" ? "tracks" : "sequence",
     fadeShape:
       o.fadeShape === "linear" || o.fadeShape === "logarithmic"
         ? o.fadeShape
@@ -181,6 +234,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       num(o.autosaveMinutes, 1, 60, d.autosaveMinutes),
     ),
     openChainOnAdd: bool(o.openChainOnAdd, d.openChainOnAdd),
+    realtimePlugins: bool(o.realtimePlugins, d.realtimePlugins),
     soloExclusive: bool(o.soloExclusive, d.soloExclusive),
     meterYellowDb: yellow,
     // Red sits above yellow.
@@ -192,6 +246,10 @@ export function sanitizeSettings(raw: unknown): AppSettings {
     ),
     backups: bool(o.backups, d.backups),
     backupCount: Math.round(num(o.backupCount, 1, 50, d.backupCount)),
+    copyMedia: o.copyMedia === "ask" || o.copyMedia === "never" ? o.copyMedia : d.copyMedia,
+    mediaFolder: typeof o.mediaFolder === "string" && o.mediaFolder.replace(/[\\/:*?"<>|.]/g, "").trim() ? o.mediaFolder.replace(/[\\/:*?"<>|]/g, "").trim().slice(0, 60) : d.mediaFolder,
+    collectOnSave: bool(o.collectOnSave, d.collectOnSave),
+    leaveLibraryFiles: bool(o.leaveLibraryFiles, d.leaveLibraryFiles),
     countdownSec: Math.round(num(o.countdownSec, 0, 10, d.countdownSec)),
     markerName:
       typeof o.markerName === "string" && o.markerName.trim()
@@ -202,6 +260,23 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       : d.timecodeFps,
     phaseWheel: phasePrefs(o.phaseWheel),
     musicMode: bool(o.musicMode, d.musicMode),
+    metronome: metronomePrefs(o.metronome),
+    spaceSnap: bool(o.spaceSnap, d.spaceSnap),
+  };
+}
+
+function metronomePrefs(raw: unknown): MetronomePrefs {
+  const m = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const d = DEFAULT_SETTINGS.metronome;
+  const lvl = typeof m.levelDb === "number" && Number.isFinite(m.levelDb) ? Math.min(6, Math.max(-60, m.levelDb)) : d.levelDb;
+  return {
+    on: typeof m.on === "boolean" ? m.on : d.on,
+    muted: typeof m.muted === "boolean" ? m.muted : d.muted,
+    when: m.when === "recording" ? "recording" : "always",
+    levelDb: Math.round(lvl * 10) / 10,
+    sound: METRONOME_SOUNDS.some((x) => x.value === m.sound) ? (m.sound as MetronomeSound) : d.sound,
+    accent: typeof m.accent === "boolean" ? m.accent : d.accent,
+    subdivide: METRONOME_SUBDIVIDE.some((x) => x.value === m.subdivide) ? (m.subdivide as MetronomeSubdivide) : d.subdivide,
   };
 }
 
@@ -247,6 +322,19 @@ class SettingsStore {
 export const settings = new SettingsStore();
 
 /** The Ctrl+wheel zoom ratios for zooming in and out. */
+/**
+ * Where a wheel zoom centers, in pixels across a view `width` wide: the
+ * pointer, the playhead (when in view), or between the pointer and the
+ * middle of the view (pulled 40% toward the middle, so zooming drifts
+ * less). Over a ruler, `exact` keeps it on the pointer.
+ */
+export function wheelAnchorX(mouse: number, width: number, playheadX: number, exact = false): number {
+  const a = settings.current.wheelAnchor;
+  if (exact || a === "mouse") return mouse;
+  if (a === "playhead") return Math.max(0, Math.min(width, playheadX));
+  return mouse + (width / 2 - mouse) * 0.4;
+}
+
 export function zoomRatios(step = settings.current.zoomStep): {
   zoomIn: number;
   zoomOut: number;

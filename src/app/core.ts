@@ -77,6 +77,19 @@ export interface AudioInfo {
 }
 
 /** Expands folders into the audio files inside them. Files pass through. */
+export interface CopyInResult {
+  /** Where each file is now, in the order given. */
+  paths: string[];
+  copied: number;
+  reused: number;
+  failed: string[];
+}
+
+/** Copies audio into `folder` in the folder of the session saved at `session`. */
+export function mediaCopyIn(session: string, folder: string, paths: string[]): Promise<CopyInResult> {
+  return invoke<CopyInResult>("media_copy_in", { session, folder, paths });
+}
+
 export function expandMediaPaths(paths: string[]): Promise<string[]> {
   return invoke<string[]>("media_expand", { paths });
 }
@@ -274,6 +287,16 @@ export function midiAudition(trackId: string, pitch: number, velocity: number, s
   return invoke<boolean>("midi_audition", { trackId, pitch, velocity, seconds });
 }
 
+/**
+ * The spectrum of what is playing (or, with `at`, of the audio just
+ * before that spot of the session, or of the Waveform editor's file with
+ * `wave`): `points` levels in dBFS from 20 Hz to 20 kHz, even in pitch.
+ */
+export async function scopeSpectrum(size: number, points: number, at: number | null, wave: boolean): Promise<Float32Array> {
+  const bytes = rawBytes(await invoke<unknown>("scope_spectrum", { size, points, at: at === null ? null : Math.max(0, Math.round(at)), wave }));
+  return new Float32Array(bytes.buffer, 0, Math.floor(bytes.byteLength / 4));
+}
+
 /** What the Phase Wheel compares. */
 export type ScopeSignal = "left" | "right" | "mid" | "side";
 
@@ -315,6 +338,19 @@ export interface WaveDocRaw<S> {
 /** Paste to New File: renders clips (from 0) into a new untitled file and opens it in the Waveform editor. */
 export function waveNewFromClips<S, C, M>(name: string, sampleRate: number, channels: number, clips: C[], media: M[]): Promise<WaveDocRaw<S>> {
   return invoke<WaveDocRaw<S>>("wave_new_from_clips", { name, sampleRate, channels, clips, media });
+}
+
+/**
+ * Mix Down to New File: renders the session's mix (or a range or some
+ * clips) into a new untitled file and opens it in the Waveform editor.
+ * Null when cancelled. Progress arrives as `export-progress` events.
+ */
+export async function waveNewFromMix<S>(name: string, request: { range?: [number, number]; clips?: string[]; realtime?: boolean }): Promise<{ doc: WaveDocRaw<S>; result: MixdownResult } | null> {
+  const r = await invoke<[WaveDocRaw<S>, MixdownResult] | null>("wave_new_from_mix", {
+    name,
+    request: { range: request.range ?? null, clips: request.clips ?? null, bit_depth: null, track: null, realtime: request.realtime ?? false },
+  });
+  return r ? { doc: r[0], result: r[1] } : null;
 }
 
 /** File > New Audio File: an empty untitled file in the Waveform editor. */
@@ -391,6 +427,21 @@ export interface SessionResult<T> {
   missing: string[];
 }
 
+/** Sets a copy of the session in front aside, so another can take its place. */
+export function sessionPark(): Promise<void> {
+  return invoke<void>("session_park");
+}
+
+/** Brings a set-aside session to the front. */
+export function sessionResume<T>(id: string): Promise<SessionResult<T>> {
+  return invoke<SessionResult<T>>("session_resume", { id });
+}
+
+/** Drops a set-aside session. */
+export function sessionForget(id: string): Promise<void> {
+  return invoke<void>("session_forget", { id });
+}
+
 export function sessionNew<T>(options: NewSessionOptions = {}): Promise<SessionResult<T>> {
   return invoke<SessionResult<T>>("session_new", { options });
 }
@@ -459,6 +510,8 @@ export interface SesxReport {
   missingPlugins?: string[];
   /** Clips with a time stretch or pitch change. */
   stretched?: number;
+  /** The other editor's built-in effects brought in as ours (its per-frequency phase shifter as Phase Curve). */
+  converted?: number;
   missingFiles: string[];
 }
 
@@ -483,6 +536,8 @@ export interface TransportStatus {
   busMeters?: [number, number][];
   busChainMeters?: ([number, number, number, number] | null)[];
   masterChainMeter?: [number, number, number, number] | null;
+  /** 3D Space sessions: the master's speaker channels, after its fader, in the layout's order. */
+  bedMeters?: number[];
 }
 
 /** How playback treats the time selection. */
@@ -495,6 +550,35 @@ export function transportPlay(from?: number, mode: PlayMode = "normal"): Promise
 /** Stops playback. Resolves to the position reached, or null if it was not playing. */
 export function transportStop(): Promise<number | null> {
   return invoke<number | null>("transport_stop");
+}
+
+/** Shows an Open dialog for an amp capture (.nam) or a cabinet response; null on cancel. */
+export function ampPick(kind: "model" | "ir"): Promise<string | null> {
+  return invoke<string | null>("amp_pick", { kind });
+}
+
+/** Reads a capture into an Amp Model slot's data; returns the new data. */
+export function ampLoadModel(path: string, data: string | null): Promise<string> {
+  return invoke<string>("amp_load_model", { path, data });
+}
+
+/** Reads a cabinet response into an Amp Model slot's data; returns the new data. */
+export function ampLoadIr(path: string, data: string | null): Promise<string> {
+  return invoke<string>("amp_load_ir", { path, data });
+}
+
+/** What the metronome plays, as the core takes it. */
+export interface MetronomeCore {
+  on: boolean;
+  levelDb: number;
+  sound: "tick" | "wood" | "beep" | "shaker";
+  accent: boolean;
+  subdivide: "none" | "halves" | "triplets" | "quarters";
+}
+
+/** The metronome's settings; heard within the audio already rendered ahead. */
+export function setMetronome(settings: MetronomeCore): Promise<void> {
+  return invoke<void>("transport_set_metronome", { settings });
 }
 
 /** Mono check: hear everything folded to mono. Listening only. */
@@ -521,6 +605,12 @@ export interface MixdownRequest {
   clipOnly?: boolean;
   /** Leave every Voice Chain out (measuring the raw audio). */
   dry?: boolean;
+  /** Render at playback speed, for plug-ins that only work in real time. */
+  realtime?: boolean;
+  /** 3D Space sessions: the speaker layout to write (omit for the session's). */
+  spaceLayout?: string;
+  /** 3D Space sessions: a stereo file for headphones. */
+  binaural?: boolean;
 }
 
 export interface MixdownResult {
@@ -563,6 +653,9 @@ export function exportMixdown(path: string, request: MixdownRequest): Promise<Mi
       bit_depth: request.bitDepth ?? null,
       track: request.track ?? null,
       format: request.format ?? null,
+      realtime: request.realtime ?? false,
+      space_layout: request.spaceLayout ?? null,
+      binaural: request.binaural ?? false,
     },
   });
 }
@@ -683,9 +776,19 @@ export async function audioInputs(asio?: boolean): Promise<AudioInput[]> {
 }
 
 /** The spectrogram of the Waveform editor's file between two samples: `rows` rows of `columns` bytes, top row highest. */
-export async function waveSpectrogram(start: number, end: number, columns: number, rows: number): Promise<Uint8Array> {
-  const buf = await invoke<ArrayBuffer>("wave_spectrogram", { start, end, columns, rows });
-  return new Uint8Array(buf);
+/**
+ * The spectrogram of `start..end`. `hz` (optional) gives each row's edges
+ * from the top down, one more than `rows`, for a zoomed or linear axis;
+ * `fft` the analysis frame length (resolution).
+ */
+export async function waveSpectrogram(start: number, end: number, columns: number, rows: number, hz?: number[], fft?: number): Promise<Uint8Array> {
+  const buf = await invoke<ArrayBuffer>("wave_spectrogram", { start, end, columns, rows, hz: hz ?? null, fft: fft ?? null });
+  return rawBytes(buf);
+}
+
+/** An edit limited to one channel: `op` applied to a copy, `start..end` rendered, each channel taken as `take` says. */
+export function waveChannelEdit(op: import("../stores/session").Op, start: number, end: number, take: import("../panels/editor/wave-channels").ChannelTake): Promise<SpectralResult> {
+  return invoke<SpectralResult>("wave_channel_edit", { op, start, end, take });
 }
 
 export interface SpectralResult {
@@ -961,6 +1064,13 @@ export interface PluginRegistry {
   folders: { path: string; standard: boolean; on: boolean }[];
   plugins: { effect: string; name: string; vendor: string; version: string; kind: string; bundle: string; latency: number; hasWindow: boolean; instrument: boolean; note?: string | null; controls: number }[];
   failed: { bundle: string; error: string }[];
+  /** Makers whose plug-ins run together in one process (lower case). */
+  shared: string[];
+}
+
+/** Sets the makers whose plug-ins run together in one process. */
+export function pluginsSetShared(makers: string[]): Promise<PluginRegistry> {
+  return invoke<PluginRegistry>("plugins_set_shared", { makers });
 }
 
 /** What one running plug-in reported. */
@@ -1032,6 +1142,16 @@ export function effectsCatalog(): Promise<EffectInfo[]> {
 }
 
 /** An EQ or filter's response: [frequency, dB] pairs from 20 Hz to 20 kHz. Empty for other effects. */
+/** The Shaped Noise Reducer's learned noise and threshold, in dB at `points` frequencies, on the scale of a `scope`-point spectrum. */
+export function shapedNoiseCurves(slot: import("../stores/session").EffectSlotDoc, points: number, scope: number): Promise<{ print: [number, number][]; threshold: [number, number][] }> {
+  return invoke("shaped_noise_curves", { slot, points, scope });
+}
+
+/** An effect's own meter: gain reduction (dB) and output level (dBFS), or null before it has run. */
+export function effectMeter(slot: string): Promise<[number, number] | null> {
+  return invoke<[number, number] | null>("effect_meter", { slot });
+}
+
 export function effectResponse(slot: import("../stores/session").EffectSlotDoc, points: number): Promise<[number, number][]> {
   return invoke<[number, number][]>("effect_response", { slot, points });
 }

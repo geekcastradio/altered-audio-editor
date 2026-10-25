@@ -42,6 +42,7 @@ pub fn effect_chain() -> EffectChain {
             preset: Some("Voice leveler".into()),
             sidechain: None,
             plugin_state: None,
+            data: None,
             position: None,
         }],
     }
@@ -126,6 +127,7 @@ pub fn track() -> Track {
         color: Some("#3f73b8".into()),
         height: 120,
         collapsed: false,
+        show_automation: false,
         hidden: false,
         volume_db: -2.0,
         pan: -15.0,
@@ -133,6 +135,7 @@ pub fn track() -> Track {
         solo: true,
         polarity_inverted: false,
         mono: false,
+        space: None,
         record_armed: true,
         monitor_input: false,
         input: Some("Mic 1".into()),
@@ -170,6 +173,7 @@ pub fn bus() -> Bus {
         envelopes: Vec::new(),
         position: None,
         mono: false,
+        space: None,
     }
 }
 
@@ -201,6 +205,7 @@ pub fn session() -> Session {
         created: date(),
         modified: date(),
         tempo: Default::default(),
+        space: None,
         media: vec![MediaRef {
             id: id(100),
             path: "C:/GCRN/Show/412/host.wav".into(),

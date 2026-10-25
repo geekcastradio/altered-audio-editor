@@ -89,6 +89,17 @@
       "format": "uint32",
       "minimum": 0
     },
+    "space": {
+      "description": "3D Space sessions: the speaker layout the mix is placed onto, each\ntrack and bus at a spot in the room instead of a pan. None for an\nordinary stereo (or mono) session.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Space"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "template_id": {
       "description": "Template this session was created from, if any.",
       "type": [
@@ -209,6 +220,17 @@
         },
         "solo": {
           "type": "boolean"
+        },
+        "space": {
+          "description": "3D Space sessions: where the bus sits in the room, when it feeds\nthe master (in place of its pan).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpacePos"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "volume_db": {
           "type": "number",
@@ -488,6 +510,13 @@
       "description": "Scaffolding (P5): one effect in a Voice Chain.",
       "type": "object",
       "properties": {
+        "data": {
+          "description": "A built-in effect's own data that is not a setting, as JSON text:\nthe Amp Model's capture and cabinet. Saved with the session and in\npresets, so they never depend on a file elsewhere.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "effect": {
           "description": "Internal effect id, for example `altaudio.parametric_eq`.",
           "type": "string"
@@ -654,6 +683,23 @@
           "required": [
             "type",
             "slot_id",
+            "param"
+          ]
+        },
+        {
+          "description": "3D Space sessions: one setting of the owner's spot in the room.",
+          "type": "object",
+          "properties": {
+            "param": {
+              "$ref": "#/$defs/SpaceParam"
+            },
+            "type": {
+              "type": "string",
+              "const": "space"
+            }
+          },
+          "required": [
+            "type",
             "param"
           ]
         }
@@ -950,6 +996,11 @@
             "null"
           ]
         },
+        "gain_db": {
+          "description": "Clip level in dB: notes play harder or softer by this much (their\nvelocity is scaled), up to the hardest a note can play.",
+          "type": "number",
+          "format": "double"
+        },
         "id": {
           "type": "string",
           "format": "uuid"
@@ -1153,6 +1204,121 @@
         "playhead"
       ]
     },
+    "Space": {
+      "description": "What makes a session a 3D Space session.",
+      "type": "object",
+      "properties": {
+        "layout": {
+          "description": "The layout it plays in and exports to unless an export picks another.",
+          "$ref": "#/$defs/SpaceLayout"
+        },
+        "listen": {
+          "$ref": "#/$defs/SpaceListen",
+          "default": "stereo"
+        }
+      },
+      "required": [
+        "layout"
+      ]
+    },
+    "SpaceLayout": {
+      "description": "A speaker layout a 3D Space session can be placed onto. Spots are\nkept in room terms, so any session plays and exports in any layout.",
+      "type": "string",
+      "enum": [
+        "2.0",
+        "5.1",
+        "7.1",
+        "5.1.2",
+        "7.1.2",
+        "5.1.4",
+        "7.1.4"
+      ]
+    },
+    "SpaceListen": {
+      "description": "How a 3D Space session is heard while working.",
+      "oneOf": [
+        {
+          "description": "Each sound folded to stereo by where it sits left to right.",
+          "type": "string",
+          "const": "stereo"
+        },
+        {
+          "description": "The layout's speakers heard as if around a head, for headphones.",
+          "type": "string",
+          "const": "binaural"
+        }
+      ]
+    },
+    "SpaceParam": {
+      "description": "A setting of a spot in the room that automation can move. Values use\nthe spot's own units (see `SpacePos`).",
+      "type": "string",
+      "enum": [
+        "x",
+        "y",
+        "z",
+        "size",
+        "width",
+        "rotation",
+        "lfe",
+        "spread",
+        "spatialize"
+      ]
+    },
+    "SpacePos": {
+      "description": "A spot in the room. x runs left (-1) to right (1), y back (-1) to\nfront (1), z ear level (0) to ceiling (1), and below ear level down\nto -1.",
+      "type": "object",
+      "properties": {
+        "lfe": {
+          "description": "How much of it also feeds the low-frequency channel, 0 (none) to 1\n(full level), low-passed at 120 Hz.",
+          "type": "number",
+          "format": "double"
+        },
+        "rotation": {
+          "description": "Stereo sources: the pair turned around its spot, in degrees,\nclockwise seen from above (90 puts the left side in front).",
+          "type": "number",
+          "format": "double"
+        },
+        "size": {
+          "description": "0 is a point; 1 fills the room.",
+          "type": "number",
+          "format": "double",
+          "default": 0.0
+        },
+        "spatialize": {
+          "description": "Stereo sources: how much of the difference between its sides is\nsent, delayed and decorrelated, to the surround and height\nspeakers, with what the sides share fed to the center, 0 to 1.",
+          "type": "number",
+          "format": "double"
+        },
+        "spread": {
+          "description": "How much of it is spread through the room as a diffuse field\n(decorrelated copies on every speaker in use), 0 (none) to 1 (all).",
+          "type": "number",
+          "format": "double"
+        },
+        "width": {
+          "description": "Stereo sources: how far left and right of the spot their two\nsides sit, 0 (together) to 1 (a full room width apart each way).",
+          "type": "number",
+          "format": "double",
+          "default": 1.0
+        },
+        "x": {
+          "type": "number",
+          "format": "double"
+        },
+        "y": {
+          "type": "number",
+          "format": "double"
+        },
+        "z": {
+          "type": "number",
+          "format": "double",
+          "default": 0.0
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ]
+    },
     "StretchAdvanced": {
       "description": "Finer stretch settings. The window size sets the length of the\nanalysis frames; the rest are kept for files that carry them.",
       "type": "object",
@@ -1184,11 +1350,17 @@
       ]
     },
     "Tempo": {
-      "description": "The session's tempo and meter.",
+      "description": "The session's tempo and meter: where it starts, and any changes later\nin the song. MIDI clips, bars and beats, and the metronome follow it.",
       "type": "object",
       "properties": {
+        "beat_unit": {
+          "description": "The note one beat is, the bottom of the time signature: 4 in 4/4,\n8 in 6/8. Files from before time signature changes get 4.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
         "beats_per_bar": {
-          "description": "Beats in a bar, for example 4 in 4/4 or 3 in 3/4.",
+          "description": "Beats in a bar, the top of the time signature: 4 in 4/4, 6 in 6/8.",
           "type": "integer",
           "format": "uint32",
           "minimum": 0
@@ -1197,9 +1369,53 @@
           "description": "Beats (quarter notes) per minute.",
           "type": "number",
           "format": "double"
+        },
+        "changes": {
+          "description": "Tempo and time signature changes, in bar order.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TempoChange"
+          }
         }
       },
       "required": [
+        "bpm",
+        "beats_per_bar"
+      ]
+    },
+    "TempoChange": {
+      "description": "A tempo and time signature change at the start of a bar.",
+      "type": "object",
+      "properties": {
+        "bar": {
+          "description": "Bars from the start of the session where it takes over: 1 is the\nsecond bar. Always 1 or more.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "beat_unit": {
+          "type": "integer",
+          "format": "uint32",
+          "default": 4,
+          "minimum": 0
+        },
+        "beats_per_bar": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "bpm": {
+          "type": "number",
+          "format": "double"
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "id",
+        "bar",
         "bpm",
         "beats_per_bar"
       ]
@@ -1348,8 +1564,23 @@
             "$ref": "#/$defs/Send"
           }
         },
+        "show_automation": {
+          "description": "Its automation lanes show under it in the Editor. Left out of the\nfile when off.",
+          "type": "boolean"
+        },
         "solo": {
           "type": "boolean"
+        },
+        "space": {
+          "description": "3D Space sessions: where the track sits in the room (in place of\nits pan). None sits at the front center.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpacePos"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "volume_db": {
           "type": "number",

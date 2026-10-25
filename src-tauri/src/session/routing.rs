@@ -169,7 +169,12 @@ pub fn has_loop(s: &Session) -> bool {
 /// a track or bus routed to a bus, a send, a master chain, or a
 /// sidechain. Then the whole mix runs on the render thread.
 pub fn is_routed(s: &Session) -> bool {
-    crate::dsp::effects::is_active(&s.master.effects)
+    // 3D Space sessions place every track on the render thread.
+    s.space.is_some()
+        // Automation moves levels and settings on the render thread.
+        || s.tracks.iter().any(|t| crate::engine::automation::has_automation(&t.envelopes))
+        || s.buses.iter().any(|b| crate::engine::automation::has_automation(&b.envelopes))
+        || crate::dsp::effects::is_active(&s.master.effects)
         || s.tracks
             .iter()
             .any(|t| t.output != Output::Master || t.sends.iter().any(|x| x.enabled))
@@ -228,6 +233,7 @@ mod tests {
             preset: None,
             sidechain: Some(s.tracks[0].id),
             plugin_state: None,
+            data: None,
             position: None,
         };
         s.tracks[1].effects.slots.push(slot.clone());

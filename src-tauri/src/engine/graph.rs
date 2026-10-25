@@ -35,11 +35,12 @@
 //! restart while their look-ahead stays the same.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use super::fx::{swap_fx, Fx};
 use super::render::{ChainUpdate, Renderer};
 use crate::dsp::effects::Delay;
-use crate::session::model::{ChannelLayout, EffectChain, Id, Session};
+use crate::session::model::{ChannelLayout, EffectChain, Id, Session, Tempo};
 use crate::session::routing::{self, Node};
 
 /// Levels for one track or bus, as left and right multipliers on the
@@ -50,6 +51,70 @@ pub struct NodeLevel {
     pub sends: Vec<[f32; 2]>,
     /// Fold left and right into one after the chain (the Mono button).
     pub mono: bool,
+    /// 3D Space sessions: where it plays in the room, when it feeds the
+    /// master.
+    pub place: Option<Arc<Place>>,
+}
+
+/// A source's spot in a 3D Space session, worked out as gains: per side
+/// (left, right), one per speaker for the bed, and stereo for listening.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Place {
+    pub bed: [Vec<f32>; 2],
+    pub fold: [[f32; 2]; 2],
+    /// How much feeds the low-frequency channel (its index), from both sides.
+    pub lfe: Option<(usize, f32)>,
+    /// Spread and Spatialize, when either is on.
+    pub field: Option<crate::dsp::diffuse::Field>,
+    /// What it was worked out from, so automation can move one setting.
+    pub layout: crate::session::model::SpaceLayout,
+    pub pos: crate::session::model::SpacePos,
+    pub stereo: bool,
+}
+
+impl Place {
+    fn new(
+        s: &Session,
+        pos: Option<&crate::session::model::SpacePos>,
+        stereo: bool,
+    ) -> Option<Arc<Place>> {
+        let layout = s.space?.layout;
+        let pos = pos.copied().unwrap_or_default();
+        Some(Arc::new(Place::at(layout, &pos, stereo)))
+    }
+
+    /// The gains for a spot in `layout`.
+    pub fn at(
+        layout: crate::session::model::SpaceLayout,
+        pos: &crate::session::model::SpacePos,
+        stereo: bool,
+    ) -> Place {
+        let pos = pos.tidy();
+        let [l, r] = crate::dsp::space::source_gains(layout, &pos, stereo);
+        let lfe = crate::dsp::space::lfe_channel(layout)
+            .filter(|_| pos.lfe > 0.0)
+            .map(|c| (c, pos.lfe as f32 * 0.5));
+        let field = crate::dsp::diffuse::field(
+            layout,
+            pos.z as f32,
+            pos.spread as f32,
+            pos.spatialize as f32,
+            stereo,
+        );
+        // The placed sound gives up what Spread and Spatialize take.
+        let k = field.direct;
+        let scale = |g: Vec<f32>| g.into_iter().map(|v| v * k).collect::<Vec<f32>>();
+        let fold = crate::dsp::space::fold_gains(&pos, stereo).map(|s| s.map(|v| v * k));
+        Place {
+            bed: [scale(l), scale(r)],
+            fold,
+            lfe,
+            field: field.on.then_some(field),
+            layout,
+            pos,
+            stereo,
+        }
+    }
 }
 
 /// Every level in the graph. Changes apply live.
@@ -140,15 +205,18 @@ pub fn audible(s: &Session) -> (Vec<bool>, Vec<bool>) {
 /// and solo.
 pub fn levels(s: &Session) -> Levels {
     let (heard_t, heard_b) = audible(s);
+    let space = s.space.is_some();
     let node = |heard: bool,
                 sign: f32,
                 volume_db: f64,
                 pan: f64,
                 sends: &[crate::session::model::Send],
-                mono: bool| {
+                mono: bool,
+                place: Option<Arc<Place>>| {
         let on = if heard { sign } else { 0.0 };
         let fader = db(volume_db);
-        let [l, r] = balance(pan);
+        // In a 3D Space session the spot does what the pan would.
+        let [l, r] = if space { [1.0, 1.0] } else { balance(pan) };
         NodeLevel {
             main: [on * fader * l, on * fader * r],
             sends: sends
@@ -161,6 +229,7 @@ pub fn levels(s: &Session) -> Levels {
                 })
                 .collect(),
             mono,
+            place,
         }
     };
     Levels {
@@ -170,14 +239,45 @@ pub fn levels(s: &Session) -> Levels {
             .zip(heard_t)
             .map(|(t, h)| {
                 let sign = if t.polarity_inverted { -1.0 } else { 1.0 };
-                node(h, sign, t.volume_db, t.pan, &t.sends, t.mono)
+                // An automated volume or pan takes the fader's or pan's place.
+                let vol = if super::automation::automates_volume(&t.envelopes) {
+                    0.0
+                } else {
+                    t.volume_db
+                };
+                let pan = if super::automation::automates_pan(&t.envelopes) {
+                    0.0
+                } else {
+                    t.pan
+                };
+                let stereo = t.channels != crate::session::model::ChannelLayout::Mono && !t.mono;
+                let place = (t.output == crate::session::model::Output::Master)
+                    .then(|| Place::new(s, t.space.as_ref(), stereo))
+                    .flatten();
+                node(h, sign, vol, pan, &t.sends, t.mono, place)
             })
             .collect(),
         buses: s
             .buses
             .iter()
             .zip(heard_b)
-            .map(|(b, h)| node(h, 1.0, b.volume_db, b.pan, &b.sends, b.mono))
+            .map(|(b, h)| {
+                let vol = if super::automation::automates_volume(&b.envelopes) {
+                    0.0
+                } else {
+                    b.volume_db
+                };
+                let pan = if super::automation::automates_pan(&b.envelopes) {
+                    0.0
+                } else {
+                    b.pan
+                };
+                let stereo = b.channels != crate::session::model::ChannelLayout::Mono && !b.mono;
+                let place = (b.output == crate::session::model::Output::Master)
+                    .then(|| Place::new(s, b.space.as_ref(), stereo))
+                    .flatten();
+                node(h, 1.0, vol, pan, &b.sends, b.mono, place)
+            })
             .collect(),
     }
 }
@@ -219,6 +319,10 @@ struct Strip {
     /// The output first, then each send in the session's order.
     routes: Vec<Route>,
     peak: [f32; 2],
+    /// Its volume, pan and effect settings moving over the timeline.
+    auto: Option<super::automation::StripAuto>,
+    /// 3D Space sessions: the decorrelators for Spread and Spatialize.
+    diffuse: Option<Box<[crate::dsp::diffuse::Decorrelator; 2]>>,
 }
 
 /// Peaks since the last read, 0 to 1 (and above on overs).
@@ -232,6 +336,8 @@ pub struct GraphMeters {
     pub buses: Vec<[f32; 2]>,
     pub bus_chains: Vec<Option<[f32; 4]>>,
     pub master_chain: Option<[f32; 4]>,
+    /// 3D Space sessions: each speaker channel of the master, before its fader.
+    pub bed: Vec<f32>,
 }
 
 impl GraphMeters {
@@ -267,6 +373,12 @@ impl GraphMeters {
         pairs(&mut self.buses, &other.buses);
         chains(&mut self.bus_chains, &other.bus_chains);
         one(&mut self.master_chain, &other.master_chain);
+        if self.bed.len() < other.bed.len() {
+            self.bed.resize(other.bed.len(), 0.0);
+        }
+        for (a, b) in self.bed.iter_mut().zip(&other.bed) {
+            *a = a.max(*b);
+        }
     }
 }
 
@@ -282,6 +394,46 @@ pub struct Graph {
     /// The levels the last block ended on, so changes ramp in.
     applied: Levels,
     scratch: Vec<f32>,
+    /// The session's tempo map, told to plug-ins as playback crosses changes.
+    tempo: Arc<Tempo>,
+    /// 3D Space sessions: speaker channels in the bed.
+    bed_channels: usize,
+    /// The bed for the last block (interleaved, one channel per speaker),
+    /// made only when asked for (exports).
+    bed: Vec<f32>,
+    want_bed: bool,
+    /// 3D Space sessions heard on headphones: the bed rendered to two ears.
+    binaural: Option<crate::dsp::binaural::Binaural>,
+    /// The timeline frame the next block starts at, for automation.
+    pos: u64,
+    /// 3D Space sessions: each speaker's peak since the last read.
+    bed_peak: Vec<f32>,
+    /// The low-frequency channel's index and its filters: four low-pass
+    /// sections (120 Hz, 48 dB per octave) then two high-pass sections
+    /// (20 Hz, 24 dB per octave), so it carries only the band it is for.
+    lfe_lp: Option<(usize, [crate::dsp::biquad::Biquad; LFE_SECTIONS])>,
+}
+
+/// Filter sections on the low-frequency channel.
+const LFE_SECTIONS: usize = 6;
+
+/// The low-frequency channel's filters at `rate`: a 120 Hz low pass, 8th
+/// order Butterworth, then a 20 Hz high pass, 4th order, which cuts the
+/// rumble below hearing that only wastes the subwoofer's headroom.
+fn lfe_filters(rate: u32) -> [crate::dsp::biquad::Biquad; LFE_SECTIONS] {
+    use crate::dsp::biquad::{butterworth_qs, Biquad, Coeffs, Shape};
+    let lq = butterworth_qs(4);
+    let hq = butterworth_qs(2);
+    let lp = |q: f64| Biquad::new(Coeffs::new(Shape::LowPass, rate, 120.0, q, 0.0));
+    let hp = |q: f64| Biquad::new(Coeffs::new(Shape::HighPass, rate, 20.0, q, 0.0));
+    [
+        lp(lq[0]),
+        lp(lq[1]),
+        lp(lq[2]),
+        lp(lq[3]),
+        hp(hq[0]),
+        hp(hq[1]),
+    ]
 }
 
 impl Graph {
@@ -311,6 +463,12 @@ impl Graph {
             .map(|t| Strip {
                 id: t.id,
                 fx: fx(&t.effects),
+                auto: super::automation::StripAuto::new(
+                    &t.envelopes,
+                    &t.sends,
+                    s.sample_rate,
+                    rate,
+                ),
                 ..Strip::default()
             })
             .collect();
@@ -321,12 +479,27 @@ impl Graph {
                     id: b.id,
                     mono: b.channels == ChannelLayout::Mono,
                     fx: fx(&b.effects),
+                    auto: super::automation::StripAuto::new(
+                        &b.envelopes,
+                        &b.sends,
+                        s.sample_rate,
+                        rate,
+                    ),
                     ..Strip::default()
                 })
                 .collect()
         } else {
             Vec::new()
         };
+        if s.space.is_some() {
+            // Made here, so playing never allocates them.
+            for (k, st) in tracks.iter_mut().chain(buses.iter_mut()).enumerate() {
+                st.diffuse = Some(Box::new([
+                    crate::dsp::diffuse::Decorrelator::new(rate, k % 2),
+                    crate::dsp::diffuse::Decorrelator::new(rate, 1 - k % 2),
+                ]));
+            }
+        }
         let mut master = Strip {
             id: Id::nil(),
             fx: if routed { fx(&s.master.effects) } else { None },
@@ -516,7 +689,48 @@ impl Graph {
             applied: lv.clone(),
             levels: lv,
             scratch: Vec::new(),
+            tempo: Arc::new(s.tempo.clone()),
+            bed_channels: s
+                .space
+                .map_or(0, |sp| crate::dsp::space::speakers(sp.layout).len()),
+            bed: Vec::new(),
+            want_bed: false,
+            binaural: s
+                .space
+                .filter(|sp| sp.listen == crate::session::model::SpaceListen::Binaural)
+                .map(|sp| crate::dsp::binaural::Binaural::new(sp.layout, rate)),
+            pos: 0,
+            bed_peak: Vec::new(),
+            lfe_lp: s
+                .space
+                .and_then(|sp| crate::dsp::space::lfe_channel(sp.layout))
+                .map(|c| (c, lfe_filters(rate))),
         }
+    }
+
+    /// Where in the timeline the next block starts (output frames).
+    pub fn set_position(&mut self, frame: u64) {
+        self.pos = frame;
+    }
+
+    /// 3D Space sessions: speaker channels in the bed (0 otherwise).
+    pub fn bed_channels(&self) -> usize {
+        self.bed_channels
+    }
+
+    /// Makes the bed as well as the stereo mix (for exports).
+    pub fn set_want_bed(&mut self, on: bool) {
+        self.want_bed = on && self.bed_channels > 0;
+    }
+
+    /// The bed for the last block, before the master fader.
+    pub fn bed(&self) -> &[f32] {
+        &self.bed
+    }
+
+    /// The session's tempo map.
+    pub fn tempo(&self) -> &Arc<Tempo> {
+        &self.tempo
     }
 
     /// How far the graph delays the mix, in frames.
@@ -596,6 +810,7 @@ impl Graph {
                 .collect(),
             bus_chains: self.buses.iter_mut().map(chain).collect(),
             master_chain: chain(&mut self.master),
+            bed: std::mem::take(&mut self.bed_peak),
         }
     }
 
@@ -619,6 +834,13 @@ impl Graph {
         }
         self.master.input.clear();
         self.master.input.resize(n, 0.0);
+        let nb = self.bed_channels;
+        // 3D sessions always make the bed: its channels are metered.
+        let make_bed = nb > 0;
+        if make_bed {
+            self.bed.clear();
+            self.bed.resize(frames * nb, 0.0);
+        }
         for o in out.iter_mut() {
             o.clear();
             o.resize(n, 0.0);
@@ -639,7 +861,10 @@ impl Graph {
                     fold_mono(&mut st.input);
                 }
                 self.fill_keys(&mut st.keys, n);
-                run_strip(&mut st);
+                run_strip_at(&mut st, self.pos);
+            }
+            if let Some(a) = st.auto.as_mut().filter(|a| a.moves_level()) {
+                a.fill(self.pos, frames);
             }
             let (from, to) = match node {
                 Node::Track(i) => (&self.applied.tracks[i], &self.levels.tracks[i]),
@@ -649,6 +874,11 @@ impl Graph {
                 // After the chain (and its keys), before the fader, pan and sends.
                 fold_mono(&mut st.pre);
             }
+            // 3D Space automation: the spot where this block is (mid-block).
+            let moved = match (st.auto.as_ref(), to.place.as_ref()) {
+                (Some(a), Some(p)) => a.place_at(p, self.pos + frames as u64 / 2),
+                _ => None,
+            };
             for (r, route) in st.routes.iter_mut().enumerate() {
                 scratch.clear();
                 scratch.extend_from_slice(&st.pre);
@@ -662,6 +892,9 @@ impl Graph {
                         )
                     };
                     ramp(&mut scratch, a, b, frames);
+                    if let Some(au) = st.auto.as_ref() {
+                        au.apply(r, &mut scratch);
+                    }
                     if r == 0 {
                         for f in scratch.as_chunks::<2>().0 {
                             st.peak[0] = st.peak[0].max(f[0].abs());
@@ -670,6 +903,78 @@ impl Graph {
                     }
                 }
                 route.delay.run(&mut scratch);
+                // 3D Space: placed into the room, and folded to stereo to listen.
+                if r == 0 && matches!(route.dest, Dest::Master) {
+                    if let Some(p) = moved.as_ref().or(to.place.as_ref()) {
+                        let f = p.fold;
+                        for (o, v) in self
+                            .master
+                            .input
+                            .as_chunks_mut::<2>()
+                            .0
+                            .iter_mut()
+                            .zip(scratch.as_chunks::<2>().0.iter())
+                        {
+                            o[0] += v[0] * f[0][0] + v[1] * f[1][0];
+                            o[1] += v[0] * f[0][1] + v[1] * f[1][1];
+                        }
+                        if make_bed {
+                            let [gl, gr] = &p.bed;
+                            for (o, v) in self
+                                .bed
+                                .chunks_exact_mut(nb)
+                                .zip(scratch.as_chunks::<2>().0.iter())
+                            {
+                                for c in 0..nb {
+                                    o[c] += v[0] * gl[c] + v[1] * gr[c];
+                                }
+                            }
+                            if let Some((c, g)) = p.lfe {
+                                for (o, v) in self
+                                    .bed
+                                    .chunks_exact_mut(nb)
+                                    .zip(scratch.as_chunks::<2>().0.iter())
+                                {
+                                    o[c] += (v[0] + v[1]) * g;
+                                }
+                            }
+                        }
+                        // Spread and Spatialize: decorrelated copies to the speakers,
+                        // and folded to stereo for listening.
+                        if let (Some(fl), Some(dc)) = (p.field.as_ref(), st.diffuse.as_deref_mut())
+                        {
+                            let [da, ds] = dc;
+                            let bed_n = if make_bed { nb } else { 0 };
+                            for (k, v) in scratch.as_chunks::<2>().0.iter().enumerate() {
+                                let mid = 0.5 * (v[0] + v[1]);
+                                let side = 0.5 * (v[0] - v[1]);
+                                let a = if fl.spreads { da.run(mid) } else { [0.0; 4] };
+                                let b = if fl.sides { ds.run(side) } else { [0.0; 4] };
+                                let (mut ol, mut or) = (0.0f32, 0.0f32);
+                                for c in 0..fl.spread.len() {
+                                    let tap = c % crate::dsp::diffuse::TAPS;
+                                    let mut e = a[tap] * fl.spread[c] + b[tap] * fl.side[c];
+                                    if let Some((_, g)) = fl.center.filter(|x| x.0 == c) {
+                                        e += mid * g;
+                                    }
+                                    if e == 0.0 {
+                                        continue;
+                                    }
+                                    if c < bed_n {
+                                        self.bed[k * nb + c] += e;
+                                    }
+                                    ol += e * fl.fold[c][0];
+                                    or += e * fl.fold[c][1];
+                                }
+                                if let Some(o) = self.master.input.get_mut(2 * k..2 * k + 2) {
+                                    o[0] += ol;
+                                    o[1] += or;
+                                }
+                            }
+                        }
+                        continue;
+                    }
+                }
                 let into: &mut Vec<f32> = match route.dest {
                     Dest::Bus(b) => &mut self.buses[b].input,
                     Dest::Master if r == 0 => &mut self.master.input,
@@ -686,7 +991,33 @@ impl Graph {
                 Node::Bus(i) => self.buses[i] = st,
             }
         }
-        if self.routed {
+        if nb > 0 {
+            // The low-frequency channel carries only lows: 120 Hz, steep.
+            if let Some((c, filters)) = self.lfe_lp.as_mut() {
+                let c = *c;
+                for f in self.bed.chunks_exact_mut(nb) {
+                    f[c] = filters.iter_mut().fold(f[c], |x, b| b.run(x));
+                }
+            }
+            if self.bed_peak.len() != nb {
+                self.bed_peak = vec![0.0; nb];
+            }
+            for f in self.bed.chunks_exact(nb) {
+                for (p, v) in self.bed_peak.iter_mut().zip(f) {
+                    *p = p.max(v.abs());
+                }
+            }
+        }
+        if self.routed && nb > 0 {
+            // 3D Space sessions have no master chain: it would change only
+            // the stereo listening mix, not the speakers.
+            if let Some(o) = out.first_mut() {
+                match self.binaural.as_mut() {
+                    Some(b) => b.process(&self.bed, o),
+                    None => o.copy_from_slice(&self.master.input),
+                }
+            }
+        } else if self.routed {
             let mut m = std::mem::take(&mut self.master);
             self.fill_keys(&mut m.keys, n);
             run_strip(&mut m);
@@ -723,12 +1054,18 @@ impl Graph {
             .map(|&i| (i, std::mem::take(&mut self.tracks[i])))
             .collect();
         let per = taken.len().div_ceil(threads);
+        let position = crate::plugins::instance::block_position();
+        let pos = self.pos;
+        let tempo = self.tempo.clone();
         std::thread::scope(|scope| {
             for chunk in taken.chunks_mut(per) {
+                let tempo = tempo.clone();
                 scope.spawn(move || {
+                    crate::plugins::instance::set_block_position(position);
+                    crate::plugins::instance::set_block_tempo(Some(tempo));
                     for (i, st) in chunk.iter_mut() {
                         prepare_track(st, &raw[*i][..n]);
-                        run_strip(st);
+                        run_strip_at(st, pos);
                     }
                 });
             }
@@ -782,6 +1119,38 @@ fn run_strip(st: &mut Strip) {
     }
 }
 
+/// Runs a strip whose block starts at timeline frame `pos`, moving its
+/// automated effect settings every 256 frames.
+fn run_strip_at(st: &mut Strip, pos: u64) {
+    let lanes = st.auto.as_ref().map_or(0, |a| a.params.len());
+    if lanes == 0 || st.fx.is_none() {
+        run_strip(st);
+        return;
+    }
+    const STEP: usize = 256;
+    std::mem::swap(&mut st.input, &mut st.pre);
+    let (Some(fx), Some(auto)) = (st.fx.as_mut(), st.auto.as_ref()) else {
+        return;
+    };
+    let total = st.pre.len();
+    let mut at = 0;
+    while at < total {
+        let end = (at + STEP * 2).min(total);
+        let frame = pos + (at / 2) as u64;
+        for l in &auto.params {
+            fx.chain
+                .set_param(l.slot, &l.param, f64::from(l.value_at(frame)));
+        }
+        let keys: Vec<(Id, &[f32])> = st
+            .keys
+            .iter()
+            .map(|t| (t.id, &t.buf[at.min(t.buf.len())..end.min(t.buf.len())]))
+            .collect();
+        fx.run_keyed(&mut st.pre[at..end], &keys);
+        at = end;
+    }
+}
+
 /// Multiplies `buf` by a gain moving from `a` to `b` across the block.
 fn ramp(buf: &mut [f32], a: [f32; 2], b: [f32; 2], frames: usize) {
     if a == b {
@@ -818,8 +1187,11 @@ impl Mix {
         let mut raw = vec![Vec::new(); renderer.track_count()];
         let mut sink = vec![Vec::new(); graph.outputs()];
         let mut left = graph.lead();
+        crate::plugins::instance::set_block_tempo(Some(graph.tempo().clone()));
         while left > 0 && !raw.is_empty() {
             let want = left.min(4_096) as usize;
+            crate::plugins::instance::set_block_position(renderer.position() as i64);
+            graph.set_position(renderer.position());
             renderer.render(want, &mut raw);
             graph.process(&raw, &mut sink);
             left -= raw[0].len() as u64 / 2;
@@ -844,6 +1216,11 @@ impl Mix {
             self.rendered += frames as u64;
             return frames;
         }
+        // Plug-ins are told where in the timeline this block is (their song
+        // position) and the tempo there.
+        crate::plugins::instance::set_block_position(self.renderer.position() as i64);
+        crate::plugins::instance::set_block_tempo(Some(self.graph.tempo().clone()));
+        self.graph.set_position(self.renderer.position());
         self.renderer.render(frames, &mut self.raw);
         self.graph.process(&self.raw, out);
         let n = self.raw[0].len() / 2;
@@ -855,6 +1232,11 @@ impl Mix {
     /// with the frames the device has played.
     pub fn rendered(&self) -> u64 {
         self.rendered
+    }
+
+    /// The timeline frame the next block starts at.
+    pub fn position(&self) -> u64 {
+        self.renderer.position()
     }
 
     pub fn outputs(&self) -> usize {
@@ -883,6 +1265,32 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     const RATE: u32 = 48_000;
+
+    /// Steady-state gain of the low-frequency channel's filters for a tone.
+    fn lfe_gain(freq: f64) -> f64 {
+        let mut f = lfe_filters(RATE);
+        let n = RATE as usize;
+        let mut peak = 0.0f64;
+        for i in 0..n {
+            let x = (2.0 * std::f64::consts::PI * freq * i as f64 / RATE as f64).sin() as f32;
+            let y = f.iter_mut().fold(x, |v, b| b.run(v));
+            if i > n / 2 {
+                peak = peak.max(f64::from(y.abs()));
+            }
+        }
+        peak
+    }
+
+    #[test]
+    fn lfe_keeps_only_the_low_band() {
+        assert!(lfe_gain(60.0) > 0.9, "60 Hz passes");
+        assert!(lfe_gain(500.0) < 0.001, "500 Hz is cut by about 60 dB");
+        assert!(
+            lfe_gain(240.0) < 0.01,
+            "an octave above is down about 48 dB"
+        );
+        assert!(lfe_gain(8.0) < 0.05, "rumble below hearing is cut");
+    }
 
     /// One second, mono: `f(i)` for each frame.
     fn wav(dir: &Path, name: &str, f: impl Fn(usize) -> f32) -> PathBuf {
@@ -948,6 +1356,7 @@ mod tests {
             preset: None,
             sidechain: None,
             plugin_state: None,
+            data: None,
             position: None,
         });
         c

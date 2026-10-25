@@ -35,6 +35,7 @@
 
   const { transport, rate, playhead, end, hasSelection, shortcutFor = () => undefined, zoom, amplitude = false, tracks = false }: Props = $props();
 
+
   /** Loop Playback and Skip Selection act on the time selection. A change while playing restarts from the same spot. */
   function togglePlayMode(mode: "loop" | "skip") {
     editor.togglePlayMode(mode);
@@ -75,7 +76,7 @@
     const k = id ? shortcutFor(id) : undefined;
     return k ? `${label} (${k})` : label;
   };
-  const NEXT_FORMAT = { time: "samples", samples: "timecode", timecode: "time" } as const;
+  const NEXT_FORMAT = { time: "seconds", seconds: "bars", bars: "samples", samples: "timecode", timecode: "time" } as const;
   const clock = $derived(formatIn(playhead, rate, ed.timeFormat));
 
   /** Rewind and fast forward step 5 seconds, 1 with Shift. */
@@ -86,14 +87,16 @@
 </script>
 
 <div class="bar">
+  <div class="left">
   <button
     type="button"
     class="clock"
-    title="Playhead position. Click to switch between time, samples and timecode."
+    title="Playhead position. Click to switch between minutes and seconds, seconds, bars and beats, samples and timecode (or right-click the time ruler)."
     onclick={() => editor.setTimeFormat(NEXT_FORMAT[ed.timeFormat])}
   >
     {clock}
   </button>
+  </div>
 
   <div class="transport" role="group" aria-label="Transport">
     <button type="button" class="tool" title={tip("Stop", "multitrack.stop")} aria-label="Stop" onclick={stopAll}>
@@ -235,6 +238,14 @@
   .bar > :first-child {
     justify-self: start;
   }
+
+  .left {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+  }
+
 
   .zoom {
     justify-self: end;

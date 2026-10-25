@@ -10,6 +10,7 @@
  * Field names match the `.altaudio` file format (snake_case).
  */
 
+import { DEFAULT_TEMPO, beatsToSeconds, type TempoDoc } from "./tempo";
 import type { Command } from "../commands";
 import type { CommandRunner } from "./media-pool";
 
@@ -41,6 +42,8 @@ export interface EffectSlotDoc {
   sidechain?: string | null;
   /** A VST3 plug-in's own settings (set in its window), base64. */
   plugin_state?: string | null;
+  /** A built-in effect's own data, JSON text: the Amp Model's capture and cabinet. */
+  data?: string | null;
   /** Which numbered slot it shows in (0 first), so a chain can leave gaps. Missing follows the one before. */
   position?: number | null;
 }
@@ -94,6 +97,8 @@ export interface BusDoc {
   position?: number | null;
   /** Folded to mono after its Voice Chain. Missing when off. */
   mono?: boolean;
+  /** 3D Space sessions: where it sits in the room. */
+  space?: SpacePosDoc | null;
   [key: string]: unknown;
 }
 
@@ -183,7 +188,8 @@ export interface EnvelopeDoc {
   target:
     | { type: "volume" }
     | { type: "pan" }
-    | { type: "effect_param"; slot_id: string; param: string };
+    | { type: "effect_param"; slot_id: string; param: string }
+    | { type: "space"; param: SpaceParam };
   enabled: boolean;
   points: EnvelopePointDoc[];
 }
@@ -205,8 +211,14 @@ export interface TrackDoc {
   polarity_inverted?: boolean;
   /** Folded to mono after its Voice Chain. Missing in files where it is off. */
   mono?: boolean;
+  /** 3D Space sessions: where it sits in the room. */
+  space?: SpacePosDoc | null;
   /** Folded to its name row. Missing in files where it is off. */
   collapsed?: boolean;
+  /** Its automation lanes show under it. */
+  show_automation?: boolean;
+  /** Automation lanes: volume, pan and effect settings over the session's time. */
+  envelopes?: EnvelopeDoc[];
   /** Hidden from the Editor and Mixer lists. Missing in files where it is off. */
   hidden?: boolean;
   monitor_input?: boolean;
@@ -242,17 +254,43 @@ export interface MidiClipDoc {
   length: number;
   muted?: boolean;
   color?: string | null;
+  /** Clip level in dB: its notes play harder or softer by this much. */
+  gain_db?: number;
   notes: NoteDoc[];
 }
 
-export interface TempoDoc {
-  bpm: number;
-  beats_per_bar: number;
+/** Speaker layouts a 3D Space session plays and exports in. */
+export type SpaceLayout = "2.0" | "5.1" | "7.1" | "5.1.2" | "7.1.2" | "5.1.4" | "7.1.4";
+export const SPACE_LAYOUTS: SpaceLayout[] = ["2.0", "5.1", "7.1", "5.1.2", "7.1.2", "5.1.4", "7.1.4"];
+export interface SpaceDoc {
+  layout: SpaceLayout;
+  /** Stereo: each sound folded to stereo. Binaural: the speakers heard around a head, for headphones. */
+  listen?: "stereo" | "binaural";
 }
+/** A spot in the room: x left -1 to right 1, y back -1 to front 1, z floor 0 to ceiling 1. */
+/** A setting of a spot in the room that automation can move. */
+export type SpaceParam = "x" | "y" | "z" | "size" | "width" | "rotation" | "lfe" | "spread" | "spatialize";
 
-export const DEFAULT_TEMPO: TempoDoc = { bpm: 120, beats_per_bar: 4 };
-export const BPM_MIN = 20;
-export const BPM_MAX = 400;
+export interface SpacePosDoc {
+  x: number;
+  y: number;
+  z: number;
+  /** 0 a point, 1 fills the room. */
+  size: number;
+  /** Stereo sources: how far apart their left and right sit, 0 to 1. */
+  width: number;
+  /** Stereo sources: the pair turned around its spot, degrees, -180 to 180 (clockwise seen from above). */
+  rotation?: number;
+  /** How much also feeds the low-frequency channel, 0 to 1. */
+  lfe?: number;
+  /** How much is spread through the room as a diffuse field, 0 to 1. */
+  spread?: number;
+  /** Stereo sources: how much of the difference between the sides goes to the surrounds and heights, 0 to 1. */
+  spatialize?: number;
+}
+export const DEFAULT_SPACE_POS: SpacePosDoc = { x: 0, y: 1, z: 0, size: 0, width: 1, rotation: 0, lfe: 0, spread: 0, spatialize: 0 };
+
+export { BPM_MAX, BPM_MIN, DEFAULT_TEMPO, type TempoChangeDoc, type TempoDoc } from "./tempo";
 
 /** The session's tempo (the default when the file has none). */
 export const tempoOf = (doc: SessionDoc): TempoDoc => (doc.tempo as TempoDoc | undefined) ?? DEFAULT_TEMPO;
@@ -292,6 +330,8 @@ export interface SessionDoc {
   };
   /** Missing at the default, 120 BPM in 4. */
   tempo?: TempoDoc;
+  /** 3D Space sessions: the speaker layout and how it is heard. Missing for an ordinary session. */
+  space?: SpaceDoc | null;
   [key: string]: unknown;
 }
 
@@ -367,6 +407,8 @@ export interface ClipChange {
   audio_type?: AudioType;
   /** Clears the audio type. */
   clear_audio_type?: boolean;
+  /** Place in the track's stacking order after the change: 0 is the bottom; past the end is the top. */
+  layer?: number;
 }
 
 export interface ClipSpec {
@@ -389,7 +431,11 @@ export interface TrackChanges {
   pan?: number;
   polarity_inverted?: boolean;
   mono?: boolean;
+  /** 3D Space sessions: where it sits in the room. */
+  space?: SpacePosDoc | null;
   collapsed?: boolean;
+  /** Its automation lanes show under it. */
+  show_automation?: boolean;
   hidden?: boolean;
   monitor_input?: boolean;
   input?: string | null;
@@ -417,6 +463,8 @@ export interface BusChanges {
   /** Shows the bus below the last track again. */
   clear_position?: boolean;
   mono?: boolean;
+  /** 3D Space sessions: where it sits in the room. */
+  space?: SpacePosDoc | null;
 }
 
 /** An edit the core understands. */
@@ -456,7 +504,9 @@ export type Op =
   | { op: "set_bus"; id: string; changes: BusChanges }
   | { op: "set_sends"; owner: string; sends: SendDoc[] }
   | { op: "set_midi_clips"; track_id: string; clips: MidiClipDoc[] }
-  | { op: "set_tempo"; bpm: number; beats_per_bar: number }
+  | { op: "set_tempo"; tempo: TempoDoc }
+  | { op: "set_space"; space: SpaceDoc | null }
+  | { op: "set_envelopes"; owner: string; envelopes: EnvelopeDoc[] }
   | { op: "batch"; ops: Op[] };
 
 export interface SessionBackend {
@@ -502,10 +552,9 @@ export function isBlank(doc: SessionDoc | null): boolean {
 /** End of the last MIDI clip, in session samples (the core's sums). */
 export function midiEnd(doc: SessionDoc, rate = doc.sample_rate): number {
   const t = tempoOf(doc);
-  const bpm = Math.min(BPM_MAX, Math.max(BPM_MIN, t.bpm));
   let end = 0;
   for (const tr of doc.tracks)
-    for (const c of tr.midi_clips ?? []) end = Math.max(end, Math.round(((c.start + c.length) * 60 * rate) / bpm));
+    for (const c of tr.midi_clips ?? []) end = Math.max(end, Math.round(beatsToSeconds(t, c.start + c.length) * rate));
   return end;
 }
 
@@ -566,6 +615,18 @@ export class SessionStore {
 
   /** The never-saved session the app opened with, and its tracks then. */
   private launch: { id: string; tracks: string } | null = null;
+
+  /**
+   * Treats the open session as the empty one the app starts with: not
+   * listed, not offered for saving, the Editor's start screen showing.
+   * Used when the last open session is closed.
+   */
+  markScratch(): void {
+    const d = this.doc;
+    if (!d || this.filePath !== null) return;
+    this.launch = { id: d.id, tracks: d.tracks.map((t) => t.id).join() };
+    this.notify(d);
+  }
 
   /**
    * True while the open session is still the blank one the app started
@@ -655,7 +716,7 @@ function mergeKey(op: Op): string | null {
   if (op.op === "set_sends") return `sends:${op.owner}`;
   if (op.op !== "set_track" && op.op !== "set_bus") return null;
   const keys = Object.keys(op.changes);
-  if (keys.length !== 1 || !["volume_db", "pan", "height"].includes(keys[0]!))
+  if (keys.length !== 1 || !["volume_db", "pan", "height", "space"].includes(keys[0]!))
     return null;
   return `${op.id}:${keys[0]}`;
 }

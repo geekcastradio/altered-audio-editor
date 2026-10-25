@@ -111,12 +111,13 @@
   }
   function resetPage() {
     const def = DEFAULT_SETTINGS;
-    if (page === "General") Object.assign(d.app, { zoomStep: def.zoomStep, wheelAnchor: def.wheelAnchor, wheelZooms: def.wheelZooms, fadeShape: def.fadeShape });
+    if (page === "General") Object.assign(d.app, { zoomStep: def.zoomStep, wheelAnchor: def.wheelAnchor, wheelZooms: def.wheelZooms, fadeShape: def.fadeShape, dropMany: def.dropMany });
     else if (page === "Appearance") d.app.colors = { ...NO_COLORS };
     else if (page === "Autosave") Object.assign(d.app, { autosave: def.autosave, autosaveMinutes: def.autosaveMinutes, backups: def.backups, backupCount: def.backupCount });
+    else if (page === "Session Media") Object.assign(d.app, { copyMedia: def.copyMedia, mediaFolder: def.mediaFolder, collectOnSave: def.collectOnSave, leaveLibraryFiles: def.leaveLibraryFiles });
     else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb, meterSpeed: def.meterSpeed });
   }
-  const resettable = $derived(["General", "Appearance", "Autosave", "Playback and Recording"].includes(page));
+  const resettable = $derived(["General", "Appearance", "Autosave", "Session Media", "Playback and Recording"].includes(page));
 </script>
 
 <svelte:window
@@ -144,14 +145,20 @@
         {/if}
 
         {#if page === "General"}
-          <label class="row" title="Off: the wheel scrolls the tracks or the file, and Ctrl+wheel zooms. Over the track headers the wheel always scrolls the tracks.">
+          <label class="row" title="Off: the wheel scrolls the tracks or the file, and Ctrl+wheel zooms. Over the track headers the wheel always makes the tracks taller or shorter.">
             <input type="checkbox" bind:checked={d.app.wheelZooms} /> The mouse wheel over the waveform zooms in time (Waveform editor; in the Multitrack the wheel zooms over the ruler and scrolls over the tracks)
           </label>
           <label class="row">Each wheel step zooms by <input type="number" min="5" max="100" step="5" bind:value={d.app.zoomStep} /> % a step</label>
           <fieldset>
             <legend>Wheel zoom centers on</legend>
             <label><input type="radio" bind:group={d.app.wheelAnchor} value="mouse" /> The mouse pointer</label>
+            <label><input type="radio" bind:group={d.app.wheelAnchor} value="between" /> Between the pointer and the middle of the view (drifts less)</label>
             <label><input type="radio" bind:group={d.app.wheelAnchor} value="playhead" /> The playhead</label>
+          </fieldset>
+          <fieldset>
+            <legend>Several files dropped on the Editor go</legend>
+            <label><input type="radio" bind:group={d.app.dropMany} value="sequence" /> One after another on one track</label>
+            <label><input type="radio" bind:group={d.app.dropMany} value="tracks" /> Side by side, each on its own track from the same time</label>
           </fieldset>
           <fieldset>
             <legend>New fades start as</legend>
@@ -238,12 +245,27 @@
             <label class="row" class:dim={!d.app.backups}>Keep the newest <input type="number" min="1" max="50" step="1" bind:value={d.app.backupCount} disabled={!d.app.backups} /> copies</label>
             <p class="note">Each save first copies the previous file into a Backups folder beside the session, named with the date and time.</p>
           </fieldset>
+        {:else if page === "Session Media"}
+          <p class="note">A session can keep every audio file it uses in its own folder, so the folder can be moved, backed up or handed to someone else whole. Your original files are never moved or changed.</p>
+          <fieldset>
+            <legend>When importing audio into a saved session</legend>
+            <label><input type="radio" name="copy-media" value="always" bind:group={d.app.copyMedia} /> Copy it into the session folder</label>
+            <label><input type="radio" name="copy-media" value="ask" bind:group={d.app.copyMedia} /> Ask each time</label>
+            <label><input type="radio" name="copy-media" value="never" bind:group={d.app.copyMedia} /> Leave it where it is</label>
+          </fieldset>
+          <label class="row">Copies go into <input type="text" maxlength="60" bind:value={d.app.mediaFolder} /> in the session folder</label>
+          <label class:dim={d.app.copyMedia === "never"}><input type="checkbox" bind:checked={d.app.collectOnSave} disabled={d.app.copyMedia === "never"} /> When saving, copy in audio still outside the session folder</label>
+          <p class="note">This catches files imported before the session was first saved, and working files such as untitled mixdowns. Recordings already go into the session folder.</p>
+          <label><input type="checkbox" bind:checked={d.app.leaveLibraryFiles} /> Leave library files where they are</label>
+          <p class="note">Libraries keep their own copies. Untick this to copy library audio in too, so the session folder works without the library. File &gt; Collect Session Media copies everything in at any time.</p>
         {:else if page === "Editing"}
           <label class="off"><input type="checkbox" disabled /> Crossfade the edges of cuts and deletes in the Waveform editor <span class="why">Planned with the next Waveform editor batch.</span></label>
           <label class="off"><input type="number" disabled value="1" /> Files processed at once in Batch Convert <span class="why">One at a time for now.</span></label>
           <label class="off"><select disabled><option>High</option></select> Sample rate conversion quality <span class="why">Always the high-quality converter.</span></label>
         {:else if page === "Effects"}
           <label><input type="checkbox" bind:checked={d.app.openChainOnAdd} /> Show the Voice Chain when adding an effect from the Effects menu</label>
+          <label><input type="checkbox" bind:checked={d.app.realtimePlugins} /> Mix down sessions that use VST3 plug-ins in real time</label>
+          <p class="note">Some plug-ins only work while audio plays at normal speed: pitch correction, immersive panners and other tools that follow the clock. With this on, any mixdown, stem export or Mix Down to New File of a session with VST3 plug-ins runs at playback speed, so an hour takes an hour. Built-in effects never need it.</p>
           <label class="off"><input type="checkbox" disabled checked /> Bypassed effects are skipped on playback <span class="why">Always on: a bypassed effect costs nothing.</span></label>
           <label class="off"><select disabled><option>By category</option></select> Effects menu order <span class="why">Grouped by category.</span></label>
         {:else if page === "Cache and Files"}

@@ -6,6 +6,7 @@
   App shell: menu bar, docking layout, status bar.
 -->
 <script lang="ts">
+  import { metronomeRecording, startMetronome } from "../stores/metronome";
   import { onMount, type Component } from "svelte";
   import {
     workspaceDelete,
@@ -39,6 +40,7 @@
   import EditorPanel from "../panels/editor/EditorPanel.svelte";
   import { peaks, session, transport } from "../stores/open-session";
   import PhaseWheelPanel from "../panels/phase/PhaseWheelPanel.svelte";
+  import SpacePanel from "../panels/space/SpacePanel.svelte";
   import PropertiesPanel from "../panels/properties/PropertiesPanel.svelte";
   import LevelsPanel from "../panels/levels/LevelsPanel.svelte";
   import { PreviewMeter } from "../stores/preview-meter";
@@ -114,13 +116,23 @@
   import { newTrackNames } from "./track-names";
   import { allMidiClipIds, deleteClipsOps } from "../panels/editor/midi";
   import { CompoundCommand } from "../commands/compound";
+  import { repointPlan, toCopy } from "./session-media";
+  import { pluginSlots } from "./plugin-sync";
+  import { exactSamples } from "../stores/exact-samples";
+  import { channelLabel, editTake, oneChannel, pasteTake, soloChannel, waveChannels, type ChannelTake } from "../panels/editor/wave-channels";
+  import { pathsIgnoreCase } from "../lib/platform";
   import { SessionFiles, displayName, planOpen, type Choice } from "./session-files";
-  import { RECENT_SLOTS, WORKSPACE_SLOTS } from "./menus/model";
+  import { PLUGIN_SLOTS, RECENT_SLOTS, WORKSPACE_SLOTS } from "./menus/model";
   import {
     sessionAutosave,
     sessionClearAutosave,
     sessionDiscardRecovery,
     sessionNew,
+    sessionPark,
+    sessionResume,
+    sessionForget,
+    mediaCopyIn,
+    waveChannelEdit,
     sessionOpen,
     sessionPickOpen,
     filePickOpen,
@@ -161,6 +173,7 @@
     recordStop,
     recordMonitor,
     effectsCatalog,
+    pluginsRegistry,
     musicFit,
     quickpassRepairCopy,
     type SpotsRequest,
@@ -194,7 +207,7 @@
   import ToolStrip from "./ToolStrip.svelte";
   import NewAudioFileDialog, { type NewAudioSettings } from "./NewAudioFileDialog.svelte";
   import NewSessionDialog, { type NewSessionSettings } from "./NewSessionDialog.svelte";
-  import { closeWaveFile, forgetParked, newEmptyWaveFile, parkedUnsaved, newWaveFromClips, openWaveFile, saveWaveFile, savesInPlace, spectralSelection, wave, waveFile, waveHistory, waveTransport, waveZoom } from "../stores/wave";
+  import { closeWaveFile, forgetParked, newEmptyWaveFile, parkedUnsaved, newWaveFromClips, newWaveFromMix, openWaveFile, saveWaveFile, savesInPlace, spectralSelection, wave, waveFile, waveHistory, waveTransport, waveZoom } from "../stores/wave";
   import { get, writable } from "svelte/store";
   import type { SessionRow } from "../panels/files/session-row";
   import { rasterize } from "../panels/editor/spectrum";
@@ -270,7 +283,7 @@
   const previewMeter = new PreviewMeter({ status: () => previewStatus() });
   const uuid = () => crypto.randomUUID();
 
-  function nextTrackName(tracks: readonly TrackDoc[]): string {
+  function nextTrackName(tracks: readonly { name: string }[]): string {
     const names = new Set(tracks.map((t) => t.name));
     let n = tracks.length + 1;
     while (names.has(`Track ${n}`)) n++;
@@ -292,42 +305,54 @@
     const items = imported.ids.map((id) => mediaPool.get(id)).filter((it) => it?.status === "ready" && it.info);
     if (items.length === 0) return null;
     const ops: Op[] = [];
-    let target = trackId;
+    const audio = doc.tracks.filter((t) => t.kind !== "midi");
+    const names: { name: string }[] = doc.tracks.map((t) => ({ name: t.name }));
+    /** A new track at the bottom for `it`, named after the file when files go side by side. */
+    const newTrack = (it: (typeof items)[number], byFile: boolean): string => {
+      const id = uuid();
+      const name = byFile ? stem(it!.name) : nextTrackName(names);
+      ops.push({ op: "add_track", id, name, stereo: (it!.info!.channels ?? 2) > 1, index: names.length });
+      names.push({ name });
+      return id;
+    };
     // Audio never lands on a MIDI track: it gets a new track instead.
-    if (!target || !doc.tracks.some((t) => t.id === target && t.kind !== "midi")) {
-      target = uuid();
-      ops.push({
-        op: "add_track",
-        id: target,
-        name: nextTrackName(doc.tracks),
-        stereo: (items[0]!.info!.channels ?? 2) > 1,
-        index: doc.tracks.length,
-      });
-    }
+    const first = trackId && audio.some((t) => t.id === trackId) ? trackId : null;
     const known = new Set(doc.media.map((m) => m.id));
-    const clips = [];
-    let pos = Math.max(0, Math.round(at));
-    for (const it of items) {
+    const addMedia = (it: (typeof items)[number]) => {
       const info = it!.info!;
-      if (!known.has(it!.id)) {
-        known.add(it!.id);
-        ops.push({
-          op: "add_media",
-          media: {
-            id: it!.id,
-            path: it!.path,
-            relative_path: null,
-            sample_rate: info.sampleRate,
-            channels: info.channels,
-            length: info.length,
-          },
-        });
-      }
-      clips.push({ id: uuid(), name: stem(it!.name), media_id: it!.id, start: pos, source_in: 0, source_out: info.length });
+      if (known.has(it!.id)) return;
+      known.add(it!.id);
+      ops.push({ op: "add_media", media: { id: it!.id, path: it!.path, relative_path: null, sample_rate: info.sampleRate, channels: info.channels, length: info.length } });
+    };
+    const start = Math.max(0, Math.round(at));
+    const clips: { id: string }[] = [];
+    if (items.length > 1 && settings.current.dropMany === "tracks") {
+      // Side by side: the first on the track under the pointer, the rest on
+      // the audio tracks below it, then on new tracks, all from the same time.
+      const below = first ? audio.slice(audio.findIndex((t) => t.id === first)) : [];
+      let target = first ?? "";
+      items.forEach((it, k) => {
+        addMedia(it);
+        const info = it!.info!;
+        const track = below[k]?.id ?? newTrack(it, true);
+        if (k === 0) target = track;
+        const clip = { id: uuid(), name: stem(it!.name), media_id: it!.id, start, source_in: 0, source_out: info.length };
+        ops.push({ op: "add_clips", track_id: track, clips: [clip] });
+        clips.push(clip);
+      });
+      return { ops, clips, target };
+    }
+    const target = first ?? newTrack(items[0]!, false);
+    const list = [];
+    let pos = start;
+    for (const it of items) {
+      addMedia(it);
+      const info = it!.info!;
+      list.push({ id: uuid(), name: stem(it!.name), media_id: it!.id, start: pos, source_in: 0, source_out: info.length });
       pos += Math.round((info.length * doc.sample_rate) / info.sampleRate);
     }
-    ops.push({ op: "add_clips", track_id: target, clips });
-    return { ops, clips, target };
+    ops.push({ op: "add_clips", track_id: target, clips: list });
+    return { ops, clips: list, target };
   }
 
   /**
@@ -717,7 +742,12 @@
   /** A mixdown with every plug-in's latest settings saved in the session first. */
   async function exportMix(path: string, req: Parameters<typeof exportMixdown>[1]) {
     await pluginSync.captureAll().catch(showError);
-    return exportMixdown(path, req);
+    return exportMixdown(path, { ...req, ...(realtimeMix() ? { realtime: true } : {}) });
+  }
+  /** Settings > Effects: sessions with VST3 plug-ins mix down at playback speed. */
+  function realtimeMix(): boolean {
+    const doc = session.current;
+    return settings.current.realtimePlugins && !!doc && pluginSlots(doc).length > 0;
   }
 
   /** Gives every `id` field inside a copied object a new value. */
@@ -770,6 +800,19 @@
   }
 
   const selectedTrack = () => session.current?.tracks.find((t) => t.id === editor.current().selectedTrack) ?? null;
+  /** What Delete Track removes: the picked track or bus, else the track holding the picked clips. */
+  function trackToDelete(): { kind: "track" | "bus"; id: string } | null {
+    const doc = session.current;
+    if (!doc) return null;
+    const ed = editor.current();
+    if (ed.selectedTrack) {
+      if (doc.tracks.some((t) => t.id === ed.selectedTrack)) return { kind: "track", id: ed.selectedTrack };
+      if ((doc.buses ?? []).some((b) => b.id === ed.selectedTrack)) return { kind: "bus", id: ed.selectedTrack };
+    }
+    const clip = [...ed.selectedClips][0];
+    const t = clip ? doc.tracks.find((x) => x.clips.some((c) => c.id === clip) || (x.midi_clips ?? []).some((c) => c.id === clip)) : undefined;
+    return t ? { kind: "track", id: t.id } : null;
+  }
 
   function usedMedia(): Set<string> {
     const used = new Set<string>();
@@ -1168,6 +1211,7 @@
         format: sanitizeFormat(saved?.format),
         addToFiles: saved?.addToFiles === true,
         chapters: (saved as { chapters?: unknown } | null)?.chapters !== false,
+        ...(doc.space ? { speakers: doc.space.layout } : {}),
       },
       scopes,
       source: { sampleRate: doc.sample_rate, channels: doc.master?.channels === "mono" ? 1 : 2, bitDepth: doc.bit_depth },
@@ -1188,7 +1232,7 @@
       ]);
       if (ok !== "yes") return;
     }
-    await runMixdown(v.scope, v.addToFiles ? "files-panel" : "file", path, v.format, v.chapters);
+    await runMixdown(v.scope, v.addToFiles ? "files-panel" : "file", path, v.format, v.chapters, v.speakers);
   }
 
   async function mixDown(source: MixSource, target: MixTarget) {
@@ -1198,13 +1242,56 @@
       openExportDialog(source);
       return;
     }
+    if (target === "files-panel") {
+      await mixToNewFile(source);
+      return;
+    }
     const suffix = source === "all" ? "Mixdown" : source === "selection" ? "Selection" : "Clips";
     const path = await exportPickPath(`${doc.name} ${suffix}`, sessionFolder());
     if (!path) return;
     await runMixdown(source, target, path, null);
   }
 
-  async function runMixdown(source: MixSource, target: MixTarget, path: string, format: OutputFormat | null, chapters = false) {
+  /**
+   * Mix Down to New File: the mix opens in the Waveform editor as a new
+   * untitled file, nothing asked. Save As puts it on the drive.
+   */
+  async function mixToNewFile(source: MixSource) {
+    const doc = session.current;
+    const what = mixRange(source);
+    if (!doc || !what || exporting) return;
+    const suffix = source === "all" ? "Mixdown" : source === "selection" ? "Selection" : "Clips";
+    exporting = { title: "Mixing down to a new file", progress: 0, floating: true };
+    let off: (() => void) | null = null;
+    try {
+      off = await listen<{ done: number; total: number }>("export-progress", (e) => {
+        if (exporting) exporting = { ...exporting, progress: e.payload.total > 0 ? e.payload.done / e.payload.total : 0 };
+      });
+      await pluginSync.captureAll().catch(showError);
+      const r = await newWaveFromMix(`${doc.name} ${suffix}`, {
+        ...(realtimeMix() ? { realtime: true } : {}),
+        ...(what.range ? { range: what.range } : {}),
+        ...(what.clips ? { clips: what.clips } : {}),
+      });
+      if (!r) {
+        showNotice("Mixdown cancelled.");
+        return;
+      }
+      await transport.stop();
+      editor.setMode("waveform");
+      dock.show("editor");
+      actions.invalidate();
+      const clipped = r.peak > 1 ? ` It goes above 0 dBFS (peak +${(20 * Math.log10(r.peak)).toFixed(1)} dB); it is kept as float, so nothing is lost, but turn it down before saving to a fixed format.` : "";
+      showNotice(`Mixed down to a new file in the Waveform editor. Save As keeps it.${clipped}`);
+    } catch (e) {
+      showError(e);
+    } finally {
+      off?.();
+      exporting = null;
+    }
+  }
+
+  async function runMixdown(source: MixSource, target: MixTarget, path: string, format: OutputFormat | null, chapters = false, speakers?: string) {
     const what = mixRange(source);
     if (!what || exporting) return;
     exporting = { title: target === "track" ? "Bouncing to a new track" : "Exporting mixdown", progress: 0, floating: true };
@@ -1217,6 +1304,7 @@
         ...(what.range ? { range: what.range } : {}),
         ...(what.clips ? { clips: what.clips } : {}),
         ...(format ? { format } : {}),
+        ...(speakers === "binaural" ? { binaural: true } : speakers ? { spaceLayout: speakers } : {}),
       });
       if (r.cancelled) {
         showNotice("Export cancelled. Nothing was saved.");
@@ -1405,6 +1493,54 @@
     });
   }
 
+  // Keeping the session's audio in its own folder (Settings > Session Media).
+  const ignorePathCase = pathsIgnoreCase();
+  const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+  /** Copies `list` into the session folder; maps each path to where it is now. */
+  async function copyIntoSession(list: string[], sessionFile: string): Promise<Map<string, string>> {
+    if (!list.length) return new Map();
+    const r = await mediaCopyIn(sessionFile, settings.current.mediaFolder, list);
+    if (r.failed.length) showNotice(`${plural(r.failed.length, "file")} could not be copied into the session folder and stay where they are: ${r.failed.slice(0, 3).join("; ")}`);
+    return new Map(list.map((p, i) => [p, r.paths[i] ?? p]));
+  }
+
+  mediaPool.setPlacer(async (paths) => {
+    const file = session.path;
+    const s = settings.current;
+    if (!file || s.copyMedia === "never") return paths;
+    const list = toCopy(paths, file, s.leaveLibraryFiles ? libraries.current.libs.map((l) => l.dir) : [], ignorePathCase);
+    if (!list.length) return paths;
+    if (s.copyMedia === "ask") {
+      const v = await ask("Copy into the session folder?", `Copy ${plural(list.length, "file")} into the "${s.mediaFolder}" folder beside this session? The session then uses the copies, and the originals stay where they are.`, [
+        { label: "Copy", value: "copy", primary: true },
+        { label: "Leave Where They Are", value: "leave" },
+      ]);
+      if (v !== "copy") return paths;
+    }
+    const moved = await copyIntoSession(list, file);
+    return paths.map((p) => moved.get(p) ?? p);
+  });
+
+  /**
+   * Copies the audio the session uses from outside its folder into it,
+   * and points the session and the Files panel at the copies as one
+   * undoable step. `everything` includes library files.
+   */
+  async function collectMedia(sessionFile: string, everything: boolean): Promise<number> {
+    const doc = session.current;
+    if (!doc) return 0;
+    const pool = mediaPool.current.items.map((it) => ({ id: it.id, path: it.path }));
+    const leave = everything || !settings.current.leaveLibraryFiles ? [] : libraries.current.libs.map((l) => l.dir);
+    const list = toCopy([...doc.media.map((m) => m.path), ...pool.map((p) => p.path)], sessionFile, leave, ignorePathCase);
+    const moved = await copyIntoSession(list, sessionFile);
+    const plan = repointPlan(doc.media, pool, moved, ignorePathCase);
+    const label = "Collect Session Media";
+    const parts = [...(plan.ops.length ? [session.command(label, { op: "batch", ops: plan.ops })] : []), ...[mediaPool.repathCommand(plan.pool, label)].filter((c) => c !== null)];
+    if (parts.length) await sessionHistory.execute(new CompoundCommand(label, parts));
+    return new Set([...plan.pool.map((p) => p.path), ...plan.ops.flatMap((o) => (o.op === "set_media" ? [o.media.path] : []))]).size;
+  }
+
   const KEY_RECENT = "sessions.recent";
   const KEY_EDITOR = "editor.settings";
 
@@ -1422,7 +1558,12 @@
       pickOpen: () => sessionPickOpen(false),
       pickSesx: () => sessionPickOpen(true),
       importSesx: (p) => sessionImportSesx<SessionDoc>(p),
+      park: () => sessionPark(),
+      resume: (id) => sessionResume<SessionDoc>(id),
+      forget: (id) => sessionForget(id),
     },
+    beforePark: () => pluginSync.captureAll(),
+    onSessions: () => updateTitle(),
     session,
     pool: mediaPool,
     stack: sessionHistory,
@@ -1450,6 +1591,16 @@
     },
     notice: (t) => showNotice(t),
     libraries: () => libraries.current.libs.map((l) => l.dir),
+    beforeSave: async (target) => {
+      const s = settings.current;
+      if (!s.collectOnSave || s.copyMedia === "never") return;
+      try {
+        const n = await collectMedia(target, false);
+        if (n) showNotice(`Copied ${plural(n, "file")} into the session folder.`);
+      } catch (e) {
+        showError(e);
+      }
+    },
     onReplaced: (doc) => {
       editor.selectTrack(null);
       // Reopen the libraries this session uses.
@@ -1469,22 +1620,17 @@
     dock.setTitle("editor", what ? `Editor - ${what}${inWave() ? "" : files.unsaved ? " *" : ""}` : "Editor");
   }
   /** The open session as a row at the top of the Files panel. */
-  const sessionRow = writable<SessionRow | null>(null);
+  const sessionRows = writable<SessionRow[]>([]);
   function updateSessionRow() {
     const d = session.current;
-    if (!d) {
-      sessionRow.set(null);
-      return;
-    }
+    const rows: SessionRow[] = [];
     // A never-saved session with nothing in it (files imported only) is not listed as "Untitled Session".
-    if (session.isScratch(d)) {
-      if (get(sessionRow)) sessionRow.set(null);
-      return;
+    if (d && !session.isScratch(d)) {
+      rows.push({ id: d.id, name: files.name, dirty: files.unsaved, seconds: sessionEnd(d) / Math.max(1, d.sample_rate), sampleRate: d.sample_rate, active: !inWave(), front: true });
     }
-    const seconds = sessionEnd(d) / Math.max(1, d.sample_rate);
-    const row: SessionRow = { name: files.name, dirty: files.unsaved, seconds, sampleRate: d.sample_rate, active: !inWave() };
-    const cur = get(sessionRow);
-    if (!cur || cur.name !== row.name || cur.dirty !== row.dirty || cur.seconds !== row.seconds || cur.sampleRate !== row.sampleRate || cur.active !== row.active) sessionRow.set(row);
+    for (const p of files.others) rows.push({ id: p.id, name: displayName(p.path, null) === "Untitled Session" ? p.name : displayName(p.path, null), dirty: p.dirty, seconds: p.seconds, sampleRate: p.sampleRate, active: false, front: false });
+    const cur = get(sessionRows);
+    if (JSON.stringify(cur) !== JSON.stringify(rows)) sessionRows.set(rows);
   }
   function updateTitle() {
     updateSessionRow();
@@ -1498,6 +1644,18 @@
 
   async function exitSafely() {
     if (!(await files.confirmDiscard())) return;
+    const sessionsLeft = files.others.filter((p) => p.dirty).map((p) => p.name);
+    if (sessionsLeft.length) {
+      const v = await ask(
+        "Other sessions have unsaved changes",
+        `${sessionsLeft.join(", ")} ${sessionsLeft.length === 1 ? "has" : "have"} unsaved changes. Double-click ${sessionsLeft.length === 1 ? "it" : "each one"} in the Files panel to save, or quit without saving. Recovery copies are kept either way.`,
+        [
+          { label: "Cancel", value: "cancel", primary: true },
+          { label: "Quit Without Saving", value: "quit" },
+        ],
+      );
+      if (v !== "quit") return;
+    }
     if (!(await confirmWaveDiscard())) return;
     const others = parkedUnsaved();
     if (others.length) {
@@ -1542,8 +1700,13 @@
             shortcutFor,
             onDropPaths: (paths: string[]) => void importPaths(paths).catch(showError),
             onOpen: (path: string) => void openInWaveform(path),
-            session: sessionRow,
-            onOpenSession: () => void actions.run("view.editor.multitrack"),
+            sessions: sessionRows,
+            onOpenSession: (id: string) =>
+              void files
+                .switchTo(id)
+                .then(() => actions.run("view.editor.multitrack"))
+                .catch(showError),
+            onCloseSession: (id: string) => void files.closeSession(id).catch(showError),
           },
         };
       case "drive-manager":
@@ -1564,7 +1727,9 @@
       case "time-info":
         return { component: asComponent(TimeInfoPanel), props: { session, transport, wave, waveTransport } };
       case "levels":
-        return { component: asComponent(LevelsPanel), props: { transport, wave: waveTransport, preview: previewMeter } };
+        return { component: asComponent(LevelsPanel), props: { transport, wave: waveTransport, preview: previewMeter, session } };
+      case "space":
+        return { component: asComponent(SpacePanel), props: { session, runner: sessionHistory, onError: showError, onExport: () => void actions.run("file.export.mixdown") } };
       case "phase-wheel":
         return { component: asComponent(PhaseWheelPanel), props: { transport, wave: waveTransport } };
       case "batch-convert":
@@ -1809,6 +1974,9 @@
     return t ? { target: { kind: "track", id: t.id }, chain: t.effects, name: t.name } : null;
   }
   let fxCatalog: EffectInfo[] | null = null;
+  /** Effect plug-ins for Effects > Plug-ins (instruments are picked on MIDI tracks). */
+  let menuPlugins: { effect: string; name: string; vendor: string }[] = [];
+
   async function addEffectFromMenu(effect: string) {
     const at = fxTarget();
     if (!at) return;
@@ -1843,12 +2011,40 @@
   };
   const NEED_WAVE_SEL = "Drag across the waveform to select audio first.";
   let waveBoard: WaveBoard | null = null;
+  /** Copy in the Waveform editor: with one channel on, the copy remembers which. */
+  function copyOf(r: readonly [number, number]): WaveBoard | null {
+    const b = copyRange(wave.current!, r[0], r[1]);
+    const one = (wave.current?.media[0]?.channels ?? 1) > 1 ? oneChannel(get(waveChannels)) : null;
+    return b && one !== null ? { ...b, channel: one } : b;
+  }
 
-  async function waveEdit(label: string, op: Op | null): Promise<boolean> {
+  /**
+   * Runs a Waveform editor edit. With `range` and only one channel of a
+   * stereo file on, the edit reaches that channel alone (or as `take`
+   * says): the core renders the range and the other channel keeps what
+   * it had.
+   */
+  async function waveEdit(label: string, op: Op | null, range?: readonly [number, number], take?: ChannelTake | null): Promise<boolean> {
     if (!op) return false;
+    const d = wave.current;
+    const how = take !== undefined ? take : editTake(get(waveChannels));
+    if (range && how && d && (d.media[0]?.channels ?? 1) > 1) {
+      try {
+        const res = await waveChannelEdit(op, range[0], range[1], how);
+        const one = replaceRange(wave.current ?? d, res.start, res.end, res.media, label, uuid);
+        if (!one) return false;
+        op = one;
+        label += channelLabel(get(waveChannels));
+      } catch (e) {
+        showError(e);
+        return false;
+      }
+    }
     await wave.edit(label, op, waveHistory);
     return true;
   }
+  /** Whether only one channel of a stereo file is on in the Waveform editor. */
+  const oneWaveChannel = () => (wave.current?.media[0]?.channels ?? 1) > 1 && oneChannel(get(waveChannels)) !== null;
 
   function waveSetSelection(sel: [number, number] | null, playhead?: number) {
     const d = wave.current;
@@ -1956,6 +2152,7 @@
       await saveWaveFile(path);
       const saved = waveFile.current()?.path ?? f.path;
       peaks.invalidate(saved);
+      exactSamples.forget(saved);
       await syncSessionMedia(saved);
       const keepsMarkers = /\.wave?$/i.test(saved);
       showNotice(
@@ -1975,6 +2172,31 @@
   }
 
   /**
+   * Back to the Multitrack editor with unsaved Waveform editor changes to
+   * a file the session uses: the session plays files as saved on disk, so
+   * offer to save them now.
+   */
+  let lastMode = editor.current().mode;
+  $effect(() =>
+    editor.subscribe((e) => {
+      const was = lastMode;
+      lastMode = e.mode;
+      if (was !== "waveform" || e.mode !== "multitrack") return;
+      const f = waveFile.current();
+      const doc = session.current;
+      if (!f || f.untitled || !doc || !waveHistory.current.dirty) return;
+      const key = (p: string) => p.replace(/\\/g, "/").toLowerCase();
+      if (!doc.media.some((m) => key(m.path) === key(f.path))) return;
+      void ask("Save changes for the session?", `"${f.path.split(/[\\/]/).pop()}" is used in this session. The session plays files as they are saved on disk, so your Waveform editor changes show here once the file is saved.`, [
+        { label: "Save", value: "save", primary: true },
+        { label: "Not Now", value: "later" },
+      ]).then((v) => {
+        if (v === "save") void saveWave(false);
+      });
+    }),
+  );
+
+  /**
    * After the Waveform editor saves a file the session also uses, the
    * session learns its new length (for example after recording more in the
    * Waveform editor), and clips that ran to the old end run to the new one.
@@ -1985,6 +2207,11 @@
     const key = (p: string) => p.replace(/\\/g, "/").toLowerCase();
     const used = doc.media.filter((m) => key(m.path) === key(path));
     if (!used.length) return;
+    // The session may spell the path differently (slashes, case): redraw it under its own spelling too.
+    for (const m of used) {
+      peaks.invalidate(m.path);
+      exactSamples.forget(m.path);
+    }
     try {
       const info = await probeMedia(path);
       for (const m of used) {
@@ -2046,7 +2273,7 @@
     try {
       const res = await waveReverseInvert(r[0], r[1], mode);
       if (wave.current?.tracks[0]?.id !== t.id) return showNotice("You switched files while that was running, so it was not applied.");
-      await waveEdit(label, replaceRange(wave.current ?? d, res.start, res.end, res.media, label, uuid));
+      await waveEdit(label, replaceRange(wave.current ?? d, res.start, res.end, res.media, label, uuid), [res.start, res.end]);
     } catch (e) {
       showError(e);
     }
@@ -2080,7 +2307,7 @@
     const d = wave.current;
     const r = waveAll();
     if (!d || !r || !db) return;
-    await waveEdit(`Amplify ${db > 0 ? "+" : ""}${db.toFixed(1)} dB`, amplifyRange(d, r[0], r[1], db, uuid));
+    await waveEdit(`Amplify ${db > 0 ? "+" : ""}${db.toFixed(1)} dB`, amplifyRange(d, r[0], r[1], db, uuid), r);
   }
 
   /** Writes the Waveform preview chain into the selection (or the whole file), then clears the preview. */
@@ -2096,7 +2323,7 @@
       showNotice("You switched files while the effect was running, so it was not applied. Stay on the file until it finishes. To process many files, use Batch Convert.");
       return;
     }
-    await waveEdit(label, replaceRange(wave.current ?? d, res.start, res.end, res.media, label, uuid));
+    await waveEdit(label, replaceRange(wave.current ?? d, res.start, res.end, res.media, label, uuid), [res.start, res.end]);
     await wave.apply({ op: "set_effects", target: { kind: "track", id: t.id }, chain: chainOf(null) });
     if (!wholeFile) showNotice(`${label}: done. Undo takes it back.`);
   }
@@ -2111,7 +2338,7 @@
     if (!mask || !d) return;
     try {
       const r = await waveSpectralEdit(mask, mode, db);
-      await waveEdit(label, replaceRange(wave.current ?? d, r.start, r.end, r.media, label, uuid));
+      await waveEdit(label, replaceRange(wave.current ?? d, r.start, r.end, r.media, label, uuid), [r.start, r.end]);
     } catch (e) {
       showError(e);
     }
@@ -2260,6 +2487,7 @@
         holdEnd(true);
         if (plan.punch) showNotice(`Punch-in: recording stops at the end of the time selection.`);
         liveTakes.set({ at, rate: 0, waves: {}, tick: 0 });
+        metronomeRecording(true);
         void transport.play(at);
       }
       recPeakMax = 0;
@@ -2268,6 +2496,7 @@
     } catch (e) {
       take = null;
       holdEnd(false);
+      metronomeRecording(false);
       liveTakes.set(null);
       showError(e);
     }
@@ -2356,6 +2585,7 @@
     take = null;
     holdEnd(false);
     stopInputPoll();
+    metronomeRecording(false);
     recording.set({ active: false, seconds: 0, peak: 0 });
     let takes;
     try {
@@ -2457,7 +2687,7 @@
       showNotice(`Already peaks at ${target.toFixed(1)} dB.`);
       return;
     }
-    await waveEdit(`Normalize to ${target.toFixed(1)} dB`, amplifyRange(wave.current!, r[0], r[1], db, uuid));
+    await waveEdit(`Normalize to ${target.toFixed(1)} dB`, amplifyRange(wave.current!, r[0], r[1], db, uuid), r);
   }
 
   // File > New Audio File.
@@ -2690,11 +2920,21 @@
         },
       }),
       ov(waveFocus, { id: "edit.deselect", run: () => waveSetSelection(null), enabled: () => waveSel() !== null, reason: () => "Nothing is selected." }),
+      ...(["left", "right"] as const).map((ch) =>
+        actions.register({
+          id: `wave.channel-${ch}`,
+          run: () => waveChannels.update((c) => soloChannel(c, ch)),
+          enabled: () => (wave.current?.media[0]?.channels ?? 1) > 1 && inWave(),
+          reason: () => "Open a stereo file in the Waveform editor first.",
+        }),
+      ),
       ov(waveFocus, {
         id: "edit.delete",
         run: async () => {
           const r = waveSel();
-          if (r && (await waveEdit("Delete", deleteRange(wave.current!, r[0], r[1], uuid)))) waveSetSelection(null, r[0]);
+          // One channel can't get shorter than the other: deleting from one silences it.
+          if (r && oneWaveChannel()) await waveEdit("Delete", silenceRange(wave.current!, r[0], r[1], uuid), r);
+          else if (r && (await waveEdit("Delete", deleteRange(wave.current!, r[0], r[1], uuid)))) waveSetSelection(null, r[0]);
         },
         enabled: () => waveSel() !== null,
         label: () => "Delete Selection",
@@ -2704,7 +2944,7 @@
         id: "edit.copy",
         run: () => {
           const r = waveSel();
-          if (r) waveBoard = copyRange(wave.current!, r[0], r[1]);
+          if (r) waveBoard = copyOf(r);
           actions.invalidate();
         },
         enabled: () => waveSel() !== null,
@@ -2715,8 +2955,9 @@
         run: async () => {
           const r = waveSel();
           if (!r) return;
-          waveBoard = copyRange(wave.current!, r[0], r[1]);
-          if (await waveEdit("Cut", deleteRange(wave.current!, r[0], r[1], uuid))) waveSetSelection(null, r[0]);
+          waveBoard = copyOf(r);
+          if (oneWaveChannel()) await waveEdit("Cut", silenceRange(wave.current!, r[0], r[1], uuid), r);
+          else if (await waveEdit("Cut", deleteRange(wave.current!, r[0], r[1], uuid))) waveSetSelection(null, r[0]);
         },
         enabled: () => waveSel() !== null,
         reason: () => NEED_WAVE_SEL,
@@ -2725,6 +2966,19 @@
         id: "edit.paste",
         run: async () => {
           if (!waveBoard) return;
+          const take = pasteTake(get(waveChannels), waveBoard.channel);
+          if (take && (wave.current?.media[0]?.channels ?? 1) > 1) {
+            // Onto one channel (or a one-channel copy onto both): it goes over the audio from the selection or playhead, keeping the file's length.
+            const d = wave.current!;
+            const at = waveSel()?.[0] ?? wavePlayhead();
+            const len = Math.round(waveBoard.length * (d.sample_rate / waveBoard.rate));
+            const end = Math.min(sessionEnd(d), at + len);
+            const quiet = silenceRange(d, at, end, uuid);
+            const p = mixPasteAt(d, waveBoard, at, 0, uuid);
+            if (!quiet || !p || end <= at) return;
+            if (await waveEdit("Paste", { op: "batch", ops: [quiet, p.op] }, [at, end], take)) waveSetSelection([at, end], at);
+            return;
+          }
           // Pasting over a selection replaces it.
           const r = waveSel();
           if (r) await waveEdit("Delete", deleteRange(wave.current!, r[0], r[1], uuid));
@@ -2748,6 +3002,13 @@
           }
           const at = waveSel()?.[0] ?? wavePlayhead();
           const p = mixPasteAt(wave.current!, waveBoard, at, db, uuid);
+          const take = pasteTake(get(waveChannels), waveBoard.channel);
+          if (p && take && (wave.current?.media[0]?.channels ?? 1) > 1) {
+            // Mixed into one channel only: from the original channel plus the pasted one.
+            const end = Math.min(sessionEnd(wave.current!), at + p.length);
+            if (end > at && (await waveEdit("Mix Paste", p.op, [at, end], take))) waveSetSelection([at, end], at);
+            return;
+          }
           if (p && (await waveEdit("Mix Paste", p.op))) waveSetSelection([at, at + p.length], at);
         },
         enabled: () => waveBoard !== null,
@@ -2766,7 +3027,7 @@
         id: "fx.silence",
         run: async () => {
           const r = waveSel();
-          if (r) await waveEdit("Silence", silenceRange(wave.current!, r[0], r[1], uuid));
+          if (r) await waveEdit("Silence", silenceRange(wave.current!, r[0], r[1], uuid), r);
         },
         enabled: () => waveSel() !== null,
         reason: () => NEED_WAVE_SEL,
@@ -2775,7 +3036,7 @@
         id: "fx.fade-in",
         run: async () => {
           const r = waveSel();
-          if (r) await waveEdit("Fade In", fadeRange(wave.current!, r[0], r[1], "in", uuid));
+          if (r) await waveEdit("Fade In", fadeRange(wave.current!, r[0], r[1], "in", uuid), r);
         },
         enabled: () => waveSel() !== null,
         reason: () => NEED_WAVE_SEL,
@@ -2784,7 +3045,7 @@
         id: "fx.fade-out",
         run: async () => {
           const r = waveSel();
-          if (r) await waveEdit("Fade Out", fadeRange(wave.current!, r[0], r[1], "out", uuid));
+          if (r) await waveEdit("Fade Out", fadeRange(wave.current!, r[0], r[1], "out", uuid), r);
         },
         enabled: () => waveSel() !== null,
         reason: () => NEED_WAVE_SEL,
@@ -3158,7 +3419,9 @@
       actions.register({
         id: "view.mode.music",
         run: () => {
-          settings.set({ ...settings.current, musicMode: !settings.current.musicMode });
+          const cur = settings.current;
+          // Turning it off also stops the metronome, so nothing keeps clicking out of sight.
+          settings.set({ ...cur, musicMode: !cur.musicMode, metronome: cur.musicMode ? { ...cur.metronome, on: false } : cur.metronome });
           actions.invalidate();
         },
         checked: () => settings.current.musicMode,
@@ -3168,11 +3431,12 @@
       actions.register({
         id: "multitrack.delete-track",
         run: async () => {
-          const t = selectedTrack();
-          if (t) await session.edit("Delete Track", { op: "remove_track", id: t.id }, sessionHistory);
+          const t = trackToDelete();
+          if (t?.kind === "track") await session.edit("Delete Track", { op: "remove_track", id: t.id }, sessionHistory);
+          else if (t?.kind === "bus") await session.edit("Delete Bus", { op: "remove_bus", id: t.id }, sessionHistory);
           editor.selectTrack(null);
         },
-        enabled: () => selectedTrack() !== null,
+        enabled: () => trackToDelete() !== null,
         reason: () => "Select a track first.",
       }),
       actions.register({
@@ -3181,7 +3445,7 @@
           const doc = session.current;
           const t = selectedTrack();
           if (!doc || !t) return;
-          const copy = freshIds(structuredClone(t));
+          const copy = freshIds(JSON.parse(JSON.stringify(t)) as typeof t);
           copy.name = `${t.name} copy`;
           const index = doc.tracks.findIndex((x) => x.id === t.id) + 1;
           await session.edit("Duplicate Track", { op: "restore_track", track: copy, index }, sessionHistory);
@@ -3281,6 +3545,17 @@
         id: "view.time.decimal",
         run: () => editor.setTimeFormat("time"),
         checked: () => editor.current().timeFormat === "time",
+      }),
+      actions.register({
+        id: "view.time.seconds",
+        run: () => editor.setTimeFormat("seconds"),
+        checked: () => editor.current().timeFormat === "seconds",
+      }),
+      actions.register({
+        id: "view.time.bars",
+        run: () => editor.setTimeFormat("bars"),
+        checked: () => editor.current().timeFormat === "bars",
+        visible: () => settings.current.musicMode || editor.current().timeFormat === "bars",
       }),
       actions.register({
         id: "view.time.samples",
@@ -3432,6 +3707,30 @@
         },
         enabled: () => (markerDoc()?.markers.length ?? 0) > 0,
         reason: () => "Add markers first (Edit > Markers).",
+      }),
+      // Effects > Plug-ins: every scanned effect plug-in, by maker then name.
+      ...Array.from({ length: PLUGIN_SLOTS }, (_, i) =>
+        actions.register({
+          id: `fx.plugins.${i + 1}`,
+          run: () => {
+            const p = menuPlugins[i];
+            if (p) return addEffectFromMenu(p.effect);
+          },
+          visible: () => menuPlugins[i] !== undefined,
+          label: () => {
+            const p = menuPlugins[i];
+            return p ? (p.vendor ? `${p.name} (${p.vendor})` : p.name) : null;
+          },
+          enabled: () => fxTarget() !== null,
+          reason: () => (inWave() ? "Open a file in the Waveform editor first." : "Select a track or one clip first."),
+        }),
+      ),
+      actions.register({
+        id: "fx.plugins.none",
+        run: () => {},
+        enabled: () => false,
+        visible: () => menuPlugins.length === 0,
+        reason: () => "Scan for plug-ins in Effects > Plug-in Manager. Effect plug-ins it finds appear here.",
       }),
       ...FX_MENU.map((short) =>
         actions.register({
@@ -3969,6 +4268,17 @@
         reason: () => "Select a clip first.",
       }),
       actions.register({
+        id: "file.collect-media",
+        run: async () => {
+          const file = session.path;
+          if (!file) return;
+          const n = await collectMedia(file, true);
+          showNotice(n ? `Copied ${plural(n, "file")} into the session folder. The session now uses the copies.` : "Every file is already in the session folder.");
+        },
+        enabled: () => !!session.path && mediaPool.size + (session.current?.media.length ?? 0) > 0,
+        reason: () => (session.path ? "No audio in the session." : "Save the session first: its audio is copied into the folder beside it."),
+      }),
+      actions.register({
         id: "file.close-unused",
         run: async () => {
           const used = usedMedia();
@@ -3995,7 +4305,7 @@
       actions.register({ id: "file.save-all", run: () => files.save().then(() => undefined) }),
       actions.register({ id: "file.close", run: () => files.close().then(() => undefined) }),
       actions.register({ id: "file.import-sesx", run: () => files.importSesx().then(() => undefined) }),
-      actions.register({ id: "file.close-all", run: () => files.close().then(() => undefined) }),
+      actions.register({ id: "file.close-all", run: () => files.closeAll().then(() => undefined) }),
       actions.register({
         id: "file.recent.none",
         run: () => {},
@@ -4024,6 +4334,15 @@
     if (pluginsUrl) offs.push(actions.register({ id: "help.plugins", run: () => openLink(pluginsUrl) }));
     const supportUrl = LINKS.support;
     if (supportUrl) offs.push(actions.register({ id: "help.support", run: () => openLink(supportUrl) }));
+    // Shows the 3D Space panel (without closing it when already open).
+    offs.push(
+      actions.register({
+        id: "multitrack.space",
+        run: () => {
+          if (!openPanels.has("space")) dock.toggle("space");
+        },
+      }),
+    );
     for (const p of PANELS) {
       offs.push(
         actions.register({
@@ -4041,6 +4360,15 @@
   $effect(() => {
     pluginSync.start();
     const stopCatalog = pluginsVersion.subscribe(() => {
+      void pluginsRegistry()
+        .then((r) => {
+          menuPlugins = r.plugins
+            .filter((p) => !p.instrument)
+            .map((p) => ({ effect: p.effect, name: p.name, vendor: p.vendor }))
+            .sort((a, b) => a.vendor.localeCompare(b.vendor) || a.name.localeCompare(b.name));
+          actions.invalidate();
+        })
+        .catch(() => {});
       void effectsCatalog()
         .then((c) => {
           fxCatalog = c;
@@ -4095,6 +4423,7 @@
         restoreSettings(prefs.raw(KEY_EDITOR));
         settings.set(sanitizeSettings(prefs.raw(KEY_SETTINGS)));
         applyAppSettings(settings.current, false);
+        offs.push(startMetronome());
         // Settings changed outside the Settings window (a view's right-click colors) are kept too.
         let lastSettings = JSON.stringify(settings.current);
         offs.push(
@@ -4228,6 +4557,7 @@
     onNotice={showNotice}
     onError={showError}
     onClose={() => (pluginManagerOpen = false)}
+    beforeRestart={() => pluginSync.captureAll()}
   />
 {/if}
 
@@ -4376,6 +4706,7 @@
     scopes={exportReq.scopes}
     source={exportReq.source}
     chapterCount={session.current?.markers.filter((m) => m.kind === "chapter").length ?? 0}
+    spaceLayout={session.current?.space?.layout ?? null}
     onBrowse={(from) => exportPickFolder(from || null, "Export To")}
     onDone={(v) => void finishExportDialog(v)}
   />

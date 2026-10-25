@@ -37,7 +37,7 @@ fn print_keys() -> &'static [&'static str] {
 }
 
 /// The learned print's settings, hidden from the controls.
-fn print_settings() -> Vec<super::ParamInfo> {
+pub(crate) fn print_settings() -> Vec<super::ParamInfo> {
     let mut params = vec![num("printlen", "Learned", "s", 0.0, 3600.0, 0.0, 0.01).hidden()];
     params.extend(
         print_keys()
@@ -113,7 +113,7 @@ impl Mask for Learner {
     }
 }
 
-fn size(rate: u32) -> usize {
+pub(crate) fn size(rate: u32) -> usize {
     Stft::<Learner>::size_for(40.0, rate)
 }
 
@@ -201,7 +201,7 @@ impl Mask for PrintMask {
 
 /// The learned print spread over the bins of an `n`-point frame, scaled
 /// like the frame power, and whether nothing was learned.
-fn print_bins(p: &Params, rate: u32, n: usize) -> (Vec<f32>, bool) {
+pub(crate) fn print_bins(p: &Params, rate: u32, n: usize) -> (Vec<f32>, bool) {
     let bins = n / 2 + 1;
     let levels: Vec<f64> = print_keys().iter().map(|k| p.get(k)).collect();
     let empty = p.get("printlen") <= 0.0 || levels.iter().all(|v| *v <= SILENT_DB);
@@ -420,6 +420,7 @@ mod tests {
             preset: None,
             sidechain: None,
             plugin_state: None,
+            data: None,
             position: None,
         };
         for (k, v) in print_params(&print, 1.0) {
@@ -476,6 +477,7 @@ mod tests {
             preset: None,
             sidechain: None,
             plugin_state: None,
+            data: None,
             position: None,
         };
         for (k, v) in print_params(&print, 0.5) {
@@ -523,6 +525,7 @@ mod tests {
             preset: None,
             sidechain: None,
             plugin_state: None,
+            data: None,
             position: None,
         };
         let mut fx = build(&slot, 48_000).unwrap();

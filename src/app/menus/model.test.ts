@@ -68,6 +68,7 @@ describe("menu model", () => {
       "edit.keyboard-shortcuts",
       "edit.settings",
       "multitrack.speaker-balance",
+      "multitrack.space",
       "multitrack.profile.close-mic",
       "multitrack.profile.standard-mic",
       "multitrack.profile.remote-guest",
@@ -117,6 +118,11 @@ describe("menu model", () => {
       "view.time.samples",
       "clip.reveal",
       "file.close-unused",
+      "file.collect-media",
+      "view.time.seconds",
+      "view.time.bars",
+      "wave.channel-left",
+      "wave.channel-right",
       "edit.select-track-clips",
       "file.new-session",
       "file.open",
@@ -281,6 +287,7 @@ describe("menu model", () => {
           built.has(it.id) ||
           it.id.startsWith("window.panel.") ||
           it.id.startsWith("file.recent.") ||
+          it.id.startsWith("fx.plugins.") ||
           it.id.startsWith("window.workspace.")
         )
           continue;
