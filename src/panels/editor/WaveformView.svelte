@@ -23,6 +23,7 @@
   import { onDestroy } from "svelte";
   import { waveZoom, type WaveFile } from "../../stores/wave";
   import { BOTH, toggleChannel, waveChannels } from "./wave-channels";
+  import { laneWidths } from "../time-info/time-info";
   import { levelAt, pointsOf } from "./envelope";
   import { fit, formatIn, peakRange, pickLevel, rulerTicks, sampleAt, SAMPLE_SPP, xOf, zoomAround, type Viewport } from "./timeline";
   import { mediaFrames } from "../../app/core";
@@ -44,6 +45,10 @@
 
   const RULER_H = 22;
   const SCALE_W = 46;
+  $effect(() => {
+    const w = width;
+    laneWidths.update((l) => (l.waveform === w ? l : { ...l, waveform: w }));
+  });
   // Each file opens with both channels on.
   let channelFile: string | null = null;
   $effect(() => {
