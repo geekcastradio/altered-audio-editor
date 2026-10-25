@@ -1289,6 +1289,17 @@
     return t;
   }
 
+  /**
+   * A press on a bus or master lane, or below the last track: the same
+   * drag as on empty track space, so a selection can start anywhere (a
+   * box with the Move tool, a time range otherwise) and sweep over tracks.
+   */
+  function startSelectFromLane(e: PointerEvent) {
+    if (e.button !== 0) return;
+    if (ed.tool === "move") startBoxSelect(e);
+    else startRange(e);
+  }
+
   /** Drag on empty lane space selects a time range; a plain click moves the playhead and clears it. */
   function startRange(e: PointerEvent, leftEdge?: number) {
     if (!doc || !lanesEl) return;
@@ -2690,6 +2701,7 @@
               class="lane bus-lane"
               class:selected={ed.selectedTrack === b.id}
               style:height="{busHeight(b)}px"
+              onpointerdown={startSelectFromLane}
               onclick={() => editor.selectTrack(b.id)}
               oncontextmenu={(e) => {
                 e.preventDefault();
@@ -2702,7 +2714,7 @@
             {/if}
           {/each}
           <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-          <div class="lane bus-lane master-lane" class:selected={ed.selectedTrack === MASTER_ID} style:height="72px" onclick={() => editor.selectTrack(MASTER_ID)}>
+          <div class="lane bus-lane master-lane" class:selected={ed.selectedTrack === MASTER_ID} style:height="72px" onpointerdown={startSelectFromLane} onclick={() => editor.selectTrack(MASTER_ID)}>
             <span>Master: the whole mix, after every track and bus. Its fader and Voice Chain apply last.</span>
           </div>
           {#each shownMarkers as m (m.id)}
@@ -2725,11 +2737,7 @@
             <div
               class="below"
               title="Drop files here to add a new track. Drag here to select a time range."
-              onpointerdown={(e) => {
-                if (e.button !== 0) return;
-                if (ed.tool === "move") startBoxSelect(e);
-                else startRange(e);
-              }}
+              onpointerdown={startSelectFromLane}
             ></div>
           {/if}
         {/if}
@@ -2862,10 +2870,11 @@
     white-space: nowrap;
   }
 
+  /* A column: the strips above and below keep their height and only the
+     tracks stretch, however many strips (metronome, tempo) show. */
   .editor {
-    display: grid;
-    grid-template-rows: auto auto auto 1fr auto auto;
-    grid-template-columns: minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
     height: 100%;
     overflow: hidden;
     background: var(--surface-0);
@@ -3070,6 +3079,15 @@
     min-width: 0;
     cursor: text;
     border-bottom: 1px solid var(--border);
+  }
+
+  .editor > :global(*) {
+    flex: none;
+    min-width: 0;
+  }
+
+  .editor > .vwrap {
+    flex: 1 1 0;
   }
 
   .vwrap {

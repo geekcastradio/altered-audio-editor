@@ -1378,3 +1378,8 @@ Several requests compared behavior to another editor; per the guardrails they ar
 
 - **Why they flickered.** In sessions mixed on the render thread (every 3D Space session, and any with buses, sends or chains), track, bus and speaker meters come from a queue of mixed blocks matched to what the device has played. A status read that arrived before the next block was played got an empty reading, so the meters blinked toward silence between reads.
 - **Now.** A read with no newly played block gives the last reading again, and the Levels panel keeps its speaker rows if a reading arrives without them.
+
+## 2026-10-25: Editor layout and selections from bus lanes
+
+- **Gap under the Metronome track.** The Editor laid its strips out on a grid with a fixed number of rows, so when the Metronome track (and the Tempo strip) showed, the stretching row fell on the Metronome track instead of the tracks, leaving an empty band. The Editor is now a column where only the tracks stretch.
+- **Selections from bus and master lanes.** A drag that starts on a bus lane, the master lane or the space below the last track now makes the same selection as one on empty track space (a box with the Move tool, a time range with the others), so a selection can sweep over every track when zoomed in. A click there still picks the bus or master.

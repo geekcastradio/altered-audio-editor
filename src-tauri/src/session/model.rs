@@ -993,6 +993,53 @@ pub enum EnvelopeTarget {
         slot_id: Id,
         param: String,
     },
+    /// 3D Space sessions: one setting of the owner's spot in the room.
+    Space {
+        param: SpaceParam,
+    },
+}
+
+/// A setting of a spot in the room that automation can move. Values use
+/// the spot's own units (see `SpacePos`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SpaceParam {
+    X,
+    Y,
+    Z,
+    Size,
+    Width,
+    Rotation,
+    Lfe,
+    Spread,
+    Spatialize,
+}
+
+impl SpaceParam {
+    /// The range its values take.
+    pub fn range(self) -> (f64, f64) {
+        match self {
+            SpaceParam::X | SpaceParam::Y | SpaceParam::Z => (-1.0, 1.0),
+            SpaceParam::Rotation => (-180.0, 180.0),
+            _ => (0.0, 1.0),
+        }
+    }
+
+    /// `pos` with this setting at `v`.
+    pub fn set(self, pos: &mut SpacePos, v: f64) {
+        let slot = match self {
+            SpaceParam::X => &mut pos.x,
+            SpaceParam::Y => &mut pos.y,
+            SpaceParam::Z => &mut pos.z,
+            SpaceParam::Size => &mut pos.size,
+            SpaceParam::Width => &mut pos.width,
+            SpaceParam::Rotation => &mut pos.rotation,
+            SpaceParam::Lfe => &mut pos.lfe,
+            SpaceParam::Spread => &mut pos.spread,
+            SpaceParam::Spatialize => &mut pos.spatialize,
+        };
+        *slot = v;
+    }
 }
 
 /// How the value moves from one point to the next.

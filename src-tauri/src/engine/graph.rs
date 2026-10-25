@@ -66,6 +66,10 @@ pub struct Place {
     pub lfe: Option<(usize, f32)>,
     /// Spread and Spatialize, when either is on.
     pub field: Option<crate::dsp::diffuse::Field>,
+    /// What it was worked out from, so automation can move one setting.
+    pub layout: crate::session::model::SpaceLayout,
+    pub pos: crate::session::model::SpacePos,
+    pub stereo: bool,
 }
 
 impl Place {
@@ -75,7 +79,17 @@ impl Place {
         stereo: bool,
     ) -> Option<Arc<Place>> {
         let layout = s.space?.layout;
-        let pos = pos.copied().unwrap_or_default().tidy();
+        let pos = pos.copied().unwrap_or_default();
+        Some(Arc::new(Place::at(layout, &pos, stereo)))
+    }
+
+    /// The gains for a spot in `layout`.
+    pub fn at(
+        layout: crate::session::model::SpaceLayout,
+        pos: &crate::session::model::SpacePos,
+        stereo: bool,
+    ) -> Place {
+        let pos = pos.tidy();
         let [l, r] = crate::dsp::space::source_gains(layout, &pos, stereo);
         let lfe = crate::dsp::space::lfe_channel(layout)
             .filter(|_| pos.lfe > 0.0)
@@ -91,12 +105,15 @@ impl Place {
         let k = field.direct;
         let scale = |g: Vec<f32>| g.into_iter().map(|v| v * k).collect::<Vec<f32>>();
         let fold = crate::dsp::space::fold_gains(&pos, stereo).map(|s| s.map(|v| v * k));
-        Some(Arc::new(Place {
+        Place {
             bed: [scale(l), scale(r)],
             fold,
             lfe,
             field: field.on.then_some(field),
-        }))
+            layout,
+            pos,
+            stereo,
+        }
     }
 }
 
@@ -857,6 +874,11 @@ impl Graph {
                 // After the chain (and its keys), before the fader, pan and sends.
                 fold_mono(&mut st.pre);
             }
+            // 3D Space automation: the spot where this block is (mid-block).
+            let moved = match (st.auto.as_ref(), to.place.as_ref()) {
+                (Some(a), Some(p)) => a.place_at(p, self.pos + frames as u64 / 2),
+                _ => None,
+            };
             for (r, route) in st.routes.iter_mut().enumerate() {
                 scratch.clear();
                 scratch.extend_from_slice(&st.pre);
@@ -883,7 +905,7 @@ impl Graph {
                 route.delay.run(&mut scratch);
                 // 3D Space: placed into the room, and folded to stereo to listen.
                 if r == 0 && matches!(route.dest, Dest::Master) {
-                    if let Some(p) = to.place.as_ref() {
+                    if let Some(p) = moved.as_ref().or(to.place.as_ref()) {
                         let f = p.fold;
                         for (o, v) in self
                             .master
