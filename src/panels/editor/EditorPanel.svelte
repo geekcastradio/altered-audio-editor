@@ -460,7 +460,7 @@
       onMove: (paths, at) => showDropGhost(paths, at),
       onDrop: (paths, at) => {
         const { trackId, sample } = hitLanes(at.x, at.y);
-        onPlaceFiles(paths, trackId, sample);
+        onPlaceFiles(paths, trackId, dropSample(sample));
       },
     });
   });
@@ -500,15 +500,32 @@
     const height = row ? row.offsetHeight - TRACK_GAP : 60;
     void Promise.all(paths.map(probeLength)).then((infos) => {
       if (seq !== ghostSeq) return;
-      let pos = Math.max(0, sample);
+      const start = dropSample(sample);
+      let pos = start;
       const items = [];
+      const side = settings.current.dropMany === "tracks" && infos.filter(Boolean).length > 1;
       for (const i of infos) {
         if (!i) continue;
         items.push({ name: i.name, x: xOf(pos, view), w: Math.max(4, i.len / view.spp) });
+        // Side by side, the ghost shows the first file; the rest start at the same time below.
+        if (side) break;
         pos += i.len;
       }
+      const more = side ? infos.filter(Boolean).length - 1 : 0;
+      if (more > 0) items[0]!.name = `${items[0]!.name} (+${more} on the tracks below)`;
       dropGhost = items.length ? { top, height, newTrack: !row, items } : null;
     });
+  }
+
+  /**
+   * Where dropped files start: with snapping on, the usual targets, and the
+   * session start from further away (a drop near it is meant for it).
+   */
+  function dropSample(sample: number): number {
+    const p = Math.max(0, Math.round(sample));
+    if (!doc || !ed.snap.on) return p;
+    if (p <= SNAP_PX * 3 * view.spp) return 0;
+    return nearest(p, targetsFor(doc, new Set()), SNAP_PX * view.spp) ?? p;
   }
 
   function hitLanes(x: number, y: number): { trackId: string | null; sample: number } {
@@ -779,8 +796,8 @@
 
   /**
    * The mouse wheel. Over the ruler and the overview it zooms the
-   * timeline; over the lanes and headers it scrolls the tracks up and
-   * down. Alt + wheel makes the track under the pointer taller or shorter,
+   * timeline; over the lanes it scrolls the tracks up and down; over the
+   * headers it zooms the tracks (as the track scrollbar does). Alt + wheel makes the track under the pointer taller or shorter,
    * Alt + Shift + wheel scales the waveforms, Ctrl + wheel zooms the
    * timeline, Shift + wheel (or a sideways wheel) scrolls along it.
    */
@@ -798,10 +815,14 @@
       setView({ spp: z.spp, scroll: z.scroll });
     };
     if (e.clientX < left && !overRuler) {
-      // Over the track headers: the wheel scrolls the tracks (Alt+wheel resizes them, below).
+      // Over the track headers the wheel zooms the tracks, as over the track
+      // scrollbar: every open track taller or shorter. Alt+wheel resizes only
+      // the one under the pointer. (Over a header's effect slots it scrolls.)
       if (e.altKey) {
         e.preventDefault();
         wheelResizeTracks(e);
+      } else if (!e.shiftKey && Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
+        onVbarWheel(e);
       }
       return;
     } else if (e.altKey && e.shiftKey) {

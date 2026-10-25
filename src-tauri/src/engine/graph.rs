@@ -375,8 +375,32 @@ pub struct Graph {
     pos: u64,
     /// 3D Space sessions: each speaker's peak since the last read.
     bed_peak: Vec<f32>,
-    /// The low-frequency channel's index and its low pass.
-    lfe_lp: Option<(usize, [crate::dsp::biquad::Biquad; 2])>,
+    /// The low-frequency channel's index and its filters: four low-pass
+    /// sections (120 Hz, 48 dB per octave) then two high-pass sections
+    /// (20 Hz, 24 dB per octave), so it carries only the band it is for.
+    lfe_lp: Option<(usize, [crate::dsp::biquad::Biquad; LFE_SECTIONS])>,
+}
+
+/// Filter sections on the low-frequency channel.
+const LFE_SECTIONS: usize = 6;
+
+/// The low-frequency channel's filters at `rate`: a 120 Hz low pass, 8th
+/// order Butterworth, then a 20 Hz high pass, 4th order, which cuts the
+/// rumble below hearing that only wastes the subwoofer's headroom.
+fn lfe_filters(rate: u32) -> [crate::dsp::biquad::Biquad; LFE_SECTIONS] {
+    use crate::dsp::biquad::{butterworth_qs, Biquad, Coeffs, Shape};
+    let lq = butterworth_qs(4);
+    let hq = butterworth_qs(2);
+    let lp = |q: f64| Biquad::new(Coeffs::new(Shape::LowPass, rate, 120.0, q, 0.0));
+    let hp = |q: f64| Biquad::new(Coeffs::new(Shape::HighPass, rate, 20.0, q, 0.0));
+    [
+        lp(lq[0]),
+        lp(lq[1]),
+        lp(lq[2]),
+        lp(lq[3]),
+        hp(hq[0]),
+        hp(hq[1]),
+    ]
 }
 
 impl Graph {
@@ -638,12 +662,7 @@ impl Graph {
             lfe_lp: s
                 .space
                 .and_then(|sp| crate::dsp::space::lfe_channel(sp.layout))
-                .map(|c| {
-                    use crate::dsp::biquad::{Biquad, Coeffs, Shape};
-                    let q = crate::dsp::biquad::butterworth_qs(2);
-                    let lp = |q: f64| Biquad::new(Coeffs::new(Shape::LowPass, rate, 120.0, q, 0.0));
-                    (c, [lp(q[0]), lp(q[1])])
-                }),
+                .map(|c| (c, lfe_filters(rate))),
         }
     }
 
@@ -887,11 +906,10 @@ impl Graph {
         }
         if nb > 0 {
             // The low-frequency channel carries only lows: 120 Hz, steep.
-            if let Some((c, lp)) = self.lfe_lp.as_mut() {
+            if let Some((c, filters)) = self.lfe_lp.as_mut() {
                 let c = *c;
                 for f in self.bed.chunks_exact_mut(nb) {
-                    let x = lp[0].run(f[c]);
-                    f[c] = lp[1].run(x);
+                    f[c] = filters.iter_mut().fold(f[c], |x, b| b.run(x));
                 }
             }
             if self.bed_peak.len() != nb {
@@ -1160,6 +1178,32 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     const RATE: u32 = 48_000;
+
+    /// Steady-state gain of the low-frequency channel's filters for a tone.
+    fn lfe_gain(freq: f64) -> f64 {
+        let mut f = lfe_filters(RATE);
+        let n = RATE as usize;
+        let mut peak = 0.0f64;
+        for i in 0..n {
+            let x = (2.0 * std::f64::consts::PI * freq * i as f64 / RATE as f64).sin() as f32;
+            let y = f.iter_mut().fold(x, |v, b| b.run(v));
+            if i > n / 2 {
+                peak = peak.max(f64::from(y.abs()));
+            }
+        }
+        peak
+    }
+
+    #[test]
+    fn lfe_keeps_only_the_low_band() {
+        assert!(lfe_gain(60.0) > 0.9, "60 Hz passes");
+        assert!(lfe_gain(500.0) < 0.001, "500 Hz is cut by about 60 dB");
+        assert!(
+            lfe_gain(240.0) < 0.01,
+            "an octave above is down about 48 dB"
+        );
+        assert!(lfe_gain(8.0) < 0.05, "rumble below hearing is cut");
+    }
 
     /// One second, mono: `f(i)` for each frame.
     fn wav(dir: &Path, name: &str, f: impl Fn(usize) -> f32) -> PathBuf {

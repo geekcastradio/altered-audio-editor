@@ -36,6 +36,8 @@ export interface AppSettings {
   wheelZooms: boolean;
   /** Shape a new fade starts with. */
   fadeShape: FadeShape;
+  /** Several files dropped on the Editor: one after another on one track, or each on its own track from the same time. */
+  dropMany: "sequence" | "tracks";
   /** What the space bar does to a playing session. */
   colors: AppColors;
   /** System name of the output; null is the system default. */
@@ -142,6 +144,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   wheelAnchor: "mouse",
   wheelZooms: true,
   fadeShape: "cosine",
+  dropMany: "sequence",
   colors: { ...NO_COLORS },
   output: null,
   waveInput: null,
@@ -193,6 +196,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
     zoomStep: Math.round(num(o.zoomStep, 5, 100, d.zoomStep)),
     wheelAnchor: o.wheelAnchor === "playhead" ? "playhead" : "mouse",
     wheelZooms: bool(o.wheelZooms, d.wheelZooms),
+    dropMany: o.dropMany === "tracks" ? "tracks" : "sequence",
     fadeShape:
       o.fadeShape === "linear" || o.fadeShape === "logarithmic"
         ? o.fadeShape

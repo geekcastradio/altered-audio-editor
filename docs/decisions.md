@@ -1353,3 +1353,13 @@ Several requests compared behavior to another editor; per the guardrails they ar
 - **Mode.** The header's mode list now works: Read plays every lane that is on; Off turns every lane off (the fader, pan and effects hold still). Write, Latch and Touch (recording moves while playing) stay listed and disabled until built.
 - **Playing.** Unchanged from the engine work: a volume lane takes the fader's place, a pan lane the pan's, effect lanes move their control every 256 frames. Editing a lane while playing carries on from the same spot.
 - **Later.** Lanes for bus tracks (the engine plays bus envelopes already; buses need the show setting), curve shapes between points, recording moves (Write, Latch, Touch), and the fader and pan dials following the lanes while playing.
+
+## 2026-10-25: Fixes and small additions after the 3D Space test
+
+- **Delete Track (Ctrl+Alt+Backspace).** The Files list, when a session row was picked, took Backspace with any modifiers and closed the session instead; it now takes only plain Delete and Backspace. Delete Track also removes a picked bus, and the track of the picked clips when no track is picked.
+- **Close Session from the right-click menu** did nothing: the menu closed (clearing which session it was for) before its item ran. The item now keeps the session's id.
+- **Dropping files near the start.** With snapping on, files dropped close to the session start land at 0 (within three times the usual snap distance), and elsewhere they snap to the usual targets.
+- **Several files at once.** Edit > Settings > General: several files dropped on the Editor go one after another on one track (as before), or side by side, each on its own track from the same time: the first on the track under the pointer, the rest on the audio tracks below it, then on new tracks named after the files.
+- **The wheel over track headers** now makes every track taller or shorter, as over the track scrollbar (Alt+wheel: only the track under the pointer). Over a header's effect slots it still scrolls the tracks.
+- **Effects > Plug-ins** listed nothing (a placeholder from before plug-ins were hosted). It now lists every scanned effect plug-in, by maker then name, and adds it to the selected track or clip like the built-in effects.
+- **Low-frequency channel.** The 120 Hz low pass is now 8th order (48 dB per octave, was 24) and a 20 Hz high pass (24 dB per octave) cuts rumble below hearing, so the LFE send carries only the band the subwoofer is for.
