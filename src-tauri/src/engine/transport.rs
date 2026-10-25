@@ -1115,8 +1115,8 @@ mod tests {
         assert_eq!(m.buses[0], [0.1, 0.1]);
         assert_eq!(
             shared.played_meters(),
-            GraphMeters::default(),
-            "each reading is used once"
+            m,
+            "with nothing newly played, the last reading holds (no blink to silence)"
         );
     }
 
