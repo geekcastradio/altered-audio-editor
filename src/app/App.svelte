@@ -3498,6 +3498,16 @@
         checked: () => editor.current().timeFormat === "time",
       }),
       actions.register({
+        id: "view.time.seconds",
+        run: () => editor.setTimeFormat("seconds"),
+        checked: () => editor.current().timeFormat === "seconds",
+      }),
+      actions.register({
+        id: "view.time.bars",
+        run: () => editor.setTimeFormat("bars"),
+        checked: () => editor.current().timeFormat === "bars",
+      }),
+      actions.register({
         id: "view.time.samples",
         run: () => editor.setTimeFormat("samples"),
         checked: () => editor.current().timeFormat === "samples",

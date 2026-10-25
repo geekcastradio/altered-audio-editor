@@ -24,8 +24,9 @@
   import { waveZoom, type WaveFile } from "../../stores/wave";
   import { BOTH, toggleChannel, waveChannels } from "./wave-channels";
   import { laneWidths } from "../time-info/time-info";
+  import { timeDisplayItems } from "./time-menu";
   import { levelAt, pointsOf } from "./envelope";
-  import { fit, formatIn, peakRange, pickLevel, rulerTicks, sampleAt, SAMPLE_SPP, xOf, zoomAround, type Viewport } from "./timeline";
+  import { fit, formatIn, peakRange, pickLevel, rulerTicks, ticksFor, sampleAt, SAMPLE_SPP, xOf, zoomAround, type Viewport } from "./timeline";
   import { mediaFrames } from "../../app/core";
   import TransportBar from "./TransportBar.svelte";
   import SpectrumView from "./SpectrumView.svelte";
@@ -299,7 +300,7 @@
     // Time grid at the ruler's labeled ticks.
     g.strokeStyle = "rgba(255, 255, 255, 0.05)";
     g.lineWidth = 1;
-    for (const t of rulerTicks(view, w, rate)) {
+    for (const t of ticksFor(view, w, rate, ed.timeFormat)) {
       if (!t.label) continue;
       const x = Math.round(t.x) + 0.5;
       g.beginPath();
@@ -509,13 +510,13 @@
     g.strokeStyle = css("--border-strong");
     g.font = `10px ${css("--font-ui")}`;
     g.textBaseline = "top";
-    for (const t of rulerTicks(view, w, rate)) {
+    for (const t of ticksFor(view, w, rate, ed.timeFormat)) {
       const x = Math.round(t.x) + 0.5;
       g.beginPath();
       g.moveTo(x, t.label ? 8 : 15);
       g.lineTo(x, RULER_H);
       g.stroke();
-      if (t.label) g.fillText(ed.timeFormat === "time" ? t.label : formatIn(sampleAt(t.x, view), rate, ed.timeFormat), x + 3, 2);
+      if (t.label) g.fillText(ed.timeFormat === "time" || ed.timeFormat === "bars" ? t.label : formatIn(sampleAt(t.x, view), rate, ed.timeFormat), x + 3, 2);
     }
     if (selection) {
       const a = Math.max(0, xOf(selection.start, view));
@@ -765,7 +766,16 @@
 
   {#if doc && file}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <canvas class="ruler" bind:this={ruler} onpointerdown={onRulerPointer} onwheel={onWheel}></canvas>
+    <canvas
+      class="ruler"
+      bind:this={ruler}
+      onpointerdown={onRulerPointer}
+      onwheel={onWheel}
+      oncontextmenu={(e) => {
+        e.preventDefault();
+        menu = { x: e.clientX, y: e.clientY, items: timeDisplayItems() };
+      }}
+    ></canvas>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="area" bind:this={area} bind:clientHeight={height} onwheel={onWheel} oncontextmenu={onMenu}>
       <div class="measure" bind:clientWidth={width} style:right="{SCALE_W}px"></div>

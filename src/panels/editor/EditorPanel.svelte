@@ -31,6 +31,7 @@
   import type { EffectSlotDoc, Op } from "../../stores/session";
   import { pluginsVersion } from "../../stores/plugins";
   import { stretchTo } from "./stretch";
+  import { timeDisplayItems } from "./time-menu";
   import { dragGain, gainBox, gainText } from "./clip-gain";
   import { clipsAt, copyMoved, fadeClip, LockedError, MIN_CLIP, moveClips, nearest, previewTracks, snapTargets, splitClips, trimClip, withCrossfades,
     withLayers, withGroups } from "./clip-edit";
@@ -54,7 +55,7 @@
   import OverviewStrip from "./OverviewStrip.svelte";
   import { KIND_COLORS, markerAt, markerCss } from "../markers/markers";
   import { type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
-  import { defaultTrackColor, trackHeight, formatIn, maxSppFor, rulerTicks, sampleAt, xOf, zoomAround, type Viewport, TRACK_GAP } from "./timeline";
+  import { defaultTrackColor, trackHeight, formatIn, maxSppFor, rulerTicks, ticksFor, setDisplayTempo, sampleAt, xOf, zoomAround, type Viewport, TRACK_GAP } from "./timeline";
 
   interface Props {
     session: SessionStore;
@@ -397,6 +398,8 @@
   // yourself while it plays (overview bar, wheel, scrollbar) stops the
   // following until playback starts again or the playhead is moved, so you
   // can look at another part of the session while it plays.
+  // Bars and beats everywhere follow the session tempo.
+  $effect(() => setDisplayTempo(doc?.tempo));
   let followHeld = false;
   let wasPlaying = false;
   // Switching Follow Playhead on picks the following up again at once.
@@ -519,14 +522,14 @@
     g.strokeStyle = cs.getPropertyValue("--border-strong");
     g.font = `10px ${cs.getPropertyValue("--font-ui")}`;
     g.textBaseline = "top";
-    for (const t of rulerTicks(view, w, rate)) {
+    for (const t of ticksFor(view, w, rate, ed.timeFormat)) {
       const x = Math.round(t.x) + 0.5;
       g.beginPath();
       g.moveTo(x, t.label ? 8 : 15);
       g.lineTo(x, RULER_H);
       g.stroke();
       if (t.label) {
-        const text = ed.timeFormat === "time" ? t.label : formatIn(sampleAt(t.x, view), rate, ed.timeFormat);
+        const text = ed.timeFormat === "time" || ed.timeFormat === "bars" ? t.label : formatIn(sampleAt(t.x, view), rate, ed.timeFormat);
         g.fillText(text, x + 3, 2);
       }
     }
@@ -708,6 +711,8 @@
             },
           },
           { kind: "item", label: "Add Range Marker", disabled: !can("edit.marker.range"), run: () => run("edit.marker.range") },
+          { kind: "sep" },
+          ...timeDisplayItems(),
         ];
     menu = { x: e.clientX, y: e.clientY, items };
   }
@@ -1229,7 +1234,7 @@
   /** Snap targets for a drag, leaving out the dragged clips. */
   function targetsFor(d: SessionDoc, exclude: ReadonlySet<string>): number[] {
     const t = snapTargets(d, exclude, playhead, ed.snap);
-    if (ed.snap.ruler) for (const tick of rulerTicks(view, lanesWidth, rate)) t.push(sampleAt(tick.x, view));
+    if (ed.snap.ruler) for (const tick of ticksFor(view, lanesWidth, rate, ed.timeFormat)) t.push(sampleAt(tick.x, view));
     return t;
   }
 
