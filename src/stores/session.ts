@@ -279,8 +279,12 @@ export interface SpacePosDoc {
   rotation?: number;
   /** How much also feeds the low-frequency channel, 0 to 1. */
   lfe?: number;
+  /** How much is spread through the room as a diffuse field, 0 to 1. */
+  spread?: number;
+  /** Stereo sources: how much of the difference between the sides goes to the surrounds and heights, 0 to 1. */
+  spatialize?: number;
 }
-export const DEFAULT_SPACE_POS: SpacePosDoc = { x: 0, y: 1, z: 0, size: 0, width: 1, rotation: 0, lfe: 0 };
+export const DEFAULT_SPACE_POS: SpacePosDoc = { x: 0, y: 1, z: 0, size: 0, width: 1, rotation: 0, lfe: 0, spread: 0, spatialize: 0 };
 
 export { BPM_MAX, BPM_MIN, DEFAULT_TEMPO, type TempoChangeDoc, type TempoDoc } from "./tempo";
 

@@ -83,6 +83,8 @@ export interface AppSettings {
   phaseWheel: PhaseWheelPrefs;
   /** The metronome, kept between runs. */
   metronome: MetronomePrefs;
+  /** 3D Space: dots snap to speakers, the center lines and a grid; turns snap to 15 degrees. */
+  spaceSnap: boolean;
 }
 
 export type MetronomeSound = "tick" | "wood" | "beep" | "shaker";
@@ -169,6 +171,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   markerName: "Marker",
   timecodeFps: 30,
   phaseWheel: { size: 4096, fps: 60, a: "left", b: "right" },
+  spaceSnap: true,
   metronome: { on: false, muted: false, when: "always", levelDb: -6, sound: "tick", accent: true, subdivide: "none" },
 };
 
@@ -254,6 +257,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       : d.timecodeFps,
     phaseWheel: phasePrefs(o.phaseWheel),
     metronome: metronomePrefs(o.metronome),
+    spaceSnap: bool(o.spaceSnap, d.spaceSnap),
   };
 }
 

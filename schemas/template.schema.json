@@ -1295,6 +1295,16 @@
           "format": "double",
           "default": 0.0
         },
+        "spatialize": {
+          "description": "Stereo sources: how much of the difference between its sides is\nsent, delayed and decorrelated, to the surround and height\nspeakers, with what the sides share fed to the center, 0 to 1.",
+          "type": "number",
+          "format": "double"
+        },
+        "spread": {
+          "description": "How much of it is spread through the room as a diffuse field\n(decorrelated copies on every speaker in use), 0 (none) to 1 (all).",
+          "type": "number",
+          "format": "double"
+        },
         "width": {
           "description": "Stereo sources: how far left and right of the spot their two\nsides sit, 0 (together) to 1 (a full room width apart each way).",
           "type": "number",

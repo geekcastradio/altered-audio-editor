@@ -64,6 +64,8 @@ pub struct Place {
     pub fold: [[f32; 2]; 2],
     /// How much feeds the low-frequency channel (its index), from both sides.
     pub lfe: Option<(usize, f32)>,
+    /// Spread and Spatialize, when either is on.
+    pub field: Option<crate::dsp::diffuse::Field>,
 }
 
 impl Place {
@@ -78,10 +80,22 @@ impl Place {
         let lfe = crate::dsp::space::lfe_channel(layout)
             .filter(|_| pos.lfe > 0.0)
             .map(|c| (c, pos.lfe as f32 * 0.5));
+        let field = crate::dsp::diffuse::field(
+            layout,
+            pos.z as f32,
+            pos.spread as f32,
+            pos.spatialize as f32,
+            stereo,
+        );
+        // The placed sound gives up what Spread and Spatialize take.
+        let k = field.direct;
+        let scale = |g: Vec<f32>| g.into_iter().map(|v| v * k).collect::<Vec<f32>>();
+        let fold = crate::dsp::space::fold_gains(&pos, stereo).map(|s| s.map(|v| v * k));
         Some(Arc::new(Place {
-            bed: [l, r],
-            fold: crate::dsp::space::fold_gains(&pos, stereo),
+            bed: [scale(l), scale(r)],
+            fold,
             lfe,
+            field: field.on.then_some(field),
         }))
     }
 }
@@ -290,6 +304,8 @@ struct Strip {
     peak: [f32; 2],
     /// Its volume, pan and effect settings moving over the timeline.
     auto: Option<super::automation::StripAuto>,
+    /// 3D Space sessions: the decorrelators for Spread and Spatialize.
+    diffuse: Option<Box<[crate::dsp::diffuse::Decorrelator; 2]>>,
 }
 
 /// Peaks since the last read, 0 to 1 (and above on overs).
@@ -458,6 +474,15 @@ impl Graph {
         } else {
             Vec::new()
         };
+        if s.space.is_some() {
+            // Made here, so playing never allocates them.
+            for (k, st) in tracks.iter_mut().chain(buses.iter_mut()).enumerate() {
+                st.diffuse = Some(Box::new([
+                    crate::dsp::diffuse::Decorrelator::new(rate, k % 2),
+                    crate::dsp::diffuse::Decorrelator::new(rate, 1 - k % 2),
+                ]));
+            }
+        }
         let mut master = Strip {
             id: Id::nil(),
             fx: if routed { fx(&s.master.effects) } else { None },
@@ -882,6 +907,39 @@ impl Graph {
                                     self.bed.chunks_exact_mut(nb).zip(scratch.chunks_exact(2))
                                 {
                                     o[c] += (v[0] + v[1]) * g;
+                                }
+                            }
+                        }
+                        // Spread and Spatialize: decorrelated copies to the speakers,
+                        // and folded to stereo for listening.
+                        if let (Some(fl), Some(dc)) = (p.field.as_ref(), st.diffuse.as_deref_mut())
+                        {
+                            let [da, ds] = dc;
+                            let bed_n = if make_bed { nb } else { 0 };
+                            for (k, v) in scratch.chunks_exact(2).enumerate() {
+                                let mid = 0.5 * (v[0] + v[1]);
+                                let side = 0.5 * (v[0] - v[1]);
+                                let a = if fl.spreads { da.run(mid) } else { [0.0; 4] };
+                                let b = if fl.sides { ds.run(side) } else { [0.0; 4] };
+                                let (mut ol, mut or) = (0.0f32, 0.0f32);
+                                for c in 0..fl.spread.len() {
+                                    let tap = c % crate::dsp::diffuse::TAPS;
+                                    let mut e = a[tap] * fl.spread[c] + b[tap] * fl.side[c];
+                                    if let Some((_, g)) = fl.center.filter(|x| x.0 == c) {
+                                        e += mid * g;
+                                    }
+                                    if e == 0.0 {
+                                        continue;
+                                    }
+                                    if c < bed_n {
+                                        self.bed[k * nb + c] += e;
+                                    }
+                                    ol += e * fl.fold[c][0];
+                                    or += e * fl.fold[c][1];
+                                }
+                                if let Some(o) = self.master.input.get_mut(2 * k..2 * k + 2) {
+                                    o[0] += ol;
+                                    o[1] += or;
                                 }
                             }
                         }
