@@ -393,34 +393,32 @@
   });
 
   // Follow Playhead: during playback, page the lanes when the playhead
-  // nears the right edge or falls off either side. Moving the view away
-  // from the playhead yourself (overview bar, wheel, scrollbar) pauses
-  // that until the playhead is back in view or playback starts again, so
-  // you can look at another part of the session while it plays.
+  // nears the right edge or falls off either side. Scrolling or zooming
+  // yourself while it plays (overview bar, wheel, scrollbar) stops the
+  // following until playback starts again or the playhead is moved, so you
+  // can look at another part of the session while it plays.
   let followHeld = false;
   let wasPlaying = false;
+  // Switching Follow Playhead on picks the following up again at once.
+  $effect(() => {
+    if (ed.followPlayhead) followHeld = false;
+  });
   $effect(() => {
     const playingNow = !!tp?.playing;
     if (playingNow && !wasPlaying) followHeld = false;
     wasPlaying = playingNow;
     if (!playingNow || !ed.followPlayhead || lanesWidth <= 0) return;
     const x = xOf(playhead, view);
-    const inView = x >= 0 && x <= lanesWidth;
-    if (followHeld) {
-      if (!inView) return;
-      // Back in view: follow again from here.
-      followHeld = false;
-    }
+    if (followHeld) return;
     if (x > lanesWidth * 0.92 || x < 0) setView({ scroll: playhead - lanesWidth * 0.08 * view.spp }, true);
   });
 
   /** Changes the view. `auto` is the follow's own paging; anything else is the user's. */
   function setView(v: Partial<{ spp: number; scroll: number; playhead: number }>, auto = false) {
     if (!doc) return;
-    if (!auto && tp?.playing && v.playhead === undefined && (v.scroll !== undefined || v.spp !== undefined)) {
-      const spp = v.spp ?? doc.view.samples_per_pixel;
-      const x = (playhead - (v.scroll ?? doc.view.scroll)) / spp;
-      followHeld = x < 0 || x > lanesWidth;
+    if (!auto && tp?.playing) {
+      if (v.playhead !== undefined) followHeld = false;
+      else if ((v.scroll !== undefined && v.scroll !== doc.view.scroll) || (v.spp !== undefined && v.spp !== doc.view.samples_per_pixel)) followHeld = true;
     }
     session.setView({
       ...doc.view,

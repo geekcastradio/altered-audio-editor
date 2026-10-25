@@ -122,9 +122,10 @@
 
   function setView(v: Partial<{ spp: number; scroll: number; playhead: number; selection: { start: number; end: number } | null }>, auto = false) {
     if (!doc) return;
-    if (!auto && tp?.playing && v.playhead === undefined && (v.scroll !== undefined || v.spp !== undefined)) {
-      const x = (tp.position - (v.scroll ?? doc.view.scroll)) / (v.spp ?? doc.view.samples_per_pixel);
-      followHeld = x < 0 || x > width;
+    // Scrolling or zooming by hand while playing stops the following until playback starts again or the playhead is moved.
+    if (!auto && tp?.playing) {
+      if (v.playhead !== undefined) followHeld = false;
+      else if ((v.scroll !== undefined && v.scroll !== doc.view.scroll) || (v.spp !== undefined && v.spp !== doc.view.samples_per_pixel)) followHeld = true;
     }
     const maxScroll = Math.max(0, total - width * (v.spp ?? view.spp) * 0.5);
     wave.setView({
@@ -154,9 +155,9 @@
     setView({ spp: f.spp, scroll: 0 });
   });
 
-  // Keep the playhead in view while playing, unless the view was moved
-  // away from it by hand: then wait until it is back in view (or playback
-  // starts again).
+  // Keep the playhead in view while playing, unless the view was scrolled
+  // or zoomed by hand: then leave it be until playback starts again or the
+  // playhead is moved.
   let followHeld = false;
   let wasPlaying = false;
   $effect(() => {
@@ -165,10 +166,7 @@
     wasPlaying = playingNow;
     if (!playingNow || !tp || width <= 0) return;
     const x = xOf(tp.position, view);
-    if (followHeld) {
-      if (x < 0 || x > width) return;
-      followHeld = false;
-    }
+    if (followHeld) return;
     if (x > width - 20 || x < 0) setView({ scroll: tp.position - 20 * view.spp }, true);
   });
 
