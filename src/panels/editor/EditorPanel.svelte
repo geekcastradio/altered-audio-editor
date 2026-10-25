@@ -31,6 +31,7 @@
   import type { EffectSlotDoc, Op } from "../../stores/session";
   import { pluginsVersion } from "../../stores/plugins";
   import { stretchTo } from "./stretch";
+  import { dragGain, gainBox, gainText } from "./clip-gain";
   import { clipsAt, copyMoved, fadeClip, LockedError, MIN_CLIP, moveClips, nearest, previewTracks, snapTargets, splitClips, trimClip, withCrossfades,
     withLayers, withGroups } from "./clip-edit";
   import { shownTracks as listedTracks } from "./visibility";
@@ -849,7 +850,7 @@
   const EDGE_PX = 6;
   const TITLE_H = 15;
   const SNAP_PX = 8;
-  type Gesture = "move" | "trim-left" | "trim-right" | "stretch-left" | "stretch-right" | "fade-in" | "fade-out" | "env-line" | "env-point";
+  type Gesture = "move" | "trim-left" | "trim-right" | "stretch-left" | "stretch-right" | "fade-in" | "fade-out" | "env-line" | "env-point" | "gain";
   /** Stretch handles: triangles this many pixels wide in a clip's top corners (see LaneCanvas). */
   const STRETCH_PX = 11;
   let preview = $state<ClipChange[]>([]);
@@ -900,6 +901,7 @@
     "fade-out": "ew-resize",
     "env-line": "crosshair",
     "env-point": "move",
+    gain: "ns-resize",
   };
 
   /** The y range the volume envelope uses inside a lane of `height` pixels. Matches LaneCanvas. */
@@ -916,6 +918,9 @@
       if (x - x0 <= STRETCH_PX) return { kind: "stretch-left", clip };
       if (x1 - x <= STRETCH_PX) return { kind: "stretch-right", clip };
     }
+    // The level handle in the bottom-left corner (see clip-gain.ts).
+    const gb = gainBox(x0, x1, trackHeight(track) - TRACK_GAP - 2, TITLE_H + 1);
+    if (gb && !clip.locked && x >= gb.x - 2 && x <= gb.x + gb.w + 2 && y >= gb.y - 2 && y <= gb.y + gb.h + 2) return { kind: "gain", clip };
     // Fade handles sit just under the title bar (see LaneCanvas).
     if (y > TITLE_H && y <= TITLE_H + 21 && w > 30) {
       const hit = (hx: number) => Math.abs(x - Math.min(Math.max(hx, x0 + 8), x1 - 8)) <= 8;
@@ -1341,6 +1346,13 @@
       lastEv = ev;
       if (!moved && Math.abs(ev.clientX - startX) < 3 && Math.abs(ev.clientY - startY) < 3) return;
       moved = true;
+      if (kind === "gain") {
+        const db = dragGain(clip.gain_db, ev.clientX - startX, ev.clientY - startY, ev.shiftKey);
+        changes = [{ id: clip.id, gain_db: db }];
+        preview = changes;
+        envTip = { x: ev.clientX, y: ev.clientY, text: db === 0 ? "0.0 dB" : gainText(db) };
+        return;
+      }
       // The timeline may have scrolled under the drag (see the timer below), so add what it moved.
       const dx = (ev.clientX - startX) * v.spp + (view.scroll - v.scroll);
       const tol = ev.shiftKey || !ed.snap.on ? 0 : SNAP_PX * v.spp;
@@ -1405,6 +1417,7 @@
       window.removeEventListener("pointerup", up, true);
       preview = [];
       stretchHint = null;
+      if (kind === "gain") envTip = null;
       if (!moved || changes.length === 0) return;
       if (kind === "move" && lastEv?.altKey) {
         // Alt+drag: copies where they were dropped; the originals stay.
@@ -1415,7 +1428,9 @@
           .catch(onError);
         return;
       }
-      const label = stretching
+      const label = kind === "gain"
+        ? "Clip Level"
+        : stretching
         ? "Stretch Clip"
         : kind === "move"
           ? ids.length > 1

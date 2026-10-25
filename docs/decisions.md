@@ -1267,3 +1267,9 @@ Several requests compared behavior to another editor; per the guardrails they ar
 
 - **Effect windows.** While an effect's window is open, the Voice Chain panel stays on that effect's chain, so clicking another track or clip in the editor no longer takes the window away. Closing the window lets the panel follow the selection again.
 - **Plug-in windows (Windows).** A VST3 plug-in's own window now belongs to the main window: it stays above it when you click in the main window, and minimizes with it. The plug-in host gets the main window's handle with the open request (`owner`).
+
+## 2026-10-25: Clip level handle, and session rows' own menu
+
+- **Clip level handle.** Every clip has a small handle in its bottom-left corner (an up-and-down arrow, our own glyph). Drag it up or to the right to raise the clip's level, down or to the left to lower it (0.1 dB a pixel; Shift for 0.02). The level shows beside the handle while it is not 0, and while dragging. One undoable step ("Clip Level"). The level was already a clip setting; it no longer repeats in the title bar.
+- **MIDI clips** get a level too (`gain_db` on MIDI clips, saved only when not 0). It makes the clip's notes play harder or softer by that much (their velocity is scaled), up to the hardest a note can play, since an instrument's sound follows how hard it is played.
+- **Files panel.** Right-click a session row for Switch to This Session (or Show in Multitrack), Save, Close Session and Close All Sessions.
