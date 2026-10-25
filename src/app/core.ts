@@ -274,6 +274,16 @@ export function midiAudition(trackId: string, pitch: number, velocity: number, s
   return invoke<boolean>("midi_audition", { trackId, pitch, velocity, seconds });
 }
 
+/**
+ * The spectrum of what is playing (or, with `at`, of the audio just
+ * before that spot of the session, or of the Waveform editor's file with
+ * `wave`): `points` levels in dBFS from 20 Hz to 20 kHz, even in pitch.
+ */
+export async function scopeSpectrum(size: number, points: number, at: number | null, wave: boolean): Promise<Float32Array> {
+  const bytes = rawBytes(await invoke<unknown>("scope_spectrum", { size, points, at: at === null ? null : Math.max(0, Math.round(at)), wave }));
+  return new Float32Array(bytes.buffer, 0, Math.floor(bytes.byteLength / 4));
+}
+
 /** What the Phase Wheel compares. */
 export type ScopeSignal = "left" | "right" | "mid" | "side";
 

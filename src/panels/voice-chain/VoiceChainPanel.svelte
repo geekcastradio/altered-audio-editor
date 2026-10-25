@@ -54,6 +54,7 @@
   } from "./chain";
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import ResponseGraph from "./ResponseGraph.svelte";
+  import EqGraph from "./EqGraph.svelte";
   import { GRAPHED } from "./graph";
   import { clampBox, effectWindowRequest, portal, type WindowBox } from "./effect-window";
   import { dropEdit, effectMenu, ownerKey, slotOver, startSlotDrag, type SlotSpot } from "./slot-drag";
@@ -442,6 +443,16 @@
     } else live(apply);
   }
 
+  /** Several controls of one effect moved together (the EQ graph's nodes); one undoable step on release. */
+  function dragParams(s: EffectSlotDoc, changes: [EffectParamInfo, number][], label: string, done: boolean) {
+    const id = s.id;
+    const apply = () => commit(label, changes.reduce((c, [p, v]) => setParam(c, id, p, v), chain));
+    if (done) {
+      settle();
+      apply();
+    } else live(apply);
+  }
+
   /** Input, output and mix: the same, on the chain itself. */
   function dragChain(key: "input_gain_db" | "output_gain_db" | "mix", label: string, shownValue: number, value: number) {
     draft = { key: `chain.${key}`, value: shownValue };
@@ -666,7 +677,16 @@
         </header>
         <div class="editor">
       {#if winSlot && winInfo}
-                {#if GRAPHED.has(winSlot.effect)}
+                {#if winSlot.effect === "altaudio.parametric_eq"}
+          <EqGraph
+            slot={winSlot}
+            info={winInfo}
+            playing={!!ts?.playing}
+            playhead={ts?.playing ? ts.position : ((inWave ? waveDoc : doc)?.view.playhead ?? 0)}
+            wave={inWave}
+            onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)}
+          />
+        {:else if GRAPHED.has(winSlot.effect)}
           <ResponseGraph slot={winSlot} info={winInfo} onPoint={(pf, f, pg, g, done) => dragPoint(winSlot, pf, f, pg, g, done)} />
         {/if}
         {#if winInfo.sidechain && onTrackTab && doc && keyOwner}
@@ -995,6 +1015,10 @@
     position: fixed;
     z-index: 900;
     width: 380px;
+    /* Graph editors (the Parametric EQ) get room to work in. */
+    &:has(:global(.eq)) {
+      width: 560px;
+    }
     max-width: calc(100vw - 16px);
     max-height: calc(100vh - 40px);
     display: flex;
