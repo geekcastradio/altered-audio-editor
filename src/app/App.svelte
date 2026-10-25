@@ -3396,7 +3396,7 @@
           const doc = session.current;
           const t = selectedTrack();
           if (!doc || !t) return;
-          const copy = freshIds(structuredClone(t));
+          const copy = freshIds(JSON.parse(JSON.stringify(t)) as typeof t);
           copy.name = `${t.name} copy`;
           const index = doc.tracks.findIndex((x) => x.id === t.id) + 1;
           await session.edit("Duplicate Track", { op: "restore_track", track: copy, index }, sessionHistory);
