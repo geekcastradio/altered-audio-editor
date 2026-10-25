@@ -350,32 +350,44 @@
   function familyItems(pick: (id: string) => void): ContextItem[] {
     return effectMenu(catalog, menuPlugins, pick) as ContextItem[];
   }
-  function openSlotMenu(e: MouseEvent, s: EffectSlotDoc | undefined, at?: number) {
+  /** The menu for a slot, empty or not: Edit and Remove first, then the effects to put there. */
+  function slotItems(s: EffectSlotDoc | undefined, at: number): ContextItem[] {
+    const info = s ? byId.get(s.effect) : undefined;
+    const none = "There is no effect in this slot yet.";
+    const items: ContextItem[] = s
+      ? [
+          { kind: "item", label: info?.plugin && info.hasWindow ? "Open Plug-in Window" : "Edit Effect", run: () => openSlot(s) },
+          ...(info?.plugin ? [{ kind: "item", label: "Show Controls", run: () => openWindow(s.id) } as ContextItem] : []),
+          { kind: "item", label: "Remove Effect", run: () => commit(`Remove ${info?.name ?? "Effect"}`, removeSlot(chain, s.id)) },
+        ]
+      : [
+          { kind: "item", label: "Edit Effect", disabled: true, reason: none, run: () => {} },
+          { kind: "item", label: "Remove Effect", disabled: true, reason: none, run: () => {} },
+        ];
+    items.push({ kind: "sep" });
+    items.push(
+      ...familyItems((id) => {
+        if (!s) {
+          addAt(id, at);
+          return;
+        }
+        const ni = byId.get(id);
+        if (!ni) return;
+        const fresh = newSlot(ni, crypto.randomUUID());
+        commit(`Replace with ${ni.name}`, replaceSlot(chain, s.id, fresh));
+        openWindow(fresh.id);
+      }),
+    );
+    return items;
+  }
+  function openSlotMenu(e: MouseEvent, s: EffectSlotDoc | undefined, at: number) {
     e.preventDefault();
-    const items: ContextItem[] = [];
-    if (s) {
-      const info = byId.get(s.effect);
-      items.push(
-        { kind: "item", label: info?.plugin && info.hasWindow ? "Open Plug-in Window" : "Edit Effect", run: () => openSlot(s) },
-        ...(info?.plugin ? [{ kind: "item", label: "Show Controls", run: () => openWindow(s.id) } as ContextItem] : []),
-        { kind: "item", label: "Remove Effect", run: () => commit(`Remove ${info?.name ?? "Effect"}`, removeSlot(chain, s.id)) },
-        { kind: "sep" },
-        {
-          kind: "sub",
-          label: "Replace With",
-          items: familyItems((id) => {
-            const ni = byId.get(id);
-            if (!ni) return;
-            const fresh = newSlot(ni, crypto.randomUUID());
-            commit(`Replace with ${ni.name}`, replaceSlot(chain, s.id, fresh));
-            openWindow(fresh.id);
-          }),
-        },
-      );
-    } else {
-      items.push(...familyItems((id) => (at === undefined ? add(id) : addAt(id, at))));
-    }
-    slotMenu = { x: e.clientX, y: e.clientY, items };
+    slotMenu = { x: e.clientX, y: e.clientY, items: slotItems(s, at) };
+  }
+  /** The arrow at the end of a row opens the same menu beside the button. */
+  function openSlotArrow(e: MouseEvent, s: EffectSlotDoc | undefined, at: number) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    slotMenu = { x: r.left, y: r.bottom, items: slotItems(s, at) };
   }
 
   function choosePreset(name: string) {
@@ -617,6 +629,8 @@
             <option value={MASTER_ID}>Master{count(doc.master?.effects)}</option>
           </select>
         </label>
+      {:else if onTrackTab && track}
+        <div class="line target"><span>Track:</span><span class="grow">{track.name}</span></div>
       {:else}
         <div class="target" title={label}>{label}</div>
       {/if}
@@ -668,6 +682,7 @@
           {:else}
             <button type="button" class="add" class:quiet={i !== chain.slots.length && i > 0 && !rows[i - 1]} aria-haspopup="menu" title="Add an effect in slot {i + 1}" onclick={(e) => openAddMenu(e, i)}>+ Add effect <span class="chev" aria-hidden="true">▾</span></button>
           {/if}
+          <button type="button" class="mini arrow" title="Effect menu" aria-label="Effect menu for slot {i + 1}" aria-haspopup="menu" onclick={(e) => openSlotArrow(e, s ?? undefined, i)}>▸</button>
         </li>
       {/each}
     </ol>
