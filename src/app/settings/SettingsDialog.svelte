@@ -152,6 +152,7 @@
           <fieldset>
             <legend>Wheel zoom centers on</legend>
             <label><input type="radio" bind:group={d.app.wheelAnchor} value="mouse" /> The mouse pointer</label>
+            <label><input type="radio" bind:group={d.app.wheelAnchor} value="between" /> Between the pointer and the middle of the view (drifts less)</label>
             <label><input type="radio" bind:group={d.app.wheelAnchor} value="playhead" /> The playhead</label>
           </fieldset>
           <fieldset>

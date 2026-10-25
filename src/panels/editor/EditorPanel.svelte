@@ -8,7 +8,7 @@
   management and zoom. Playback arrives in P2, clip editing in P3.
 -->
 <script lang="ts">
-  import { settings, zoomRatios } from "../../stores/settings";
+  import { settings, wheelAnchorX, zoomRatios } from "../../stores/settings";
   import { trackOp } from "../mixer/solo";
   import { busChoices, busOp, MASTER_ID, newSend } from "../mixer/routing";
   import SendList from "../mixer/SendList.svelte";
@@ -416,16 +416,23 @@
 
   // Follow Playhead: during playback, page the lanes when the playhead
   // nears the right edge or falls off either side. Scrolling or zooming
-  // yourself while it plays (overview bar, wheel, scrollbar) stops the
-  // following until playback starts again or the playhead is moved, so you
-  // can look at another part of the session while it plays.
+  // yourself while it plays (overview bar, wheel, scrollbar) lets go of it,
+  // so you can look at another part of the session while it plays. It
+  // follows again once you stop moving the view with the playhead in view
+  // (or when playback starts, or the playhead is moved).
   // Bars and beats everywhere follow the session tempo.
   $effect(() => setDisplayTempo(doc?.tempo));
   let followHeld = false;
   let wasPlaying = false;
-  // Switching Follow Playhead on picks the following up again at once.
+  /** When you last moved the view yourself (ms). */
+  let userViewAt = 0;
+  // Switching Follow Playhead on picks the following up again at once
+  // (only on the switch: the editor state changes for many other reasons).
+  let followWas = editor.current().followPlayhead;
   $effect(() => {
-    if (ed.followPlayhead) followHeld = false;
+    const on = ed.followPlayhead;
+    if (on && !followWas) followHeld = false;
+    followWas = on;
   });
   $effect(() => {
     const playingNow = !!tp?.playing;
@@ -433,7 +440,11 @@
     wasPlaying = playingNow;
     if (!playingNow || !ed.followPlayhead || lanesWidth <= 0) return;
     const x = xOf(playhead, view);
-    if (followHeld) return;
+    if (followHeld) {
+      // Back in view and left alone for a moment: follow it again.
+      if (x >= 0 && x <= lanesWidth && performance.now() - userViewAt > 400) followHeld = false;
+      return;
+    }
     if (x > lanesWidth * 0.92 || x < 0) setView({ scroll: playhead - lanesWidth * 0.08 * view.spp }, true);
   });
 
@@ -442,7 +453,10 @@
     if (!doc) return;
     if (!auto && tp?.playing) {
       if (v.playhead !== undefined) followHeld = false;
-      else if ((v.scroll !== undefined && v.scroll !== doc.view.scroll) || (v.spp !== undefined && v.spp !== doc.view.samples_per_pixel)) followHeld = true;
+      else if ((v.scroll !== undefined && v.scroll !== doc.view.scroll) || (v.spp !== undefined && v.spp !== doc.view.samples_per_pixel)) {
+        followHeld = true;
+        userViewAt = performance.now();
+      }
     }
     session.setView({
       ...doc.view,
@@ -810,7 +824,7 @@
       const r = zoomRatios();
       const mouse = Math.max(0, e.clientX - left);
       // Over the ruler the zoom always goes toward the pointer.
-      const at = settings.current.wheelAnchor === "playhead" && !overRuler ? Math.max(0, Math.min(lanesEl!.clientWidth, xOf(playhead, view))) : mouse;
+      const at = wheelAnchorX(mouse, lanesEl!.clientWidth, xOf(playhead, view), overRuler);
       const z = zoomAround(view, e.deltaY > 0 ? r.zoomOut : r.zoomIn, at, maxSppFor(lanesWidth, contentEnd, rate));
       setView({ spp: z.spp, scroll: z.scroll });
     };
@@ -1786,7 +1800,7 @@
     setTrack(track, { show_automation: !track.show_automation }, track.show_automation ? "Hide Automation Lanes" : "Show Automation Lanes");
   }
 
-  function addLane(track: TrackDoc, target: AutoTarget | null = nextTarget(track, fxCatalog)) {
+  function addLane(track: TrackDoc, target: AutoTarget | null = nextTarget(track, fxCatalog, !!doc?.space)) {
     if (!target) return;
     // The starting Volume lane is not saved until it has points; keep it when adding another.
     const base = (track.envelopes?.length ?? 0) === 0 ? [newLane({ type: "volume" })] : (track.envelopes ?? []);
@@ -1798,7 +1812,7 @@
 
   /** Points a lane at another setting. Its points are kept only when the value range is the same kind. */
   function pickTarget(track: TrackDoc, lane: EnvelopeDoc, key: string) {
-    const c = autoChoices(track, fxCatalog).find((x) => targetKey(x.target) === key);
+    const c = autoChoices(track, fxCatalog, !!doc?.space).find((x) => targetKey(x.target) === key);
     if (!c || targetKey(c.target) === targetKey(lane.target)) return;
     const same = c.target.type === lane.target.type && c.target.type !== "effect_param";
     setLanes(track, putLane(track, { ...lane, target: c.target, points: same ? lane.points : [] }), `Automate ${c.label}`);
@@ -1832,7 +1846,7 @@
       { kind: "item", label: `Clear ${name} Lane`, disabled: lane.points.length === 0, run: () => setLanes(track, putLane(track, { ...lane, points: [] }), "Clear Automation Lane") },
       { kind: "sep" },
       { kind: "item", label: lane.enabled ? "Turn Lane Off" : "Turn Lane On", disabled: !lane.id, run: () => setLanes(track, putLane(track, { ...lane, enabled: !lane.enabled }), lane.enabled ? "Automation Lane Off" : "Automation Lane On") },
-      { kind: "item", label: "Add Lane", disabled: !nextTarget(track, fxCatalog), run: () => addLane(track) },
+      { kind: "item", label: "Add Lane", disabled: !nextTarget(track, fxCatalog, !!doc?.space), run: () => addLane(track) },
       { kind: "item", label: "Remove Lane", disabled: !lane.id, run: () => setLanes(track, dropLane(track, lane.id), "Remove Automation Lane") },
       { kind: "item", label: "Hide Automation Lanes", run: () => toggleLanes(track) },
     ];
@@ -2471,7 +2485,7 @@
                     onchange={(e) => pickTarget(track, lane, e.currentTarget.value)}
                   >
                     {#if isOrphan(track, fxCatalog, lane.target)}<option value={targetKey(lane.target)}>Removed effect</option>{/if}
-                    {#each autoChoices(track, fxCatalog) as c (targetKey(c.target))}
+                    {#each autoChoices(track, fxCatalog, !!doc?.space) as c (targetKey(c.target))}
                       <option value={targetKey(c.target)} disabled={targetKey(c.target) !== targetKey(lane.target) && lanes.some((l) => targetKey(l.target) === targetKey(c.target))}>{c.label}</option>
                     {/each}
                   </select>
@@ -2488,7 +2502,7 @@
                   >{lane.enabled ? "Read" : "Off"}</button>
                   <span class="auto-count">{lane.points.length === 0 ? "Click the lane to add points" : `${lane.points.length} point${lane.points.length === 1 ? "" : "s"}`}</span>
                   {#if k === lanes.length - 1}
-                    <button type="button" class="ms" title="Add a lane for another setting" disabled={!nextTarget(track, fxCatalog)} onclick={() => addLane(track)}>+</button>
+                    <button type="button" class="ms" title="Add a lane for another setting" disabled={!nextTarget(track, fxCatalog, !!doc?.space)} onclick={() => addLane(track)}>+</button>
                   {/if}
                   <button type="button" class="ms" title="Remove this lane and its points" disabled={!lane.id} onclick={() => setLanes(track, dropLane(track, lane.id), "Remove Automation Lane")}>×</button>
                 </div>

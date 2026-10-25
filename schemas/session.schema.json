@@ -685,6 +685,23 @@
             "slot_id",
             "param"
           ]
+        },
+        {
+          "description": "3D Space sessions: one setting of the owner's spot in the room.",
+          "type": "object",
+          "properties": {
+            "param": {
+              "$ref": "#/$defs/SpaceParam"
+            },
+            "type": {
+              "type": "string",
+              "const": "space"
+            }
+          },
+          "required": [
+            "type",
+            "param"
+          ]
         }
       ]
     },
@@ -1230,6 +1247,21 @@
           "type": "string",
           "const": "binaural"
         }
+      ]
+    },
+    "SpaceParam": {
+      "description": "A setting of a spot in the room that automation can move. Values use\nthe spot's own units (see `SpacePos`).",
+      "type": "string",
+      "enum": [
+        "x",
+        "y",
+        "z",
+        "size",
+        "width",
+        "rotation",
+        "lfe",
+        "spread",
+        "spatialize"
       ]
     },
     "SpacePos": {

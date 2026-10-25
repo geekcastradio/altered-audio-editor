@@ -188,7 +188,8 @@ export interface EnvelopeDoc {
   target:
     | { type: "volume" }
     | { type: "pan" }
-    | { type: "effect_param"; slot_id: string; param: string };
+    | { type: "effect_param"; slot_id: string; param: string }
+    | { type: "space"; param: SpaceParam };
   enabled: boolean;
   points: EnvelopePointDoc[];
 }
@@ -267,6 +268,9 @@ export interface SpaceDoc {
   listen?: "stereo" | "binaural";
 }
 /** A spot in the room: x left -1 to right 1, y back -1 to front 1, z floor 0 to ceiling 1. */
+/** A setting of a spot in the room that automation can move. */
+export type SpaceParam = "x" | "y" | "z" | "size" | "width" | "rotation" | "lfe" | "spread" | "spatialize";
+
 export interface SpacePosDoc {
   x: number;
   y: number;
