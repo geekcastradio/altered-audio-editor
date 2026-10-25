@@ -69,6 +69,8 @@ export interface AppSettings {
   timecodeFps: number;
   /** The Phase Wheel's choices, kept for every file and session. */
   phaseWheel: PhaseWheelPrefs;
+  /** View > Music Mode: offers the music tools (MIDI tracks, the Amp Model, the metronome). Off keeps them out of the way. */
+  musicMode: boolean;
 }
 
 export type PhaseSignal = "left" | "right" | "mid" | "side";
@@ -121,6 +123,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   markerName: "Marker",
   timecodeFps: 30,
   phaseWheel: { size: 4096, fps: 60, a: "left", b: "right" },
+  musicMode: false,
 };
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -198,6 +201,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       ? (o.timecodeFps as number)
       : d.timecodeFps,
     phaseWheel: phasePrefs(o.phaseWheel),
+    musicMode: bool(o.musicMode, d.musicMode),
   };
 }
 

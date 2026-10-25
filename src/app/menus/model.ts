@@ -476,6 +476,7 @@ export const MENUS: readonly Menu[] = [
         item("view.env.fx", "Clip Effect Settings"),
       ]),
       sep,
+      item("view.mode.music", "Music Mode"),
       item("view.mode.podcast", "Podcast Mode", {
         pending: "Its panels arrive with P7.",
       }),

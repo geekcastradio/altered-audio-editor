@@ -135,6 +135,7 @@ describe("menu model", () => {
       "transport.prev-marker",
       "transport.next-marker",
       "view.editor.toggle",
+      "view.mode.music",
       "multitrack.properties",
       "clip.split",
       "clip.split-all",

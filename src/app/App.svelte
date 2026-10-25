@@ -3154,7 +3154,15 @@
         enabled: () => session.current !== null,
       }),
       actions.register({ id: "multitrack.add.stereo", run: () => addTrack(true) }),
-      actions.register({ id: "multitrack.add.midi", run: () => addMidiTrack(), enabled: () => session.current !== null }),
+      actions.register({ id: "multitrack.add.midi", run: () => addMidiTrack(), enabled: () => session.current !== null, visible: () => settings.current.musicMode }),
+      actions.register({
+        id: "view.mode.music",
+        run: () => {
+          settings.set({ ...settings.current, musicMode: !settings.current.musicMode });
+          actions.invalidate();
+        },
+        checked: () => settings.current.musicMode,
+      }),
       actions.register({ id: "multitrack.add.bus", run: () => addBus(true), enabled: () => session.current !== null }),
       actions.register({ id: "multitrack.add.bus-mono", run: () => addBus(false), enabled: () => session.current !== null }),
       actions.register({
@@ -4074,6 +4082,8 @@
     offs.push(
       dock.workspaces.subscribe((w) => {
         wsState = w;
+        // The Music workspace is the music tools' home: choosing it turns them on.
+        if (w.current === "music" && !settings.current.musicMode) settings.set({ ...settings.current, musicMode: true });
         actions.invalidate();
       }),
     );
@@ -4225,6 +4235,7 @@
   <AddTracksDialog
     existing={session.current.tracks.map((t) => t.name)}
     afterName={selectedTrackDoc()?.name ?? null}
+    music={settings.current.musicMode}
     onApply={(v) => void addTracks(v).catch(showError)}
     onClose={() => (addTracksOpen = false)}
   />

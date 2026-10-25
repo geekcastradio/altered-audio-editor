@@ -27,6 +27,8 @@
   interface Props {
     existing: readonly string[];
     afterName: string | null;
+    /** Music Mode is on: MIDI tracks are offered. */
+    music?: boolean;
     onApply: (v: AddTracksValues) => void;
     onClose: () => void;
   }
@@ -50,7 +52,7 @@
       <select bind:value={kind}>
         <option value="mono">Mono audio (one voice or mic)</option>
         <option value="stereo">Stereo audio (music, beds, mixes)</option>
-        <option value="midi">MIDI (notes played by an instrument plug-in)</option>
+        {#if music}<option value="midi">MIDI (notes played by an instrument plug-in)</option>{/if}
         <option value="bus">Stereo bus (groups tracks, takes sends)</option>
         <option disabled>5.1 surround (not planned for podcast work)</option>
       </select>

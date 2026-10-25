@@ -15,6 +15,9 @@ describe("app settings", () => {
     expect(s.output).toBeNull();
     expect(s.autosaveMinutes).toBe(1);
     expect(s.meterRedDb).toBe(-9);
+    expect(s.musicMode).toBe(false);
+    expect(sanitizeSettings({ musicMode: true }).musicMode).toBe(true);
+    expect(sanitizeSettings({ musicMode: "yes" }).musicMode).toBe(false);
   });
 
   it("turns settings into zoom ratios, colors and meter marks", () => {

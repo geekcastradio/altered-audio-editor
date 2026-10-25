@@ -380,6 +380,34 @@ export const WORKSPACE_PRESETS: readonly WorkspacePreset[] = [
     ],
   },
   {
+    id: "music",
+    name: "Music",
+    description:
+      "For music and MIDI work: the editor and Mixer, properties on the right, voice chain on the left. Turns on Music Mode.",
+    version: 1,
+    steps: [
+      { id: "editor", placement: null },
+      {
+        id: "mixer",
+        placement: { reference: "editor", direction: "within" },
+        inactive: true,
+      },
+      {
+        id: "properties",
+        placement: { reference: "editor", direction: "right" },
+        width: S.rightWidth,
+      },
+      { id: "levels", placement: { edge: "below" }, height: S.levelsHeight },
+      {
+        id: "time-info",
+        placement: { reference: "levels", direction: "right" },
+        width: S.timeInfoWidth,
+      },
+      { id: "files", placement: { edge: "left" }, width: S.leftWidth },
+      { id: "voice-chain", placement: { reference: "files", direction: "below" } },
+    ],
+  },
+  {
     id: "review",
     name: "Review and Export",
     description:
