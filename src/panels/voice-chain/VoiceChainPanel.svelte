@@ -55,6 +55,8 @@
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import ResponseGraph from "./ResponseGraph.svelte";
   import EqGraph from "./EqGraph.svelte";
+  import PhaseCurveGraph from "./PhaseCurveGraph.svelte";
+  import { groupShown, PHASE_CURVE } from "./phase-curve";
   import { GRAPHED } from "./graph";
   import { clampBox, effectWindowRequest, portal, type WindowBox } from "./effect-window";
   import { dropEdit, effectMenu, ownerKey, slotOver, startSlotDrag, type SlotSpot } from "./slot-drag";
@@ -686,6 +688,8 @@
             wave={inWave}
             onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)}
           />
+        {:else if winSlot.effect === PHASE_CURVE}
+          <PhaseCurveGraph slot={winSlot} info={winInfo} onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)} />
         {:else if GRAPHED.has(winSlot.effect)}
           <ResponseGraph slot={winSlot} info={winInfo} onPoint={(pf, f, pg, g, done) => dragPoint(winSlot, pf, f, pg, g, done)} />
         {/if}
@@ -724,7 +728,7 @@
             </span>
           </div>
         {/if}
-        {#each groups(winInfo) as g (g.name)}
+        {#each groups(winInfo).filter((g) => groupShown(winSlot.effect, winSlot, g.name)) as g (g.name)}
           {#if g.name}<h3>{g.name}</h3>{/if}
           {#each g.params as p (p.key)}
             {@const v = shown(winSlot, p)}
@@ -1016,7 +1020,8 @@
     z-index: 900;
     width: 380px;
     /* Graph editors (the Parametric EQ) get room to work in. */
-    &:has(:global(.eq)) {
+    &:has(:global(.eq)),
+    &:has(:global(.pc)) {
       width: 560px;
     }
     max-width: calc(100vw - 16px);

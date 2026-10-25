@@ -482,6 +482,8 @@ export interface SesxReport {
   missingPlugins?: string[];
   /** Clips with a time stretch or pitch change. */
   stretched?: number;
+  /** The other editor's built-in effects brought in as ours (its per-frequency phase shifter as Phase Curve). */
+  converted?: number;
   missingFiles: string[];
 }
 
