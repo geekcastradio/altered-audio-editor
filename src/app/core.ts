@@ -696,9 +696,14 @@ export async function audioInputs(asio?: boolean): Promise<AudioInput[]> {
 }
 
 /** The spectrogram of the Waveform editor's file between two samples: `rows` rows of `columns` bytes, top row highest. */
-export async function waveSpectrogram(start: number, end: number, columns: number, rows: number): Promise<Uint8Array> {
-  const buf = await invoke<ArrayBuffer>("wave_spectrogram", { start, end, columns, rows });
-  return new Uint8Array(buf);
+/**
+ * The spectrogram of `start..end`. `hz` (optional) gives each row's edges
+ * from the top down, one more than `rows`, for a zoomed or linear axis;
+ * `fft` the analysis frame length (resolution).
+ */
+export async function waveSpectrogram(start: number, end: number, columns: number, rows: number, hz?: number[], fft?: number): Promise<Uint8Array> {
+  const buf = await invoke<ArrayBuffer>("wave_spectrogram", { start, end, columns, rows, hz: hz ?? null, fft: fft ?? null });
+  return rawBytes(buf);
 }
 
 export interface SpectralResult {
