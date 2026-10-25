@@ -1373,3 +1373,8 @@ Several requests compared behavior to another editor; per the guardrails they ar
 - **Handles.** A stereo pair now has a center diamond that moves the pair. Dragging its L or R dot sets the width by its distance from the center (Alt also turns the pair toward the pointer). A picked pair shows two turn arrows across its axis: dragging one rotates the pair around its center. A pair with no width still shows its L and R dots a little apart so they can be grabbed.
 - **Snapping** (the Snap button on the 3D Space bar, saved in settings, on by default): spots snap onto speakers, the center lines and a quarter-room grid, widths onto quarter steps, turns onto 15 degrees. Alt places freely.
 - **Faders.** The side controls are horizontal faders in the Mixer's fader style (a recessed slot with ticks and a block cap with a center line), with drag, Ctrl for fine steps, the wheel, arrow keys and double-click for the default. The bar's lists and buttons use the app's flat, square-cornered controls.
+
+## 2026-10-25: Meters in mixed sessions stopped flickering
+
+- **Why they flickered.** In sessions mixed on the render thread (every 3D Space session, and any with buses, sends or chains), track, bus and speaker meters come from a queue of mixed blocks matched to what the device has played. A status read that arrived before the next block was played got an empty reading, so the meters blinked toward silence between reads.
+- **Now.** A read with no newly played block gives the last reading again, and the Levels panel keeps its speaker rows if a reading arrives without them.
