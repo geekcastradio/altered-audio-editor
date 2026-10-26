@@ -2,6 +2,16 @@
 
 Newest first. Each entry: date, decision, reason.
 
+## 2026-10-25: In-app updates built (0.3.1)
+
+Decision: Help > Check for Updates now checks, and offers Install and Restart. An optional weekly check (Settings > Privacy, off by default) shows one line when a newer version exists. Plan from 2026-10-14 followed: the Tauri updater reads a signed `latest.json` from `releases/latest/download/`; nothing is sent about the user; nothing installs without a click.
+
+- **Releases are now published as normal releases, not pre-release.** GitHub's "latest" skips pre-releases, so the updater would find nothing. Chosen over hosting `latest.json` on thegcrn.com (extra manual step each release) and a bot-committed pointer (more CI plumbing). The README still says the software is pre-release.
+- **Signing.** The Windows installer is signed with the project's update key in the Release workflow (secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`); the public key is in `tauri.conf.json`. Losing the private key means installed copies can no longer update and must be reinstalled by hand, so it is backed up outside the repo. Signing is switched on in CI by `src-tauri/tauri.updater.conf.json`, so ordinary builds need no key.
+- **Windows installer only.** The portable zip, Linux and macOS get the release page instead (`uninstall.exe` beside the program marks an installer copy).
+- **Privacy guard** now allows the updater plugin and requires its endpoint to be this project's GitHub releases and the public key to be set. `PRIVACY.md`, the Settings text and About were updated to match.
+- **Unsaved work.** Install runs the same unsaved-work questions as File > Exit before restarting.
+
 ## 2026-10-25: PR #11 merged as 0.3.0, with every music tool behind Music Mode
 
 Decision: nwh212's second pull request (#11: spectral EQ, MIDI tracks and the piano roll, the Amp Model effect, the metronome and tempo strip, Bars and Beats, 3D Space and more) is merged by us into `main` as 0.3.0. All the music tools sit behind **View > Music Mode** (off by default, an app-wide setting) and a separate **Music** workspace. The Default, Podcast and Voiceover layouts and menus are unchanged.

@@ -85,6 +85,10 @@ export interface AppSettings {
   musicMode: boolean;
   /** The metronome, kept between runs. */
   metronome: MetronomePrefs;
+  /** Help > Check for Updates once a week on its own. Off unless turned on (Settings > Privacy). */
+  updateCheck: boolean;
+  /** When the last update check ran, in milliseconds since 1970. 0 means never. */
+  lastUpdateCheck: number;
   /** 3D Space: dots snap to speakers, the center lines and a grid; turns snap to 15 degrees. */
   spaceSnap: boolean;
 }
@@ -174,6 +178,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   timecodeFps: 30,
   phaseWheel: { size: 4096, fps: 60, a: "left", b: "right" },
   musicMode: false,
+  updateCheck: false,
+  lastUpdateCheck: 0,
   spaceSnap: true,
   metronome: { on: false, muted: false, when: "always", levelDb: -6, sound: "tick", accent: true, subdivide: "none" },
 };
@@ -260,6 +266,11 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       : d.timecodeFps,
     phaseWheel: phasePrefs(o.phaseWheel),
     musicMode: bool(o.musicMode, d.musicMode),
+    updateCheck: bool(o.updateCheck, d.updateCheck),
+    lastUpdateCheck:
+      typeof o.lastUpdateCheck === "number" && Number.isFinite(o.lastUpdateCheck) && o.lastUpdateCheck > 0
+        ? Math.floor(o.lastUpdateCheck)
+        : d.lastUpdateCheck,
     metronome: metronomePrefs(o.metronome),
     spaceSnap: bool(o.spaceSnap, d.spaceSnap),
   };

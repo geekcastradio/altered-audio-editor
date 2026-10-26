@@ -65,14 +65,14 @@ Early versions are pre-releases. Expect rough edges and keep backups of your rec
 - **Settings:** zoom, fades, colors, output device, autosave, solo, meter colors, recording offset, time format loudness defaults, session backups and a record count-in in one place (Edit > Settings).
 - **Session templates:** start every episode from your show's track layout.
 - **Music Mode (off by default):** View > Music Mode adds the music tools without changing the podcast layouts: MIDI tracks with a piano roll and VST3 instruments, an Amp Model effect that loads Neural Amp Modeler captures, a metronome, a tempo strip and Bars and Beats time. The Music workspace (Window > Workspace) turns it on for you. Also from this release: buses, sends and sidechain, VST3 plug-ins in Voice Chains (each in its own process), a Phase Wheel, and a 3D Space panel (Window menu).
-- **Help > Check for Updates** opens the releases page. Nothing is checked in the background.
+- **Help > Check for Updates** finds new versions and can install them (installer copies only; the portable zip gets the download page).
 - **Imports `.sesx` sessions:** brings in tracks, clips and positions from `.sesx` multitrack session files.
 
 ## Private by design
 
 - No account and no login. Ever.
 - No telemetry, analytics or tracking. The app makes no network calls on its own.
-- Update checks are off unless you turn them on.
+- Update checks run only when you click Help > Check for Updates, or if you turn on the weekly check. Nothing installs without your click.
 - Your audio never leaves your computer.
 
 ## Support the project

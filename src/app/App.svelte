@@ -36,6 +36,8 @@
   import { MENUS } from "./menus/model";
   import MenuBar from "./menus/MenuBar.svelte";
   import AboutDialog from "./AboutDialog.svelte";
+  import UpdateDialog from "./UpdateDialog.svelte";
+  import { updateCheck, updateDue, updateInstall, type UpdateInfo } from "./update";
   import HistoryPanel from "../panels/history/HistoryPanel.svelte";
   import EditorPanel from "../panels/editor/EditorPanel.svelte";
   import { peaks, session, transport } from "../stores/open-session";
@@ -835,6 +837,38 @@
     return doc ? findClips(doc, editor.current().selectedClips).map((l) => l.clip) : [];
   };
   const playheadNow = () => (transport.current.playing ? transport.current.position : (session.current?.view.playhead ?? 0));
+
+  /** Track height a new track starts with; Zoom Reset (All Axes) puts every open track back to it. */
+  const DEFAULT_TRACK_HEIGHT = 96;
+
+  /** Vertical zoom: resize every open track, kept inside what the Editor allows. One undoable step. */
+  async function resizeAllTracks(next: (height: number) => number) {
+    const doc = session.current;
+    if (!doc) return;
+    const ops = doc.tracks.flatMap((t) => {
+      if (t.collapsed) return [];
+      const h = Math.max(40, Math.min(600, Math.round(next(t.height))));
+      return h === t.height ? [] : [{ op: "set_track" as const, id: t.id, changes: { height: h } }];
+    });
+    if (ops.length > 0) await session.edit("Track Height", { op: "batch", ops }, sessionHistory);
+  }
+
+  /** Selected clips that can move. */
+  const nudgeable = () => {
+    const doc = session.current;
+    return doc ? findClips(doc, editor.current().selectedClips).filter((f) => !f.clip.locked) : [];
+  };
+
+  /** Nudge: moves the selected clips one screen pixel at the current zoom, never before time zero. */
+  async function nudgeClips(dir: -1 | 1) {
+    const doc = session.current;
+    if (!doc) return;
+    const step = Math.max(1, Math.round(doc.view.samples_per_pixel));
+    const changes = nudgeable()
+      .map((f) => ({ id: f.clip.id, start: Math.max(0, f.clip.start + dir * step) }))
+      .filter((c, i) => c.start !== nudgeable()[i]!.clip.start);
+    await editClips(dir < 0 ? "Nudge Left" : "Nudge Right", changes);
+  }
 
   async function editClips(label: string, changes: ClipChange[]) {
     if (changes.length > 0) await session.edit(label, { op: "set_clips", changes }, sessionHistory);
@@ -1642,8 +1676,9 @@
     }
   }
 
-  async function exitSafely() {
-    if (!(await files.confirmDiscard())) return;
+  /** Asks about unsaved work. False means the user cancelled. */
+  async function confirmCloseAll(): Promise<boolean> {
+    if (!(await files.confirmDiscard())) return false;
     const sessionsLeft = files.others.filter((p) => p.dirty).map((p) => p.name);
     if (sessionsLeft.length) {
       const v = await ask(
@@ -1654,9 +1689,9 @@
           { label: "Quit Without Saving", value: "quit" },
         ],
       );
-      if (v !== "quit") return;
+      if (v !== "quit") return false;
     }
-    if (!(await confirmWaveDiscard())) return;
+    if (!(await confirmWaveDiscard())) return false;
     const others = parkedUnsaved();
     if (others.length) {
       const v = await ask(
@@ -1667,9 +1702,14 @@
           { label: "Quit Without Saving", value: "quit" },
         ],
       );
-      if (v !== "quit") return;
+      if (v !== "quit") return false;
       await forgetParked();
     }
+    return true;
+  }
+
+  async function exitSafely() {
+    if (!(await confirmCloseAll())) return;
     files.stopAutosave();
     await prefs.flush();
     await exitApp();
@@ -1817,6 +1857,48 @@
   });
 
   let aboutOpen = $state(false);
+  let updateInfo = $state<UpdateInfo | null>(null);
+  let updateOpen = $state(false);
+  let updateBusy = $state(false);
+
+  /**
+   * Looks for a newer version. A click (manual) always answers; the weekly
+   * check only shows a line when something is found and says nothing on failure.
+   */
+  async function checkUpdate(manual: boolean) {
+    if (updateBusy) return;
+    updateBusy = true;
+    try {
+      const found = await updateCheck();
+      settings.set({ ...settings.current, lastUpdateCheck: Date.now() });
+      if (!found) {
+        if (manual) showNotice(`You have the latest version${info?.version ? ` (${info.version})` : ""}.`);
+        return;
+      }
+      updateInfo = found;
+      if (manual) updateOpen = true;
+      else showNotice(`Version ${found.version} is available. Choose Help > Check for Updates to install it.`);
+    } catch (e) {
+      if (manual) showNotice(`Could not check for updates: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      updateBusy = false;
+    }
+  }
+
+  async function installUpdate() {
+    if (updateBusy) return;
+    // Same unsaved-work questions as File > Exit; the update restarts the app.
+    if (!(await confirmCloseAll())) return;
+    updateBusy = true;
+    try {
+      files.stopAutosave();
+      await prefs.flush();
+      await updateInstall();
+    } catch (e) {
+      updateBusy = false;
+      showNotice(`The update did not install: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
   let shortcutsOpen = $state(false);
 
   const shortcutFor = (id: string) => keymap.displayFor(id);
@@ -3183,7 +3265,7 @@
       actions.register({ id: "help.website", run: () => openLink(LINKS.website) }),
       actions.register({ id: "help.book", run: () => openLink(LINKS.book) }),
       actions.register({ id: "help.discord", run: () => openLink(LINKS.discord) }),
-      actions.register({ id: "help.update", run: () => openLink(LINKS.releases) }),
+      actions.register({ id: "help.update", run: () => void checkUpdate(true) }),
       actions.register({ id: "help.github", run: () => openLink(LINKS.github) }),
       actions.register({ id: "help.report", run: () => openLink(LINKS.report) }),
       actions.register({ id: "help.about", run: () => void (aboutOpen = true) }),
@@ -3531,6 +3613,48 @@
         },
         enabled: () => contentEnd() > 0,
         reason: () => "The session has no clips yet.",
+      }),
+      // Zoom Out Full shows the whole session (or the whole file in the Waveform editor), like Zoom to Session.
+      actions.register({
+        id: "view.zoom-out-full",
+        run: () => actions.run("view.zoom-session").then(() => undefined),
+        enabled: () => (inWave() ? waveIsOpen() : contentEnd() > 0),
+        reason: () => "The session has no clips yet.",
+      }),
+      // Vertical zoom is track height: every open track, one undoable step.
+      actions.register({
+        id: "view.zoom-in-vertical",
+        run: () => resizeAllTracks((h) => h * 1.25),
+        enabled: () => !inWave() && (session.current?.tracks.some((t) => !t.collapsed) ?? false),
+        reason: () => "Open a session with tracks in the Multitrack Editor first.",
+      }),
+      actions.register({
+        id: "view.zoom-out-vertical",
+        run: () => resizeAllTracks((h) => h / 1.25),
+        enabled: () => !inWave() && (session.current?.tracks.some((t) => !t.collapsed) ?? false),
+        reason: () => "Open a session with tracks in the Multitrack Editor first.",
+      }),
+      actions.register({
+        id: "view.zoom-all-axes",
+        run: async () => {
+          if (inWave()) return void (await actions.run("view.zoom-session"));
+          await actions.run("view.zoom-session");
+          await resizeAllTracks(() => DEFAULT_TRACK_HEIGHT);
+        },
+        enabled: () => (inWave() ? waveIsOpen() : contentEnd() > 0 || (session.current?.tracks.length ?? 0) > 0),
+        reason: () => "Open a session first.",
+      }),
+      actions.register({
+        id: "clip.nudge-left",
+        run: () => nudgeClips(-1),
+        enabled: () => !inWave() && nudgeable().length > 0,
+        reason: () => "Select clips that are not locked first.",
+      }),
+      actions.register({
+        id: "clip.nudge-right",
+        run: () => nudgeClips(1),
+        enabled: () => !inWave() && nudgeable().length > 0,
+        reason: () => "Select clips that are not locked first.",
       }),
       actions.register({
         id: "edit.select-track-clips",
@@ -4424,6 +4548,9 @@
         settings.set(sanitizeSettings(prefs.raw(KEY_SETTINGS)));
         applyAppSettings(settings.current, false);
         offs.push(startMetronome());
+        // The weekly update check is off unless turned on in Settings > Privacy.
+        const c = settings.current;
+        if (updateDue(c.updateCheck, c.lastUpdateCheck, Date.now()) && !transport.current.playing) void checkUpdate(false);
         // Settings changed outside the Settings window (a view's right-click colors) are kept too.
         let lastSettings = JSON.stringify(settings.current);
         offs.push(
@@ -4746,6 +4873,16 @@
       newAudio = null;
       if (v) void makeNewAudio(v);
     }}
+  />
+{/if}
+
+{#if updateOpen && updateInfo}
+  <UpdateDialog
+    info={updateInfo}
+    busy={updateBusy}
+    onInstall={() => void installUpdate()}
+    onPage={() => openLink(LINKS.releases)}
+    onClose={() => (updateOpen = false)}
   />
 {/if}
 

@@ -283,11 +283,11 @@ These rules exist because reproducing the exact visual expression of a commercia
 ## Privacy (non-negotiable)
 
 Zero logins, zero telemetry, zero tracking. The app is fully usable offline without anyone doing anything.
-- No network requests of any kind from the app or the core: no update checks, analytics, crash reporting or license checks.
+- No network requests from the app or the core, except the update check below: no analytics, crash reporting or license checks.
 - No accounts or sign-in, ever.
 - The only web access is the Help menu opening pages in the user's browser when they pick a link, limited to the allow list in `src-tauri/src/commands/links.rs`.
 - A support link and the project lead's book, Altered Audio: Podcasting Demystified, live in the Help menu only. Never in the user's face, never a nag, never forced.
-- Updates (decided 2026-10-14, build after the first GitHub release): Help > Check for Updates, plus an optional weekly check that is OFF by default, set in Preferences and on the first-run screen as an unticked box. The check fetches one signed `latest.json` from GitHub Releases through the Tauri updater; no login, no API calls. A found update shows one line in the status bar, never a pop-up, never during playback or recording, never installs without a click. The privacy guard allows only the updater plugin and that one host.
+- Updates (decided 2026-10-14, built 2026-10-25 for 0.3.1; releases are published as normal releases, not pre-release, so GitHub's "latest" points at them): Help > Check for Updates, plus an optional weekly check that is OFF by default, set in Preferences and on the first-run screen as an unticked box. The check fetches one signed `latest.json` from GitHub Releases through the Tauri updater; no login, no API calls. A found update shows one line in the status bar, never a pop-up, never during playback or recording, never installs without a click. The privacy guard allows only the updater plugin and that one host.
 - Any future feature that needs the network (for example Podcast Manager sync) must be off by default, clearly labeled, and never required. See `PRIVACY.md`.
 
 ## Loudness defaults

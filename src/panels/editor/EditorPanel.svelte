@@ -2149,8 +2149,8 @@
     {#if doc}<span class="rate" title="Session sample rate">{(rate / 1000).toLocaleString("en-US")} kHz</span>{/if}
   </div>
 
+  <!-- The overview runs the full width, from the left edge over the header column, so the whole session fits it. -->
   <div class="overview-row">
-    <div class="corner" style:width="{HEADER_W}px"></div>
     <OverviewStrip
       {doc}
       media={mediaMap}

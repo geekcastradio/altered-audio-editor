@@ -279,6 +279,12 @@ describe("menu model", () => {
       "edit.snap.playhead",
       "clip.trim.selection",
       "view.zoom-selection",
+      "view.zoom-out-full",
+      "view.zoom-all-axes",
+      "view.zoom-in-vertical",
+      "view.zoom-out-vertical",
+      "clip.nudge-left",
+      "clip.nudge-right",
     ]);
     for (const m of MENUS) {
       for (const it of allItems(m.items)) {

@@ -85,6 +85,7 @@
   const { session, runner, prefs, ask, transport, wave, waveTransport, onApplyWave, onNotice = () => {}, onError = console.error }: Props = $props();
   const KEY_PRESETS = "voiceChain.presets";
   const KEY_TAB = "voiceChain.tab";
+  const KEY_IO = "voiceChain.showIO";
 
   let doc = $state<SessionDoc | null>(null);
   $effect(() =>
@@ -161,11 +162,31 @@
 
   let userPresets = $state<ChainPreset[]>([]);
   let tab = $state<"clip" | "track">("track");
+  /** The Input, Output and Mix controls under the list; the second button under it hides them. */
+  let showIO = $state(true);
+  function toggleIO() {
+    showIO = !showIO;
+    prefs.set(KEY_IO, showIO);
+  }
   // svelte-ignore state_referenced_locally
   void prefs.load().then(() => {
     userPresets = sanitizePresets(prefs.raw(KEY_PRESETS));
     if (prefs.raw(KEY_TAB) === "clip") tab = "clip";
+    if (prefs.raw(KEY_IO) === false) showIO = false;
   });
+  /** What the level meters are showing, for their tooltip. */
+  function meterNote(): string {
+    if (onMaster || bus) {
+      if (!ts?.playing) return "Meters move while playing.";
+      if (!chainMeter) return `This chain does nothing yet, or nothing feeds the ${onMaster ? "master" : "bus"}.`;
+      return `${onMaster ? "Master" : "Bus"} chain level going in and coming out.`;
+    }
+    if (!meterTrack) return "Meters show a track's chain while playing.";
+    if (tab === "clip" && !inWave) return `Meters show the track chain of ${meterTrack.name}. Clip chains are not metered yet.`;
+    if (!ts?.playing) return "Meters move while playing.";
+    if (!chainMeter) return "This track's chain does nothing yet, so there is nothing to meter.";
+    return "Track chain level going in and coming out.";
+  }
   function setTab(t: "clip" | "track") {
     tab = t;
     prefs.set(KEY_TAB, t);
@@ -399,6 +420,15 @@
     slotMenu = { x: r.left, y: r.bottom, items: slotItems(s, at) };
   }
 
+  function openDeleteMenu(e: MouseEvent) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    slotMenu = {
+      x: r.left,
+      y: r.bottom,
+      items: userPresets.map((p) => ({ kind: "item", label: `Delete "${p.name}"`, run: () => deletePreset(p.name) }) as ContextItem),
+    };
+  }
+
   function choosePreset(name: string) {
     const p = [...userPresets, ...BUILTIN_PRESETS].find((x) => x.name === name);
     if (!p) return;
@@ -568,17 +598,8 @@
     <p class="empty">{why}</p>
   {:else}
     <div class="top">
-      <div class="line">
-        <button
-          type="button"
-          class="power"
-          class:on={chain.enabled}
-          title={chain.enabled ? "Chain on: click to bypass every effect" : "Chain bypassed: click to turn it on"}
-          aria-pressed={chain.enabled}
-          onclick={() => commit(chain.enabled ? "Bypass Voice Chain" : "Turn On Voice Chain", { ...chain, enabled: !chain.enabled })}
-        >
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v6" stroke="currentColor" stroke-width="1.6" /><path d="M4.6 4.4a5 5 0 1 0 6.8 0" fill="none" stroke="currentColor" stroke-width="1.4" /></svg>
-        </button>
+      <div class="line presets">
+        <span class="plabel">Presets:</span>
         <select
           class="grow"
           aria-label="Presets"
@@ -588,7 +609,7 @@
             e.currentTarget.value = "";
           }}
         >
-          <option value="" disabled>Presets…</option>
+          <option value="" disabled>(Choose a preset)</option>
           {#if userPresets.length}
             <optgroup label="Yours">
               {#each userPresets as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
@@ -600,22 +621,15 @@
             </optgroup>
           {/each}
         </select>
-        <button type="button" title="Save this chain as a preset" disabled={chain.slots.length === 0} onclick={() => void savePreset()}>Save…</button>
-        {#if userPresets.length}
-          <select
-            class="del"
-            aria-label="Delete a saved preset"
-            title="Delete a saved preset"
-            value=""
-            onchange={(e) => {
-              deletePreset(e.currentTarget.value);
-              e.currentTarget.value = "";
-            }}
-          >
-            <option value="" disabled>Delete…</option>
-            {#each userPresets as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
-          </select>
-        {/if}
+        <button type="button" class="ico" title="Save this chain as a preset" aria-label="Save preset" disabled={chain.slots.length === 0} onclick={() => void savePreset()}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v7M5 6.5 8 9.5l3-3" fill="none" stroke="currentColor" stroke-width="1.5" /><path d="M2.5 10v3.5h11V10" fill="none" stroke="currentColor" stroke-width="1.5" /></svg>
+        </button>
+        <button type="button" class="ico" title={userPresets.length ? "Delete a saved preset" : "You have no saved presets to delete"} aria-label="Delete a saved preset" aria-haspopup="menu" disabled={userPresets.length === 0} onclick={openDeleteMenu}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" fill="none" stroke="currentColor" stroke-width="1.4" /></svg>
+        </button>
+        <button type="button" class="ico" disabled title="Favorite presets are not built yet" aria-label="Favorite preset">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m8 2 1.8 3.8 4.2.5-3.1 2.9.8 4.1L8 11.2 4.3 13.3l.8-4.1L2 6.3l4.2-.5Z" fill="none" stroke="currentColor" stroke-width="1.3" /></svg>
+        </button>
       </div>
       {#if onTrackTab && doc && (doc.tracks.length > 1 || (doc.buses?.length ?? 0) > 0 || onMaster)}
         {@const count = (c: EffectChainDoc | undefined) => ((c?.slots.length ?? 0) > 0 ? ` (${c!.slots.length})` : "")}
@@ -689,16 +703,13 @@
             <button type="button" class="mini" title={info?.plugin && info.hasWindow ? "Open the plug-in's window" : "Open its settings"} aria-label={info?.plugin && info.hasWindow ? "Open the plug-in's window" : "Open its settings"} onclick={() => openSlot(s)}>⚙</button>
             <button type="button" class="mini" title="Remove" aria-label="Remove" onclick={() => commit(`Remove ${info?.name ?? "Effect"}`, removeSlot(chain, s.id))}>✕</button>
           {:else}
-            <button type="button" class="add" class:quiet={i !== chain.slots.length && i > 0 && !rows[i - 1]} aria-haspopup="menu" title="Add an effect in slot {i + 1}" onclick={(e) => openAddMenu(e, i)}>+ Add effect <span class="chev" aria-hidden="true">▾</span></button>
+            <button type="button" class="add" aria-haspopup="menu" title="Add an effect in slot {i + 1}" onclick={(e) => openAddMenu(e, i)}>Add effect…</button>
           {/if}
           <button type="button" class="mini arrow" title="Effect menu" aria-label="Effect menu for slot {i + 1}" aria-haspopup="menu" onclick={(e) => openSlotArrow(e, s ?? undefined, i)}>▸</button>
         </li>
       {/each}
     </ol>
 
-    {#if chain.slots.length === 0}
-      <p class="hint pad">Add an effect or pick a preset. Effects run top to bottom. Each effect opens in its own window.</p>
-    {/if}
     {#if winSlot}
       <div class="fxwin" use:portal bind:this={winEl} style:left="{winBox.x}px" style:top="{winBox.y}px" role="dialog" aria-label="{winInfo?.name ?? winSlot.effect} settings" tabindex="-1" onkeydown={(e) => e.key === "Escape" && (winOpen = false)}>
         <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -797,7 +808,7 @@
 
     <div class="bottom">
       {#snippet bars(name: string, k: number)}
-        <div class="mbars" aria-label="{name} level">
+        <div class="mbars" aria-label="{name} level" title={meterNote()}>
           {#each [k, k + 1] as ch (ch)}
             {@const m = chainMeter?.[ch]}
             <div class="mbar" role="meter" aria-label="{name} {ch % 2 === 0 ? 'left' : 'right'}" aria-valuemin={-60} aria-valuemax={0} aria-valuenow={m && m.peak > 0 ? Math.max(-60, Math.round(20 * Math.log10(m.peak))) : -60}>
@@ -807,53 +818,53 @@
           {/each}
         </div>
       {/snippet}
-      {#each [[GAIN("input_gain_db", "Input"), 0], [GAIN("output_gain_db", "Output"), 2]] as const as [p, k] (p.key)}
-        {@const key = p.key as "input_gain_db" | "output_gain_db"}
-        {@const cur = draft?.key === `chain.${key}` ? draft.value : chain[key]}
-        <div class="io">
-          <span class="pname">{p.name}:</span>
-          {@render bars(k === 0 ? "In" : "Out", k)}
-          <Knob
-            label="{p.name} gain"
-            value={toSlider(p, cur)}
-            home={toSlider(p, 0)}
-            text={formatParam(p, cur)}
-            title="Drag to turn (Ctrl for fine, Shift for coarse). Double-click for 0 dB."
-            oninput={(t) => {
-              const v = fromSlider(p, t);
-              dragChain(key, `Voice Chain ${p.name} Gain`, v, v);
-            }}
-            oncommit={(t) => setChain(key, `Voice Chain ${p.name} Gain`, fromSlider(p, t))}
-          />
-          <span class="val">{formatParam(p, cur)}</span>
+      {#if showIO}
+        {#each [[GAIN("input_gain_db", "Input"), 0], [GAIN("output_gain_db", "Output"), 2]] as const as [p, k] (p.key)}
+          {@const key = p.key as "input_gain_db" | "output_gain_db"}
+          {@const cur = draft?.key === `chain.${key}` ? draft.value : chain[key]}
+          <div class="io">
+            <span class="pname">{p.name}:</span>
+            <Knob
+              label="{p.name} gain"
+              value={toSlider(p, cur)}
+              home={toSlider(p, 0)}
+              text={formatParam(p, cur)}
+              title="Drag to turn (Ctrl for fine, Shift for coarse). Double-click for 0 dB."
+              oninput={(t) => {
+                const v = fromSlider(p, t);
+                dragChain(key, `Voice Chain ${p.name} Gain`, v, v);
+              }}
+              oncommit={(t) => setChain(key, `Voice Chain ${p.name} Gain`, fromSlider(p, t))}
+            />
+            <span class="val">{formatParam(p, cur)}</span>
+            {@render bars(k === 0 ? "In" : "Out", k)}
+          </div>
+        {/each}
+        <div class="io scale" aria-hidden="true">
+          <span></span><span></span><span class="val">dB</span>
+          <div class="ticks">
+            {#each [-48, -36, -24, -12, 0] as d (d)}<span style:left="{meterFraction(10 ** (d / 20)) * 100}%">{d}</span>{/each}
+          </div>
         </div>
-      {/each}
-      <div class="io mixrow">
-        <span class="pname" title="How much of the effected sound you hear">Mix:</span>
-        <span class="end">Dry</span>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          step="1"
-          aria-label="Mix"
-          value={mixShown}
-          oninput={(e) => dragChain("mix", "Voice Chain Mix", Number(e.currentTarget.value), Number(e.currentTarget.value) / 100)}
-          onchange={(e) => setChain("mix", "Voice Chain Mix", Number(e.currentTarget.value) / 100)}
-          ondblclick={() => setChain("mix", "Voice Chain Mix", 1)}
-          title="Double-click for 100 %"
-        />
-        <span class="end">Wet</span>
-        <span class="val">{formatParam(MIX, mixShown)}</span>
-      </div>
-      <p class="hint">
-        {#if onMaster || bus}{#if !ts?.playing}Meters move while playing.{:else if !chainMeter}This chain does nothing yet, or nothing feeds the {onMaster ? "master" : "bus"}.{:else}{onMaster ? "Master" : "Bus"} chain level going in and coming out.{/if}
-        {:else if !meterTrack}Meters show a track's chain while playing.
-        {:else if tab === "clip" && !inWave}Meters show the track chain of {meterTrack.name}. Clip chains are not metered yet.
-        {:else if !ts?.playing}Meters move while playing.
-        {:else if !chainMeter}This track's chain does nothing yet, so there is nothing to meter.
-        {:else}Track chain level going in and coming out.{/if}
-      </p>
+        <div class="io mixrow">
+          <span class="pname" title="How much of the effected sound you hear">Mix:</span>
+          <span class="end">Dry</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            aria-label="Mix"
+            value={mixShown}
+            oninput={(e) => dragChain("mix", "Voice Chain Mix", Number(e.currentTarget.value), Number(e.currentTarget.value) / 100)}
+            onchange={(e) => setChain("mix", "Voice Chain Mix", Number(e.currentTarget.value) / 100)}
+            ondblclick={() => setChain("mix", "Voice Chain Mix", 1)}
+            title="Double-click for 100 %"
+          />
+          <span class="end">Wet</span>
+          <span class="val">{formatParam(MIX, mixShown)}</span>
+        </div>
+      {/if}
       {#if inWave}
         <div class="apply">
           <p class="hint">You hear this chain when you play the file. The file changes only when you apply it, and Undo takes it back.</p>
@@ -865,6 +876,36 @@
           </div>
         </div>
       {/if}
+      <div class="tools">
+        <button
+          type="button"
+          class="power"
+          class:on={chain.enabled}
+          title={chain.enabled ? "Effects on: click to turn every effect off" : "Effects off: click to turn them all on"}
+          aria-label="Turn all effects on or off"
+          aria-pressed={chain.enabled}
+          onclick={() => commit(chain.enabled ? "Bypass Voice Chain" : "Turn On Voice Chain", { ...chain, enabled: !chain.enabled })}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v6" stroke="currentColor" stroke-width="1.6" /><path d="M4.6 4.4a5 5 0 1 0 6.8 0" fill="none" stroke="currentColor" stroke-width="1.4" /></svg>
+        </button>
+        <button
+          type="button"
+          class="power"
+          class:on={showIO}
+          title={showIO ? "Hide the Input, Output and Mix controls" : "Show the Input, Output and Mix controls"}
+          aria-label="Show or hide the Input, Output and Mix controls"
+          aria-pressed={showIO}
+          onclick={toggleIO}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h2M6.5 4h7M2.5 8h2M6.5 8h7M2.5 12h2M6.5 12h7" fill="none" stroke="currentColor" stroke-width="1.6" /></svg>
+        </button>
+        <button type="button" class="power" disabled title="Not built yet: choosing whether effects sit before or after the track's fader" aria-label="Effects before or after the fader">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8h7M6 5l3 3-3 3M11.5 3v10" fill="none" stroke="currentColor" stroke-width="1.5" /></svg>
+        </button>
+        <button type="button" class="power" disabled title="Not built yet: Pre-render Track, which bakes the chain into the track's audio" aria-label="Pre-render track">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9 1.5 3.5 9H8l-1 5.5L12.5 7H8Z" fill="currentColor" /></svg>
+        </button>
+      </div>
     </div>
   {/if}
 </section>
@@ -887,20 +928,28 @@
   }
   .tabs {
     display: flex;
-    border-bottom: 1px solid var(--border);
+    justify-content: center;
+    padding: 6px 8px 2px;
   }
   .tabs button {
-    flex: 1;
-    padding: 4px 6px;
-    background: none;
-    border: 0;
-    border-bottom: 2px solid transparent;
+    min-width: 96px;
+    padding: 3px 14px;
+    background: var(--surface-0);
+    border: 1px solid var(--border-strong);
+    border-radius: 0;
     color: var(--text-dim);
     font: inherit;
   }
+  .tabs button:first-child {
+    border-radius: 3px 0 0 3px;
+  }
+  .tabs button:last-child {
+    border-left: 0;
+    border-radius: 0 3px 3px 0;
+  }
   .tabs button.on {
-    color: var(--text);
-    border-bottom-color: var(--accent);
+    background: var(--surface-3);
+    color: var(--accent);
   }
   .top {
     display: grid;
@@ -918,9 +967,6 @@
   .grow {
     flex: 1;
     min-width: 0;
-  }
-  .del {
-    width: 70px;
   }
   .target {
     overflow: hidden;
@@ -956,37 +1002,55 @@
     height: 14px;
   }
   .slots {
-    margin: 0;
-    padding: 4px 0;
+    box-sizing: border-box;
+    /* Eight rows show; the rest scroll, like the rack it follows. */
+    max-height: 196px;
+    margin: 2px 8px 6px;
+    padding: 0;
+    overflow-y: auto;
     list-style: none;
-    border-bottom: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-0);
   }
   .slots.off {
     opacity: 0.55;
   }
   .slots li {
     display: flex;
-    gap: 3px;
+    gap: 0;
     align-items: center;
-    height: 22px;
-    padding: 0 8px;
+    height: 24px;
+    padding: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .slots li:last-child {
+    border-bottom: 0;
   }
   .slots li.sel {
-    background: var(--surface-2);
+    background: var(--surface-3);
+  }
+  .slots li.sel .n {
+    color: var(--text);
   }
   .slots li.bypassed .name {
     color: var(--text-faint);
     text-decoration: line-through;
   }
   .n {
-    width: 16px;
+    flex: none;
+    width: 22px;
+    align-self: stretch;
+    display: grid;
+    place-items: center;
+    background: var(--surface-1);
+    border-right: 1px solid var(--border);
     color: var(--text-faint);
     font-variant-numeric: tabular-nums;
-    text-align: right;
   }
   .name {
     display: flex;
     flex: 1;
+    padding: 0 6px;
     gap: 6px;
     min-width: 0;
     overflow: hidden;
@@ -1020,26 +1084,78 @@
   .slots li:has(.pow) {
     cursor: grab;
   }
+  /* An empty slot is a bare row; its text shows only when the pointer is on it. */
   .add {
-    display: flex;
     flex: 1;
-    justify-content: space-between;
+    align-self: stretch;
+    padding: 0 8px;
+    border: 0;
+    background: none;
     color: var(--text-dim);
     text-align: left;
-  }
-  /* Later empty slots: quiet until hovered, so the list stays calm. */
-  .add.quiet {
     opacity: 0;
   }
-  li:hover .add.quiet,
-  .add.quiet:focus-visible {
+  li:hover .add,
+  .add:focus-visible {
     opacity: 0.7;
   }
   .mini {
     min-width: 20px;
     padding: 0 3px;
+    margin-right: 2px;
     font-size: 10px;
     line-height: 16px;
+  }
+  /* Settings and remove show on the row you point at, so the rows stay as quiet as the rack. */
+  .slots li .mini:not(.arrow) {
+    opacity: 0;
+  }
+  .slots li:hover .mini,
+  .slots li.sel .mini,
+  .slots li:focus-within .mini {
+    opacity: 1;
+  }
+  .mini.arrow {
+    align-self: stretch;
+    width: 22px;
+    margin: 0;
+    border: 0;
+    border-left: 1px solid var(--border);
+    border-radius: 0;
+    background: none;
+    color: var(--text-dim);
+  }
+  .mini.arrow:hover {
+    background: var(--surface-2);
+    color: var(--text);
+  }
+  .plabel {
+    flex: none;
+    color: var(--text-dim);
+  }
+  .ico {
+    display: grid;
+    flex: none;
+    width: 24px;
+    height: 22px;
+    padding: 0;
+    place-items: center;
+    border-color: transparent;
+    background: none;
+    color: var(--text-dim);
+  }
+  .ico:hover:not(:disabled) {
+    border-color: var(--border-strong);
+    color: var(--text);
+  }
+  .ico svg {
+    width: 15px;
+    height: 15px;
+  }
+  .tools {
+    display: flex;
+    gap: 4px;
+    padding-top: 4px;
   }
   .mini.on {
     color: var(--accent);
@@ -1096,17 +1212,23 @@
     color: var(--text-dim);
     font-size: 11px;
   }
-  .pad {
-    padding: 6px 8px;
-  }
   .editor,
   .bottom {
     display: grid;
     gap: 3px;
     padding: 6px 8px;
   }
+  /* The levels, Mix and the four buttons stay at the bottom of the tab: pushed down when the
+     list is short, held in view when the tab is too short for everything. */
   .bottom {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    margin-top: auto;
+    gap: 2px;
+    padding: 4px 8px 6px;
     border-top: 1px solid var(--border);
+    background: var(--surface-1);
   }
   .param {
     display: grid;
@@ -1154,12 +1276,32 @@
   }
   .io {
     display: grid;
-    grid-template-columns: 52px minmax(0, 1fr) 28px 64px;
-    gap: 6px;
+    grid-template-columns: 38px 20px 26px minmax(0, 1fr);
+    gap: 4px;
     align-items: center;
   }
+  .io :global(.knob) {
+    width: 20px;
+    height: 20px;
+  }
+  .io .val {
+    text-align: left;
+  }
+  .scale .ticks {
+    position: relative;
+    height: 12px;
+    color: var(--text-faint);
+    font-size: 10px;
+  }
+  .scale .ticks span {
+    position: absolute;
+    transform: translateX(-100%);
+  }
+  .mixrow .val {
+    text-align: right;
+  }
   .io.mixrow {
-    grid-template-columns: 52px auto minmax(0, 1fr) auto 44px;
+    grid-template-columns: 38px auto minmax(0, 1fr) auto 38px;
   }
   .end {
     color: var(--text-faint);
@@ -1189,7 +1331,7 @@
   }
   .mbar {
     position: relative;
-    height: 5px;
+    height: 6px;
     overflow: hidden;
     background: linear-gradient(to right, #3d8f6a 0 var(--meter-yellow, 80%), #c9b33f var(--meter-yellow, 80%) var(--meter-red, 95%), #e5534b var(--meter-red, 95%) 100%);
   }

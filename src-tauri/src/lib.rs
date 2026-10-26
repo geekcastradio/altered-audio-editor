@@ -32,6 +32,7 @@ pub fn run() {
         .manage(commands::wave::ParkedWaves::default())
         .manage(commands::session::ParkedSessions::default())
         .manage(commands::wave::Playing::default())
+        .manage(commands::update::PendingUpdate::default())
         .setup(|app| {
             use tauri::Manager;
             if let Ok(dir) = app.path().app_config_dir() {
@@ -41,10 +42,13 @@ pub fn run() {
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             commands::app::app_info,
             commands::app::app_exit,
             commands::app::app_minimize,
+            commands::update::update_check,
+            commands::update::update_install,
             commands::browse::browse_locations,
             commands::browse::browse_list,
             commands::browse::preview_play,

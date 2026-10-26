@@ -53,13 +53,30 @@ for (const f of walk(join(root, "src"), [".ts", ".svelte"])) {
 }
 
 // Core: no HTTP client crates, no telemetry crates.
-const crateBanned = /^\s*(reqwest|ureq|hyper|isahc|surf|attohttpc|curl|tauri-plugin-http|tauri-plugin-updater|sentry[\w-]*|opentelemetry[\w-]*)\s*=/m;
+const crateBanned = /^\s*(reqwest|ureq|hyper|isahc|surf|attohttpc|curl|tauri-plugin-http|sentry[\w-]*|opentelemetry[\w-]*)\s*=/m;
 const cargo = readFileSync(join(root, "src-tauri", "Cargo.toml"), "utf8");
 const m = cargo.match(crateBanned);
 if (m) problems.push(`src-tauri/Cargo.toml: depends on ${m[1]}`);
 for (const f of walk(join(root, "src-tauri", "src"), [".rs"])) {
   const text = readFileSync(f, "utf8");
   if (/std::net::|TcpStream|UdpSocket/.test(text)) problems.push(`${relative(root, f)}: opens network sockets`);
+}
+
+// The updater plugin is allowed for one purpose: reading the project's own
+// signed latest.json from GitHub releases when the user asks (or has
+// turned on the weekly check). It must stay pointed at that one place and
+// must keep a public key so only our signed installers are accepted.
+const confText = readFileSync(join(root, "src-tauri", "tauri.conf.json"), "utf8");
+const updater = JSON.parse(confText)?.plugins?.updater;
+const OWN_RELEASES = /^https:\/\/github\.com\/geekcastradio\/altered-audio-editor\/releases\//;
+if (updater) {
+  const ends = Array.isArray(updater.endpoints) ? updater.endpoints : [];
+  if (ends.length === 0 || !ends.every((e) => OWN_RELEASES.test(e))) {
+    problems.push("src-tauri/tauri.conf.json: updater endpoints must be this project's GitHub releases only");
+  }
+  if (typeof updater.pubkey !== "string" || updater.pubkey.length < 40 || /PASTE_PUBLIC_KEY_HERE/.test(updater.pubkey)) {
+    problems.push("src-tauri/tauri.conf.json: the updater needs the real public key (npm run tauri signer generate)");
+  }
 }
 
 // Tauri config: the page may only load the app's own files.

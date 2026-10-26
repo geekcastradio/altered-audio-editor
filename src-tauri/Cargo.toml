@@ -37,6 +37,8 @@ url = "2"
 pathdiff = "0.2"
 roxmltree = "0.21"
 tauri-plugin-dialog = "2"
+# Help > Check for Updates. Talks to GitHub only when asked (see commands/update.rs).
+tauri-plugin-updater = "2"
 cpal = "0.18.2"
 rubato = "5.0.1"
 rtrb = "0.4"

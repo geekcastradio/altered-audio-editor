@@ -26,8 +26,8 @@
     <p class="version">Version {version ?? "unknown"}</p>
     <p>A free, open-source multitrack audio editor for podcasters and voiceover.</p>
     <p class="privacy">
-      No account, no sign-in, no telemetry, no tracking. The app never contacts the internet on its own; it only opens a web
-      page when you pick a link in the Help menu. Your audio and sessions stay on your computer.
+      No account, no sign-in, no telemetry, no tracking. The app goes online only when you pick Help > Check for Updates or a link
+      in the Help menu, or if you turn on the weekly update check (off by default). Your audio and sessions stay on your computer.
     </p>
     <p>Copyright (c) The GeekCast Radio Network, LLC.</p>
     <p class="fine">

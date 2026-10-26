@@ -380,9 +380,10 @@
           </fieldset>
           <p class="note">Podcast targets follow published podcast guidance (stereo -16 LUFS, mono -19 LUFS, true peak at or below -1 dBTP). Broadcast targets follow the region.</p>
         {:else if page === "Privacy"}
-          <p class="note">Altered Audio Editor never goes online by itself. No account, no sign-in, no tracking, no usage data, no crash reports, no update checks. Everything stays on this computer.</p>
+          <p class="note">Altered Audio Editor never goes online by itself. No account, no sign-in, no tracking, no usage data, no crash reports. Everything stays on this computer.</p>
           <p class="note">The only web pages it opens are the ones you pick in the Help menu, in your own browser.</p>
-          <label class="off"><input type="checkbox" disabled /> Check for updates once a week <span class="why">Arrives after the first public release, and stays off unless you turn it on.</span></label>
+          <label><input type="checkbox" bind:checked={d.app.updateCheck} /> Check for updates once a week</label>
+          <p class="note">Off unless you turn it on. When on, the app reads one small file from this project's GitHub releases about once a week and shows a line when a newer version exists. It sends nothing about you or your audio and never installs anything without your click. Help > Check for Updates works either way.</p>
         {/if}
       </section>
     </div>
