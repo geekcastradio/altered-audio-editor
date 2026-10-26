@@ -169,6 +169,7 @@
     waveApplyChain,
     phaseAlign,
     setAudioOutput,
+    setOutputMap,
     setAudioDriver,
     recordStart,
     recordStatus,
@@ -2464,6 +2465,7 @@
       // Driver first, so the output name is looked up on the right one.
       void setAudioDriver(s.driver === "asio")
         .then(() => setAudioOutput(s.output))
+        .then(() => setOutputMap(s.outputPair, s.speakerOutputs))
         .catch(showError);
     }
     if (autosave) restartAutosave();
