@@ -691,6 +691,9 @@ pub enum SpaceListen {
     Stereo,
     /// The layout's speakers heard as if around a head, for headphones.
     Binaural,
+    /// Each speaker to its own output of the audio device, for a room
+    /// with the layout's speakers (Settings > Audio Hardware maps them).
+    Speakers,
 }
 
 /// What makes a session a 3D Space session.
@@ -845,6 +848,24 @@ pub struct Clip {
     /// Used to select clips by kind, and later by the Audio FX Panel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio_type: Option<AudioType>,
+    /// Source Channels: how much of each of the file's channels goes to the
+    /// left and right. None uses the default for the file's channels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_mix: Option<ChannelMix>,
+}
+
+/// A clip's Source Channels: one entry per channel of its file, in file order.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ChannelMix {
+    pub sends: Vec<ChannelSend>,
+}
+
+/// How much of one source channel goes to each side, from -1 to 1
+/// (1 is all of it; negative flips its polarity).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ChannelSend {
+    pub left: f32,
+    pub right: f32,
 }
 
 /// What a clip holds.

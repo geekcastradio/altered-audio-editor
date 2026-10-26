@@ -2,6 +2,18 @@
 
 Newest first. Each entry: date, decision, reason.
 
+## 2026-10-26: Multichannel files and Channel Routing, taken from Audiform
+
+Decision: four feature commits by nwh212 (Broman) from his fork, Audiform, are merged here by cherry-pick (`932e944`, `c860b62`, `b65448d`, `608384c`). Audiform's name, brand, credits, FX Chain wording and panel looks are not taken. The rules for deciding are in `docs/audiform-intake.md`.
+
+- **Record is Shift+Space** (Audition's shortcut), and the old rule that pulled the view back to the playhead is gone. Follow Playhead alone pages the view.
+- **Source Channels.** A file of more than two channels (5.1, 7.1.4, a multi-track recorder's file) keeps every channel. Its clips draw one named row per channel and the waveform cache keeps up to 64. Properties gets a grid with a Left and a Right amount for each channel, presets (standard fold-down, with the LFE, one pair, one channel, mono sum, swapped), a polarity flip and Reset; one undoable step, applied to every selected clip whose file has the same channels. The default fold-down plays the fronts straight, the center and surrounds 3 dB down, and leaves the LFE out. The section appears only when a selected clip's file has more than two channels, so mono and stereo clips look as before (a change from Audiform). New session fields are optional, so older versions drop them on save.
+- **Channel Routing** (Edit > Settings) picks the outputs the stereo mix plays on and an output for each speaker name of a 3D Space layout. 3D Space's Listen menu gains Speakers (each on its own output). The device opens in its default setting when that has enough outputs, otherwise in its widest at the same rate.
+- **Multichannel files in the Waveform editor.** One named lane and on/off button per channel; edits that render audio (Apply chain, Stretch, Reverse, Invert, spectral Remove and Repair, edits limited to some channels) work a pair of channels at a time and write every channel back; Save writes a multichannel WAV in chunks; FLAC and MP3 are refused for such files with a message.
+- **Not taken yet:** each channel of a multichannel clip playing from its own 3D speaker (`fab9bf3`). It needs a multi-output setup to test.
+- **Untested on hardware at merge:** Channel Routing with real multi-output interfaces and the Speakers listen mode. Plain stereo playback, recording and mixdown must be checked against 0.3.x before release, because the change rewrites part of the playback core.
+- **Credit:** the work is nwh212's, under `CLA.md`; the commits keep him as author.
+
 ## 2026-10-25: In-app updates built (0.3.1)
 
 Decision: Help > Check for Updates now checks, and offers Install and Restart. An optional weekly check (Settings > Privacy, off by default) shows one line when a newer version exists. Plan from 2026-10-14 followed: the Tauri updater reads a signed `latest.json` from `releases/latest/download/`; nothing is sent about the user; nothing installs without a click.
