@@ -71,7 +71,7 @@ const updater = JSON.parse(confText)?.plugins?.updater;
 const OWN_RELEASES = /^https:\/\/github\.com\/geekcastradio\/altered-audio-editor\/releases\//;
 if (updater) {
   const ends = Array.isArray(updater.endpoints) ? updater.endpoints : [];
-  if (ends.length === 0 || !ends.every((e) => OWN_RELEASES.test(e))) {
+  if (ends.length === 0 || !ends.every((/** @type {string} */ e) => OWN_RELEASES.test(e))) {
     problems.push("src-tauri/tauri.conf.json: updater endpoints must be this project's GitHub releases only");
   }
   if (typeof updater.pubkey !== "string" || updater.pubkey.length < 40 || /PASTE_PUBLIC_KEY_HERE/.test(updater.pubkey)) {

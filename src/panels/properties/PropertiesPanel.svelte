@@ -78,6 +78,8 @@
   const quick = $derived(presets(chans));
   const current = $derived(mix ? presetFor(mix, chans) : null);
   const custom = $derived(picked.some((p) => p.clip.channel_mix));
+  // The section shows only for files of more than two channels; mono and stereo clips look as before.
+  const multi = $derived(picked.some((p) => (doc?.media.find((m) => m.id === p.clip.media_id)?.channels ?? 0) > 2));
 
   function setMix(next: ChannelMixDoc | null, label = "Source Channels") {
     const changes: ClipChange[] = picked.map(({ clip }) => (next ? { id: clip.id, channel_mix: next } : { id: clip.id, clear_channel_mix: true }));
@@ -175,6 +177,7 @@
       </details>
     {/if}
 
+    {#if multi}
     <h2>Source Channels</h2>
     {#if !mix}
       <p class="note">The clip's file is missing.</p>
@@ -211,6 +214,7 @@
       <div class="quick">
         <button type="button" disabled={!custom} onclick={() => setMix(null, "Source Channels: Reset")}>Reset</button>
       </div>
+    {/if}
     {/if}
   {/if}
 </section>

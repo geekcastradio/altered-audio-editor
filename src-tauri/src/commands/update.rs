@@ -77,7 +77,10 @@ pub async fn update_install(
     pending: State<'_, PendingUpdate>,
 ) -> Result<(), String> {
     if !can_install() {
-        return Err("This copy cannot update itself. Download the new version from the releases page.".into());
+        return Err(
+            "This copy cannot update itself. Download the new version from the releases page."
+                .into(),
+        );
     }
     let update = pending
         .0
