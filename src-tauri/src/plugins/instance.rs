@@ -758,9 +758,12 @@ pub fn live_params(effect: &str) -> Option<Vec<ParamInfo>> {
         .filter(|p| p.effect.eq_ignore_ascii_case(effect))
         .map(|p| p.host.clone())
         .collect();
-    hosts
-        .into_iter()
-        .find_map(|h| h.try_lock().ok().map(|h| h.params.clone()).filter(|p| !p.is_empty()))
+    hosts.into_iter().find_map(|h| {
+        h.try_lock()
+            .ok()
+            .map(|h| h.params.clone())
+            .filter(|p| !p.is_empty())
+    })
 }
 
 /// Stops a slot's host, so the next playback starts it again (after a crash).
