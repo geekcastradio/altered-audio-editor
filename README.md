@@ -11,7 +11,7 @@
 
 It follows the editing workflow that experienced audio editors already know, with its own original design, then adds tools built for podcast production.
 
-> Status: in active development (phase P5, effects). Editing, playback, recording, the Voice Chain effects, conversion and mixdown work today. Podcast mode tools (transcripts, publishing) are still to come. Pre-release: keep backups of your recordings.
+> Status: in active development (phase P5, effects). Version 0.3.0 adds Music Mode. Editing, playback, recording, the Voice Chain effects, conversion and mixdown work today. Podcast mode tools (transcripts, publishing) are still to come. Pre-release: keep backups of your recordings.
 
 ![Multitrack editor with a four-track episode: themes, a host and a co-host with the Podcast Voice chain on the host track, a promo, fades, a volume envelope and chapter markers](docs/images/multitrack.png)
 
@@ -64,6 +64,8 @@ Early versions are pre-releases. Expect rough edges and keep backups of your rec
 - **Speaker Balance and host profiles:** level every voice track to the quietest in one click before processing, and start each host's track from a Close Mic, Standard Mic or Remote Guest profile.
 - **Settings:** zoom, fades, colors, output device, autosave, solo, meter colors, recording offset, time format loudness defaults, session backups and a record count-in in one place (Edit > Settings).
 - **Session templates:** start every episode from your show's track layout.
+- **Music Mode (off by default):** View > Music Mode adds the music tools without changing the podcast layouts: MIDI tracks with a piano roll and VST3 instruments, an Amp Model effect that loads Neural Amp Modeler captures, a metronome, a tempo strip and Bars and Beats time. The Music workspace (Window > Workspace) turns it on for you. Also from this release: buses, sends and sidechain, VST3 plug-ins in Voice Chains (each in its own process), a Phase Wheel, and a 3D Space panel (Window menu).
+- **Help > Check for Updates** opens the releases page. Nothing is checked in the background.
 - **Imports `.sesx` sessions:** brings in tracks, clips and positions from `.sesx` multitrack session files.
 
 ## Private by design

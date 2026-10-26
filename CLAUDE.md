@@ -78,7 +78,7 @@ P1 exit gate (kept as a regression check): open a real `.sesx`, see its tracks a
 
 ## Workspace layout
 
-Window > Workspace lists the built-in workspaces (Default, Focused Edit, Mixing, Voiceover, Review and Export) plus any the user saves. They let the app cover a full editing job out of the box; names and layouts are our own, built in `src/app/docking/registry.ts`. Each workspace remembers its arrangement. Built-in ones can be reset, not deleted; user ones can be saved, reset and deleted. Panels are toggled from the Window menu or a tab's right-click menu. Tabs have no close button, so a stray click never closes a panel.
+Window > Workspace lists the built-in workspaces (Default, Focused Edit, Mixing, Voiceover, Music, Review and Export) plus any the user saves. They let the app cover a full editing job out of the box; names and layouts are our own, built in `src/app/docking/registry.ts`. Each workspace remembers its arrangement. Built-in ones can be reset, not deleted; user ones can be saved, reset and deleted. Panels are toggled from the Window menu or a tab's right-click menu. Tabs have no close button, so a stray click never closes a panel.
 
 Default layout. This is the only Default layout. It puts the common podcast workflow in reach: files and voice processing on the left, the timeline in the center, effects and libraries on the right.
 
@@ -160,6 +160,8 @@ Not in Default: Markers, History. (A saved-commands panel was dropped.) History 
 - Surround Panner, Basic Adjustments, Phase Analysis, Phase Scope (available in the Window menu, not in Default)
 - Podcast mode panels: Chapters, Transcript, Podcast Publish (View > Podcast Mode toggle)
 - Voiceover mode panels: Script, Take Lanes, Delivery Check (View > Voiceover Mode toggle)
+- **Music Mode (View > Music Mode, off by default, app-wide setting `musicMode`):** hides the metronome and its track, the Tempo strip, Bars and Beats, the Amp Model effect, MIDI tracks and the piano roll until switched on. The Music workspace turns it on. The Default, Podcast and Voiceover layouts must never change because of music features. New music features go behind this switch (decided 2026-10-25).
+- 3D Space: its own panel from the Window menu, in no built-in layout.
 
 ## Planned additions (community requests, October 2026)
 

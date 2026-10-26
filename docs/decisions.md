@@ -2,6 +2,19 @@
 
 Newest first. Each entry: date, decision, reason.
 
+## 2026-10-25: PR #11 merged as 0.3.0, with every music tool behind Music Mode
+
+Decision: nwh212's second pull request (#11: spectral EQ, MIDI tracks and the piano roll, the Amp Model effect, the metronome and tempo strip, Bars and Beats, 3D Space and more) is merged by us into `main` as 0.3.0. All the music tools sit behind **View > Music Mode** (off by default, an app-wide setting) and a separate **Music** workspace. The Default, Podcast and Voiceover layouts and menus are unchanged.
+
+- **Gated by Music Mode:** the metronome and its track, the Tempo strip, Bars and Beats as a time format, the Amp Model effect in the Voice Chain menu, MIDI tracks (Add Tracks and the multitrack menu) and the piano roll. Turning Music Mode off also turns the metronome off. Opening the Music workspace turns Music Mode on.
+- **Music workspace:** Editor with the Mixer behind it, Properties on the right, Levels and Time Info below, Files and Voice Chain on the left. It is a Window > Workspace entry like the others.
+- **3D Space** stays its own panel, opened from the Window menu. It is in no built-in layout.
+- **Why:** the app is a podcast and voiceover editor first. Music tools should be there for people who want them and invisible for people who do not. Future music features go behind the same switch.
+- **Known limits at release:** MIDI, the Amp Model, real VST3 plug-ins, buses and 3D Space have had little hardware testing. Sessions saved by 0.3.0 may carry new optional fields (space, MIDI data, tempo changes, automation display); 0.2.0 and older drop them when they save. Plug-in class ids are stored per platform, so a session using a VST3 plug-in may need the plug-in re-picked on another operating system.
+- **Process note:** the pull request was large and mixed several features. We merged it anyway after review. Asked of contributors from now on: smaller pull requests, one feature each, and anything that changes menus or layouts is discussed first.
+- **Credits:** the Amp Model loads Neural Amp Modeler captures; NeuralAmpModelerCore (MIT) is credited in `ATTRIBUTION.md`. Rule kept: ask the project lead before porting more than one algorithm into a release.
+- **Housekeeping fixes in the merge:** clippy `as_chunks` lints, platform-specific VST3 id byte order in tests (looked up by name), and a variable renamed in `amp.rs` so the private-term check passes.
+
 ## 2026-10-24: first outside contributor, and how his agreement is recorded
 
 Decision: nwh212 (Discord: Broman) is the project's first outside contributor, listed in `CONTRIBUTORS.md`. On Discord on 2026-10-24 he wrote that he has read `CLA.md` and agrees to it for his pull request and his future contributions, licensed under GPL v3.0 or later as `CLA.md` describes. His work (MIDI tracks and the piano roll, plug-in hosting in a separate process, buses, sends and sidechain, the Phase Wheel and Properties panels, session import fixes) is merged on the `next` branch.

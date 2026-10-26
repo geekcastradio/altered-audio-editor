@@ -535,3 +535,13 @@ Decision (project lead): broadcast and CD features stay in the plan for people w
 
 - **Final Cut Pro interchange (FCPXML export), and better interchange in general.** Export a session's tracks, clips, positions, fades and markers as FCPXML so editors can finish in a video editor; later look at other interchange formats. Own design, built from the published format, no other product's code.
 - **MCP control** (local-only endpoint, off by default, read-only first, every edit one labelled undoable step). Already under "Later" in CLAUDE.md; this request raises its priority.
+
+## Added 2026-10-25, after the 0.3.0 merge
+
+- **In-app updater.** Tauri updater with a signed `latest.json` on the release, a key pair kept private, and a weekly check that is off by default (decided 2026-10-14). Today Help > Check for Updates only opens the releases page.
+- **Platform-specific VST3 class ids.** The id byte order differs between Windows and the other systems, so a session that names a plug-in by id may not find it on another OS. Store a platform-neutral id or fall back to the plug-in name.
+- **Older versions drop new fields.** 0.2.0 and earlier discard the optional fields 0.3.0 adds (space, MIDI data, gain_db, tempo changes, beat_unit, show_automation) when they save. Consider warning when a newer session is opened.
+- **Hardware testing owed:** buses and sends on real interfaces, real VST3 instruments and effects, MIDI input, killing the plug-in host process while playing, real-time safety under load, Linux and macOS builds.
+- **Amp Model:** decide whether Tube Preamp and Opto Leveler should also sit behind Music Mode (left in the normal list for now). Confirm the capture-loading code and credits.
+- **Zoom chords** (zoom out to full, zoom all axes) are in the keymap; the all-axes menu item is still pending.
+- **Contributor flow:** ask nwh212 to confirm the CLA on GitHub too, and to send smaller pull requests that keep new features behind Music Mode.
