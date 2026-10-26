@@ -836,7 +836,7 @@
               }}
               oncommit={(t) => setChain(key, `Voice Chain ${p.name} Gain`, fromSlider(p, t))}
             />
-            <span class="val">{formatParam(p, cur)}</span>
+            <span class="val" title={formatParam(p, cur)}>{cur > 0 ? "+" : ""}{cur.toFixed(1)}</span>
             {@render bars(k === 0 ? "In" : "Out", k)}
           </div>
         {/each}
@@ -1003,8 +1003,10 @@
   }
   .slots {
     box-sizing: border-box;
-    /* Eight rows show; the rest scroll, like the rack it follows. */
-    max-height: 196px;
+    /* The list takes the room the tab has: all sixteen rows when it is tall,
+       fewer (scrolling) when it is short. The controls below stay in view. */
+    flex: 1 1 auto;
+    min-height: 74px;
     margin: 2px 8px 6px;
     padding: 0;
     overflow-y: auto;
@@ -1276,7 +1278,7 @@
   }
   .io {
     display: grid;
-    grid-template-columns: 38px 20px 26px minmax(0, 1fr);
+    grid-template-columns: 46px 20px 32px minmax(0, 1fr);
     gap: 4px;
     align-items: center;
   }
@@ -1286,6 +1288,11 @@
   }
   .io .val {
     text-align: left;
+    white-space: nowrap;
+  }
+  .io .pname {
+    overflow: visible;
+    white-space: nowrap;
   }
   .scale .ticks {
     position: relative;
@@ -1301,7 +1308,7 @@
     text-align: right;
   }
   .io.mixrow {
-    grid-template-columns: 38px auto minmax(0, 1fr) auto 38px;
+    grid-template-columns: 46px auto minmax(0, 1fr) auto 40px;
   }
   .end {
     color: var(--text-faint);
