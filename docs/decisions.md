@@ -1473,7 +1473,7 @@ Several requests compared behavior to another editor; per the guardrails they ar
 - **Wheel zoom anchor.** Edit > Settings > General adds "Between the pointer and the middle of the view": the zoom centers 40% of the way from the pointer to the middle, so zooming drifts less. It is the default for new settings; the pointer and the playhead stay as choices. Over the rulers the zoom always centers on the pointer.
 - **Phase Wheel and 3D sessions.** Rather than one view of every speaker, the plan is to let the Phase Wheel compare any two signals: two speaker channels of a 3D session, or two tracks.
 
-## 2026-10-26: Audiform intake, first batch (0.5.1)
+## 2026-10-26: Audiform intake, first batch (0.5.2)
 
 - **Picked up from Audiform (GPL-3.0-or-later), each adapted or cherry-picked and credited in its commit:** Ctrl+Alt shortcuts read the physical key (AltGr on Windows), peak caches with more than two channels read back, files removed from the Files panel close in the Waveform editor, and the Waveform editor fits the file exactly with no empty time after its end.
 - **Written for our code, not copied:** Mix Down and Bounce of selected clips now include MIDI clips, with their span taken from the tempo map (our clip export ignored MIDI clips entirely). A mixdown checks its request without starting plug-ins, which used to start every plug-in twice.
