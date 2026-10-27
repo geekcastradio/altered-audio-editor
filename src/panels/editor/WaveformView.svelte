@@ -130,7 +130,8 @@
       if (v.playhead !== undefined) followHeld = false;
       else if ((v.scroll !== undefined && v.scroll !== doc.view.scroll) || (v.spp !== undefined && v.spp !== doc.view.samples_per_pixel)) followHeld = true;
     }
-    const maxScroll = Math.max(0, total - width * (v.spp ?? view.spp) * 0.5);
+    // The view never runs past the end of the file.
+    const maxScroll = Math.max(0, total - width * (v.spp ?? view.spp));
     wave.setView({
       ...doc.view,
       samples_per_pixel: v.spp ?? doc.view.samples_per_pixel,
@@ -152,7 +153,7 @@
     const untouched = fittedFor === key && doc.view.samples_per_pixel === fittedSpp && doc.view.scroll === 0;
     if (fittedFor === key && !(untouched && width !== fittedWidth)) return;
     fittedFor = key;
-    const f = fit(total, width);
+    const f = fit(total, width, 1);
     fittedSpp = f.spp;
     fittedWidth = width;
     setView({ spp: f.spp, scroll: 0 });
@@ -174,7 +175,7 @@
   });
 
   /** Farthest zoom out: the whole file fills the view, with no empty time after it. */
-  const outermost = () => fit(total, width).spp;
+  const outermost = () => fit(total, width, 1).spp;
 
   /** The view's zoom commands, used by the Zoom actions while this editor shows. */
   export function zoom(kind: "in" | "out" | "full" | "selection" | "amp-in" | "amp-out"): void {
@@ -182,7 +183,7 @@
     if (kind === "amp-in") ampZoom = Math.min(16, ampZoom * 2);
     else if (kind === "amp-out") ampZoom = Math.max(1, ampZoom / 2);
     else if (kind === "full") {
-      const f = fit(total, width);
+      const f = fit(total, width, 1);
       setView({ spp: f.spp, scroll: 0 });
     } else if (kind === "selection" && selection) {
       const f = fit(selection.end - selection.start, width);

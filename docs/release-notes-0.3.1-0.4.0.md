@@ -14,7 +14,7 @@ Two releases are covered here. Use the 0.3.1 section for the updater release and
 - Every release is now published as a normal release, so "latest" always points to the newest version.
 
 ### Voice Chain panel
-- Rebuilt to look and work like a proper effects rack, in the app's own colors.
+- Rebuilt with a clearer layout, in the app's own colors.
 - The slot list now grows and shrinks with the panel, so it uses all the room you give it.
 - The Input, Output and Mix block and the four buttons are pinned to the bottom of the tab at any size.
 - Button 1 turns all effects on or off. Button 2 shows or hides the Input/Output/Mix controls.
