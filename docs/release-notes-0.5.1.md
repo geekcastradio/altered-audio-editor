@@ -1,14 +1,13 @@
 # Altered Audio Editor 0.5.1
 
-A fix for ASIO devices that sometimes do not show up.
-
 ## Fixed
-- **ASIO devices missing in Settings.** If the Play through and input lists showed only "System default" while ASIO was chosen (reported after a plug-in failed to load, and when the app was started right after an update), the app now asks the driver again a few times before giving up, and Settings tries twice more by itself. A new **Refresh Devices** button in Settings > Audio Devices asks again on demand, and a note explains what is happening if the lists stay empty.
+- Mix Down and Bounce of selected clips now include MIDI clips, placed by the session's tempo. Before, a selection of only MIDI clips could not be exported, and a mixed selection left the MIDI out.
+- Exporting with VST3 effects starts each plug-in once instead of twice, so exports begin sooner.
+- Ctrl+Alt shortcuts read the physical key, so they work with AltGr keyboards on Windows.
+- Files with more than two channels read their saved peaks back correctly.
+- Removing a file from the Files panel, or using Remove Unused Files, closes it in the Waveform editor (asking first if it has unsaved edits).
 
-## Good to know
-- The cause is an ASIO driver being open in one program at a time. We could not reproduce the problem, so if the lists are still empty after Refresh Devices, please tell us what else was running.
+## Changed
+- The Waveform editor fits the file exactly: zoom to fit no longer adds empty time after the end, and scrolling stops at the end of the file.
 
-## Test checklist
-- Choose ASIO in Settings > Audio Devices: your interface's devices appear
-- With ASIO chosen, start a recording in another app that holds the interface, open Settings, and confirm the note and Refresh Devices appear; close the other app, press Refresh Devices, and the lists fill
-- Switch back to System: lists appear immediately, as before
+Several of these fixes come from the Audiform project (GPL-3.0-or-later). Thank you to its developer.
