@@ -4,7 +4,8 @@
 
 # Builds the Windows installer and a portable zip when a version tag is
 # pushed (git tag v0.1.0 && git push origin v0.1.0). It makes a DRAFT
-# release, so nothing is public until you review and publish it.
+# release, so nothing is public until you review and publish it. Publishing
+# makes it the Latest release, which is where the in-app updater looks.
 # Each platform builds in its own job and hands its files over as a build
 # artifact; the last job makes the draft with everything that built.
 # Linux and macOS are experimental: if one fails, the draft still gets
@@ -25,6 +26,9 @@ jobs:
   windows:
     name: Windows installer and portable zip
     runs-on: windows-latest
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v5
 
@@ -65,6 +69,9 @@ jobs:
           New-Item -ItemType Directory -Force -Path $out, $portable | Out-Null
           $setup = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
           Copy-Item $setup.FullName (Join-Path $out "Altered-Audio-Editor-$tag-setup.exe")
+          # The signature the in-app updater checks (made because createUpdaterArtifacts is on).
+          $sig = "$($setup.FullName).sig"
+          if (Test-Path $sig) { Copy-Item $sig (Join-Path $out "Altered-Audio-Editor-$tag-setup.exe.sig") } else { Write-Warning "No .sig file next to the installer, so there will be no updater manifest." }
           Copy-Item src-tauri/target/release/altered-audio-editor.exe (Join-Path $portable "Altered Audio Editor.exe")
           Copy-Item LICENSE, README.md $portable
           Compress-Archive -Path (Join-Path $portable "*") -DestinationPath (Join-Path $out "Altered-Audio-Editor-$tag-portable.zip")
@@ -80,6 +87,9 @@ jobs:
     name: Linux AppImage and deb (experimental)
     runs-on: ubuntu-24.04
     continue-on-error: true
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v5
 
@@ -128,6 +138,9 @@ jobs:
     name: macOS Apple silicon (experimental, unsigned)
     runs-on: macos-latest
     continue-on-error: true
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v5
 
@@ -187,8 +200,13 @@ jobs:
           tag="${{ github.ref_name }}"
           cd files
           if [ -f NO-ASIO.txt ]; then echo "::warning::The ASIO build failed; the Windows installer has no ASIO."; rm NO-ASIO.txt; fi
+          # The manifest the in-app updater reads (Windows only: the other builds are experimental).
+          setup="Altered-Audio-Editor-$tag-setup.exe"
+          if [ -f "$setup.sig" ]; then
+            jq -n --arg version "${tag#v}" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg sig "$(cat "$setup.sig")" --arg url "https://github.com/$GH_REPO/releases/download/$tag/$setup" '{version: $version, notes: "See the release page for what changed.", pub_date: $date, platforms: {"windows-x86_64": {signature: $sig, url: $url}}}' > latest.json
+          else
+            echo "::warning::No installer signature, so no latest.json: the in-app updater will not see this release."
+          fi
           sha256sum * > SHA256SUMS.txt
           ls -la
-          pre=""
-          case "$tag" in v0.*) pre="--prerelease" ;; esac
-          gh release create "$tag" --draft $pre --title "Altered Audio Editor $tag" --generate-notes ./*
+          gh release create "$tag" --draft --title "Altered Audio Editor $tag" --generate-notes ./*
