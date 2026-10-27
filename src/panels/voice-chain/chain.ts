@@ -556,6 +556,18 @@ export const BUILTIN_PRESETS: ChainPreset[] = [
   chainP("Lower Pitch", "Processing", [
     fx("pitch_shift", { semitones: -2, cents: 0 }),
   ]),
+  chainP("Slapback Echo", "Delay", [
+    fx("echo", { time: 110, feedback: 8, tone: 5000, wet: 28, pingpong: 0 }),
+  ]),
+  chainP("Podcast Room Echo", "Delay", [
+    fx("echo", { time: 240, feedback: 25, tone: 4500, wet: 18, pingpong: 0 }),
+  ]),
+  chainP("Ping-Pong Echo", "Delay", [
+    fx("echo", { time: 375, feedback: 40, tone: 6000, wet: 30, pingpong: 1 }),
+  ]),
+  chainP("Long Dark Echo", "Delay", [
+    fx("echo", { time: 700, feedback: 55, tone: 2800, wet: 35, pingpong: 0 }),
+  ]),
   chainP("Remove Vocals", "Processing", [
     fx("center_remover", { amount: 100, keep_below: 150 }),
   ]),

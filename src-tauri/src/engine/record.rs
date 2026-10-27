@@ -25,6 +25,9 @@ use std::time::{Duration, Instant};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SampleFormat, SizedSample, StreamConfig};
 use rtrb::{Consumer, Producer, RingBuffer};
+
+use crate::dsp::effects::ChainProcessor;
+use crate::session::model::EffectChain;
 use serde::{Deserialize, Serialize};
 
 /// One thing to record: usually an armed track.
@@ -42,6 +45,10 @@ pub struct RecordTarget {
     /// Also play this input through the speakers.
     #[serde(default)]
     pub monitor: bool,
+    /// The track's Voice Chain. With `monitor`, the player hears the
+    /// built-in effects in it, as they were when monitoring started.
+    #[serde(default)]
+    pub chain: Option<EffectChain>,
 }
 
 /// A finished take.
@@ -254,32 +261,61 @@ impl LiveTap {
     }
 }
 
+/// The chain a monitored track's player hears: the track's own built-in
+/// effects. A VST3 plug-in is left out, since it runs in another process
+/// and its delay would be heard, and so is an effect that listens to
+/// another track.
+fn monitor_chain(chain: Option<&EffectChain>, rate: u32) -> Option<ChainProcessor> {
+    let mut c = chain?.clone();
+    c.slots
+        .retain(|s| !crate::plugins::is_plugin(&s.effect) && s.sidechain.is_none());
+    ChainProcessor::new(&c, rate)
+}
+
 /// Mixes the monitored targets' channels to stereo for the speakers. A
-/// mono target goes to both sides; a stereo one keeps its sides.
+/// mono target goes to both sides; a stereo one keeps its sides. A target
+/// with a Voice Chain is heard through its built-in effects.
 pub struct MonitorMix {
     picks: Vec<Vec<usize>>,
+    chains: Vec<Option<ChainProcessor>>,
     device_channels: usize,
+    side: Vec<f32>,
+    sum: Vec<f32>,
 }
 
 impl MonitorMix {
     /// None when no target asks to be monitored.
-    pub fn new(targets: &[(RecordTarget, Vec<usize>)], device_channels: usize) -> Option<Self> {
-        let picks: Vec<Vec<usize>> = targets
+    pub fn new(
+        targets: &[(RecordTarget, Vec<usize>)],
+        device_channels: usize,
+        rate: u32,
+    ) -> Option<Self> {
+        let monitored: Vec<&(RecordTarget, Vec<usize>)> = targets
             .iter()
             .filter(|(t, c)| t.monitor && !c.is_empty())
-            .map(|(_, c)| c.clone())
+            .collect();
+        let picks: Vec<Vec<usize>> = monitored.iter().map(|(_, c)| c.clone()).collect();
+        let chains = monitored
+            .iter()
+            .map(|(t, _)| monitor_chain(t.chain.as_ref(), rate))
             .collect();
         (!picks.is_empty()).then_some(Self {
             picks,
+            chains,
             device_channels: device_channels.max(1),
+            side: Vec::new(),
+            sum: Vec::new(),
         })
     }
 
     /// Appends one stereo frame (left, right) per whole input frame.
-    pub fn mix(&self, interleaved: &[f32], out: &mut Vec<f32>) {
-        for frame in interleaved.chunks_exact(self.device_channels) {
-            let (mut l, mut r) = (0f32, 0f32);
-            for chans in &self.picks {
+    pub fn mix(&mut self, interleaved: &[f32], out: &mut Vec<f32>) {
+        let frames = interleaved.len() / self.device_channels;
+        self.sum.clear();
+        self.sum.resize(frames * 2, 0.0);
+        for (chans, chain) in self.picks.iter().zip(self.chains.iter_mut()) {
+            self.side.clear();
+            for frame in interleaved.chunks_exact(self.device_channels) {
                 let at = |i: usize| {
                     chans
                         .get(i)
@@ -288,16 +324,21 @@ impl MonitorMix {
                         .unwrap_or(0.0)
                 };
                 if chans.len() == 1 {
-                    l += at(0);
-                    r += at(0);
+                    self.side.push(at(0));
+                    self.side.push(at(0));
                 } else {
-                    l += at(0);
-                    r += at(1);
+                    self.side.push(at(0));
+                    self.side.push(at(1));
                 }
             }
-            out.push(l.clamp(-1.0, 1.0));
-            out.push(r.clamp(-1.0, 1.0));
+            if let Some(c) = chain {
+                c.process(&mut self.side);
+            }
+            for (s, v) in self.sum.iter_mut().zip(&self.side) {
+                *s += *v;
+            }
         }
+        out.extend(self.sum.iter().map(|v| v.clamp(-1.0, 1.0)));
     }
 }
 
@@ -617,14 +658,17 @@ fn run(
 
     // Input monitoring. A system-audio take is already what the speakers
     // play, so it is never sent back to them.
-    let mix = if loopback {
+    let mut mix = if loopback {
         None
     } else {
-        MonitorMix::new(&targets, channels)
+        MonitorMix::new(&targets, channels, rate)
     };
+    // An ASIO driver opens for one program at a time, so ASIO monitoring
+    // plays on the input's own driver.
+    let input_name = dev.description().ok().map(|d| d.name().to_string());
     let mut monitor: Option<(Producer<f32>, cpal::Stream)> = None;
     if mix.is_some() {
-        match open_monitor(rate) {
+        match open_monitor(rate, input_name.as_deref()) {
             Ok(v) => monitor = Some(v),
             Err(e) => {
                 if let Ok(mut n) = shared.monitor_note.lock() {
@@ -663,7 +707,7 @@ fn run(
             if let Ok(mut live) = shared.live.lock() {
                 tap.push(&block[..n], &mut live);
             }
-            if let (Some(m), Some((p, _))) = (mix.as_ref(), monitor.as_mut()) {
+            if let (Some(m), Some((p, _))) = (mix.as_mut(), monitor.as_mut()) {
                 mixed.clear();
                 m.mix(&block[..n], &mut mixed);
                 let queued = p.buffer().capacity() - p.slots();
@@ -726,9 +770,24 @@ fn run(
 
 /// Opens the default output at the input's rate for monitoring. Returns
 /// the ring that feeds it (stereo frames) and the running stream.
-fn open_monitor(rate: u32) -> Result<(Producer<f32>, cpal::Stream), String> {
+fn open_monitor(
+    rate: u32,
+    input_name: Option<&str>,
+) -> Result<(Producer<f32>, cpal::Stream), String> {
     let host = crate::engine::host::host();
-    let dev = super::output::output_device(&host)
+    // With ASIO, the output of the driver the input is on; the output picked
+    // in Settings may belong to another driver, which cannot be opened too.
+    let same_driver = if crate::engine::host::asio() {
+        input_name.and_then(|n| {
+            host.output_devices()
+                .ok()?
+                .find(|d| d.description().ok().is_some_and(|x| x.name() == n))
+        })
+    } else {
+        None
+    };
+    let dev = same_driver
+        .or_else(|| super::output::output_device(&host))
         .ok_or("Input monitoring needs an output: no speakers or headphones found.")?;
     let mut best: Option<cpal::SupportedStreamConfig> = None;
     for c in dev.supported_output_configs().map_err(|e| e.to_string())? {
@@ -886,17 +945,19 @@ mod tests {
             channels: 1,
             name: key.into(),
             monitor,
+            chain: None,
         };
-        assert!(MonitorMix::new(&[(mk("a", false), vec![0])], 3).is_none());
+        assert!(MonitorMix::new(&[(mk("a", false), vec![0])], 3, 48_000).is_none());
         // Device has 3 channels: a mono mic on 0 (monitored), a stereo pair
         // on 1-2 (monitored), and nothing else.
-        let m = MonitorMix::new(
+        let mut m = MonitorMix::new(
             &[
                 (mk("mic", true), vec![0]),
                 (mk("pair", true), vec![1, 2]),
                 (mk("quiet", false), vec![0]),
             ],
             3,
+            48_000,
         )
         .unwrap();
         let mut out = Vec::new();
@@ -907,6 +968,27 @@ mod tests {
     }
 
     #[test]
+    fn monitor_applies_the_tracks_built_in_effects() {
+        let chain = EffectChain {
+            output_gain_db: -6.0206,
+            ..EffectChain::default()
+        };
+        let target = RecordTarget {
+            key: "mic".into(),
+            input: None,
+            channels: 1,
+            name: "mic".into(),
+            monitor: true,
+            chain: Some(chain),
+        };
+        let mut m = MonitorMix::new(&[(target, vec![0])], 1, 48_000).unwrap();
+        let mut out = Vec::new();
+        m.mix(&[0.8, 0.8], &mut out);
+        assert_eq!(out.len(), 4);
+        assert!((out[0] - 0.4).abs() < 1e-3 && (out[1] - 0.4).abs() < 1e-3);
+    }
+
+    #[test]
     fn live_tap_measures_each_target() {
         let mk = |key: &str| RecordTarget {
             key: key.into(),
@@ -914,6 +996,7 @@ mod tests {
             channels: 1,
             name: key.into(),
             monitor: false,
+            chain: None,
         };
         let mut tap = LiveTap::new(&[(mk("a"), vec![0]), (mk("b"), vec![1])], 2);
         let mut live = HashMap::new();
@@ -938,6 +1021,7 @@ mod tests {
             channels: 1,
             name: key.into(),
             monitor: false,
+            chain: None,
         };
         let mut w = TakeWriter::create(
             dir.path(),

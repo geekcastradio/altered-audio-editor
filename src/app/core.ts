@@ -611,6 +611,8 @@ export interface MixdownRequest {
   spaceLayout?: string;
   /** 3D Space sessions: a stereo file for headphones. */
   binaural?: boolean;
+  /** Bring the mix to this loudness (LUFS) with true peaks under the limit (dBTP) before writing. */
+  normalize?: { lufs: number; peak: number };
 }
 
 export interface MixdownResult {
@@ -656,6 +658,7 @@ export function exportMixdown(path: string, request: MixdownRequest): Promise<Mi
       realtime: request.realtime ?? false,
       space_layout: request.spaceLayout ?? null,
       binaural: request.binaural ?? false,
+      normalize: request.normalize ?? null,
     },
   });
 }
@@ -832,6 +835,8 @@ export interface RecordTarget {
   name: string;
   /** Also play the input through the speakers. */
   monitor?: boolean;
+  /** With monitor: the Voice Chain whose built-in effects the player hears. */
+  chain?: import("../stores/session").EffectChainDoc | null;
 }
 
 export interface Take {

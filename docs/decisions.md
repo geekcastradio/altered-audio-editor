@@ -2,6 +2,44 @@
 
 Newest first. Each entry: date, decision, reason.
 
+## 2026-10-26: Hearing effects while recording, ASIO monitoring, and progress when applying a chain
+
+Decision: three fixes from the same user report.
+
+- **Input monitoring on ASIO.** The monitor used the output picked in Settings. With ASIO, that can belong to another driver than the input, and ASIO opens one driver at a time, so monitoring started silently and the player heard nothing. It now plays on the input's own driver. We could not test ASIO ourselves, so this is the likely cause and the first thing to check if it still does not work.
+- **Effects while monitoring.** A monitored track is heard through the built-in effects in its Voice Chain, with its gains and mix. VST3 plug-ins are left out on purpose: they run in another process and their delay would be heard, which makes it harder to play or speak. Effects that listen to another track are left out too. The chain is read when monitoring starts, so a change made while recording is heard the next time monitoring starts. The recording itself is always the clean input; effects are never recorded in.
+- **Waveform editor.** A new setting, Hear the input while recording in the Waveform editor (Settings > Playback and Recording), off by default so a speaker cannot feed back into the microphone. When on, the file's Voice Chain is heard the same way.
+- **Apply Voice Chain** shows progress, the time left (once it is 5 percent through) and a Cancel button. Cancel leaves the file as it was. It was only a busy cursor before, which looked frozen with slow plug-ins.
+
+## 2026-10-26: ASIO device lists that come back empty
+
+Decision: when ASIO is chosen and its drivers are installed but a device lookup finds nothing, ask again, and give the user a way to ask again.
+
+- A user reported the ASIO choices disappearing after a plug-in failed to load, and again when the app was started right after an update; restarting fixed both. An ASIO driver opens for one program at a time, so a lookup made while an earlier run or a failed plug-in still holds the driver comes back empty. We could not reproduce it ourselves, so this is the likeliest cause, not a proven one.
+- The lookup now retries up to four times, 0.4 seconds apart, but only for ASIO, and only when the registry shows drivers are installed. The system driver is looked up once, as before.
+- Settings tries twice more by itself, then shows a note and a Refresh Devices button.
+
+## 2026-10-26: Delay presets
+
+Decision: four built-in single-effect presets for Delay and Echo, in a new "Delay" group in the Voice Chain preset list: Slapback Echo, Podcast Room Echo, Ping-Pong Echo and Long Dark Echo.
+
+- Each adds one Delay and Echo slot, like the other single-effect groups, and leaves the rest of the chain alone.
+- Our own starting points, tuned for spoken word: short and quiet for the room feel, longer and darker for effect. A pack of presets copied from another project was not taken, so every setting here is one we chose.
+
+## 2026-10-26: Delay and Echo, and Hide All Effect Windows
+
+Decision: the first delay effect, and the Effects menu's Hide All Effect Windows.
+
+- **Delay and Echo** (Effects > Delay and Reverb). Delay time (1 ms to 2 s), Feedback (up to 95%), Tone (a low-pass on the repeats, so they darken as they fade), Echo level and Ping-pong (the repeats cross between left and right). The dry sound always passes at full level and the echo adds to it, so Echo level is the only blend control and the Voice Chain's own Mix still works on top. It adds no latency. Changing the delay time while playing, or with automation, glides to the new time over about 40 ms and bends the repeats like tape instead of clicking. It sits in "Time and Pitch" for color in the Voice Chain; a Reverb entry is still to come.
+- **Hide All Effect Windows.** Closes the floating settings window and asks any open plug-in window to close. It takes no setting and does nothing else. Reason: plug-in windows pile up while mixing and Escape only closes the one with focus.
+
+## 2026-10-26: Split Channels to Tracks, Capture Noise Print, and export at a loudness
+
+Decision: three podcast and Audition-parity features that finish the multichannel work and the Restoration tools.
+
+- **Split Channels to Tracks** (Clip menu). A clip of a file with two or more channels becomes one stereo track per channel, right under its track, each playing only that channel the way the original clip played it (its Source Channels, or the default fold-down). With every new track on, the mix sounds as the original did, so the LFE track starts muted, because the default fold-down leaves it out. The original clips are muted, not removed, and the whole thing is one undoable step. Reason: editing or processing one channel of a multichannel recording meant working inside the Source Channels grid. Choice: stereo tracks with a channel mix instead of mono tracks with a pan, so the sound stays exactly the same and nothing depends on the pan law. Effects and automation on the original clip are not copied.
+- **Capture Noise Print** (Effects menu, Shift+P). Learns the noise in the time selection and puts it on a Noise Print Reducer in the Voice Chain of the selected clip or track (the one already there is updated), as one undoable step. It uses the same learning the Voice Chain's Learn button uses; the menu item was marked "Not built yet" and the command already existed. Reason: Audition's workflow is select the noise, capture, then reduce.
+- **Export at a loudness** (File > Export > Mixdown > Loudness). The export can bring the file to a Check Loudness target (podcast -16 or -19 LUFS, louder platforms, broadcast, custom). The mix is measured first with the same render, then written with one fixed gain that never takes true peaks past the target's limit, so a mix with high peaks can end up a little quieter than the target. The session is not changed. A 3D Space speaker bed is written as mixed. Reason: Loudness Match changes the session's gains, and a podcaster just wants the file at -16. Choice: a fixed gain, not a limiter, so the sound is untouched; limiting the voice first is still the way to a louder file.
 ## 2026-10-26: Second Audiform batch (0.3.5)
 
 Decision: three more of nwh212's feature commits are taken by cherry-pick (`32a69ed`, `6f1b01c`, `2aaaf8f`) and one more (`8731249`, phase-locked time stretch). Four commits were weighed and not taken as they stood.
