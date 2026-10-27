@@ -2,6 +2,15 @@
 
 Newest first. Each entry: date, decision, reason.
 
+## 2026-10-26: Second Audiform batch (0.3.5)
+
+Decision: three more of nwh212's feature commits are taken by cherry-pick (`32a69ed`, `6f1b01c`, `2aaaf8f`) and one more (`8731249`, phase-locked time stretch). Four commits were weighed and not taken as they stood.
+
+- **Taken.** Dragging the playhead follows the pointer smoothly and playback jumps there on release. Automation lanes resize by dragging their bottom edge (kept with the session, undoable). The automation picker groups each effect's controls under it, and plug-ins the scan could not read show their controls once running. Time stretch uses a phase-locked phase vocoder (clearer chords and voices, sharp attacks, stable stereo) for playback and export.
+- **Not taken: fade shapes (`0cc9e3e`).** It would drop Logarithmic and make Straight the default, changing every new fade. We keep S curve, Straight and Logarithmic with S curve first. Drag-to-bend can be added on top later.
+- **Not taken: effect presets (`3a37f79`).** The commit mixes presets with Moonlight theme art and rewrites the plug-in host, session ops and the Voice Chain panel we rebuilt in 0.3.1. Presets will be built here against our code, using the commit as a reference. `push_states` and plug-in `set_state` come with that work.
+- **Held back from the first pass.** The installer firewall change (`b0788b9`) waits until we know why it needs the rule. Effects (Notch, Convolution Reverb, EQ family) come one at a time, with their own tests.
+
 ## 2026-10-26: Multichannel files and Channel Routing, taken from Audiform
 
 Decision: four feature commits by nwh212 (Broman) from his fork, Audiform, are merged here by cherry-pick (`932e944`, `c860b62`, `b65448d`, `608384c`). Audiform's name, brand, credits, FX Chain wording and panel looks are not taken. The rules for deciding are in `docs/audiform-intake.md`.

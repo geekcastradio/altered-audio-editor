@@ -73,6 +73,7 @@ pub fn envelope() -> Envelope {
                 curve: EnvelopeCurve::Hold,
             },
         ],
+        height: None,
     }
 }
 
@@ -107,6 +108,7 @@ pub fn clip() -> Clip {
                 value: -3.0,
                 curve: EnvelopeCurve::Linear,
             }],
+            height: None,
         }],
         effects: EffectChain::default(),
         group: None,

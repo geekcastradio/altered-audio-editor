@@ -15,6 +15,8 @@ import { DEFAULT_SPACE_POS, type EffectChainDoc, type EnvelopeDoc, type Envelope
 
 /** Height of one automation lane, in pixels. */
 export const AUTO_H = 54;
+/** A lane's height: its own, or the standard one. */
+export const laneHeight = (lane: { height?: number }) => Math.max(24, Math.min(400, lane.height ?? AUTO_H));
 
 export type AutoTarget = EnvelopeDoc["target"];
 
@@ -77,8 +79,8 @@ function paramOf(owner: AutoOwner, catalog: readonly EffectInfo[], t: AutoTarget
  * Space session, where pan does nothing, the spot's settings), then each
  * effect control in chain order.
  */
-export function autoChoices(owner: AutoOwner, catalog: readonly EffectInfo[], in3d = false): { target: AutoTarget; label: string }[] {
-  const out: { target: AutoTarget; label: string }[] = [{ target: { type: "volume" }, label: "Volume" }];
+export function autoChoices(owner: AutoOwner, catalog: readonly EffectInfo[], in3d = false): { target: AutoTarget; label: string; group?: string; name?: string }[] {
+  const out: { target: AutoTarget; label: string; group?: string; name?: string }[] = [{ target: { type: "volume" }, label: "Volume" }];
   if (in3d) {
     const stereo = owner.channels !== "mono" && !owner.mono;
     for (const l of SPACE_LANES) if (stereo || !l.stereo) out.push({ target: { type: "space", param: l.param }, label: l.label });
@@ -88,7 +90,7 @@ export function autoChoices(owner: AutoOwner, catalog: readonly EffectInfo[], in
     for (const p of info?.params ?? []) {
       // Look-ahead changes restart playback, and on/off or list controls do not glide.
       if (p.hidden || p.retimes || p.toggle || p.choices) continue;
-      out.push({ target: { type: "effect_param", slot_id: slot.id, param: p.key }, label: `${info!.name}: ${p.name}` });
+      out.push({ target: { type: "effect_param", slot_id: slot.id, param: p.key }, label: `${info!.name}: ${p.name}`, group: `${info!.name}#${slot.id}`, name: p.name });
     }
   }
   return out;
