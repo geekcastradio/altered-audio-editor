@@ -12,8 +12,9 @@
  */
 
 import { settings } from "../../stores/settings";
-import { clipLength, stretchOf, type ClipChange, type ClipDoc, type EnvelopePointDoc, type MediaRefDoc, type Op, type SessionDoc, type TrackDoc } from "../../stores/session";
+import { clipLength, stretchOf, type ClipChange, type ClipDoc, type EnvelopePointDoc, type MediaRefDoc, type MidiClipDoc, type Op, type SessionDoc, type TrackDoc } from "../../stores/session";
 import { pointsOf, sliceVolume, type EnvKind } from "./envelope";
+import { DEFAULT_TEMPO, beatsToSeconds, type TempoDoc } from "../../stores/tempo";
 
 /**
  * The id a clip's envelope uses, as in the core: the clip id for
@@ -117,6 +118,22 @@ export function findClips(doc: SessionDoc, ids: Iterable<string>): Located[] {
     for (const clip of track.clips) if (want.has(clip.id)) out.push({ clip, track, trackIndex });
   });
   return out;
+}
+
+/** The MIDI clips among `ids`. */
+export function findMidiClips(doc: SessionDoc, ids: Iterable<string>): MidiClipDoc[] {
+  const want = new Set(ids);
+  return doc.tracks.flatMap((t) => (t.midi_clips ?? []).filter((c) => want.has(c.id)));
+}
+
+/**
+ * A MIDI clip's span in session samples. Its start and length are in
+ * beats, so the tempo map decides where it lands.
+ */
+export function midiSpan(doc: { sample_rate: number; tempo?: TempoDoc }, clip: { start: number; length: number }): [number, number] {
+  const tempo = doc.tempo ?? DEFAULT_TEMPO;
+  const at = (beats: number) => Math.round(beatsToSeconds(tempo, beats) * doc.sample_rate);
+  return [at(clip.start), at(clip.start + clip.length)];
 }
 
 export function clipEnd(clip: ClipDoc, media: ReadonlyMap<string, MediaRefDoc>, rate: number): number {

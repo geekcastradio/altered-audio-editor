@@ -760,6 +760,8 @@
         title={tip("Show Spectrum: frequencies over time under the waveform, for selecting and removing sounds", "view.spectrum")}
         onclick={() => run("view.spectrum")}>Spectrum</button
       >
+      <button type="button" class="tool text" title={tip("Save", "file.save")} onclick={() => run("file.save")}>Save</button>
+      <button type="button" class="tool text" title={tip("Close File", "file.close")} onclick={() => run("file.close")}>Close</button>
     {:else}
       <span class="info">Waveform editor</span>
     {/if}

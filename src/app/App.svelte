@@ -105,6 +105,8 @@
     splitClips,
     trimToPlayhead,
     trimToRange,
+    findMidiClips,
+    midiSpan,
     type ClipBoard,
   } from "../panels/editor/clip-edit";
   import { AUDIO_TYPES, type ClipChange, type MarkerDoc } from "../stores/session";
@@ -1070,11 +1072,18 @@
       return r ? { range: [r.start, r.end], start: r.start } : null;
     }
     if (source === "clips") {
-      const found = findClips(doc, editor.current().selectedClips);
-      if (found.length === 0) return null;
-      const start = Math.min(...found.map((f) => f.clip.start));
-      const end = Math.max(...found.map((f) => f.clip.start + clipLength(f.clip, doc.media.find((m) => m.id === f.clip.media_id), doc.sample_rate)));
-      return { range: [start, end], clips: found.map((f) => f.clip.id), start };
+      const chosen = editor.current().selectedClips;
+      const found = findClips(doc, chosen);
+      const midi = findMidiClips(doc, chosen);
+      if (found.length === 0 && midi.length === 0) return null;
+      // MIDI clips sit in beats; their span in session samples follows the tempo map.
+      const spans: [number, number][] = [
+        ...found.map((f): [number, number] => [f.clip.start, f.clip.start + clipLength(f.clip, doc.media.find((m) => m.id === f.clip.media_id), doc.sample_rate)]),
+        ...midi.map((c) => midiSpan(doc, c)),
+      ];
+      const start = Math.min(...spans.map((x) => x[0]));
+      const end = Math.max(...spans.map((x) => x[1]));
+      return { range: [start, end], clips: [...found.map((f) => f.clip.id), ...midi.map((c) => c.id)], start };
     }
     return { start: 0 };
   }
