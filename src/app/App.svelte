@@ -2017,36 +2017,54 @@
     deselect(): void;
   }
 
+  /** Files > Remove: the picked files, and their clips if the user says so. */
+  async function removeFiles(ids: string[]): Promise<void> {
+    const used = usedMedia();
+    const inUse = ids.filter((id) => used.has(id));
+    const doc = session.current;
+    if (inUse.length === 0 || !doc) return mediaPool.remove(ids, sessionHistory);
+    // Files on the timeline: remove them with their clips (one undo step), or keep those.
+    const clipIds = doc.tracks.flatMap((t) => t.clips.filter((c) => inUse.includes(c.media_id)).map((c) => c.id));
+    const n = inUse.length;
+    const choice = await ask(
+      "Files in use",
+      `${n === 1 ? "This file is" : `${n} of these files are`} used by ${clipIds.length} ${clipIds.length === 1 ? "clip" : "clips"} on the timeline. Remove ${n === 1 ? "it" : "them"} and ${clipIds.length === 1 ? "that clip" : "those clips"} too?`,
+      [
+        { label: "Remove with Clips", value: "all" },
+        { label: ids.length > n ? "Keep Those, Remove the Rest" : "Keep It", value: "keep" },
+        { label: "Cancel", value: "cancel" },
+      ],
+    );
+    if (choice === "cancel" || choice === null) return;
+    if (choice === "keep") return mediaPool.remove(ids.filter((id) => !used.has(id)), sessionHistory);
+    const files = mediaPool.removeCommand(ids);
+    const parts = [session.command("Remove Clips", { op: "remove_clips", ids: clipIds }), ...(files ? [files] : [])];
+    const label = ids.length === 1 ? "Remove File and Clips" : `Remove ${ids.length} Files and Clips`;
+    await sessionHistory.execute(new CompoundCommand(label, parts));
+    editor.selectClips([]);
+  }
+
+  /**
+   * Runs `remove`, then closes the Waveform editor's file if it was one of
+   * the removed files (asking first when it has unsaved edits).
+   */
+  async function closeWaveIfRemoved(ids: readonly string[], remove: () => Promise<void>): Promise<void> {
+    const open = waveFile.current();
+    const target = open && !open.untitled ? open.path.toLowerCase() : null;
+    const hit = target !== null && ids.some((id) => mediaPool.get(id)?.path.toLowerCase() === target);
+    await remove();
+    const gone = hit && !mediaPool.current.items.some((i) => i.path.toLowerCase() === target);
+    if (gone && (await confirmWaveDiscard())) await closeWaveFile();
+  }
+
   const AREA_OPS: Record<NonNullable<Area>, AreaOps> = {
     files: {
       deleteLabel: "Remove from Session",
       selected: () => mediaPool.current.selected.size,
       total: () => mediaPool.size,
       remove: async () => {
-        const used = usedMedia();
         const ids = [...mediaPool.current.selected];
-        const inUse = ids.filter((id) => used.has(id));
-        const doc = session.current;
-        if (inUse.length === 0 || !doc) return mediaPool.remove(ids, sessionHistory);
-        // Files on the timeline: remove them with their clips (one undo step), or keep those.
-        const clipIds = doc.tracks.flatMap((t) => t.clips.filter((c) => inUse.includes(c.media_id)).map((c) => c.id));
-        const n = inUse.length;
-        const choice = await ask(
-          "Files in use",
-          `${n === 1 ? "This file is" : `${n} of these files are`} used by ${clipIds.length} ${clipIds.length === 1 ? "clip" : "clips"} on the timeline. Remove ${n === 1 ? "it" : "them"} and ${clipIds.length === 1 ? "that clip" : "those clips"} too?`,
-          [
-            { label: "Remove with Clips", value: "all" },
-            { label: ids.length > n ? "Keep Those, Remove the Rest" : "Keep It", value: "keep" },
-            { label: "Cancel", value: "cancel" },
-          ],
-        );
-        if (choice === "cancel" || choice === null) return;
-        if (choice === "keep") return mediaPool.remove(ids.filter((id) => !used.has(id)), sessionHistory);
-        const files = mediaPool.removeCommand(ids);
-        const parts = [session.command("Remove Clips", { op: "remove_clips", ids: clipIds }), ...(files ? [files] : [])];
-        const label = ids.length === 1 ? "Remove File and Clips" : `Remove ${ids.length} Files and Clips`;
-        await sessionHistory.execute(new CompoundCommand(label, parts));
-        editor.selectClips([]);
+        await closeWaveIfRemoved(ids, () => removeFiles(ids));
       },
       selectAll: () => mediaPool.selectAll(),
       deselect: () => mediaPool.setSelection([]),
@@ -4554,7 +4572,7 @@
         run: async () => {
           const used = usedMedia();
           const unused = mediaPool.current.items.filter((it) => !used.has(it.id)).map((it) => it.id);
-          await mediaPool.remove(unused, sessionHistory);
+          await closeWaveIfRemoved(unused, () => mediaPool.remove(unused, sessionHistory));
           showNotice(unused.length ? `Removed ${unused.length} unused ${unused.length === 1 ? "file" : "files"}.` : "Every file is used by a clip.");
         },
         enabled: () => mediaPool.size > 0,
