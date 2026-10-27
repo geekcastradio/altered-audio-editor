@@ -748,6 +748,24 @@ pub fn retain(slots: &HashSet<Id>) {
     }
 }
 
+/// The controls of a running copy of plug-in `effect`, for plug-ins whose
+/// scan could not read them (they are learned when it runs).
+pub fn live_params(effect: &str) -> Option<Vec<ParamInfo>> {
+    let hosts: Vec<Arc<Mutex<Host>>> = pool()
+        .lock()
+        .ok()?
+        .values()
+        .filter(|p| p.effect.eq_ignore_ascii_case(effect))
+        .map(|p| p.host.clone())
+        .collect();
+    hosts.into_iter().find_map(|h| {
+        h.try_lock()
+            .ok()
+            .map(|h| h.params.clone())
+            .filter(|p| !p.is_empty())
+    })
+}
+
 /// Stops a slot's host, so the next playback starts it again (after a crash).
 pub fn restart(slot: Id) {
     if let Ok(mut p) = pool().lock() {
