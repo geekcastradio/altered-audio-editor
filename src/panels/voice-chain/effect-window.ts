@@ -13,6 +13,9 @@ import { writable } from "svelte/store";
 /** Slot id to open in the effect window. The Voice Chain panel takes it and clears it. */
 export const effectWindowRequest = writable<string | null>(null);
 
+/** Effects > Hide All Effect Windows: each change closes the floating settings window. */
+export const hideEffectWindows = writable(0);
+
 export interface WindowBox {
   x: number;
   y: number;

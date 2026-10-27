@@ -63,7 +63,7 @@
   import AmpPanel from "./AmpPanel.svelte";
   import { groupShown, PHASE_CURVE } from "./phase-curve";
   import { GRAPHED } from "./graph";
-  import { clampBox, effectWindowRequest, portal, type WindowBox } from "./effect-window";
+  import { clampBox, effectWindowRequest, hideEffectWindows, portal, type WindowBox } from "./effect-window";
   import { dropEdit, effectMenu, ownerKey, slotOver, startSlotDrag, type SlotSpot } from "./slot-drag";
 
   interface Props {
@@ -287,6 +287,15 @@
     }
     effectWindowRequest.set(null);
     openWindow(id);
+  });
+  // Effects > Hide All Effect Windows closes the settings window.
+  let hideSeen = $hideEffectWindows;
+  $effect(() => {
+    const n = $hideEffectWindows;
+    if (n !== hideSeen) {
+      hideSeen = n;
+      winOpen = false;
+    }
   });
   function dragWindow(e: PointerEvent) {
     if ((e.target as HTMLElement).closest("button")) return;
@@ -615,7 +624,7 @@
               {#each userPresets as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
             </optgroup>
           {/if}
-          {#each ["Voice chains", "Breath gates", "Processing", "Repair", "EQ"] as g (g)}
+          {#each ["Voice chains", "Breath gates", "Processing", "Delay", "Repair", "EQ"] as g (g)}
             <optgroup label={g === "Voice chains" ? "Voice chains (replace the chain)" : `${g} (add one effect)`}>
               {#each BUILTIN_PRESETS.filter((p) => p.group === g) as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
             </optgroup>

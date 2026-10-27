@@ -307,6 +307,7 @@ export const MENUS: readonly Menu[] = [
       item("clip.split-all", "Split All Clips at Playhead"),
       item("clip.merge", "Merge Clips"),
       item("clip.unique", "Make Unique Copy"),
+      item("clip.split-channels", "Split Channels to Tracks"),
       item("clip.edit-source", "Open in Waveform Editor"),
       sep,
       item("clip.gain", "Clip Gain..."),
@@ -359,8 +360,8 @@ export const MENUS: readonly Menu[] = [
     items: [
       item("window.panel.voice-chain", "Voice Chain"),
       item("window.panel.audio-fx", "Audio FX Panel"),
-      item("fx.hide-windows", "Hide All Effect Windows", { pending: LATER }),
-      item("fx.capture-noise-print", "Capture Noise Print", { pending: LATER }),
+      item("fx.hide-windows", "Hide All Effect Windows"),
+      item("fx.capture-noise-print", "Capture Noise Print"),
       sep,
       item("fx.invert", "Invert"),
       item("fx.reverse", "Reverse"),
@@ -413,7 +414,8 @@ export const MENUS: readonly Menu[] = [
         item("fx.add.sound_eraser", "Sound Eraser"),
       ]),
       sub("Delay and Reverb", [
-        item("fx.space", "Effects arrive in P5", {
+        item("fx.add.echo", "Delay and Echo"),
+        item("fx.space", "More effects arrive later", {
           pending: P5,
           placeholder: true,
         }),

@@ -79,7 +79,7 @@
   import { naturalLength, stretchTo, unstretch } from "../panels/editor/stretch";
   import { CHAPTER_FORMATS, embedList, type ChapterFormat } from "../panels/markers/chapters";
   import { matchChanges, matchItems, matchRow, type MatchItem, type MatchRow } from "./loudness-match";
-  import { DEFAULT_REGION, DEFAULT_TARGET, setCustomTarget, targetById, type LoudnessReport } from "./loudness";
+  import { DEFAULT_REGION, DEFAULT_TARGET, setCustomTarget, targetById, targetsFor, type LoudnessReport } from "./loudness";
   import ClipColorDialog from "./ClipColorDialog.svelte";
   import MarkersPanel from "../panels/markers/MarkersPanel.svelte";
   import PlaylistPanel from "../panels/playlist/PlaylistPanel.svelte";
@@ -109,6 +109,7 @@
   } from "../panels/editor/clip-edit";
   import { AUDIO_TYPES, type ClipChange, type MarkerDoc } from "../stores/session";
   import { propertiesOp, type SessionProperties } from "./session-properties";
+  import { splitChannelsOp, splittable } from "../panels/properties/split-channels";
   import { placeTake, punchStopAfter, recordPlan, sanitizeRecordOptions, type RecordOptions, type RecordPlan } from "./recording";
   import RecordOptionsDialog from "./RecordOptionsDialog.svelte";
   import AddTracksDialog, { type AddTracksValues } from "./AddTracksDialog.svelte";
@@ -176,6 +177,9 @@
     recordStop,
     recordMonitor,
     effectsCatalog,
+    learnNoisePrint,
+    type LearnSource,
+    pluginCloseWindow,
     pluginsRegistry,
     musicFit,
     quickpassRepairCopy,
@@ -195,7 +199,7 @@
   import PendingPanel from "../panels/PendingPanel.svelte";
   import VoiceChainPanel from "../panels/voice-chain/VoiceChainPanel.svelte";
   import { addSlot, chainOf, newSlot } from "../panels/voice-chain/chain";
-  import { effectWindowRequest } from "../panels/voice-chain/effect-window";
+  import { effectWindowRequest, hideEffectWindows } from "../panels/voice-chain/effect-window";
   import { setFxCatalog } from "../panels/editor/envelope";
   import type { Finding } from "../panels/quickpass/quickpass";
   import FilesPanel from "../panels/files/FilesPanel.svelte";
@@ -871,6 +875,88 @@
     await editClips(dir < 0 ? "Nudge Left" : "Nudge Right", changes);
   }
 
+  /** Selected clips (not locked) whose file has two or more channels. */
+  const splittableClips = () => {
+    const doc = session.current;
+    return doc ? splittable(doc, findClips(doc, editor.current().selectedClips).filter((f) => !f.clip.locked)) : [];
+  };
+
+  /** Split Channels to Tracks: one track per channel under the clip's track, as one undoable step. */
+  async function splitChannels() {
+    const doc = session.current;
+    if (!doc) return;
+    const op = splitChannelsOp(doc, findClips(doc, editor.current().selectedClips).filter((f) => !f.clip.locked), uuid);
+    if (!op) {
+      showNotice("Select a clip from a file with two or more channels.");
+      return;
+    }
+    await session.edit("Split Channels to Tracks", op, sessionHistory);
+    showNotice("Split into one track per channel. The original clip is muted. The LFE track starts muted, as the default fold-down leaves it out.");
+  }
+
+  /** The time selection that Capture Noise Print learns from. */
+  const noiseSelection = () => {
+    const v = inWave() ? wave.current?.view.selection : session.current?.view.selection;
+    return v && v.end > v.start ? v : null;
+  };
+
+  /**
+   * Capture Noise Print: learns the noise in the time selection and puts
+   * it on a Noise Print Reducer in the Voice Chain of the selected clip or
+   * track (updating the one already there). One undoable step.
+   */
+  async function captureNoisePrint() {
+    const sel = noiseSelection();
+    const at = fxTarget();
+    if (!sel || !at) {
+      showNotice("Select a stretch of only the noise (a pause or the room before anyone speaks), then choose Capture Noise Print.");
+      return;
+    }
+    const source: LearnSource = at.wave || at.target.kind === "master" || at.target.kind === "bus"
+      ? { kind: "wave", start: sel.start, end: sel.end }
+      : { kind: at.target.kind, id: at.target.id, start: sel.start, end: sel.end };
+    try {
+      const learned = await learnNoisePrint(source);
+      fxCatalog ??= await effectsCatalog();
+      const info = fxCatalog.find((e) => e.id === "altaudio.noise_print");
+      if (!info) return;
+      const chain = chainOf(at.chain);
+      const existing = chain.slots.find((x) => x.effect === info.id);
+      let next: EffectChainDoc | null;
+      let slotId: string;
+      if (existing) {
+        slotId = existing.id;
+        next = { ...chain, slots: chain.slots.map((x) => (x.id === existing.id ? { ...x, params: { ...x.params, ...learned.params }, preset: null } : x)) };
+      } else {
+        const slot = newSlot(info, uuid());
+        slotId = slot.id;
+        next = addSlot(chain, { ...slot, params: { ...slot.params, ...learned.params } });
+        if (!next) {
+          showNotice("That Voice Chain is full: it holds 16 effects.");
+          return;
+        }
+      }
+      const op = { op: "set_effects", target: at.target, chain: next } as const;
+      if (at.wave) await wave.apply(op);
+      else await session.edit("Capture Noise Print", op, sessionHistory);
+      if (settings.current.openChainOnAdd) dock.show("voice-chain");
+      effectWindowRequest.set(slotId);
+      showNotice(`Learned the noise from ${learned.seconds.toFixed(2)} s and set it on ${at.name}.`);
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  /** Hide All Effect Windows: the floating settings window, and any plug-in's own window. */
+  function hideAllEffectWindows() {
+    hideEffectWindows.update((n) => n + 1);
+    const docs = [session.current, wave.current].filter((d): d is SessionDoc => !!d);
+    const slots = docs
+      .flatMap((d) => [d.master?.effects, ...(d.buses ?? []).map((b) => b.effects), ...d.tracks.flatMap((t) => [t.effects, ...t.clips.map((c) => c.effects)])])
+      .flatMap((c) => c?.slots ?? []);
+    for (const s of slots) if (!s.effect.startsWith("altaudio.")) void pluginCloseWindow(s.id).catch(() => {});
+  }
+
   async function editClips(label: string, changes: ClipChange[]) {
     if (changes.length > 0) await session.edit(label, { op: "set_clips", changes }, sessionHistory);
   }
@@ -1246,6 +1332,10 @@
         format: sanitizeFormat(saved?.format),
         addToFiles: saved?.addToFiles === true,
         chapters: (saved as { chapters?: unknown } | null)?.chapters !== false,
+        normalize: (() => {
+          const n = (saved as { normalize?: unknown } | null)?.normalize;
+          return typeof n === "string" && targetsFor().some((t) => t.id === n) ? n : "";
+        })(),
         ...(doc.space ? { speakers: doc.space.layout } : {}),
       },
       scopes,
@@ -1256,7 +1346,7 @@
   async function finishExportDialog(v: ExportSettings | null) {
     exportReq = null;
     if (!v) return;
-    prefs.set(KEY_EXPORT, { format: v.format, folder: v.folder, addToFiles: v.addToFiles, chapters: v.chapters });
+    prefs.set(KEY_EXPORT, { format: v.format, folder: v.folder, addToFiles: v.addToFiles, chapters: v.chapters, normalize: v.normalize });
     const sep = v.folder.includes("\\") ? "\\" : "/";
     const path = `${v.folder.replace(/[\\/]+$/, "")}${sep}${fileSafe(v.name)}.${extensionOf(v.format.kind)}`;
     const [exists] = await pathsExist([path]);
@@ -1267,7 +1357,7 @@
       ]);
       if (ok !== "yes") return;
     }
-    await runMixdown(v.scope, v.addToFiles ? "files-panel" : "file", path, v.format, v.chapters, v.speakers);
+    await runMixdown(v.scope, v.addToFiles ? "files-panel" : "file", path, v.format, v.chapters, v.speakers, v.normalize);
   }
 
   async function mixDown(source: MixSource, target: MixTarget) {
@@ -1326,7 +1416,10 @@
     }
   }
 
-  async function runMixdown(source: MixSource, target: MixTarget, path: string, format: OutputFormat | null, chapters = false, speakers?: string) {
+  async function runMixdown(source: MixSource, target: MixTarget, path: string, format: OutputFormat | null, chapters = false, speakers?: string, normalize = "") {
+    // A 3D Space speaker bed is written as mixed; every other file can be brought to a loudness.
+    const bed = !!speakers && speakers !== "binaural" && speakers !== "2.0";
+    const goal = normalize && !bed ? targetsFor().find((t) => t.id === normalize) : undefined;
     const what = mixRange(source);
     if (!what || exporting) return;
     exporting = { title: target === "track" ? "Bouncing to a new track" : "Exporting mixdown", progress: 0, floating: true };
@@ -1340,6 +1433,7 @@
         ...(what.clips ? { clips: what.clips } : {}),
         ...(format ? { format } : {}),
         ...(speakers === "binaural" ? { binaural: true } : speakers ? { spaceLayout: speakers } : {}),
+        ...(goal ? { normalize: { lufs: goal.lufs, peak: goal.peak } } : {}),
       });
       if (r.cancelled) {
         showNotice("Export cancelled. Nothing was saved.");
@@ -1347,6 +1441,7 @@
       }
       const name = path.split(/[\\/]/).pop();
       let chapterNote = "";
+      const levelNote = goal ? ` Brought to ${goal.lufs} LUFS with peaks under ${goal.peak} dBTP.` : "";
       const doc = session.current;
       if (chapters && doc && (format?.kind === "mp3" || format?.kind === "flac")) {
         const list = embedList(doc.markers, doc.sample_rate, what.range ?? null);
@@ -1364,7 +1459,7 @@
         await placeFiles([path], null, what.start);
         showNotice(`Bounced to ${name} on a new track.${clipped}`);
       } else {
-        showNotice(`Exported ${name}.${chapterNote}${clipped}`);
+        showNotice(`Exported ${name}.${chapterNote}${levelNote}${clipped}`);
       }
     } catch (e) {
       showError(e);
@@ -2035,6 +2130,7 @@
     "precision_filter",
     "notch",
     "pitch_shift",
+    "echo",
     "center_remover",
     "phase_rotate",
   ];
@@ -2400,7 +2496,36 @@
     const t = d?.tracks[0];
     if (!d || !r || !t) return;
     const label = !wholeFile && waveSel() ? "Apply Voice Chain to Selection" : "Apply Voice Chain";
-    const res = await waveApplyChain(chain, r[0], r[1]);
+    if (exporting) {
+      showNotice("Wait for the current export to finish.");
+      return;
+    }
+    // Plug-ins can take a while, so show how far along it is and about how long is left.
+    const startedAt = Date.now();
+    const heading = wholeFile || !waveSel() ? "Applying the Voice Chain to the file" : "Applying the Voice Chain to the selection";
+    const timeLeft = (s: number) => (s < 60 ? s + " s" : Math.floor(s / 60) + " min " + (s % 60) + " s");
+    exporting = { title: heading, progress: 0 };
+    let off: (() => void) | null = null;
+    let res: Awaited<ReturnType<typeof waveApplyChain>>;
+    try {
+      off = await listen<{ done: number; total: number }>("export-progress", (e) => {
+        if (!exporting) return;
+        const p = e.payload.total > 0 ? e.payload.done / e.payload.total : 0;
+        const elapsed = (Date.now() - startedAt) / 1000;
+        const left = p >= 0.05 ? Math.max(1, Math.round((elapsed * (1 - p)) / p)) : null;
+        exporting = { ...exporting, progress: p, title: left === null ? heading : heading + ", about " + timeLeft(left) + " left" };
+      });
+      res = await waveApplyChain(chain, r[0], r[1]);
+    } catch (e) {
+      if (String(e).includes("Cancelled")) {
+        showNotice("Apply cancelled. The file was not changed.");
+        return;
+      }
+      throw e;
+    } finally {
+      off?.();
+      exporting = null;
+    }
     // The result belongs to the file the job started on. If another file is open now, do not apply it there.
     if (wave.current?.tracks[0]?.id !== t.id) {
       showNotice("You switched files while the effect was running, so it was not applied. Stay on the file until it finishes. To process many files, use Batch Convert.");
@@ -2539,7 +2664,8 @@
         const base = f.path.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ?? "Take";
         const channels = Math.min(2, Math.max(1, d.media[0]?.channels ?? 1));
         const at = wavePlayhead();
-        await recordStart([{ key: "wave", input: settings.current.waveInput, channels, name: `${base} take ${stamp()}` }]);
+        const heard = settings.current.waveMonitor;
+        await recordStart([{ key: "wave", input: settings.current.waveInput, channels, name: `${base} take ${stamp()}`, monitor: heard, chain: heard ? (d.tracks[0]?.effects ?? null) : null }]);
         take = { mode: "wave", at };
         liveTakes.set({ at, rate: 0, waves: {}, tick: 0 });
         holdEnd(true);
@@ -2562,6 +2688,7 @@
           channels: t.channels === "mono" ? 1 : 2,
           name: `${t.name} ${stamp()}`,
           monitor: !!t.monitor_input,
+          chain: t.monitor_input ? (t.effects ?? null) : null,
         }));
         const plan = recordPlan(playheadNow(), timeSel(), recordOptions(), doc.sample_rate);
         const at = plan.at;
@@ -2645,7 +2772,7 @@
     const key = armed.map((t) => `${t.id}:${t.input ?? ""}:${t.channels}:${t.monitor_input ? 1 : 0}`).join("|");
     if (!force && key === monitorKey) return;
     monitorKey = key;
-    const targets: RecordTarget[] = armed.map((t) => ({ key: t.id, input: t.input ?? null, channels: t.channels === "mono" ? 1 : 2, name: t.name, monitor: !!t.monitor_input }));
+    const targets: RecordTarget[] = armed.map((t) => ({ key: t.id, input: t.input ?? null, channels: t.channels === "mono" ? 1 : 2, name: t.name, monitor: !!t.monitor_input, chain: t.monitor_input ? (t.effects ?? null) : null }));
     void recordMonitor(targets).catch(() => {});
     if (targets.length) startInputPoll();
     else stopInputPoll();
@@ -3657,6 +3784,24 @@
         run: () => nudgeClips(1),
         enabled: () => !inWave() && nudgeable().length > 0,
         reason: () => "Select clips that are not locked first.",
+      }),
+      actions.register({
+        id: "clip.split-channels",
+        run: () => splitChannels(),
+        enabled: () => !inWave() && exporting === null && splittableClips().length > 0,
+        reason: () => "Select a clip from a file with two or more channels.",
+      }),
+      actions.register({
+        id: "fx.capture-noise-print",
+        run: () => captureNoisePrint(),
+        enabled: () => noiseSelection() !== null && fxTarget() !== null,
+        reason: () => "Select a stretch of only the noise, and a track or clip to put the print on.",
+      }),
+      actions.register({
+        id: "fx.hide-windows",
+        run: () => hideAllEffectWindows(),
+        enabled: () => true,
+        reason: () => "",
       }),
       actions.register({
         id: "edit.select-track-clips",

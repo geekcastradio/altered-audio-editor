@@ -285,6 +285,10 @@ describe("menu model", () => {
       "view.zoom-out-vertical",
       "clip.nudge-left",
       "clip.nudge-right",
+      "clip.split-channels",
+      "fx.capture-noise-print",
+      "fx.add.echo",
+      "fx.hide-windows",
     ]);
     for (const m of MENUS) {
       for (const it of allItems(m.items)) {
