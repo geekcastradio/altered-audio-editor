@@ -242,6 +242,7 @@ export const CATEGORY_COLORS: Record<string, string> = {
   Restoration: "#b07ad8",
   "Time and Pitch": "#d86f9b",
   "Delay and Reverb": "#9d7cf0",
+  Vocal: "#ec6a92",
 };
 
 // --- Presets ---

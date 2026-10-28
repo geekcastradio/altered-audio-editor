@@ -27,6 +27,7 @@ mod restore;
 pub mod reverb;
 pub mod shaped;
 pub mod tube;
+pub mod vocal;
 
 use std::collections::BTreeMap;
 
@@ -188,6 +189,7 @@ pub fn catalog() -> Vec<EffectInfo> {
         dynamics::leveler_info(),
         tube::opto_info(),
         tube::preamp_info(),
+        vocal::vocal_info(),
         filters::center_info(),
         reverb::reverb_info(),
         pitch::pitch_info(),
@@ -433,6 +435,11 @@ pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
             crate::dsp::meters::for_slot(slot.id),
         )),
         tube::PREAMP => Box::new(tube::Preamp::new(
+            &p,
+            rate,
+            crate::dsp::meters::for_slot(slot.id),
+        )),
+        vocal::VOCAL => Box::new(vocal::VoxStrip::new(
             &p,
             rate,
             crate::dsp::meters::for_slot(slot.id),

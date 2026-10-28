@@ -153,6 +153,7 @@ pub fn run() {
             commands::effects::effect_response,
             commands::effects::shaped_noise_curves,
             commands::effects::effect_meter,
+            commands::effects::vox_tone_curve,
             commands::align::phase_align,
             commands::musicfit::music_fit,
             commands::export::export_pick_path,

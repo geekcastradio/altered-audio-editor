@@ -62,6 +62,7 @@
   import TubePanel from "./TubePanel.svelte";
   import { settings } from "../../stores/settings";
   import AmpPanel from "./AmpPanel.svelte";
+  import VoxStripPanel from "./VoxStripPanel.svelte";
   import { groupShown, PHASE_CURVE } from "./phase-curve";
   import { GRAPHED } from "./graph";
   import { clampBox, effectWindowRequest, hideEffectWindows, portal, type WindowBox } from "./effect-window";
@@ -549,7 +550,7 @@
   // or the master has no audio of its own to learn from yet.
   const canLearn = $derived(inWave || target?.kind === "track" || target?.kind === "clip");
   /** Effects whose window draws all of its own controls. */
-  const OWN_CONTROLS = new Set(["altaudio.convolution_reverb", "altaudio.shaped_noise", "altaudio.opto_leveler", "altaudio.tube_preamp", "altaudio.amp_model"]);
+  const OWN_CONTROLS = new Set(["altaudio.convolution_reverb", "altaudio.shaped_noise", "altaudio.opto_leveler", "altaudio.tube_preamp", "altaudio.amp_model", "altaudio.vox_strip"]);
   const LEARNS = new Set(["altaudio.noise_print", "altaudio.sound_eraser", "altaudio.shaped_noise"]);
   const learnSel = $derived.by(() => {
     const v = inWave ? waveDoc?.view.selection : doc?.view.selection;
@@ -751,6 +752,8 @@
           />
         {:else if winSlot.effect === "altaudio.opto_leveler" || winSlot.effect === "altaudio.tube_preamp"}
           <TubePanel slot={winSlot} info={winInfo} onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)} />
+        {:else if winSlot.effect === "altaudio.vox_strip"}
+          <VoxStripPanel slot={winSlot} info={winInfo} tempo={doc?.tempo?.bpm} onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)} />
         {:else if winSlot.effect === "altaudio.amp_model"}
           <AmpPanel
             slot={winSlot}
@@ -1194,6 +1197,9 @@
     }
     &:has(:global(.ns)) {
       width: 660px;
+    }
+    &:has(:global(.vox)) {
+      width: min(860px, 96vw);
     }
     &:has(:global(.tube)),
     &:has(:global(.amp)) {

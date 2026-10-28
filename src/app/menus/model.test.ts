@@ -189,6 +189,7 @@ describe("menu model", () => {
       "tool.time",
       "file.check-loudness",
       "fx.loudness-match",
+      "fx.add.vox_strip",
       "fx.add.dynamics",
       "fx.add.limiter",
       "fx.add.breath_gate",

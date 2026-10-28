@@ -2136,6 +2136,7 @@
   // Effects menu: adds an effect to the Voice Chain of the one selected
   // clip, or else the selected track, and shows the panel.
   const FX_MENU = [
+    "vox_strip",
     "dynamics",
     "limiter",
     "breath_gate",

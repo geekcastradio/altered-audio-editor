@@ -10,7 +10,7 @@
 import { listen } from "@tauri-apps/api/event";
 import type { OutputFormat } from "./output-format";
 import { invoke } from "@tauri-apps/api/core";
-import type { EffectChainDoc, MediaRefDoc } from "../stores/session";
+import type { EffectChainDoc, EffectSlotDoc, MediaRefDoc } from "../stores/session";
 import type { SpectralMask } from "../panels/editor/spectrum";
 
 export interface AppInfo {
@@ -1191,8 +1191,13 @@ export function shapedNoiseCurves(slot: import("../stores/session").EffectSlotDo
 }
 
 /** An effect's own meter: gain reduction (dB) and output level (dBFS), or null before it has run. */
-export function effectMeter(slot: string): Promise<[number, number] | null> {
-  return invoke<[number, number] | null>("effect_meter", { slot });
+export function effectMeter(slot: string): Promise<[number, number, number] | null> {
+  return invoke<[number, number, number] | null>("effect_meter", { slot });
+}
+
+/** The Vox Strip's Tone curve: [Hz, dB] at `points` frequencies from 20 Hz to 20 kHz. */
+export function voxToneCurve(slot: EffectSlotDoc, points: number): Promise<[number, number][]> {
+  return invoke<[number, number][]>("vox_tone_curve", { slot, points });
 }
 
 export function effectResponse(slot: import("../stores/session").EffectSlotDoc, points: number): Promise<[number, number][]> {

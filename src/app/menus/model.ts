@@ -393,6 +393,7 @@ export const MENUS: readonly Menu[] = [
       ]),
       item("fx.loudness-match", "Loudness Match..."),
       sep,
+      item("fx.add.vox_strip", "Vox Strip (vocal chain)"),
       sortedSub("Delay and Reverb", [
         item("fx.add.echo", "Delay and Echo"),
         item("fx.add.convolution_reverb", "Convolution Reverb"),
