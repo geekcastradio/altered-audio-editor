@@ -1432,6 +1432,21 @@
     }
   }
 
+  /** Measures the mix for an export dialog without writing anything. */
+  async function scanForExport(source: MixSource): Promise<LoudnessReport | null> {
+    const what = mixRange(source);
+    if (!what) return null;
+    try {
+      return await loudnessCheck({
+        ...(what.range ? { range: what.range } : {}),
+        ...(what.clips ? { clips: what.clips } : {}),
+      });
+    } catch (e) {
+      showError(e);
+      return null;
+    }
+  }
+
   // File > Publish Package.
   const KEY_PUBLISH = "publish.package";
   let publishReq = $state<{ initial: PublishSettings; source: { sampleRate: number; channels: number; bitDepth: number } } | null>(null);
@@ -5105,6 +5120,7 @@
     chapterCount={session.current?.markers.filter((m) => m.kind === "chapter").length ?? 0}
     spaceLayout={session.current?.space?.layout ?? null}
     onBrowse={(from) => exportPickFolder(from || null, "Export To")}
+    onScan={(scope) => scanForExport(scope)}
     onDone={(v) => void finishExportDialog(v)}
   />
 {/if}
@@ -5116,6 +5132,7 @@
     chapterCount={session.current?.markers.filter((m) => m.kind === "chapter").length ?? 0}
     adCount={session.current?.markers.filter((m) => m.kind === "ad_slot").length ?? 0}
     onBrowse={(from) => exportPickFolder(from || null, "Publish To")}
+    onScan={() => scanForExport("all")}
     onDone={(v) => void finishPublishDialog(v)}
   />
 {/if}
