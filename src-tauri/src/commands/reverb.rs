@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) The Audiform contributors.
-// This file is part of Audiform, based on Altered Audio Editor.
+// Copyright (c) The GeekCast Radio Network, LLC.
+// This file is part of Altered Audio Editor, adapted from Audiform.
 
 //! The Convolution Reverb's window: picking an impulse response file and
 //! describing it (length, channels, and its shape over time for drawing).

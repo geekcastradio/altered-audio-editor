@@ -154,7 +154,7 @@ export function vst3Items(catalog: readonly EffectInfo[], plugins: readonly Menu
 export function effectSearch(catalog: readonly EffectInfo[], plugins: readonly MenuPlugin[], pick: (id: string) => void): (query: string) => MenuItem[] {
   const ids = new Set(catalog.map((e) => e.id));
   const rows = [
-    ...catalog.filter((e) => !e.retired && !e.plugin).map((e) => ({ id: e.id, name: e.name, where: e.category, maker: "" })),
+    ...catalog.filter((e) => !e.plugin).map((e) => ({ id: e.id, name: e.name, where: e.category, maker: "" })),
     ...plugins.filter((p) => ids.has(p.effect)).map((p) => ({ id: p.effect, name: p.name, where: p.vendor.trim() || "VST3", maker: p.vendor.trim().toLowerCase() })),
   ];
   return (query) => {

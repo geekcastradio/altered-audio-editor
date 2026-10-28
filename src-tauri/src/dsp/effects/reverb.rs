@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) The Audiform contributors.
-// This file is part of Audiform, based on Altered Audio Editor.
+// Copyright (c) The GeekCast Radio Network, LLC.
+// This file is part of Altered Audio Editor, adapted from Audiform.
 
 //! Convolution Reverb: plays the sound through a recorded space, an
 //! impulse response (an audio file of a room's echo, a hall, a plate, a

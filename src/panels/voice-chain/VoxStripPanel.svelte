@@ -1,7 +1,8 @@
 <!--
   SPDX-License-Identifier: GPL-3.0-or-later
   Copyright (c) The Audiform contributors.
-  This file is part of Audiform, based on Altered Audio Editor.
+  Copyright (c) The GeekCast Radio Network, LLC.
+  This file is part of Altered Audio Editor, adapted from Audiform.
 
   The Vox Strip window: four modules side by side in signal order
   (Dynamics, Tone, Effects, Space), each with a power light, a style

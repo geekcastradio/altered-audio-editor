@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) The Audiform contributors.
-// This file is part of Audiform, based on Altered Audio Editor.
+// Copyright (c) The GeekCast Radio Network, LLC.
+// This file is part of Altered Audio Editor, adapted from Audiform.
 
 //! Vox Strip: a whole vocal chain in one effect, in four modules that
 //! each pick a style and are run by one or two controls.
@@ -990,7 +991,6 @@ mod tests {
             plugin_state: None,
             data: None,
             position: None,
-            routing: None,
         }
     }
 

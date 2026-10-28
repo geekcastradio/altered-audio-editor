@@ -515,7 +515,11 @@ pub fn build(session: &Session, out_rate: u32) -> Plan {
                             0.0
                         } else {
                             let g = 10f64.powf(c.gain_db.clamp(-96.0, 24.0) / 20.0) as f32;
-                            if c.inverted { -g } else { g }
+                            if c.inverted {
+                                -g
+                            } else {
+                                g
+                            }
                         },
                         fade_in: fade(c.fade_in.length),
                         fade_out: fade(c.fade_out.length),

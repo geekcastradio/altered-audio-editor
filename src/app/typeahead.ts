@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) The Audiform contributors.
-// This file is part of Audiform, based on Altered Audio Editor.
+// Copyright (c) The GeekCast Radio Network, LLC.
+// This file is part of Altered Audio Editor, adapted from Audiform.
 
 /**
  * Type to jump in a list or menu: typing letters moves to the first row
