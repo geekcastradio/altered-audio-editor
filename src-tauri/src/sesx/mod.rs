@@ -575,6 +575,8 @@ pub fn import(path: &Path) -> Result<Imported, SesxError> {
                 stretch: clip_stretch,
                 audio_type: None,
                 channel_mix: None,
+                reversed: false,
+                inverted: false,
             });
             report.clips += 1;
         }

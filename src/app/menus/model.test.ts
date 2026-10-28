@@ -188,7 +188,9 @@ describe("menu model", () => {
       "tool.slip",
       "tool.time",
       "file.check-loudness",
+      "file.publish-package",
       "fx.loudness-match",
+      "fx.add.vox_strip",
       "fx.add.dynamics",
       "fx.add.limiter",
       "fx.add.breath_gate",
@@ -216,6 +218,7 @@ describe("menu model", () => {
       "fx.add.pitch_shift",
       "fx.add.center_remover",
       "fx.add.phase_rotate",
+      "fx.add.convolution_reverb",
       "file.export.sesx",
       "clip.to-track-above",
       "clip.to-track-below",
@@ -297,7 +300,6 @@ describe("menu model", () => {
           built.has(it.id) ||
           it.id.startsWith("window.panel.") ||
           it.id.startsWith("file.recent.") ||
-          it.id.startsWith("fx.plugins.") ||
           it.id.startsWith("window.workspace.")
         )
           continue;

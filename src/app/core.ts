@@ -10,7 +10,7 @@
 import { listen } from "@tauri-apps/api/event";
 import type { OutputFormat } from "./output-format";
 import { invoke } from "@tauri-apps/api/core";
-import type { EffectChainDoc, MediaRefDoc } from "../stores/session";
+import type { EffectChainDoc, EffectSlotDoc, MediaRefDoc } from "../stores/session";
 import type { SpectralMask } from "../panels/editor/spectrum";
 
 export interface AppInfo {
@@ -280,6 +280,11 @@ export async function mediaFrames(path: string, start: number, count: number): P
   const channels = new DataView(bytes.buffer).getUint32(0, true) || 1;
   const n = Math.floor((bytes.byteLength - 4) / 4);
   return { channels, data: new Float32Array(bytes.buffer.slice(4, 4 + n * 4)) };
+}
+
+/** Makes the reversed copy a reversed clip of `path` plays from (once). */
+export function clipReversePrepare(path: string): Promise<void> {
+  return invoke<void>("clip_reverse_prepare", { path });
 }
 
 /** Plays one note through a MIDI track's instrument (velocity 0 to 1). False when nothing played: the session is playing, or no instrument. */
@@ -565,6 +570,29 @@ export function ampLoadModel(path: string, data: string | null): Promise<string>
 /** Reads a cabinet response into an Amp Model slot's data; returns the new data. */
 export function ampLoadIr(path: string, data: string | null): Promise<string> {
   return invoke<string>("amp_load_ir", { path, data });
+}
+
+/** A Convolution Reverb response file, described for its window. */
+export interface ReverbIr {
+  /** The slot data that names it. */
+  data: string;
+  name: string;
+  path: string;
+  seconds: number;
+  rate: number;
+  channels: number;
+  /** Its level over time, 0 to 1 per point, for drawing. */
+  shape: number[];
+}
+
+/** Shows an Open dialog for an impulse response (any audio file); null on cancel. */
+export function reverbPick(): Promise<string | null> {
+  return invoke<string | null>("reverb_pick");
+}
+
+/** Reads an impulse response file and describes it, with the slot data naming it. */
+export function reverbLoad(path: string): Promise<ReverbIr> {
+  return invoke<ReverbIr>("reverb_load", { path });
 }
 
 /** What the metronome plays, as the core takes it. */
@@ -1036,9 +1064,29 @@ export function generateAudio(path: string, request: GenerateRequest): Promise<s
   return invoke<string>("generate_audio", { path, request });
 }
 
-/** Writes chapters into an exported MP3 or FLAC. False when the format has no chapter support here. */
-export function exportEmbedChapters(path: string, chapters: { title: string; startMs: number; endMs: number | null }[], totalMs: number): Promise<boolean> {
+/** Writes chapters into an exported WAV, FLAC, MP3 or M4A. False when the format has no chapter support here. */
+export function exportEmbedChapters(path: string, chapters: { title: string; startMs: number; endMs: number | null; url?: string | null }[], totalMs: number): Promise<boolean> {
   return invoke<boolean>("export_embed_chapters", { path, chapters, totalMs });
+}
+
+/** One line of an export check. */
+export interface VerifyCheck {
+  name: string;
+  ok: boolean;
+  detail: string;
+}
+
+/** Reads an exported file back and checks it: opens, decodes, length, chapters. */
+export function exportVerify(
+  path: string,
+  expect: { frames: number; sampleRate: number; chapters: { title: string; startMs: number; endMs: number | null }[] },
+): Promise<{ ok: boolean; checks: VerifyCheck[] }> {
+  return invoke<{ ok: boolean; checks: VerifyCheck[] }>("export_verify", { path, expect });
+}
+
+/** Writes the text files of a Publish Package into `folder` (made if missing). Returns their paths. */
+export function publishWriteFiles(folder: string, files: { name: string; content: string }[]): Promise<string[]> {
+  return invoke<string[]>("publish_write_files", { folder, files });
 }
 
 /** One control of a built-in effect, as the core describes it. */
@@ -1163,8 +1211,13 @@ export function shapedNoiseCurves(slot: import("../stores/session").EffectSlotDo
 }
 
 /** An effect's own meter: gain reduction (dB) and output level (dBFS), or null before it has run. */
-export function effectMeter(slot: string): Promise<[number, number] | null> {
-  return invoke<[number, number] | null>("effect_meter", { slot });
+export function effectMeter(slot: string): Promise<[number, number, number] | null> {
+  return invoke<[number, number, number] | null>("effect_meter", { slot });
+}
+
+/** The Vox Strip's Tone curve: [Hz, dB] at `points` frequencies from 20 Hz to 20 kHz. */
+export function voxToneCurve(slot: EffectSlotDoc, points: number): Promise<[number, number][]> {
+  return invoke<[number, number][]>("vox_tone_curve", { slot, points });
 }
 
 export function effectResponse(slot: import("../stores/session").EffectSlotDoc, points: number): Promise<[number, number][]> {

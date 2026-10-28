@@ -20,6 +20,8 @@ export type MenuItem =
       placeholder?: boolean;
     }
   | { kind: "submenu"; label: string; items: MenuItem[] }
+  /** A list the app builds when it opens (scanned plug-ins), nested as deep as it needs. */
+  | { kind: "popup"; id: string; label: string }
   | { kind: "sep" };
 
 export interface Menu {
@@ -39,12 +41,20 @@ const item = (
   label,
   ...opts,
 });
+/** A submenu listed in alphabetical order (the effect families, so they read like the Audio FX Add list). */
+const sortedSub = (label: string, items: MenuItem[]): MenuItem =>
+  sub(
+    label,
+    [...items].sort((a, b) => (a.kind === "sep" || b.kind === "sep" ? 0 : a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" }))),
+  );
+
 const sub = (label: string, items: MenuItem[]): MenuItem => ({
   kind: "submenu",
   label,
   items,
 });
 const sep: MenuItem = { kind: "sep" };
+const popup = (id: string, label: string): MenuItem => ({ kind: "popup", id, label });
 
 const P2 = "Arrives with playback (P2).";
 const P3 = "Arrives with editing (P3).";
@@ -52,9 +62,6 @@ const P5 = "Arrives with effects (P5).";
 const NEXT_FX = "Arrives in the next effects batch.";
 const P7 = "Arrives with podcast publishing (P7).";
 const LATER = "Not built yet.";
-
-/** Effects > Plug-ins slots, one per scanned effect plug-in. Unused slots are hidden. */
-export const PLUGIN_SLOTS = 120;
 
 /** Open Recent slots. Unused slots are hidden. */
 export const RECENT_SLOTS = 10;
@@ -107,7 +114,7 @@ export const MENUS: readonly Menu[] = [
         item("file.export.sesx", "Multitrack Session (.sesx)..."),
       ]),
       item("file.check-loudness", "Check Loudness..."),
-      item("file.publish-package", "Publish Package...", { pending: P7 }),
+      item("file.publish-package", "Publish Package..."),
       sep,
       item("file.reveal", "Show in File Manager"),
       sep,
@@ -386,14 +393,23 @@ export const MENUS: readonly Menu[] = [
       ]),
       item("fx.loudness-match", "Loudness Match..."),
       sep,
-      sub("Dynamics", [
+      item("fx.add.vox_strip", "Vox Strip (vocal chain)"),
+      sortedSub("Delay and Reverb", [
+        item("fx.add.echo", "Delay and Echo"),
+        item("fx.add.convolution_reverb", "Convolution Reverb"),
+        item("fx.space", "More effects arrive later", {
+          pending: P5,
+          placeholder: true,
+        }),
+      ]),
+      sortedSub("Dynamics", [
         item("fx.add.dynamics", "Dynamics"),
         item("fx.add.limiter", "Limiter"),
         item("fx.add.breath_gate", "Breath Gate"),
         item("fx.add.deesser", "De-Esser"),
         item("fx.add.speech_leveler", "Speech Leveler"),
       ]),
-      sub("EQ and Filters", [
+      sortedSub("EQ and Filters", [
         item("fx.add.parametric_eq", "Parametric EQ"),
         item("fx.add.band_eq_10", "Band EQ (10 bands)"),
         item("fx.add.band_eq_20", "Band EQ (20 bands)"),
@@ -403,7 +419,7 @@ export const MENUS: readonly Menu[] = [
         item("fx.add.notch", "Notch Filter"),
         item("fx.add.hum_cut", "Hum Cut"),
       ]),
-      sub("Noise and Repair", [
+      sortedSub("Noise and Repair", [
         item("fx.add.noise_reducer", "Noise Reducer"),
         item("fx.add.noise_print", "Noise Print Reducer"),
         item("fx.add.hiss_reducer", "Hiss Reducer"),
@@ -413,14 +429,7 @@ export const MENUS: readonly Menu[] = [
         item("fx.add.dc_offset", "DC Offset Fix"),
         item("fx.add.sound_eraser", "Sound Eraser"),
       ]),
-      sub("Delay and Reverb", [
-        item("fx.add.echo", "Delay and Echo"),
-        item("fx.space", "More effects arrive later", {
-          pending: P5,
-          placeholder: true,
-        }),
-      ]),
-      sub("Pitch and Time", [
+      sortedSub("Pitch and Time", [
         item("fx.add.pitch_shift", "Pitch Shift"),
         item("clip.stretch", "Time Stretch..."),
         item("clip.music-fit", "Fit Music to Length..."),
@@ -431,28 +440,21 @@ export const MENUS: readonly Menu[] = [
           pending: NEXT_FX,
         }),
       ]),
-      sub("Stereo and Channels", [
-        item("fx.add.center_remover", "Center Remover (remove vocals)"),
-        item("fx.add.phase_rotate", "Phase Rotate"),
-      ]),
-      sub("QuickPass", [
+      sortedSub("QuickPass", [
         item("fx.quickpass", "Presets arrive in P5", {
           pending: P5,
           placeholder: true,
         }),
       ]),
-      sep,
-      sub("Plug-ins", [
-        ...Array.from({ length: PLUGIN_SLOTS }, (_, i) =>
-          item(`fx.plugins.${i + 1}`, `Plug-in ${i + 1}`, {
-            placeholder: true,
-          }),
-        ),
-        item("fx.plugins.none", "No plug-ins scanned", {
-          pending: "Scan for plug-ins in Effects > Plug-in Manager. Effect plug-ins it finds appear here.",
-          placeholder: true,
-        }),
+      sortedSub("Stereo and Channels", [
+        item("fx.add.center_remover", "Center Remover (remove vocals)"),
+        item("fx.add.phase_rotate", "Phase Rotate"),
       ]),
+      sep,
+      item("fx.vst", "VST", {
+        pending: "Not supported: Steinberg no longer licenses VST2. Most plug-ins also come as VST3.",
+      }),
+      popup("fx.vst3", "VST3"),
       item("fx.plugin-manager", "Plug-in Manager..."),
     ],
   },
@@ -535,7 +537,7 @@ export const MENUS: readonly Menu[] = [
       item("help.book", "Book: Altered Audio, Podcasting Demystified"),
       item("help.support", "Support Altered Audio Editor..."),
       sep,
-      item("help.discord", "Join the Community on Discord"),
+      item("help.discord", "Join the GCRN Community on Discord"),
       item("help.update", "Check for Updates..."),
       item("help.github", "Source Code on GitHub"),
       item("help.report", "Report a Problem..."),

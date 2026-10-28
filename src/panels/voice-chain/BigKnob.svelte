@@ -148,16 +148,16 @@
     font-weight: 600;
   }
   .skirt {
-    fill: #1b1a19;
-    stroke: #000;
+    fill: var(--knob-skirt, #1b1a19);
+    stroke: var(--knob-edge, #000);
     stroke-width: 1.5;
   }
   .cap {
-    fill: #2c2a28;
-    stroke: #3c3936;
+    fill: var(--knob-cap, #2c2a28);
+    stroke: var(--knob-cap-edge, #3c3936);
   }
   .grip {
-    stroke: #0c0b0b;
+    stroke: var(--knob-grip, #0c0b0b);
     stroke-width: 2.5;
   }
   .pointer {

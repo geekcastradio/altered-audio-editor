@@ -15,10 +15,10 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use super::model::{
-    AudioType, Bus, ChannelLayout, ChannelMix, Clip, ClipLoop, ClipStretch, EffectChain,
-    EffectSlot, Envelope, EnvelopePoint, EnvelopeTarget, Fade, Id, Marker, MarkerKind, MediaRef,
-    MidiClip, Output, Send, Session, SessionView, Space, SpacePos, Tempo, Track, TrackKind,
-    TrackRole, STRETCH_MAX, STRETCH_MIN,
+    AudioType, Bus, ChannelLayout, ChannelMix, ChapterInfo, Clip, ClipLoop, ClipStretch,
+    EffectChain, EffectSlot, Envelope, EnvelopePoint, EnvelopeTarget, Fade, Id, Marker, MarkerKind,
+    MediaRef, MidiClip, Output, Send, Session, SessionView, Space, SpacePos, Tempo, Track,
+    TrackKind, TrackRole, STRETCH_MAX, STRETCH_MIN,
 };
 
 /// Points for one effect setting's envelope on a clip.
@@ -62,6 +62,8 @@ impl ClipSpec {
             stretch: None,
             audio_type: None,
             channel_mix: None,
+            reversed: false,
+            inverted: false,
         }
     }
 }
@@ -226,6 +228,12 @@ pub struct ClipChange {
     /// Goes back to the default Source Channels for the file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clear_channel_mix: Option<bool>,
+    /// Plays the clip backwards, or forwards again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reversed: Option<bool>,
+    /// Flips the clip's polarity, or back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inverted: Option<bool>,
     /// Where the clip sits in its track's stacking order after the change:
     /// 0 is the bottom; past the end puts it on top. Later clips play over
     /// earlier ones where they overlap.
@@ -256,6 +264,9 @@ pub struct MarkerChange {
     /// Removes the contracted length (when a marker stops being an ad slot).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clear_contracted: Option<bool>,
+    /// A chapter's web link, or an empty string to remove it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 }
 
 /// Whose Voice Chain an edit changes.
@@ -917,6 +928,20 @@ fn apply_one(s: &mut Session, op: &Op) -> Result<Op, OpError> {
                     let new = if v.is_empty() { None } else { Some(v.clone()) };
                     inv.color = Some(std::mem::replace(&mut m.color, new).unwrap_or_default());
                 }
+                if let Some(v) = &ch.url {
+                    let old = m
+                        .chapter
+                        .as_ref()
+                        .and_then(|c| c.url.clone())
+                        .unwrap_or_default();
+                    let new = v.trim();
+                    let info = m.chapter.get_or_insert_with(ChapterInfo::default);
+                    info.url = (!new.is_empty()).then(|| new.to_string());
+                    if info.url.is_none() && info.image.is_none() {
+                        m.chapter = None;
+                    }
+                    inv.url = Some(old);
+                }
                 if ch.contracted_duration.is_some() || ch.clear_contracted == Some(true) {
                     let new = if ch.clear_contracted == Some(true) {
                         None
@@ -1362,6 +1387,12 @@ fn set_clip(s: &mut Session, ch: &ClipChange) -> Result<ClipChange, OpError> {
             Some(old) => inv.channel_mix = Some(old),
             None => inv.clear_channel_mix = Some(true),
         }
+    }
+    if let Some(v) = ch.reversed {
+        inv.reversed = Some(std::mem::replace(&mut c.reversed, v));
+    }
+    if let Some(v) = ch.inverted {
+        inv.inverted = Some(std::mem::replace(&mut c.inverted, v));
     }
     if let Some(points) = &ch.volume {
         inv.volume = Some(set_points(c, EnvelopeTarget::Volume, points));
@@ -2836,5 +2867,46 @@ mod tests {
         assert_eq!(e.points[1].value, 180.0, "kept to the control's range");
         apply(&mut s, &change(vec![])).unwrap();
         assert!(s.tracks[0].clips[0].envelopes.is_empty());
+    }
+
+    #[test]
+    fn a_chapter_link_sets_clears_and_undoes() {
+        let mut s = Session::new("t", 48_000);
+        let id = new_id();
+        apply(
+            &mut s,
+            &Op::AddMarkers {
+                markers: vec![Marker {
+                    id,
+                    name: "Intro".into(),
+                    kind: MarkerKind::Chapter,
+                    position: 0,
+                    duration: 0,
+                    description: String::new(),
+                    chapter: None,
+                    contracted_duration: None,
+                    color: None,
+                }],
+            },
+        )
+        .unwrap();
+        let set = |url: &str| Op::SetMarkers {
+            changes: vec![MarkerChange {
+                id,
+                url: Some(url.into()),
+                ..MarkerChange::default()
+            }],
+        };
+        let undo = apply(&mut s, &set(" https://example.com/a ")).unwrap();
+        assert_eq!(
+            s.markers[0].chapter.as_ref().and_then(|c| c.url.as_deref()),
+            Some("https://example.com/a")
+        );
+        let clear = apply(&mut s, &set("")).unwrap();
+        assert!(s.markers[0].chapter.is_none());
+        apply(&mut s, &clear).unwrap();
+        assert!(s.markers[0].chapter.is_some());
+        apply(&mut s, &undo).unwrap();
+        assert!(s.markers[0].chapter.is_none());
     }
 }

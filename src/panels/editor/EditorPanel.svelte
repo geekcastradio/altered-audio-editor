@@ -23,7 +23,7 @@
   import MidiLane from "./MidiLane.svelte";
   import PianoRollDialog from "./PianoRollDialog.svelte";
   import { duplicateClips, newClip, replaceClip, transferClips } from "./midi";
-  import { effectsCatalog, midiAudition, pluginOpenWindow, pluginsRegistry, type EffectInfo } from "../../app/core";
+  import { clipReversePrepare, effectsCatalog, midiAudition, pluginOpenWindow, pluginsRegistry, type EffectInfo } from "../../app/core";
   import HeaderFx from "./HeaderFx.svelte";
   import { rowTarget } from "../voice-chain/slot-drag";
   import { pluginMenuGroups, type MenuPlugin } from "../voice-chain/chain";
@@ -1481,9 +1481,17 @@
         }
         if (ed.autoCrossfade) changes = withCrossfades(d0, changes);
       } else {
+        // Across sets the fade's length; up and down bends its curve (-100 to 100).
+        const which = kind === "fade-in" ? "in" : "out";
         const at = sampleAt(ev.clientX - lanesEl!.getBoundingClientRect().left, view);
-        const c = fadeClip(d0, clip, kind === "fade-in" ? "in" : "out", kind === "fade-in" ? at - clip.start : end - at);
-        changes = c ? [c] : [];
+        const was = which === "in" ? clip.fade_in : clip.fade_out;
+        const across = Math.abs(ev.clientX - startX) >= 3;
+        const bend = Math.max(-1, Math.min(1, Math.round(((was.curve ?? 0) - (ev.clientY - startY) / 80) * 100) / 100));
+        const c = across ? fadeClip(d0, clip, which, which === "in" ? at - clip.start : end - at) : null;
+        const fade = { ...was, ...(c ? (which === "in" ? c.fade_in : c.fade_out) : {}), curve: Math.abs(bend) < 0.02 ? 0 : bend };
+        changes = fade.length > 0 ? [which === "in" ? { id: clip.id, fade_in: fade } : { id: clip.id, fade_out: fade }] : [];
+        const skew = Math.round(fade.curve * 100);
+        envTip = { x: ev.clientX, y: ev.clientY, text: `${which === "in" ? "Fade in" : "Fade out"} ${(fade.length / rate).toFixed(2)} s, skew ${skew > 0 ? "+" : ""}${skew}` };
       }
       preview = changes;
     };
@@ -1507,7 +1515,7 @@
       window.removeEventListener("pointerup", up, true);
       preview = [];
       stretchHint = null;
-      if (kind === "gain") envTip = null;
+      if (kind === "gain" || kind === "fade-in" || kind === "fade-out") envTip = null;
       if (!moved || changes.length === 0) return;
       if (kind === "move" && lastEv?.altKey) {
         // Alt+drag: copies where they were dropped; the originals stay.
@@ -1537,6 +1545,33 @@
     };
     window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerup", up, true);
+  }
+
+  /** Reverse and Invert for the selected clips: toggles that leave the files alone. */
+  function clipFlipItems(): ContextItem[] {
+    const found = (doc?.tracks ?? []).flatMap((t) => t.clips).filter((c) => ed.selectedClips.has(c.id));
+    if (!found.length) return [];
+    const allRev = found.every((c) => c.reversed);
+    const allInv = found.every((c) => c.inverted);
+    const reverse = async () => {
+      const on = !allRev;
+      if (on) {
+        const paths = [...new Set(found.map((c) => doc?.media.find((m) => m.id === c.media_id)?.path).filter((p): p is string => !!p))];
+        await Promise.all(paths.map((p) => clipReversePrepare(p)));
+      }
+      // The region flips with it: positions count from the file's end while reversed.
+      const flip = (c: ClipDoc) => {
+        const len = doc?.media.find((m) => m.id === c.media_id)?.length ?? c.source_out;
+        return { source_in: Math.max(0, len - c.source_out), source_out: Math.max(0, len - c.source_in) };
+      };
+      await session.edit(on ? "Reverse Clip" : "Play Clip Forwards", { op: "set_clips", changes: found.filter((c) => !!c.reversed !== on).map((c) => ({ id: c.id, reversed: on, ...flip(c) })) }, runner);
+    };
+    return [
+      { kind: "sep" },
+      { kind: "item", label: allRev ? "Play Clip Forwards" : "Reverse", run: () => void reverse().catch(onError) },
+      { kind: "item", label: allInv ? "Restore Polarity" : "Invert Polarity", run: () => void session.edit(allInv ? "Polarity Back" : "Invert Polarity", { op: "set_clips", changes: found.map((c) => ({ id: c.id, inverted: !allInv })) }, runner).catch(onError) },
+      { kind: "sep" },
+    ];
   }
 
   function onLaneMenu(e: MouseEvent, track: TrackDoc) {
@@ -1576,6 +1611,7 @@
         act(actions.isChecked("clip.lock") ? "Unlock Position" : "Lock Position", "clip.lock"),
         act("Clip Gain...", "clip.gain"),
         act("Clip Color...", "clip.color"),
+        ...clipFlipItems(),
         act("Group Clips", "clip.group"),
         act("Ungroup Clips", "clip.ungroup"),
         {
@@ -1600,7 +1636,7 @@
         { kind: "sep" },
       );
     }
-    items.push(...trackItems(track));
+    items.push(...trackItems(track, ed.selectedClips.size > 0));
     menu = { x: e.clientX, y: e.clientY, items };
   }
 
@@ -1777,7 +1813,8 @@
     if (v && v !== b.name) setBus(b, { name: v }, "Rename Bus");
   }
 
-  function trackItems(track: TrackDoc): ContextItem[] {
+  /** The track's menu entries. `onClip` leaves out the Add Track group, which belongs to the track header and empty space. */
+  function trackItems(track: TrackDoc, onClip = false): ContextItem[] {
     return [
       { kind: "item", label: "Select All Clips on Track", disabled: track.clips.length === 0, run: () => editor.selectClips(withGroups(doc!, track.clips.map((c) => c.id)), track.id) },
       { kind: "sep" },
@@ -1787,11 +1824,15 @@
       { kind: "item", label: "Duplicate Track", run: () => { editor.selectTrack(track.id); run("multitrack.duplicate-track"); } },
       { kind: "item", label: "Delete Track", run: () => { editor.selectTrack(track.id); run("multitrack.delete-track"); } },
       { kind: "sep" },
-      { kind: "item", label: "Add Mono Track", run: () => { editor.selectTrack(track.id); run("multitrack.add.mono"); } },
-      { kind: "item", label: "Add Stereo Track", run: () => { editor.selectTrack(track.id); run("multitrack.add.stereo"); } },
-      { kind: "item", label: "Add MIDI Track", run: () => { editor.selectTrack(track.id); run("multitrack.add.midi"); } },
-      { kind: "item", label: "Add Bus Track", run: () => run("multitrack.add.bus") },
-      { kind: "sep" },
+      ...(onClip
+        ? []
+        : ([
+            { kind: "item", label: "Add Mono Track", run: () => { editor.selectTrack(track.id); run("multitrack.add.mono"); } },
+            { kind: "item", label: "Add Stereo Track", run: () => { editor.selectTrack(track.id); run("multitrack.add.stereo"); } },
+            { kind: "item", label: "Add MIDI Track", run: () => { editor.selectTrack(track.id); run("multitrack.add.midi"); } },
+            { kind: "item", label: "Add Bus Track", run: () => run("multitrack.add.bus") },
+            { kind: "sep" },
+          ] as ContextItem[])),
       ...routingItems(track),
     ];
   }

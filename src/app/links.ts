@@ -21,8 +21,8 @@ export const LINKS = {
   releases: "https://github.com/geekcastradio/altered-audio-editor/releases/latest",
   /** Opens the bug form. */
   report: "https://github.com/geekcastradio/altered-audio-editor/issues/new/choose",
-  /** Community chat invite. */
-  discord: "https://discord.gg/xTT5N65y",
+  /** The GCRN Community chat invite. */
+  discord: "https://discord.gg/yAhcfmfevd",
   /** The project lead's book, Altered Audio: Podcasting Demystified. */
   book: "https://www.barnesandnoble.com/w/altered-audio-steve-phillips/1147888459",
 } as const;

@@ -24,8 +24,10 @@ pub mod phase_curve;
 mod pitch;
 pub mod print;
 mod restore;
+pub mod reverb;
 pub mod shaped;
 pub mod tube;
+pub mod vocal;
 
 use std::collections::BTreeMap;
 
@@ -187,7 +189,9 @@ pub fn catalog() -> Vec<EffectInfo> {
         dynamics::leveler_info(),
         tube::opto_info(),
         tube::preamp_info(),
+        vocal::vocal_info(),
         filters::center_info(),
+        reverb::reverb_info(),
         pitch::pitch_info(),
         echo::echo_info(),
         restore::noise_info(),
@@ -435,6 +439,11 @@ pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
             rate,
             crate::dsp::meters::for_slot(slot.id),
         )),
+        vocal::VOCAL => Box::new(vocal::VoxStrip::new(
+            &p,
+            rate,
+            crate::dsp::meters::for_slot(slot.id),
+        )),
         "altaudio.hiss_reducer" => Box::new(restore::hiss_reducer(&p, rate)),
         "altaudio.room_reducer" => Box::new(restore::room_reducer(&p, rate)),
         "altaudio.click_repair" => Box::new(restore::GapRepair::clicks(&p, rate)),
@@ -451,6 +460,11 @@ pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
         "altaudio.echo" => Box::new(echo::Echo::new(&p, rate)),
         "altaudio.phase_rotate" => Box::new(phase::PhaseRotate::new(&p, rate)),
         "altaudio.phase_curve" => Box::new(phase_curve::PhaseCurve::new(&p, rate)),
+        reverb::ID => Box::new(reverb::ConvolutionReverb::new(
+            &p,
+            rate,
+            slot.data.as_deref(),
+        )),
         _ => return None,
     })
 }

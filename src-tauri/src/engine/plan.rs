@@ -40,8 +40,8 @@ pub struct ClipPlan {
     /// Fade lengths in output frames.
     pub fade_in: u64,
     pub fade_out: u64,
-    pub fade_in_shape: FadeShape,
-    pub fade_out_shape: FadeShape,
+    pub fade_in_shape: FadeLook,
+    pub fade_out_shape: FadeLook,
     /// Volume envelope: (frame from the clip start, level in dB), sorted.
     /// Empty means no envelope.
     pub volume: Vec<(u64, f32)>,
@@ -79,9 +79,9 @@ pub struct Cover {
     pub from: u64,
     pub to: u64,
     pub fade_in: u64,
-    pub fade_in_shape: FadeShape,
+    pub fade_in_shape: FadeLook,
     pub fade_out: u64,
-    pub fade_out_shape: FadeShape,
+    pub fade_out_shape: FadeLook,
     /// This clip fades out across the top clip's fade in (or in across
     /// its fade out): a crossfade, where both play through their own fades.
     pub crossfade_in: bool,
@@ -207,8 +207,8 @@ impl ClipPlan {
             gain: 1.0,
             fade_in: 0,
             fade_out: 0,
-            fade_in_shape: FadeShape::Linear,
-            fade_out_shape: FadeShape::Linear,
+            fade_in_shape: (FadeShape::Linear, 0.0),
+            fade_out_shape: (FadeShape::Linear, 0.0),
             volume: Vec::new(),
             pan: Vec::new(),
             loop_len: 0,
@@ -349,9 +349,23 @@ fn envelope_points(
         .unwrap_or_default()
 }
 
-/// Fade gain for `t` from 0 (silent) to 1 (full).
-pub fn fade_curve(shape: FadeShape, t: f32) -> f32 {
+/// A fade's shape and its bend, -1 to 1 (0 is the plain shape).
+pub type FadeLook = (FadeShape, f32);
+
+/// Fade gain for `t` from 0 (silent) to 1 (full). The bend skews the
+/// shape: above 0 it rises sooner (bulging up), below 0 later (dipping).
+pub fn fade_curve((shape, bend): FadeLook, t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
+    let bend = if bend.is_finite() {
+        bend.clamp(-1.0, 1.0)
+    } else {
+        0.0
+    };
+    let t = if bend == 0.0 {
+        t
+    } else {
+        t.powf(4f32.powf(-bend))
+    };
     match shape {
         FadeShape::Linear => t,
         // Rises fast, then eases in: sounds even to the ear on speech.
@@ -491,25 +505,40 @@ pub fn build(session: &Session, out_rate: u32) -> Plan {
                         return None;
                     }
                     let fade = |l: u64| convert(l, session.sample_rate, out_rate).min(len);
+                    // Made here if it is missing (a session from another computer),
+                    // since its region only makes sense in the reversed copy.
+                    let rev = if c.reversed {
+                        crate::engine::reverse::cached(&m.path)
+                            .or_else(|| crate::engine::reverse::prepare(&m.path).ok())
+                    } else {
+                        None
+                    };
                     Some(ClipPlan {
                         id: c.id,
                         mix: crate::dsp::channels::effective(
                             c.channel_mix.as_ref(),
                             usize::from(m.channels),
                         ),
-                        path: m.path.clone(),
+                        // Reversed: its file's reversed copy, from the mirrored spot.
+                        path: rev.clone().unwrap_or_else(|| m.path.clone()),
                         start: convert(c.start, session.sample_rate, out_rate),
                         len,
+                        // A reversed clip's region is kept in the reversed copy's terms.
                         source_start: c.source_in as f64 / f64::from(src_rate),
                         gain: if c.muted {
                             0.0
                         } else {
-                            10f64.powf(c.gain_db.clamp(-96.0, 24.0) / 20.0) as f32
+                            let g = 10f64.powf(c.gain_db.clamp(-96.0, 24.0) / 20.0) as f32;
+                            if c.inverted {
+                                -g
+                            } else {
+                                g
+                            }
                         },
                         fade_in: fade(c.fade_in.length),
                         fade_out: fade(c.fade_out.length),
-                        fade_in_shape: c.fade_in.shape,
-                        fade_out_shape: c.fade_out.shape,
+                        fade_in_shape: (c.fade_in.shape, c.fade_in.curve as f32),
+                        fade_out_shape: (c.fade_out.shape, c.fade_out.curve as f32),
                         volume: envelope_points(
                             c,
                             &EnvelopeTarget::Volume,
@@ -597,6 +626,8 @@ fn envelope_hash(c: &Clip) -> u64 {
         h ^= v;
         h = h.wrapping_mul(0x100_0000_01b3);
     };
+    // Reversed or inverted changes what plays too.
+    mix(u64::from(c.reversed) | u64::from(c.inverted) << 1);
     // A stretch changes what plays where, so it is part of the shape too.
     if let Some(st) = c.stretch {
         mix(0x5354_5243);
@@ -837,6 +868,21 @@ fn clip_layout(session: &Session) -> Vec<(Id, Vec<ClipKey>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_fade_bend_moves_the_curve_and_zero_leaves_it() {
+        for shape in [FadeShape::Linear, FadeShape::Logarithmic, FadeShape::Cosine] {
+            assert_eq!(fade_curve((shape, 0.0), 0.3), fade_curve((shape, 0.0), 0.3));
+            assert!((fade_curve((shape, 0.5), 0.0)).abs() < 1e-6);
+            assert!((fade_curve((shape, 0.5), 1.0) - 1.0).abs() < 1e-6);
+            assert!(fade_curve((shape, 0.6), 0.4) > fade_curve((shape, 0.0), 0.4));
+            assert!(fade_curve((shape, -0.6), 0.4) < fade_curve((shape, 0.0), 0.4));
+            assert_eq!(
+                fade_curve((shape, f32::NAN), 0.4),
+                fade_curve((shape, 0.0), 0.4)
+            );
+        }
+    }
     use crate::session::model::{new_id, ChannelLayout, MediaRef, Track};
     use crate::session::ops::{apply, ClipSpec, Op};
 

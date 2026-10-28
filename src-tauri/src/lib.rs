@@ -38,6 +38,10 @@ pub fn run() {
             if let Ok(dir) = app.path().app_config_dir() {
                 plugins::load(&dir);
             }
+            // Reversed clips read reversed copies kept with the other working files.
+            if let Ok(root) = commands::cache::cache_root(app.handle()) {
+                engine::reverse::set_dir(root.join("Reversed"));
+            }
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
@@ -88,6 +92,8 @@ pub fn run() {
             commands::amp::amp_pick,
             commands::amp::amp_load_model,
             commands::amp::amp_load_ir,
+            commands::reverb::reverb_pick,
+            commands::reverb::reverb_load,
             commands::plugins::plugins_registry,
             commands::plugins::plugins_set_shared,
             commands::plugins::plugins_scan,
@@ -147,16 +153,20 @@ pub fn run() {
             commands::effects::effect_response,
             commands::effects::shaped_noise_curves,
             commands::effects::effect_meter,
+            commands::effects::vox_tone_curve,
             commands::align::phase_align,
             commands::musicfit::music_fit,
             commands::export::export_pick_path,
             commands::export::export_text,
             commands::export::export_embed_chapters,
+            commands::export::export_verify,
+            commands::export::publish_write_files,
             commands::export::export_pick_folder,
             commands::export::paths_exist,
             commands::batch::batch_convert,
             commands::batch::batch_cancel,
             commands::export::export_mixdown,
+            commands::export::clip_reverse_prepare,
             commands::export::export_cancel,
             commands::export::loudness_check,
             commands::export::export_merge,

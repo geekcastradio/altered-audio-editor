@@ -545,3 +545,10 @@ Decision (project lead): broadcast and CD features stay in the plan for people w
 - **Amp Model:** decide whether Tube Preamp and Opto Leveler should also sit behind Music Mode (left in the normal list for now). Confirm the capture-loading code and credits.
 - **Zoom chords** (zoom out to full, zoom all axes) are in the keymap; the all-axes menu item is still pending.
 - **Contributor flow:** ask nwh212 to confirm the CLA on GitHub too, and to send smaller pull requests that keep new features behind Music Mode.
+
+## Added 2026-10-27, after 0.6.0 prep
+
+- **FX Panel suggestions** (hum, noise floor, sibilance), **A/B compare**, **Separate Speakers**: need tuning on real episodes before shipping.
+- **VST3 shared-folder presets** from Audiform (`plughost/presets.rs`): optional port.
+- **RSS.com upload** (API step 2): opt-in, explicit network permission, own design.
+- **Ogg/Opus export.**

@@ -431,11 +431,14 @@
     flex-direction: column;
     height: 100%;
     min-height: 0;
+    min-width: 0;
+    overflow-x: hidden;
     background: var(--surface-1);
     font-size: 12px;
   }
   .top {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 5px;
     padding: 6px 8px;
     border-bottom: 1px solid var(--border);
@@ -527,12 +530,15 @@
   }
   .settings {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     align-content: start;
     gap: 8px;
     padding: 8px;
   }
   fieldset {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
     gap: 5px;
     margin: 0;
     padding: 6px 8px 8px;

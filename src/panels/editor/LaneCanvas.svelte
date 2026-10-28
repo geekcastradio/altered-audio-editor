@@ -54,8 +54,9 @@
   }
 
   /** Fade gain for t from 0 to 1. Matches the playback engine. */
-  function fadeGain(shape: FadeDoc["shape"], t: number): number {
-    const u = Math.min(1, Math.max(0, t));
+  function fadeGain(shape: FadeDoc["shape"], t: number, bend = 0): number {
+    const b = Math.max(-1, Math.min(1, bend || 0));
+    const u = Math.pow(Math.min(1, Math.max(0, t)), b === 0 ? 1 : Math.pow(4, -b));
     if (shape === "logarithmic") return 1 - (1 - u) * (1 - u);
     if (shape === "cosine") return 0.5 - 0.5 * Math.cos(Math.PI * u);
     return u;
@@ -71,7 +72,7 @@
     for (let i = 0; i <= steps; i++) {
       const x = from + ((to - from) * i) / steps;
       const t = i / steps;
-      const gain = fadeGain(fade.shape, rising ? t : 1 - t);
+      const gain = fadeGain(fade.shape, rising ? t : 1 - t, fade.curve);
       g.lineTo(x, bottom - gain * height);
     }
     g.lineTo(to, top);
@@ -82,7 +83,7 @@
     for (let i = 0; i <= steps; i++) {
       const x = from + ((to - from) * i) / steps;
       const t = i / steps;
-      const y = bottom - fadeGain(fade.shape, rising ? t : 1 - t) * height;
+      const y = bottom - fadeGain(fade.shape, rising ? t : 1 - t, fade.curve) * height;
       if (i === 0) g.moveTo(x, y);
       else g.lineTo(x, y);
     }
@@ -225,7 +226,7 @@
         // Zoomed in close: the file's exact samples, a line through them
         // with a dot on each once they are 6 pixels apart.
         const exact =
-          framesPerPx <= SAMPLE_VIEW && clip !== liveClip && !clip.looped && ratio === 1 && m
+          framesPerPx <= SAMPLE_VIEW && clip !== liveClip && !clip.looped && !clip.reversed && ratio === 1 && m
             ? exactSamples.get(
                 m.path,
                 Math.max(clip.source_in, Math.floor(clip.source_in + ((view.scroll + left * view.spp - clip.start) * srcRate) / sessionRate) - 1),
@@ -289,7 +290,12 @@
             const s1 = s0 + framesPerPx;
             if (s1 < clip.source_in || s0 >= clip.source_out) continue;
             for (let k = 0; k < ch; k++) {
-              const [lo, hi] = peakRange(level, ch, k, Math.max(s0, clip.source_in), Math.min(s1, clip.source_out));
+              // Reversed: positions count from the file's end.
+              const fileLen = m?.length ?? clip.source_out;
+              const [a0, a1] = [Math.max(s0, clip.source_in), Math.min(s1, clip.source_out)];
+              const [lo0, hi0] = clip.reversed ? peakRange(level, ch, k, fileLen - a1, fileLen - a0) : peakRange(level, ch, k, a0, a1);
+              // Inverted: drawn upside down.
+              const [lo, hi] = clip.inverted ? [-hi0, -lo0] : [lo0, hi0];
               const mid = body.top + laneH * (k + 0.5);
               const amp = (v: number) => Math.max(-1, Math.min(1, v * ampZoom * clipLevel));
               const y0 = mid - amp(hi) * (laneH / 2 - 1);

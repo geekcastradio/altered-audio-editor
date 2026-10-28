@@ -54,6 +54,7 @@
   } from "./chain";
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import ResponseGraph from "./ResponseGraph.svelte";
+  import ReverbPanel from "./ReverbPanel.svelte";
   import EqGraph from "./EqGraph.svelte";
   import PhaseCurveGraph from "./PhaseCurveGraph.svelte";
   import EffectControls from "./EffectControls.svelte";
@@ -61,6 +62,8 @@
   import TubePanel from "./TubePanel.svelte";
   import { settings } from "../../stores/settings";
   import AmpPanel from "./AmpPanel.svelte";
+  import VoxStripPanel from "./VoxStripPanel.svelte";
+  import { applyEffectPreset, bankWith, bankWithout, effectPresetFrom, sanitizeBank, type EffectPresetBank } from "./effect-presets";
   import { groupShown, PHASE_CURVE } from "./phase-curve";
   import { GRAPHED } from "./graph";
   import { clampBox, effectWindowRequest, hideEffectWindows, portal, type WindowBox } from "./effect-window";
@@ -84,6 +87,7 @@
 
   const { session, runner, prefs, ask, transport, wave, waveTransport, onApplyWave, onNotice = () => {}, onError = console.error }: Props = $props();
   const KEY_PRESETS = "voiceChain.presets";
+  const KEY_FX_PRESETS = "voiceChain.effectPresets";
   const KEY_TAB = "voiceChain.tab";
   const KEY_IO = "voiceChain.showIO";
 
@@ -161,6 +165,8 @@
   const menuCatalog = $derived(music ? catalog : catalog.filter((e) => e.id !== "altaudio.amp_model"));
 
   let userPresets = $state<ChainPreset[]>([]);
+  /** Saved settings for single effects, by effect id: the Presets bar in an effect's window. */
+  let fxBank = $state<EffectPresetBank>({});
   let tab = $state<"clip" | "track">("track");
   /** The Input, Output and Mix controls under the list; the second button under it hides them. */
   let showIO = $state(true);
@@ -171,6 +177,7 @@
   // svelte-ignore state_referenced_locally
   void prefs.load().then(() => {
     userPresets = sanitizePresets(prefs.raw(KEY_PRESETS));
+    fxBank = sanitizeBank(prefs.raw(KEY_FX_PRESETS));
     if (prefs.raw(KEY_TAB) === "clip") tab = "clip";
     if (prefs.raw(KEY_IO) === false) showIO = false;
   });
@@ -464,6 +471,46 @@
     onNotice(`Deleted preset ${name}.`);
   }
 
+  // Presets for the effect whose window is open.
+  function chooseFxPreset(name: string) {
+    if (!winSlot || !winInfo) return;
+    const p = (fxBank[winSlot.effect] ?? []).find((x) => x.name === name);
+    if (p) commit(`${winInfo.name} Preset ${p.name}`, applyEffectPreset(chain, winSlot.id, p, winInfo));
+  }
+
+  async function saveFxPreset() {
+    if (!winSlot || !winInfo) return;
+    const name = (await ask(`Save ${winInfo.name} Preset`, "Preset name", winSlot.preset ?? ""))?.trim();
+    if (!name) return;
+    const { preset, dataLeftOut } = effectPresetFrom(name, winSlot, winInfo);
+    fxBank = bankWith(fxBank, winSlot.effect, preset);
+    prefs.set(KEY_FX_PRESETS, $state.snapshot(fxBank));
+    commit(`Name Preset ${preset.name}`, setSlot(chain, winSlot.id, { preset: preset.name }));
+    onNotice(dataLeftOut ? `Saved preset ${preset.name}. The file this effect has loaded is too large to keep in a preset, so applying it leaves that file as it is.` : `Saved preset ${preset.name}.`);
+  }
+
+  function openFxDeleteMenu(e: MouseEvent) {
+    if (!winSlot) return;
+    const effect = winSlot.effect;
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    slotMenu = {
+      x: r.left,
+      y: r.bottom,
+      items: (fxBank[effect] ?? []).map(
+        (p) =>
+          ({
+            kind: "item",
+            label: `Delete "${p.name}"`,
+            run: () => {
+              fxBank = bankWithout(fxBank, effect, p.name);
+              prefs.set(KEY_FX_PRESETS, $state.snapshot(fxBank));
+              onNotice(`Deleted preset ${p.name}.`);
+            },
+          }) as ContextItem,
+      ),
+    };
+  }
+
   // Sliders show the value while dragging and apply as they move, a
   // few times a second, so playback follows. Consecutive changes to one
   // control merge into one undo step. Controls that change an effect's
@@ -548,7 +595,7 @@
   // or the master has no audio of its own to learn from yet.
   const canLearn = $derived(inWave || target?.kind === "track" || target?.kind === "clip");
   /** Effects whose window draws all of its own controls. */
-  const OWN_CONTROLS = new Set(["altaudio.shaped_noise", "altaudio.opto_leveler", "altaudio.tube_preamp", "altaudio.amp_model"]);
+  const OWN_CONTROLS = new Set(["altaudio.convolution_reverb", "altaudio.shaped_noise", "altaudio.opto_leveler", "altaudio.tube_preamp", "altaudio.amp_model", "altaudio.vox_strip"]);
   const LEARNS = new Set(["altaudio.noise_print", "altaudio.sound_eraser", "altaudio.shaped_noise"]);
   const learnSel = $derived.by(() => {
     const v = inWave ? waveDoc?.view.selection : doc?.view.selection;
@@ -728,6 +775,22 @@
           <button type="button" class="mini" class:on={winSlot.enabled} title={winSlot.enabled ? "Bypass" : "Turn on"} aria-pressed={winSlot.enabled} onclick={() => commit(winSlot.enabled ? "Bypass Effect" : "Turn On Effect", setSlot(chain, winSlot.id, { enabled: !winSlot.enabled }))}>{winSlot.enabled ? "On" : "Off"}</button>
           <button type="button" class="mini" title="Close (Esc)" aria-label="Close" onclick={() => (winOpen = false)}>✕</button>
         </header>
+        {#if winInfo && !winInfo.plugin}
+          {@const saved = fxBank[winSlot.effect] ?? []}
+          <div class="line fxpre">
+            <span class="plabel">Presets:</span>
+            <select class="grow" aria-label="{winInfo.name} presets" value={winSlot.preset ?? ""} onchange={(e) => chooseFxPreset(e.currentTarget.value)}>
+              <option value="" disabled>{saved.length ? "(Choose a preset)" : "(No saved presets yet)"}</option>
+              {#each saved as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
+            </select>
+            <button type="button" class="ico" title="Save these settings as a preset" aria-label="Save preset" onclick={() => void saveFxPreset()}>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v7M5 6.5 8 9.5l3-3" fill="none" stroke="currentColor" stroke-width="1.5" /><path d="M2.5 10v3.5h11V10" fill="none" stroke="currentColor" stroke-width="1.5" /></svg>
+            </button>
+            <button type="button" class="ico" title={saved.length ? "Delete a saved preset" : "You have no saved presets for this effect"} aria-label="Delete a saved preset" aria-haspopup="menu" disabled={saved.length === 0} onclick={openFxDeleteMenu}>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" fill="none" stroke="currentColor" stroke-width="1.4" /></svg>
+            </button>
+          </div>
+        {/if}
         <div class="editor">
       {#if winSlot && winInfo}
                 {#if winSlot.effect === "altaudio.parametric_eq"}
@@ -750,11 +813,21 @@
           />
         {:else if winSlot.effect === "altaudio.opto_leveler" || winSlot.effect === "altaudio.tube_preamp"}
           <TubePanel slot={winSlot} info={winInfo} onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)} />
+        {:else if winSlot.effect === "altaudio.vox_strip"}
+          <VoxStripPanel slot={winSlot} info={winInfo} tempo={doc?.tempo?.bpm} onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)} />
         {:else if winSlot.effect === "altaudio.amp_model"}
           <AmpPanel
             slot={winSlot}
             info={winInfo}
             rate={(inWave ? waveDoc : doc)?.sample_rate ?? 48000}
+            onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)}
+            onData={(data, label) => commit(label, setSlot(chain, winSlot.id, { data }))}
+            {onError}
+          />
+        {:else if winSlot.effect === "altaudio.convolution_reverb"}
+          <ReverbPanel
+            slot={winSlot}
+            info={winInfo}
             onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)}
             onData={(data, label) => commit(label, setSlot(chain, winSlot.id, { data }))}
             {onError}
@@ -1180,8 +1253,14 @@
     &:has(:global(.pc)) {
       width: 560px;
     }
+    &:has(:global(.verb)) {
+      width: min(600px, 96vw);
+    }
     &:has(:global(.ns)) {
       width: 660px;
+    }
+    &:has(:global(.vox)) {
+      width: min(860px, 96vw);
     }
     &:has(:global(.tube)),
     &:has(:global(.amp)) {
@@ -1216,6 +1295,10 @@
   }
   .fxwin .editor {
     overflow: auto;
+  }
+  .fxpre {
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--border);
   }
   .fxwin footer {
     padding: 4px 10px;

@@ -1488,3 +1488,11 @@ Several requests compared behavior to another editor; per the guardrails they ar
 - **Long submenus and a narrow Time Info.** Submenus are capped to the window and scroll. The Time Info grid turns on its side in a narrow panel and its columns never shrink below their text.
 - **Releases check their tag.** 0.5.1 shipped with 0.5.0 inside because the tag was made before the version was bumped. The release workflow now runs scripts/check-release-version.mjs first and stops if the tag and the version files disagree.
 - **0.5.5 was burned.** The v0.5.5 tag was made before the version bump, so that release carried a 0.5.2 installer (its updater signature named Altered Audio Editor_0.5.2_x64-setup.exe) and would have kept the updater in a loop. It was deleted. GitHub keeps the tag name of a deleted release, so the same changes ship as 0.5.6. The Windows job now also picks the installer by the tag's version and stops if there is none, so an older installer left in the build cache cannot be packaged under a new tag.
+
+## 2026-10-27: 0.6.0 scope (markers, export check, publish package)
+
+- **One release.** Wave 2a (Reverb, Vox Strip, Reverse/Invert, fade bend), markers in every format, the export check, Publish Package and the loudness scan ship together as 0.6.0.
+- **Markers.** WAV uses `cue ` and `LIST/adtl`; M4A a Nero `chpl` box; MP3 ID3 CHAP/CTOC (link as a WXXX subframe); FLAC `CHAPTERnnn` Vorbis comments. Files that already hold cue points, and RF64, are refused rather than rewritten.
+- **Export check.** Our own decode-based check runs after each export (default on); CI adds `flac -t` and `ffprobe` on Linux, where the tools are required.
+- **Publish Package writes files only.** No upload: the privacy guard forbids network code. The RSS.com API step stays a separate, opt-in decision.
+- **Deferred past 0.6.0:** FX Panel analysis suggestions, A/B compare and Separate Speakers (large, untuned); VST3 shared-folder presets.
