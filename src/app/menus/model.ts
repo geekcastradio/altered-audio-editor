@@ -537,7 +537,7 @@ export const MENUS: readonly Menu[] = [
       item("help.book", "Book: Altered Audio, Podcasting Demystified"),
       item("help.support", "Support Altered Audio Editor..."),
       sep,
-      item("help.discord", "Join the Community on Discord"),
+      item("help.discord", "Join the GCRN Community on Discord"),
       item("help.update", "Check for Updates..."),
       item("help.github", "Source Code on GitHub"),
       item("help.report", "Report a Problem..."),

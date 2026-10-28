@@ -62,7 +62,7 @@ mod tests {
         assert!(is_allowed(
             "https://github.com/geekcastradio/altered-audio-editor/issues/new/choose"
         ));
-        assert!(is_allowed("https://discord.gg/xTT5N65y"));
+        assert!(is_allowed("https://discord.gg/yAhcfmfevd"));
         assert!(!is_allowed("https://github.com.evil.example/"));
         assert!(!is_allowed("file:///C:/Windows/System32/calc.exe"));
         assert!(!is_allowed("not a url"));

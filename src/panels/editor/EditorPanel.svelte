@@ -1560,8 +1560,8 @@
     };
     return [
       { kind: "sep" },
-      { kind: "item", label: "Reverse", checked: allRev, run: () => void reverse().catch(onError) },
-      { kind: "item", label: "Invert Polarity", checked: allInv, run: () => void session.edit(allInv ? "Polarity Back" : "Invert Polarity", { op: "set_clips", changes: found.map((c) => ({ id: c.id, inverted: !allInv })) }, runner).catch(onError) },
+      { kind: "item", label: allRev ? "Play Clip Forwards" : "Reverse", run: () => void reverse().catch(onError) },
+      { kind: "item", label: allInv ? "Restore Polarity" : "Invert Polarity", run: () => void session.edit(allInv ? "Polarity Back" : "Invert Polarity", { op: "set_clips", changes: found.map((c) => ({ id: c.id, inverted: !allInv })) }, runner).catch(onError) },
       { kind: "sep" },
     ];
   }
@@ -1628,7 +1628,7 @@
         { kind: "sep" },
       );
     }
-    items.push(...trackItems(track));
+    items.push(...trackItems(track, ed.selectedClips.size > 0));
     menu = { x: e.clientX, y: e.clientY, items };
   }
 
@@ -1805,7 +1805,8 @@
     if (v && v !== b.name) setBus(b, { name: v }, "Rename Bus");
   }
 
-  function trackItems(track: TrackDoc): ContextItem[] {
+  /** The track's menu entries. `onClip` leaves out the Add Track group, which belongs to the track header and empty space. */
+  function trackItems(track: TrackDoc, onClip = false): ContextItem[] {
     return [
       { kind: "item", label: "Select All Clips on Track", disabled: track.clips.length === 0, run: () => editor.selectClips(withGroups(doc!, track.clips.map((c) => c.id)), track.id) },
       { kind: "sep" },
@@ -1815,11 +1816,15 @@
       { kind: "item", label: "Duplicate Track", run: () => { editor.selectTrack(track.id); run("multitrack.duplicate-track"); } },
       { kind: "item", label: "Delete Track", run: () => { editor.selectTrack(track.id); run("multitrack.delete-track"); } },
       { kind: "sep" },
-      { kind: "item", label: "Add Mono Track", run: () => { editor.selectTrack(track.id); run("multitrack.add.mono"); } },
-      { kind: "item", label: "Add Stereo Track", run: () => { editor.selectTrack(track.id); run("multitrack.add.stereo"); } },
-      { kind: "item", label: "Add MIDI Track", run: () => { editor.selectTrack(track.id); run("multitrack.add.midi"); } },
-      { kind: "item", label: "Add Bus Track", run: () => run("multitrack.add.bus") },
-      { kind: "sep" },
+      ...(onClip
+        ? []
+        : ([
+            { kind: "item", label: "Add Mono Track", run: () => { editor.selectTrack(track.id); run("multitrack.add.mono"); } },
+            { kind: "item", label: "Add Stereo Track", run: () => { editor.selectTrack(track.id); run("multitrack.add.stereo"); } },
+            { kind: "item", label: "Add MIDI Track", run: () => { editor.selectTrack(track.id); run("multitrack.add.midi"); } },
+            { kind: "item", label: "Add Bus Track", run: () => run("multitrack.add.bus") },
+            { kind: "sep" },
+          ] as ContextItem[])),
       ...routingItems(track),
     ];
   }
