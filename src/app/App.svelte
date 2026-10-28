@@ -2357,15 +2357,26 @@
       const markerCount = wave.current?.markers.length ?? 0;
       await saveWaveFile(path);
       const saved = waveFile.current()?.path ?? f.path;
+      // MP3 and FLAC carry chapters inside the file. Written before the peaks and the
+      // session read the file again, so they see the finished file.
+      const saveDoc = wave.current;
+      const chapters = saveDoc && /\.(mp3|flac)$/i.test(saved) ? embedList(saveDoc.markers, saveDoc.sample_rate, null) : [];
+      let added = chapters.length;
+      if (saveDoc && added > 0) {
+        const totalMs = Math.round((sessionEnd(saveDoc) / saveDoc.sample_rate) * 1000);
+        await exportEmbedChapters(saved, chapters, totalMs).catch((e) => {
+          added = 0;
+          showError(e);
+        });
+      }
       peaks.invalidate(saved);
       exactSamples.forget(saved);
       await syncSessionMedia(saved);
       const keepsMarkers = /\.wave?$/i.test(saved);
-      showNotice(
-        markerCount && !keepsMarkers
-          ? `Saved ${saved.split(/[\\/]/).pop()}. Its markers stay only while it is open: only WAV files store them.`
-          : `Saved ${saved.split(/[\\/]/).pop()}.`,
-      );
+      const left = keepsMarkers ? 0 : markerCount - added;
+      const chapterNote = added > 0 ? ` ${added} ${added === 1 ? "chapter" : "chapters"} added.` : "";
+      const leftNote = left > 0 ? ` ${left} other ${left === 1 ? "marker stays" : "markers stay"} only while it is open: only WAV files store them.` : "";
+      showNotice(`Saved ${saved.split(/[\\/]/).pop()}.${chapterNote}${leftNote}`);
       return true;
     } catch (e) {
       showError(e);
