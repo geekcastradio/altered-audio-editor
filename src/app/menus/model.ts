@@ -41,6 +41,13 @@ const item = (
   label,
   ...opts,
 });
+/** A submenu listed in alphabetical order (the effect families, so they read like the Audio FX Add list). */
+const sortedSub = (label: string, items: MenuItem[]): MenuItem =>
+  sub(
+    label,
+    [...items].sort((a, b) => (a.kind === "sep" || b.kind === "sep" ? 0 : a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" }))),
+  );
+
 const sub = (label: string, items: MenuItem[]): MenuItem => ({
   kind: "submenu",
   label,
@@ -386,14 +393,22 @@ export const MENUS: readonly Menu[] = [
       ]),
       item("fx.loudness-match", "Loudness Match..."),
       sep,
-      sub("Dynamics", [
+      sortedSub("Delay and Reverb", [
+        item("fx.add.echo", "Delay and Echo"),
+        item("fx.add.convolution_reverb", "Convolution Reverb"),
+        item("fx.space", "More effects arrive later", {
+          pending: P5,
+          placeholder: true,
+        }),
+      ]),
+      sortedSub("Dynamics", [
         item("fx.add.dynamics", "Dynamics"),
         item("fx.add.limiter", "Limiter"),
         item("fx.add.breath_gate", "Breath Gate"),
         item("fx.add.deesser", "De-Esser"),
         item("fx.add.speech_leveler", "Speech Leveler"),
       ]),
-      sub("EQ and Filters", [
+      sortedSub("EQ and Filters", [
         item("fx.add.parametric_eq", "Parametric EQ"),
         item("fx.add.band_eq_10", "Band EQ (10 bands)"),
         item("fx.add.band_eq_20", "Band EQ (20 bands)"),
@@ -403,7 +418,7 @@ export const MENUS: readonly Menu[] = [
         item("fx.add.notch", "Notch Filter"),
         item("fx.add.hum_cut", "Hum Cut"),
       ]),
-      sub("Noise and Repair", [
+      sortedSub("Noise and Repair", [
         item("fx.add.noise_reducer", "Noise Reducer"),
         item("fx.add.noise_print", "Noise Print Reducer"),
         item("fx.add.hiss_reducer", "Hiss Reducer"),
@@ -413,15 +428,7 @@ export const MENUS: readonly Menu[] = [
         item("fx.add.dc_offset", "DC Offset Fix"),
         item("fx.add.sound_eraser", "Sound Eraser"),
       ]),
-      sub("Delay and Reverb", [
-        item("fx.add.echo", "Delay and Echo"),
-        item("fx.add.convolution_reverb", "Convolution Reverb"),
-        item("fx.space", "More effects arrive later", {
-          pending: P5,
-          placeholder: true,
-        }),
-      ]),
-      sub("Pitch and Time", [
+      sortedSub("Pitch and Time", [
         item("fx.add.pitch_shift", "Pitch Shift"),
         item("clip.stretch", "Time Stretch..."),
         item("clip.music-fit", "Fit Music to Length..."),
@@ -432,15 +439,15 @@ export const MENUS: readonly Menu[] = [
           pending: NEXT_FX,
         }),
       ]),
-      sub("Stereo and Channels", [
-        item("fx.add.center_remover", "Center Remover (remove vocals)"),
-        item("fx.add.phase_rotate", "Phase Rotate"),
-      ]),
-      sub("QuickPass", [
+      sortedSub("QuickPass", [
         item("fx.quickpass", "Presets arrive in P5", {
           pending: P5,
           placeholder: true,
         }),
+      ]),
+      sortedSub("Stereo and Channels", [
+        item("fx.add.center_remover", "Center Remover (remove vocals)"),
+        item("fx.add.phase_rotate", "Phase Rotate"),
       ]),
       sep,
       item("fx.vst", "VST", {

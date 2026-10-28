@@ -738,8 +738,8 @@ export function pluginMenuGroups(plugins: readonly MenuPlugin[]): { types: [stri
       m.set(k, [...(m.get(k) ?? []), p]);
     }
     return [...m.entries()]
-      .sort(([a], [b]) => (a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b)))
-      .map(([k, list]): [string, MenuPlugin[]] => [k, [...list].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))]);
+      .sort(([a], [b]) => (a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b, undefined, { sensitivity: "base" })))
+      .map(([k, list]): [string, MenuPlugin[]] => [k, [...list].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }))]);
   };
   const type = (p: MenuPlugin) => {
     const parts = p.kind

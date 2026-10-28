@@ -202,7 +202,7 @@
   import PendingPanel from "../panels/PendingPanel.svelte";
   import VoiceChainPanel from "../panels/voice-chain/VoiceChainPanel.svelte";
   import { addSlot, chainOf, newSlot, type MenuPlugin } from "../panels/voice-chain/chain";
-  import { vst3Items } from "../panels/voice-chain/slot-drag";
+  import { effectSearch, vst3Items } from "../panels/voice-chain/slot-drag";
   import { effectWindowRequest, hideEffectWindows } from "../panels/voice-chain/effect-window";
   import { setFxCatalog } from "../panels/editor/envelope";
   import type { Finding } from "../panels/quickpass/quickpass";
@@ -2183,6 +2183,10 @@
     return t ? { target: { kind: "track", id: t.id }, chain: t.effects, name: t.name } : null;
   }
   let fxCatalog: EffectInfo[] | null = null;
+  // Loaded up front so the Effects menu's search finds everything the first time.
+  void effectsCatalog()
+    .then((c) => (fxCatalog ??= c))
+    .catch(() => {});
   /** Effect plug-ins for Effects > Plug-ins (instruments are picked on MIDI tracks). */
   let menuPlugins: MenuPlugin[] = [];
   /** Effects > VST3: the scanned effect plug-ins, by type and by maker, as in the Audio FX Add list. */
@@ -2192,6 +2196,15 @@
     if (!fxTarget()) return { items: [], reason: inWave() ? "Open a file in the Waveform editor first." : "Select a track or one clip first." };
     return { items };
   }
+
+  /** The Effects menu's search box: built-in effects and plug-ins by name, added like the menu's own entries. */
+  const effectsMenuSearch = {
+    placeholder: "Search effects and plug-ins",
+    find: (q: string): ContextItem[] => {
+      const reason = fxTarget() ? null : inWave() ? "Open a file in the Waveform editor first." : "Select a track or one clip first.";
+      return (effectSearch(fxCatalog ?? [], menuPlugins, (id) => void addEffectFromMenu(id))(q) as ContextItem[]).map((r) => (r.kind === "item" && reason ? { ...r, disabled: true, reason } : r));
+    },
+  };
 
   async function addEffectFromMenu(effect: string) {
     const at = fxTarget();
@@ -4785,7 +4798,7 @@
 
 <div class="shell">
   <header class="top">
-    <MenuBar menus={MENUS} {actions} {shortcutFor} onError={showError} popups={{ "fx.vst3": vst3Popup }} />
+    <MenuBar menus={MENUS} {actions} {shortcutFor} onError={showError} popups={{ "fx.vst3": vst3Popup }} searches={{ Effects: effectsMenuSearch }} />
   </header>
   <ToolStrip {actions} {shortcutFor} />
 
