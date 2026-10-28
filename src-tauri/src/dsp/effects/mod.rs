@@ -24,6 +24,7 @@ pub mod phase_curve;
 mod pitch;
 pub mod print;
 mod restore;
+pub mod reverb;
 pub mod shaped;
 pub mod tube;
 
@@ -188,6 +189,7 @@ pub fn catalog() -> Vec<EffectInfo> {
         tube::opto_info(),
         tube::preamp_info(),
         filters::center_info(),
+        reverb::reverb_info(),
         pitch::pitch_info(),
         echo::echo_info(),
         restore::noise_info(),
@@ -451,6 +453,11 @@ pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
         "altaudio.echo" => Box::new(echo::Echo::new(&p, rate)),
         "altaudio.phase_rotate" => Box::new(phase::PhaseRotate::new(&p, rate)),
         "altaudio.phase_curve" => Box::new(phase_curve::PhaseCurve::new(&p, rate)),
+        reverb::ID => Box::new(reverb::ConvolutionReverb::new(
+            &p,
+            rate,
+            slot.data.as_deref(),
+        )),
         _ => return None,
     })
 }

@@ -54,6 +54,7 @@
   } from "./chain";
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import ResponseGraph from "./ResponseGraph.svelte";
+  import ReverbPanel from "./ReverbPanel.svelte";
   import EqGraph from "./EqGraph.svelte";
   import PhaseCurveGraph from "./PhaseCurveGraph.svelte";
   import EffectControls from "./EffectControls.svelte";
@@ -548,7 +549,7 @@
   // or the master has no audio of its own to learn from yet.
   const canLearn = $derived(inWave || target?.kind === "track" || target?.kind === "clip");
   /** Effects whose window draws all of its own controls. */
-  const OWN_CONTROLS = new Set(["altaudio.shaped_noise", "altaudio.opto_leveler", "altaudio.tube_preamp", "altaudio.amp_model"]);
+  const OWN_CONTROLS = new Set(["altaudio.convolution_reverb", "altaudio.shaped_noise", "altaudio.opto_leveler", "altaudio.tube_preamp", "altaudio.amp_model"]);
   const LEARNS = new Set(["altaudio.noise_print", "altaudio.sound_eraser", "altaudio.shaped_noise"]);
   const learnSel = $derived.by(() => {
     const v = inWave ? waveDoc?.view.selection : doc?.view.selection;
@@ -755,6 +756,14 @@
             slot={winSlot}
             info={winInfo}
             rate={(inWave ? waveDoc : doc)?.sample_rate ?? 48000}
+            onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)}
+            onData={(data, label) => commit(label, setSlot(chain, winSlot.id, { data }))}
+            {onError}
+          />
+        {:else if winSlot.effect === "altaudio.convolution_reverb"}
+          <ReverbPanel
+            slot={winSlot}
+            info={winInfo}
             onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)}
             onData={(data, label) => commit(label, setSlot(chain, winSlot.id, { data }))}
             {onError}
@@ -1179,6 +1188,9 @@
     &:has(:global(.eq)),
     &:has(:global(.pc)) {
       width: 560px;
+    }
+    &:has(:global(.verb)) {
+      width: min(600px, 96vw);
     }
     &:has(:global(.ns)) {
       width: 660px;

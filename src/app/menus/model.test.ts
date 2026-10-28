@@ -216,6 +216,7 @@ describe("menu model", () => {
       "fx.add.pitch_shift",
       "fx.add.center_remover",
       "fx.add.phase_rotate",
+      "fx.add.convolution_reverb",
       "file.export.sesx",
       "clip.to-track-above",
       "clip.to-track-below",

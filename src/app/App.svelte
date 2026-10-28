@@ -2160,6 +2160,7 @@
     "echo",
     "center_remover",
     "phase_rotate",
+    "convolution_reverb",
   ];
   function fxTarget(): { target: EffectTarget; chain: EffectChainDoc | undefined; name: string; wave?: boolean } | null {
     if (inWave()) {

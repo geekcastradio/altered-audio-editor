@@ -415,6 +415,7 @@ export const MENUS: readonly Menu[] = [
       ]),
       sub("Delay and Reverb", [
         item("fx.add.echo", "Delay and Echo"),
+        item("fx.add.convolution_reverb", "Convolution Reverb"),
         item("fx.space", "More effects arrive later", {
           pending: P5,
           placeholder: true,
