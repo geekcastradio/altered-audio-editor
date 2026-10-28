@@ -116,16 +116,13 @@
 {/snippet}
 
 <div class="verb">
-  <div class="plate">
-    <span class="title">Convolution Reverb</span>
-    <span class="sub">{ir ? `${ir.name} · ${ir.seconds.toFixed(2)} s · ${chans(ir.channels)} · ${(ir.rate / 1000).toFixed(1)} kHz` : saved?.name ? saved.name : "no impulse response loaded"}</span>
-  </div>
+  <div class="info">{ir ? `${ir.name} · ${ir.seconds.toFixed(2)} s · ${chans(ir.channels)} · ${(ir.rate / 1000).toFixed(1)} kHz` : saved?.name ? saved.name : "no impulse response loaded"}</div>
   <div class="ir">
     <svg viewBox="0 0 {W} {H}" preserveAspectRatio="none" role="img" aria-label="The impulse response over time">
       <defs>
         <linearGradient id="verb-fill-{slot.id}" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#b48cff" stop-opacity="0.85" />
-          <stop offset="100%" stop-color="#5b3fd1" stop-opacity="0.15" />
+          <stop offset="0%" style="stop-color: var(--accent)" stop-opacity="0.8" />
+          <stop offset="100%" style="stop-color: var(--accent-dim)" stop-opacity="0.2" />
         </linearGradient>
         <clipPath id="verb-keep-{slot.id}"><rect x="0" y="0" width={keepX} height={H} /></clipPath>
       </defs>
@@ -167,41 +164,23 @@
 
 <style>
   .verb {
-    --ink: #ece4ff;
-    --violet: #b48cff;
+    --panel-ink: var(--text-dim);
+    --panel-accent: var(--accent);
+    --knob-skirt: var(--surface-1);
+    --knob-edge: var(--border-strong);
+    --knob-cap: var(--surface-3);
+    --knob-cap-edge: var(--border-strong);
+    --knob-grip: var(--surface-1);
     display: grid;
     gap: 10px;
     margin-bottom: 6px;
-    padding: 10px 12px 12px;
-    border: 1px solid #000;
-    border-radius: 6px;
-    background:
-      radial-gradient(120% 90% at 80% 0%, rgba(180, 140, 255, 0.14), transparent 60%),
-      linear-gradient(180deg, #1c1828, #100e17);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.07),
-      0 2px 8px rgba(0, 0, 0, 0.5);
-    color: var(--ink);
+    color: var(--text);
+    user-select: none;
   }
-  .plate {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 10px;
-    align-items: baseline;
-    padding-bottom: 6px;
-    border-bottom: 1px solid rgba(180, 140, 255, 0.3);
-  }
-  .title {
-    color: var(--violet);
-    font-size: 14px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-  .sub {
+  .info {
     min-width: 0;
     overflow: hidden;
-    color: rgba(236, 228, 255, 0.6);
+    color: var(--text-dim);
     font-size: 11px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -209,9 +188,9 @@
   .ir {
     position: relative;
     height: 96px;
-    border: 1px solid rgba(180, 140, 255, 0.2);
-    border-radius: 4px;
-    background: radial-gradient(100% 140% at 0% 100%, #1d1533, #09080e);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--surface-0);
     overflow: hidden;
   }
   .ir svg {
@@ -220,19 +199,19 @@
     height: 100%;
   }
   .grid {
-    stroke: rgba(180, 140, 255, 0.08);
+    stroke: var(--border);
     vector-effect: non-scaling-stroke;
   }
   .cut {
-    fill: rgba(180, 140, 255, 0.12);
+    fill: var(--surface-3);
   }
   .edge {
-    stroke: rgba(236, 228, 255, 0.7);
+    stroke: var(--text-dim);
     stroke-dasharray: 3 3;
     vector-effect: non-scaling-stroke;
   }
   .edge.pre {
-    stroke: rgba(180, 140, 255, 0.6);
+    stroke: var(--accent-dim);
   }
   .empty {
     position: absolute;
@@ -240,14 +219,14 @@
     display: grid;
     place-items: center;
     padding: 0 20px;
-    color: rgba(236, 228, 255, 0.6);
+    color: var(--text-dim);
     font-size: 11px;
     text-align: center;
   }
   .where {
     margin: -4px 0 0;
     overflow: hidden;
-    color: rgba(236, 228, 255, 0.4);
+    color: var(--text-faint);
     font-size: 10px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -257,17 +236,19 @@
     gap: 6px;
   }
   .bar button {
-    padding: 3px 10px;
-    border: 1px solid rgba(180, 140, 255, 0.4);
+    padding: 2px 10px;
+    border: 1px solid var(--border-strong);
     border-radius: 3px;
-    background: rgba(0, 0, 0, 0.3);
-    color: var(--ink);
+    background: var(--surface-0);
+    color: var(--text);
     font: inherit;
   }
+  .bar button:hover:not(:disabled) {
+    background: var(--surface-2);
+  }
   .bar .load {
-    background: linear-gradient(180deg, #c3a2ff, #7c55e0);
-    color: #140c24;
-    font-weight: 600;
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .bar button:disabled {
     opacity: 0.45;
@@ -292,7 +273,7 @@
     display: flex;
     gap: 4px;
     padding-left: 8px;
-    border-left: 1px solid rgba(180, 140, 255, 0.2);
+    border-left: 1px solid var(--border);
   }
   .fader {
     display: grid;
@@ -300,7 +281,7 @@
     gap: 2px;
   }
   .lvl {
-    color: var(--violet);
+    color: var(--text-dim);
     font-size: 10px;
   }
 </style>

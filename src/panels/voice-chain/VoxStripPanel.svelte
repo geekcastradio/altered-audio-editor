@@ -7,8 +7,7 @@
   The Vox Strip window: four modules side by side in signal order
   (Dynamics, Tone, Effects, Space), each with a power light, a style
   stepper and its one or two main controls, over an Input and Output
-  bar. Our own look: a graphite faceplate with a colored edge per
-  module, so the flow reads left to right at a glance.
+  bar. Flat, in the app's own colors, like the rest of the Voice Chain.
 -->
 <script lang="ts">
   import { effectMeter, voxToneCurve, type EffectInfo, type EffectParamInfo } from "../../app/core";
@@ -42,13 +41,12 @@
     power: string;
     style: string;
     trim: string;
-    color: string;
   }
   const MODULES: Module[] = [
-    { key: "dyn", name: "Dynamics", power: "dyn_on", style: "dyn_style", trim: "dyn_trim", color: "#f2a541" },
-    { key: "tone", name: "Tone", power: "tone_on", style: "tone_style", trim: "tone_trim", color: "#3fc6b6" },
-    { key: "fx", name: "Effects", power: "fx_on", style: "fx_style", trim: "fx_trim", color: "#ec6a92" },
-    { key: "space", name: "Space", power: "space_on", style: "space_style", trim: "space_trim", color: "#9a85f5" },
+    { key: "dyn", name: "Dynamics", power: "dyn_on", style: "dyn_style", trim: "dyn_trim" },
+    { key: "tone", name: "Tone", power: "tone_on", style: "tone_style", trim: "tone_trim" },
+    { key: "fx", name: "Effects", power: "fx_on", style: "fx_style", trim: "fx_trim" },
+    { key: "space", name: "Space", power: "space_on", style: "space_style", trim: "space_trim" },
   ];
 
   function step(m: Module, d: number) {
@@ -108,34 +106,6 @@
   const fill = (db: number) => Math.max(0, Math.min(1, db / 24));
   const outFill = (db: number) => Math.max(0, Math.min(1, (db + 60) / 60));
 
-  const FX_ICONS: Record<string, string> = {
-    Chorus: "M3 14c3-6 5-6 8 0s5 6 8 0 5-6 8 0",
-    Doubler: "M6 8h8v12H6zM16 8h8v12h-8z",
-    Saturate: "M3 20c4 0 5-12 12-12s8 12 12 12",
-    Radio: "M5 11h20v11H5zM8 7l9 4M19 16a2.5 2.5 0 1 0 0.01 0",
-    Widen: "M15 6v16M4 14h7M8 11l-4 3 4 3M26 14h-7M22 11l4 3-4 3",
-  };
-  const SPACE_ICONS: Record<string, string> = {
-    Plate: "M5 7h16l4 4v10H9l-4-4z",
-    Room: "M5 22V10l10-5 10 5v12z",
-    Hall: "M3 22V12l12-7 12 7v10M8 22v-6M15 22v-6M22 22v-6",
-    Chamber: "M5 22V8h20v14M10 22v-8h10v8",
-    Slap: "M6 14h4M12 10v8M18 12v4M22 13v2",
-    "Tape Echo": "M9 14a4 4 0 1 0 0.01 0M21 14a4 4 0 1 0 0.01 0M9 18h12",
-  };
-  const DYN_ICONS: Record<string, string> = {
-    "Smooth + Fast": "M4 20c6 0 6-12 11-12M15 8l3 6 3-10 3 16",
-    Clean: "M4 20L15 9h11",
-    Warm: "M15 4c-4 6-7 9-7 13a7 7 0 0 0 14 0c0-4-3-7-7-13z",
-  };
-  const TONE_ICONS: Record<string, string> = {
-    Clean: "M3 16c6 0 6-6 12-6s6 6 12 6",
-    Vintage: "M15 5a9 9 0 1 0 0.01 0M15 9v5l3 2",
-    Modern: "M3 18l6-8 6 6 6-10 6 4",
-  };
-  const iconFor = (m: Module, name: string) =>
-    (m.key === "fx" ? FX_ICONS : m.key === "space" ? SPACE_ICONS : m.key === "dyn" ? DYN_ICONS : TONE_ICONS)[name] ?? "";
-
   const TONE_SLIDERS = ["low", "mid", "high"];
 </script>
 
@@ -164,28 +134,16 @@
 {/snippet}
 
 <div class="vox">
-  <div class="brand">
-    <svg viewBox="0 0 40 24" class="mark" aria-hidden="true">
-      <path d="M2 12h4l3-8 4 16 4-12 3 6 2-2h4" fill="none" stroke="url(#voxg)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
-      <defs>
-        <linearGradient id="voxg" x1="0" x2="1">
-          <stop offset="0" stop-color="#f2a541" /><stop offset="0.35" stop-color="#3fc6b6" /><stop offset="0.7" stop-color="#ec6a92" /><stop offset="1" stop-color="#9a85f5" />
-        </linearGradient>
-      </defs>
-    </svg>
-    <span class="word">VOX STRIP</span>
-    <span class="tag">vocal chain</span>
-    <button type="button" class="lowcut" class:lit={on("low_cut")} aria-pressed={on("low_cut")} title="Low Cut: removes rumble below 80 Hz before everything else" onclick={() => set("low_cut", on("low_cut") ? 0 : 1, true)}>
-      <svg viewBox="0 0 24 12" aria-hidden="true"><path d="M2 11c4 0 5-8 9-8h11" fill="none" stroke="currentColor" stroke-width="1.6" /></svg>
-      Low Cut
-    </button>
+  <div class="tools">
+    <span class="tag">Dynamics, Tone, Effects and Space, in signal order</span>
+    <button type="button" class="lowcut" class:lit={on("low_cut")} aria-pressed={on("low_cut")} title="Low Cut: removes rumble below 80 Hz before everything else" onclick={() => set("low_cut", on("low_cut") ? 0 : 1, true)}>Low Cut</button>
   </div>
 
   <div class="modules">
     {#each MODULES as m (m.key)}
       {@const style = choicesOf(m.style)[Math.round(val(m.style))] ?? ""}
       {@const live = on(m.power)}
-      <section class="mod" class:off={!live} style:--mod={m.color}>
+      <section class="mod" class:off={!live}>
         <header>
           <button type="button" class="led" class:lit={live} aria-pressed={live} title="{m.name}: {live ? 'on (click to bypass)' : 'bypassed (click to turn on)'}" onclick={() => set(m.power, live ? 0 : 1, true)}>
             <span></span>
@@ -195,7 +153,6 @@
         <div class="stepper">
           <button type="button" aria-label="Previous {m.name} style" onclick={() => step(m, -1)}>‹</button>
           <div class="stylebox">
-            <svg viewBox="0 0 30 28" aria-hidden="true"><path d={iconFor(m, style)} fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" /></svg>
             <span>{style}</span>
             <span class="dots">
               {#each choicesOf(m.style) as c, i (c)}<i class:here={i === Math.round(val(m.style))}></i>{/each}
@@ -262,59 +219,42 @@
 
 <style>
   .vox {
-    --plate: #1d2024;
-    --plate-2: #262a30;
-    --ink: #d9dde3;
-    --ink-dim: #8d949e;
+    --panel-ink: var(--text-dim);
+    --panel-accent: var(--accent);
+    --knob-skirt: var(--surface-1);
+    --knob-edge: var(--border-strong);
+    --knob-cap: var(--surface-3);
+    --knob-cap-edge: var(--border-strong);
+    --knob-grip: var(--surface-1);
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 10px;
-    background: linear-gradient(180deg, #2a2e34, var(--plate) 60%);
-    color: var(--ink);
-    font-size: 11px;
+    margin-bottom: 6px;
+    color: var(--text);
+    font-size: 12px;
+    user-select: none;
   }
-  .brand {
+  .tools {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 8px;
-    padding: 2px 4px 6px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  }
-  .mark {
-    width: 36px;
-    height: 22px;
-  }
-  .word {
-    font-weight: 700;
-    letter-spacing: 0.22em;
-    font-size: 14px;
   }
   .tag {
-    flex: 1;
-    color: var(--ink-dim);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    font-size: 9px;
+    color: var(--text-dim);
+    font-size: 11px;
   }
   .lowcut {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 3px 8px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 4px;
-    background: var(--plate-2);
-    color: var(--ink-dim);
-  }
-  .lowcut svg {
-    width: 20px;
-    height: 10px;
+    padding: 2px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
+    background: var(--surface-0);
+    color: var(--text-dim);
+    font: inherit;
   }
   .lowcut.lit {
-    color: #fff;
-    border-color: #3fc6b6;
-    box-shadow: 0 0 8px rgba(63, 198, 182, 0.35);
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .modules {
     display: grid;
@@ -322,19 +262,18 @@
     gap: 8px;
   }
   .mod {
+    --mod: var(--accent);
     display: flex;
     flex-direction: column;
     gap: 6px;
     min-width: 0;
     padding: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.07);
-    border-top: 3px solid var(--mod);
-    border-radius: 6px;
-    background: linear-gradient(180deg, var(--plate-2), var(--plate));
-    transition: opacity 0.15s;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface-1);
   }
   .mod.off {
-    border-top-color: color-mix(in srgb, var(--mod) 30%, #444);
+    --mod: var(--text-faint);
   }
   .mod.off .stepper,
   .mod.off .body {
@@ -346,11 +285,10 @@
     gap: 6px;
   }
   .mname {
-    font-weight: 700;
-    letter-spacing: 0.14em;
+    font-weight: 600;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    font-size: 10px;
-    color: var(--mod);
+    font-size: 11px;
   }
   .led {
     display: grid;
@@ -358,19 +296,18 @@
     height: 16px;
     padding: 0;
     place-items: center;
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    border: 1px solid var(--border-strong);
     border-radius: 50%;
-    background: #111;
+    background: var(--surface-0);
   }
   .led span {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
-    background: #333;
+    background: var(--text-faint);
   }
   .led.lit span {
-    background: var(--mod);
-    box-shadow: 0 0 6px var(--mod);
+    background: var(--accent);
   }
   .stepper {
     display: flex;
@@ -380,40 +317,33 @@
   .stepper > button {
     width: 18px;
     padding: 0;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-    background: #15171a;
-    color: var(--ink-dim);
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
+    background: var(--surface-0);
+    color: var(--text-dim);
     font-size: 14px;
   }
   .stepper > button:hover {
-    color: var(--mod);
+    color: var(--accent);
   }
   .stylebox {
     display: flex;
     flex: 1;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
-    padding: 5px 2px 4px;
-    border-radius: 4px;
-    background: #121417;
-    box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.6);
-    color: var(--mod);
+    gap: 3px;
     min-width: 0;
-  }
-  .stylebox svg {
-    width: 30px;
-    height: 26px;
-    filter: drop-shadow(0 0 4px color-mix(in srgb, var(--mod) 60%, transparent));
+    padding: 6px 2px 5px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--surface-0);
   }
   .stylebox > span:first-of-type {
-    color: var(--ink);
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     max-width: 100%;
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .dots {
     display: flex;
@@ -423,10 +353,10 @@
     width: 4px;
     height: 4px;
     border-radius: 50%;
-    background: #3a3f46;
+    background: var(--border-strong);
   }
   .dots i.here {
-    background: var(--mod);
+    background: var(--accent);
   }
   .body {
     display: flex;
@@ -452,18 +382,18 @@
     justify-content: flex-start;
     width: 12px;
     height: 190px;
-    border-radius: 3px;
-    background: #0e1013;
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.7);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: var(--surface-0);
     overflow: hidden;
   }
   .bar i {
     display: block;
     width: 100%;
-    background: linear-gradient(180deg, var(--mod), color-mix(in srgb, var(--mod) 50%, #000));
+    background: var(--accent);
   }
   .bar.ds i {
-    background: linear-gradient(180deg, #f5e18a, #8a7a2a);
+    background: var(--text-dim);
   }
   .bar span {
     position: absolute;
@@ -472,7 +402,7 @@
     right: 0;
     text-align: center;
     font-size: 8px;
-    color: var(--ink-dim);
+    color: var(--text-dim);
   }
   .knobs {
     display: flex;
@@ -493,20 +423,19 @@
   .curve {
     width: 100%;
     height: 64px;
-    border-radius: 4px;
-    background: #0e1013;
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.7);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--surface-0);
   }
   .curve line {
-    stroke: rgba(255, 255, 255, 0.07);
+    stroke: var(--border);
     stroke-width: 1;
   }
   .curve path {
     fill: none;
-    stroke: var(--mod);
+    stroke: var(--accent);
     stroke-width: 2;
     vector-effect: non-scaling-stroke;
-    filter: drop-shadow(0 0 3px var(--mod));
   }
   .sliders {
     display: flex;
@@ -524,23 +453,20 @@
     direction: rtl;
     width: 22px;
     height: 104px;
-    accent-color: var(--mod);
-  }
-  .vs.air input {
-    accent-color: #bfeffa;
-  }
-  .vs.air .vname {
-    color: #bfeffa;
-    text-shadow: 0 0 6px rgba(160, 230, 255, 0.7);
+    accent-color: var(--accent);
   }
   .vname {
+    color: var(--text-dim);
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
     font-size: 9px;
   }
+  .vs.air .vname {
+    color: var(--text);
+  }
   .vval {
-    color: var(--ink-dim);
+    color: var(--value);
     font-variant-numeric: tabular-nums;
     font-size: 9px;
   }
@@ -552,14 +478,15 @@
   .sync select,
   .sync button {
     padding: 1px 4px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 3px;
-    background: #15171a;
-    color: var(--ink);
-    font-size: 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--surface-0);
+    color: var(--text);
+    font: inherit;
+    font-size: 11px;
   }
   .bpm {
-    color: var(--ink-dim);
+    color: var(--text-dim);
     font-variant-numeric: tabular-nums;
   }
   .mod footer {
@@ -583,8 +510,9 @@
     align-items: center;
     gap: 8px;
     padding: 6px 8px;
-    border-radius: 6px;
-    background: #15171a;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface-1);
   }
   .ladder {
     display: flex;
@@ -595,12 +523,12 @@
   .ladder i {
     flex: 1;
     border-radius: 1px;
-    background: #2a2e34;
+    background: var(--surface-3);
   }
   .ladder i.on {
-    background: #3fc6b6;
+    background: var(--accent);
   }
   .ladder i.on.hot {
-    background: #ec6a92;
+    background: var(--danger);
   }
 </style>
