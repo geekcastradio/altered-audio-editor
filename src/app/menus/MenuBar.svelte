@@ -8,6 +8,7 @@
   menu; arrows move; Enter runs; Escape closes.
 -->
 <script lang="ts">
+  import { tick as nextTick } from "svelte";
   import type { ActionRegistry } from "../actions";
   import type { Menu, MenuItem } from "./model";
 
@@ -152,6 +153,7 @@
         const dir = e.key === "ArrowDown" ? 1 : -1;
         if (openSub !== null) subActive = step(sub, subActive, dir);
         else active = step(items, active, dir);
+        showActive();
         break;
       }
       case "ArrowRight": {
@@ -181,6 +183,28 @@
 
   function onPointerDown(e: PointerEvent) {
     if (openMenu !== null && !root.contains(e.target as Node)) close();
+  }
+
+  /**
+   * Keeps a submenu on screen: capped to the window's height and scrolling
+   * inside when it is longer (the plug-in list can be), and moved up when it
+   * would run off the bottom.
+   */
+  function fit(node: HTMLElement) {
+    const margin = 8;
+    const room = window.innerHeight - margin * 2;
+    node.style.maxHeight = `${room}px`;
+    const rect = node.getBoundingClientRect();
+    const over = rect.top + rect.height - (window.innerHeight - margin);
+    if (over > 0) node.style.top = `${-5 - over}px`;
+  }
+
+  /** Brings the row the arrow keys are on into view in a scrolling submenu. */
+  function showActive() {
+    void nextTick().then(() => {
+      const row = root.querySelector(".dropdown.sub .row.active") ?? root.querySelector(".row.active");
+      row?.scrollIntoView({ block: "nearest" });
+    });
   }
 </script>
 
@@ -230,7 +254,7 @@
       </span>
     </button>
     {#if !inSub && it.kind === "submenu" && openSub === index}
-      <div class="dropdown sub" role="menu">
+      <div class="dropdown sub" role="menu" use:fit>
         {#each shown(it.items) as child, ci (ci)}
           {@render row(child, ci, true)}
         {/each}
@@ -321,6 +345,11 @@
     top: -5px;
     left: 100%;
     min-width: 220px;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
   }
 
   .row {
