@@ -1481,9 +1481,17 @@
         }
         if (ed.autoCrossfade) changes = withCrossfades(d0, changes);
       } else {
+        // Across sets the fade's length; up and down bends its curve (-100 to 100).
+        const which = kind === "fade-in" ? "in" : "out";
         const at = sampleAt(ev.clientX - lanesEl!.getBoundingClientRect().left, view);
-        const c = fadeClip(d0, clip, kind === "fade-in" ? "in" : "out", kind === "fade-in" ? at - clip.start : end - at);
-        changes = c ? [c] : [];
+        const was = which === "in" ? clip.fade_in : clip.fade_out;
+        const across = Math.abs(ev.clientX - startX) >= 3;
+        const bend = Math.max(-1, Math.min(1, Math.round(((was.curve ?? 0) - (ev.clientY - startY) / 80) * 100) / 100));
+        const c = across ? fadeClip(d0, clip, which, which === "in" ? at - clip.start : end - at) : null;
+        const fade = { ...was, ...(c ? (which === "in" ? c.fade_in : c.fade_out) : {}), curve: Math.abs(bend) < 0.02 ? 0 : bend };
+        changes = fade.length > 0 ? [which === "in" ? { id: clip.id, fade_in: fade } : { id: clip.id, fade_out: fade }] : [];
+        const skew = Math.round(fade.curve * 100);
+        envTip = { x: ev.clientX, y: ev.clientY, text: `${which === "in" ? "Fade in" : "Fade out"} ${(fade.length / rate).toFixed(2)} s, skew ${skew > 0 ? "+" : ""}${skew}` };
       }
       preview = changes;
     };
@@ -1507,7 +1515,7 @@
       window.removeEventListener("pointerup", up, true);
       preview = [];
       stretchHint = null;
-      if (kind === "gain") envTip = null;
+      if (kind === "gain" || kind === "fade-in" || kind === "fade-out") envTip = null;
       if (!moved || changes.length === 0) return;
       if (kind === "move" && lastEv?.altKey) {
         // Alt+drag: copies where they were dropped; the originals stay.
