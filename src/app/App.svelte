@@ -1454,11 +1454,16 @@
       let chapterNote = "";
       const levelNote = goal ? ` Brought to ${goal.lufs} LUFS with peaks under ${goal.peak} dBTP.` : "";
       const doc = session.current;
-      if (chapters && doc && (format?.kind === "mp3" || format?.kind === "flac")) {
+      if (chapters && doc && (format?.kind === "mp3" || format?.kind === "flac" || format?.kind === "wav" || format?.kind === "m4a")) {
         const list = embedList(doc.markers, doc.sample_rate, what.range ?? null);
         if (list.length) {
-          await exportEmbedChapters(path, list, Math.round((r.frames / r.sampleRate) * 1000));
-          chapterNote = ` ${list.length} ${list.length === 1 ? "chapter" : "chapters"} added.`;
+          try {
+            await exportEmbedChapters(path, list, Math.round((r.frames / r.sampleRate) * 1000));
+            chapterNote = ` ${list.length} ${list.length === 1 ? "chapter" : "chapters"} added.`;
+          } catch (e) {
+            // The audio is saved either way; say why the chapters are not in it.
+            chapterNote = ` The chapters could not be added: ${e instanceof Error ? e.message : String(e)}`;
+          }
         }
       }
       const clipped = r.peak > 1 ? ` The mix clipped (peak +${(20 * Math.log10(r.peak)).toFixed(1)} dB); turn the Master down and export again.` : "";
@@ -2381,10 +2386,10 @@
       const markerCount = wave.current?.markers.length ?? 0;
       await saveWaveFile(path);
       const saved = waveFile.current()?.path ?? f.path;
-      // MP3 and FLAC carry chapters inside the file. Written before the peaks and the
+      // MP3, FLAC and M4A carry chapters inside the file (WAV keeps its markers as cue points). Written before the peaks and the
       // session read the file again, so they see the finished file.
       const saveDoc = wave.current;
-      const chapters = saveDoc && /\.(mp3|flac)$/i.test(saved) ? embedList(saveDoc.markers, saveDoc.sample_rate, null) : [];
+      const chapters = saveDoc && /\.(mp3|flac|m4a)$/i.test(saved) ? embedList(saveDoc.markers, saveDoc.sample_rate, null) : [];
       let added = chapters.length;
       if (saveDoc && added > 0) {
         const totalMs = Math.round((sessionEnd(saveDoc) / saveDoc.sample_rate) * 1000);
