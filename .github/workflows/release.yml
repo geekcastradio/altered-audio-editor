@@ -12,6 +12,8 @@
 # the Windows files. The macOS build is not signed or notarized (no Apple
 # developer account). Files are staged in the runner's temp folder, never
 # in the repository, so nothing old from the checkout can slip in.
+# The first job checks that the tag matches the version in the files, so a tag
+# made before the version bump stops here instead of shipping the old version.
 
 name: Release
 
@@ -23,8 +25,22 @@ permissions:
   contents: read
 
 jobs:
+  verify:
+    name: Tag matches the version in the files
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Check the tag
+        run: node scripts/check-release-version.mjs "${{ github.ref_name }}"
+
   windows:
     name: Windows installer and portable zip
+    needs: verify
     runs-on: windows-latest
     env:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -85,6 +101,7 @@ jobs:
 
   linux:
     name: Linux AppImage and deb (experimental)
+    needs: verify
     runs-on: ubuntu-24.04
     continue-on-error: true
     env:
@@ -136,6 +153,7 @@ jobs:
 
   macos:
     name: macOS Apple silicon (experimental, unsigned)
+    needs: verify
     runs-on: macos-latest
     continue-on-error: true
     env:
