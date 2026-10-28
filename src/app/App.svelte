@@ -59,7 +59,9 @@
   import { fit, maxSppFor, zoomAround } from "../panels/editor/timeline";
   import ChoiceDialog, { type ChoiceButton } from "./ChoiceDialog.svelte";
   import ExportDialog, { type ExportScopeInfo, type ExportSettings } from "./ExportDialog.svelte";
-  import { describeFormat, extensionOf, kindOfPath, sanitizeFormat, type OutputFormat } from "./output-format";
+  import PublishDialog, { type PublishSettings } from "./PublishDialog.svelte";
+  import { EMPTY_EPISODE, packageFiles, slugOf, type EpisodeInfo } from "./publish";
+  import { DEFAULT_FORMAT, describeFormat, extensionOf, kindOfPath, sanitizeFormat, type OutputFormat } from "./output-format";
   import SessionPropertiesDialog from "./SessionPropertiesDialog.svelte";
   import PromptDialog from "./PromptDialog.svelte";
   import ExportProgress from "./ExportProgress.svelte";
@@ -146,6 +148,7 @@
     exportText,
     exportEmbedChapters,
     exportVerify,
+    publishWriteFiles,
     generateAudio,
     exportMixdown,
     pluginEvents,
@@ -1429,7 +1432,54 @@
     }
   }
 
-  async function runMixdown(source: MixSource, target: MixTarget, path: string, format: OutputFormat | null, chapters = false, speakers?: string, normalize = "", verify = false) {
+  // File > Publish Package.
+  const KEY_PUBLISH = "publish.package";
+  let publishReq = $state<{ initial: PublishSettings; source: { sampleRate: number; channels: number; bitDepth: number } } | null>(null);
+
+  function openPublishDialog() {
+    const doc = session.current;
+    if (!doc) return;
+    const saved = prefs.raw(KEY_PUBLISH) as { format?: unknown; folder?: unknown; normalize?: unknown } | null;
+    const format = sanitizeFormat(saved?.format);
+    const norm = saved?.normalize;
+    publishReq = {
+      initial: {
+        episode: { ...EMPTY_EPISODE, title: doc.name },
+        folder: (typeof saved?.folder === "string" && saved.folder) || sessionFolder() || "",
+        // Hosts want MP3; a saved choice of another kind is not carried over.
+        format: format.kind === "mp3" ? format : { ...DEFAULT_FORMAT, kind: "mp3", mp3Bitrate: 128 },
+        normalize: typeof norm === "string" ? norm : DEFAULT_TARGET,
+      },
+      source: { sampleRate: doc.sample_rate, channels: doc.master?.channels === "mono" ? 1 : 2, bitDepth: doc.bit_depth },
+    };
+  }
+
+  async function finishPublishDialog(v: PublishSettings | null) {
+    publishReq = null;
+    if (!v) return;
+    prefs.set(KEY_PUBLISH, { format: v.format, folder: v.folder, normalize: v.normalize });
+    const sep = v.folder.includes("\\") ? "\\" : "/";
+    const slug = slugOf(v.episode.title);
+    const folder = `${v.folder.replace(/[\\/]+$/, "")}${sep}${slug}`;
+    const audioName = `${slug}.${extensionOf(v.format.kind)}`;
+    const [exists] = await pathsExist([`${folder}${sep}${audioName}`]);
+    if (exists) {
+      const ok = await ask("Replace the episode?", `${slug} already has ${audioName}. The package will replace it and its files.`, [
+        { label: "Replace", value: "yes", primary: true },
+        { label: "Cancel", value: "no" },
+      ]);
+      if (ok !== "yes") return;
+    }
+    try {
+      await publishWriteFiles(folder, []);
+    } catch (e) {
+      showError(e);
+      return;
+    }
+    await runMixdown("all", "file", `${folder}${sep}${audioName}`, v.format, true, undefined, v.normalize, true, { episode: v.episode, folder, audioName });
+  }
+
+  async function runMixdown(source: MixSource, target: MixTarget, path: string, format: OutputFormat | null, chapters = false, speakers?: string, normalize = "", verify = false, pack?: { episode: EpisodeInfo; folder: string; audioName: string }) {
     // A 3D Space speaker bed is written as mixed; every other file can be brought to a loudness.
     const bed = !!speakers && speakers !== "binaural" && speakers !== "2.0";
     const goal = normalize && !bed ? targetsFor().find((t) => t.id === normalize) : undefined;
@@ -1485,6 +1535,12 @@
           checkNote = ` The check could not run: ${e instanceof Error ? e.message : String(e)}`;
         }
       }
+      let packNote = "";
+      if (pack && doc) {
+        const files = packageFiles(pack.episode, pack.audioName, Math.round((r.frames / r.sampleRate) * 1000), doc.markers, doc.sample_rate, checkNote.trim() || "The file was not checked.");
+        await publishWriteFiles(pack.folder, files);
+        packNote = ` Package ready in ${pack.folder}.`;
+      }
       const clipped = r.peak > 1 ? ` The mix clipped (peak +${(20 * Math.log10(r.peak)).toFixed(1)} dB); turn the Master down and export again.` : "";
       if (target === "files-panel") {
         const imported = await mediaPool.importPaths([path], sessionHistory);
@@ -1494,7 +1550,7 @@
         await placeFiles([path], null, what.start);
         showNotice(`Bounced to ${name} on a new track.${clipped}`);
       } else {
-        showNotice(`Exported ${name}.${chapterNote}${levelNote}${checkNote}${clipped}`);
+        showNotice(pack ? `Exported ${name}.${chapterNote}${levelNote}${checkNote}${packNote}${clipped}` : `Exported ${name}.${chapterNote}${levelNote}${checkNote}${clipped}`);
       }
     } catch (e) {
       showError(e);
@@ -4035,6 +4091,12 @@
         reason: () => "The session has no clips yet.",
       }),
       actions.register({
+        id: "file.publish-package",
+        run: () => openPublishDialog(),
+        enabled: () => exporting === null && contentEnd() > 0,
+        reason: () => "The session has no clips yet.",
+      }),
+      actions.register({
         id: "file.export.sesx",
         run: async () => {
           try {
@@ -5044,6 +5106,17 @@
     spaceLayout={session.current?.space?.layout ?? null}
     onBrowse={(from) => exportPickFolder(from || null, "Export To")}
     onDone={(v) => void finishExportDialog(v)}
+  />
+{/if}
+
+{#if publishReq}
+  <PublishDialog
+    initial={publishReq.initial}
+    source={publishReq.source}
+    chapterCount={session.current?.markers.filter((m) => m.kind === "chapter").length ?? 0}
+    adCount={session.current?.markers.filter((m) => m.kind === "ad_slot").length ?? 0}
+    onBrowse={(from) => exportPickFolder(from || null, "Publish To")}
+    onDone={(v) => void finishPublishDialog(v)}
   />
 {/if}
 
