@@ -988,16 +988,19 @@ mod tests {
                 title: "Intro".into(),
                 start_ms: 0,
                 end_ms: None,
+                url: None,
             },
             Chapter {
                 title: "Middle part".into(),
                 start_ms: 1_500,
                 end_ms: None,
+                url: None,
             },
             Chapter {
                 title: "Outro".into(),
                 start_ms: 2_700,
                 end_ms: None,
+                url: None,
             },
         ];
         for kind in [

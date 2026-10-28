@@ -1519,7 +1519,7 @@
       }
       const name = path.split(/[\\/]/).pop();
       let chapterNote = "";
-      let writtenChapters: { title: string; startMs: number; endMs: number | null }[] = [];
+      let writtenChapters: { title: string; startMs: number; endMs: number | null; url?: string | null }[] = [];
       const levelNote = goal ? ` Brought to ${goal.lufs} LUFS with peaks under ${goal.peak} dBTP.` : "";
       const doc = session.current;
       if (chapters && doc && (format?.kind === "mp3" || format?.kind === "flac" || format?.kind === "wav" || format?.kind === "m4a")) {

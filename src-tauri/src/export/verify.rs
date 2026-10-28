@@ -178,6 +178,7 @@ pub fn verify(path: &Path, expect: &Expect) -> Report {
                     title: c.label,
                     start_ms: c.position * 1000 / u64::from(info.sample_rate.max(1)),
                     end_ms: None,
+                    url: None,
                 })
                 .collect()
         } else {
@@ -269,6 +270,7 @@ mod tests {
             title: "Intro".into(),
             start_ms: 0,
             end_ms: None,
+            url: None,
         }];
         super::super::chapters::embed_wav(&p, &ch).unwrap();
         let mut e = expect(16_000);
