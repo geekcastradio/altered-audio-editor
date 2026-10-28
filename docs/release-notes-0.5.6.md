@@ -1,4 +1,4 @@
-# Altered Audio Editor 0.5.5
+# Altered Audio Editor 0.5.6
 
 ## Fixed
 - Long FLAC exports no longer make files that other programs cannot open. Loud 24-bit audio could make the encoder write one oversized block, which crashed players and editors on files around two hours long. A block that would be larger than the raw audio is now stored as raw audio.

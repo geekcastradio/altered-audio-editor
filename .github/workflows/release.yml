@@ -83,7 +83,11 @@ jobs:
           $out = Join-Path $env:RUNNER_TEMP "release"
           $portable = Join-Path $env:RUNNER_TEMP "portable"
           New-Item -ItemType Directory -Force -Path $out, $portable | Out-Null
-          $setup = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          # Only the installer for this tag's version. An older one left in the build cache
+          # must never be packaged under a new tag.
+          $ver = $tag.TrimStart("v")
+          $setup = Get-ChildItem "src-tauri/target/release/bundle/nsis/*_${ver}_*-setup.exe" | Select-Object -First 1
+          if (-not $setup) { throw "No installer for version $ver in the build output, so the build does not carry this version." }
           Copy-Item $setup.FullName (Join-Path $out "Altered-Audio-Editor-$tag-setup.exe")
           # The signature the in-app updater checks (made because createUpdaterArtifacts is on).
           $sig = "$($setup.FullName).sig"
