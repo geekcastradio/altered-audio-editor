@@ -19,6 +19,7 @@ mod dynamics;
 mod echo;
 mod eq;
 mod filters;
+mod modulation;
 mod phase;
 pub mod phase_curve;
 mod pitch;
@@ -195,6 +196,9 @@ pub fn catalog() -> Vec<EffectInfo> {
         reverb::reverb_info(),
         pitch::pitch_info(),
         echo::echo_info(),
+        modulation::chorus_info(),
+        modulation::flanger_info(),
+        modulation::phaser_info(),
         restore::noise_info(),
         print::print_info(),
         print::eraser_info(),
@@ -460,6 +464,9 @@ pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
         "altaudio.center_remover" => Box::new(filters::CenterRemover::new(&p, rate)),
         "altaudio.pitch_shift" => Box::new(pitch::PitchShift::new(&p, rate)),
         "altaudio.echo" => Box::new(echo::Echo::new(&p, rate)),
+        "altaudio.chorus" => Box::new(modulation::Chorus::new(&p, rate)),
+        "altaudio.flanger" => Box::new(modulation::Flanger::new(&p, rate)),
+        "altaudio.phaser" => Box::new(modulation::Phaser::new(&p, rate)),
         "altaudio.phase_rotate" => Box::new(phase::PhaseRotate::new(&p, rate)),
         "altaudio.phase_curve" => Box::new(phase_curve::PhaseCurve::new(&p, rate)),
         reverb::ID => Box::new(reverb::ConvolutionReverb::new(
@@ -684,6 +691,40 @@ pub fn chain_hash(chain: &EffectChain) -> u64 {
 
 #[cfg(test)]
 mod tests {
+
+    /// Noise from a fixed seed, so every run feeds the same sound.
+    fn seeded(frames: usize) -> Vec<f32> {
+        let mut x: u32 = 0x1234_5678;
+        (0..frames * 2)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                (x as f32 / u32::MAX as f32 - 0.5) * 0.5
+            })
+            .collect()
+    }
+
+    /// Every built-in effect, run twice on the same sound with default
+    /// settings, gives the very same bits: no hidden randomness or state.
+    #[test]
+    fn every_built_in_effect_is_deterministic() {
+        let input = seeded(24_000);
+        for info in catalog() {
+            // Effects that need a loaded file or capture have no default sound.
+            let Some(mut a) = build(&slot(info.id, &[]), 48_000) else {
+                continue;
+            };
+            let mut b = build(&slot(info.id, &[]), 48_000).unwrap();
+            let (mut x, mut y) = (input.clone(), input.clone());
+            for (ca, cb) in x.chunks_mut(2 * 777).zip(y.chunks_mut(2 * 777)) {
+                a.process(ca);
+                b.process(cb);
+            }
+            let same = x.iter().zip(&y).all(|(p, q)| p.to_bits() == q.to_bits());
+            assert!(same, "{} gave different bits on a second run", info.id);
+        }
+    }
     use super::*;
 
     #[test]

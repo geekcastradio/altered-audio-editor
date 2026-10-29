@@ -56,7 +56,7 @@
   import { anchorStart, clipsFrom, clipsUpTo, nextClipId } from "./clip-select";
   import { hasClipIn, showOnly } from "../panels/editor/visibility";
   import { clipLength, sessionEnd, setErrorSink, type ClipDoc, type Op, type TrackDoc } from "../stores/session";
-  import { fit, maxSppFor, zoomAround } from "../panels/editor/timeline";
+  import { fit, MIN_TRACK_H, maxSppFor, zoomAround } from "../panels/editor/timeline";
   import ChoiceDialog, { type ChoiceButton } from "./ChoiceDialog.svelte";
   import ExportDialog, { type ExportScopeInfo, type ExportSettings } from "./ExportDialog.svelte";
   import PublishDialog, { type PublishSettings } from "./PublishDialog.svelte";
@@ -863,7 +863,7 @@
     if (!doc) return;
     const ops = doc.tracks.flatMap((t) => {
       if (t.collapsed) return [];
-      const h = Math.max(40, Math.min(600, Math.round(next(t.height))));
+      const h = Math.max(MIN_TRACK_H, Math.min(600, Math.round(next(t.height))));
       return h === t.height ? [] : [{ op: "set_track" as const, id: t.id, changes: { height: h } }];
     });
     if (ops.length > 0) await session.edit("Track Height", { op: "batch", ops }, sessionHistory);

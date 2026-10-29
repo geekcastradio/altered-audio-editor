@@ -1519,3 +1519,11 @@ Several requests compared behavior to another editor; per the guardrails they ar
 
 - 0.7.0 ships duck music, the Audio FX Panel v1, the Multiband Compressor, the Amp Model setting, WebVTT and midroll files in the package, and the Record-with-nothing-open fix.
 - The metadata panel and a click, clip and hum report, first planned for 0.7.0, move to 0.8.0 with the effect families so this release is not held up. Modulation effects, determinism tests and the "Under the hood" README section also wait for 0.8.0.
+## 2026-10-28: Modulation family (0.8.0 pre-build)
+
+- Added Chorus, Flanger and Phaser under a new Modulation family, written from textbook methods (swept delay lines, swept all-pass chain). Each passes the sound untouched at zero mix.
+- Audiform leftovers move to 0.9.0 unless they touch 0.8.0 files. 0.8.0 order: modulation, Channel Mixer and Stereo Expander, distortion, algorithmic reverb, expander mode, analysis panels, editing items.
+## 2026-10-28: Determinism tests and "under the hood" wording
+
+- Added tests that a session renders to identical bits on repeat and at different block sizes, and that every built-in effect is deterministic. They run with the normal cargo tests.
+- README gets an "Under the hood" section. It claims only what is tested or visible in the code: Rust engine, no unsafe code in our own crates, plug-ins in a separate process, identical output, 64-bit, audio on the CPU. It does not claim "no memory leaks" (the web view side is not soak-tested) and does not claim GPU acceleration (not wanted for audio).

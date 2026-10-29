@@ -12,8 +12,8 @@
  */
 export const LINKS = {
   website: "https://thegcrn.com/",
-  /** Plugins page. Not live yet. */
-  plugins: null as string | null,
+  /** Plugins page. Redirects to the GitHub repo until the page is live. */
+  plugins: "https://thegcrn.com/aae-plugins/" as string | null,
   /** Optional support page (Help > Support Altered Audio Editor). Never shown anywhere else. */
   support: "https://paypal.me/scp21" as string | null,
   /** Source code and issues. */

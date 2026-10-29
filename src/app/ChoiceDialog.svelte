@@ -66,6 +66,8 @@
   }
 
   .dialog {
+    --dialog-pad-x: 16px;
+    --dialog-pad-y: 16px;
     display: grid;
     gap: 10px;
     width: min(440px, 90vw);

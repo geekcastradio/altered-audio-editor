@@ -651,6 +651,8 @@
     background: rgba(0, 0, 0, 0.5);
   }
   .dialog {
+    --dialog-pad-x: 12px;
+    --dialog-pad-y: 12px;
     display: grid;
     grid-template-rows: auto 1fr auto auto;
     gap: 8px;

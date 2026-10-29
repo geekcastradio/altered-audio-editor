@@ -32,3 +32,16 @@ export function updateDue(enabled: boolean, lastCheck: number, now: number): boo
   // A clock set back never blocks the check for good.
   return now < lastCheck || now - lastCheck >= WEEK_MS;
 }
+
+/** Release notes written in Markdown, shown as plain text in the update dialog: no #, ** or backticks, bullets as dots. */
+export function plainNotes(md: string): string {
+  return md
+    .replace(/\r\n/g, "\n")
+    .replace(/^#{1,6}\s*/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^\s*[-*]\s+/gm, "\u2022 ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}

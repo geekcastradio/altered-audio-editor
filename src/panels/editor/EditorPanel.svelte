@@ -50,6 +50,7 @@
   import { laneWidths } from "../time-info/time-info";
   import WaveformView from "./WaveformView.svelte";
   import TransportBar, { type ZoomKind } from "./TransportBar.svelte";
+  import { prefs } from "../../stores/prefs";
   import { startScreen } from "../../stores/start";
   import TempoStrip from "./TempoStrip.svelte";
   import MetronomeRow from "./MetronomeRow.svelte";
@@ -63,7 +64,7 @@
   import { KIND_COLORS, markerAt, markerCss } from "../markers/markers";
   import { quiet, type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
   import { channelNames } from "../space/space";
-  import { defaultTrackColor, trackHeight, formatIn, maxSppFor, rulerTicks, ticksFor, setDisplayTempo, sampleAt, xOf, zoomAround, type Viewport, TRACK_GAP } from "./timeline";
+  import { defaultTrackColor, MIN_TRACK_H, trackHeight, formatIn, maxSppFor, rulerTicks, ticksFor, setDisplayTempo, sampleAt, xOf, zoomAround, type Viewport, TRACK_GAP } from "./timeline";
 
   interface Props {
     session: SessionStore;
@@ -120,7 +121,31 @@
     }),
   );
 
-  const HEADER_W = 214;
+  /** Track header width: 214 to 520 px, dragged by the grip on the headers' right edge and kept between runs. */
+  const HEADER_MIN = 214;
+  const HEADER_MAX = 520;
+  const KEY_headerW = "multitrack.headerWidth";
+  let headerW = $state(HEADER_MIN);
+  void prefs.load().then(() => {
+    const v = prefs.raw(KEY_headerW);
+    if (typeof v === "number" && Number.isFinite(v)) headerW = Math.max(HEADER_MIN, Math.min(HEADER_MAX, Math.round(v)));
+  });
+  function startHeaderDrag(e: PointerEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const x0 = e.clientX;
+    const w0 = headerW;
+    const move = (ev: PointerEvent) => {
+      headerW = Math.max(HEADER_MIN, Math.min(HEADER_MAX, Math.round(w0 + ev.clientX - x0)));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      prefs.set(KEY_headerW, headerW);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
   const RULER_H = 22;
 
   let doc = $state<SessionDoc | null>(null);
@@ -806,7 +831,7 @@
       heightPreview = Math.max(0.2, Math.min(8, heightPreview * step));
     } else {
       const cur = resizing?.id === track.id ? resizing.h : track.height;
-      resizing = { id: track.id, h: Math.max(40, Math.min(600, Math.round(cur * step))) };
+      resizing = { id: track.id, h: Math.max(MIN_TRACK_H, Math.min(600, Math.round(cur * step))) };
     }
     clearTimeout(wheelTimer);
     wheelTimer = setTimeout(() => {
@@ -887,7 +912,7 @@
     const open = shown.filter((t) => !t.collapsed);
     if (!open.length || !scroller) return;
     const cur = uniformPreview ?? open[0]!.height;
-    const h = Math.max(40, Math.min(600, Math.round(cur * (e.deltaY < 0 ? 1.12 : 1 / 1.12))));
+    const h = Math.max(MIN_TRACK_H, Math.min(600, Math.round(cur * (e.deltaY < 0 ? 1.12 : 1 / 1.12))));
     if (h === cur) return;
     // Zoom toward the track the pointer is over on the bar: that spot of
     // the session keeps its place in the view.
@@ -2087,7 +2112,7 @@
       const move = (ev: PointerEvent) => {
         const d = zoom === "bottom" ? ev.clientY - y : y - ev.clientY;
         const share = Math.min(1, Math.max(8, span0 + d) / bar.height);
-        h = Math.max(40, Math.min(600, Math.round((scrollerH / share - fixed) / open.length)));
+        h = Math.max(MIN_TRACK_H, Math.min(600, Math.round((scrollerH / share - fixed) / open.length)));
         uniformPreview = h;
       };
       const up = () => {
@@ -2145,7 +2170,7 @@
     if (!open.length || !scroller) return;
     const content = [...scroller.querySelectorAll<HTMLElement>(".headers > *")].reduce((sum, el) => sum + el.offsetHeight, 0);
     const fixed = Math.max(0, content - open.reduce((sum, t) => sum + shownHeight(t), 0));
-    const h = Math.max(40, Math.min(600, Math.floor((scrollerH - fixed) / open.length)));
+    const h = Math.max(MIN_TRACK_H, Math.min(600, Math.floor((scrollerH - fixed) / open.length)));
     const ops = open.filter((t) => t.height !== h).map((t) => ({ op: "set_track" as const, id: t.id, changes: { height: h } }));
     if (ops.length) void session.edit("Track Height", { op: "batch", ops }, runner).catch(onError);
   }
@@ -2153,7 +2178,7 @@
   /** A track being resized by its bottom edge: its live height. */
   let resizing = $state<{ id: string; h: number } | null>(null);
   const shownHeight = (t: TrackDoc) =>
-    resizing?.id === t.id ? resizing.h : t.collapsed ? trackHeight(t) : uniformPreview !== null ? uniformPreview : heightPreview !== 1 ? Math.max(40, Math.min(600, Math.round(t.height * heightPreview))) : t.height;
+    resizing?.id === t.id ? resizing.h : t.collapsed ? trackHeight(t) : uniformPreview !== null ? uniformPreview : heightPreview !== 1 ? Math.max(MIN_TRACK_H, Math.min(600, Math.round(t.height * heightPreview))) : trackHeight(t);
 
   function startResize(e: PointerEvent, track: TrackDoc) {
     if (e.button !== 0) return;
@@ -2163,7 +2188,7 @@
     const h0 = track.height;
     resizing = { id: track.id, h: h0 };
     const move = (ev: PointerEvent) => {
-      resizing = { id: track.id, h: Math.max(40, Math.min(600, Math.round(h0 + ev.clientY - y0))) };
+      resizing = { id: track.id, h: Math.max(MIN_TRACK_H, Math.min(600, Math.round(h0 + ev.clientY - y0))) };
     };
     const up = () => {
       window.removeEventListener("pointermove", move, true);
@@ -2181,7 +2206,7 @@
     const tracks = shown;
     const avail = (scroller?.clientHeight ?? 0) - 8;
     if (tracks.length && avail > 0) {
-      const h = Math.max(40, Math.min(600, Math.floor(avail / tracks.length)));
+      const h = Math.max(MIN_TRACK_H, Math.min(600, Math.floor(avail / tracks.length)));
       const ops = tracks.filter((t) => t.height !== h || t.collapsed).map((t) => ({ op: "set_track" as const, id: t.id, changes: { height: h, collapsed: false } }));
       if (ops.length) await session.edit("Track Height", { op: "batch", ops }, runner).catch(onError);
     }
@@ -2193,7 +2218,7 @@
   function resizeTracks(factor: number) {
     const tracks = shown;
     const ops = tracks
-      .map((t) => ({ t, h: Math.max(40, Math.min(600, Math.round(t.height * factor))) }))
+      .map((t) => ({ t, h: Math.max(MIN_TRACK_H, Math.min(600, Math.round(t.height * factor))) }))
       .filter(({ t, h }) => h !== t.height)
       .map(({ t, h }) => ({ op: "set_track" as const, id: t.id, changes: { height: h } }));
     if (ops.length) void session.edit("Track Height", { op: "batch", ops }, runner).catch(onError);
@@ -2242,12 +2267,12 @@
   </div>
 
   <div class="ruler-row">
-    <div class="corner header-views" style:width="{HEADER_W}px">
+    <div class="corner header-views" style:width="{headerW}px">
       <!-- What the track headers show. Only the mix controls exist so far; the
            other views arrive with recording (P4) and effects (P5). -->
       {#if ed.selectedClips.size > 1}<span class="selcount" aria-live="polite">{ed.selectedClips.size} clips selected</span>{/if}
       <div class="views" role="radiogroup" aria-label="Track header view">
-        <button type="button" class="view" class:on={headerView === "mix"} role="radio" aria-checked={headerView === "mix"} title="Mix: volume, pan, mute, solo and arm, then input, output and sends as the track gets taller" onclick={() => (headerView = "mix")}>
+        <button type="button" class="view" class:on={headerView === "mix"} role="radio" aria-checked={headerView === "mix"} title="Mix: volume, pan, mute, solo and arm, input, output and automation, with sends as the track gets taller" onclick={() => (headerView = "mix")}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2v12M8 2v12M12 2v12" stroke="currentColor" stroke-width="1" opacity="0.6" /><rect x="2.5" y="8" width="3" height="2" fill="currentColor" /><rect x="6.5" y="4.5" width="3" height="2" fill="currentColor" /><rect x="10.5" y="10" width="3" height="2" fill="currentColor" /></svg>
         </button>
         <button type="button" class="view" role="radio" aria-checked="false" disabled title="Inputs and Outputs: arrives with recording (P4)">
@@ -2319,11 +2344,11 @@
     </div>
   </div>
   {#if doc && metOn}
-    <MetronomeRow {tempo} {view} width={lanesWidth} {rate} {playhead} headerW={HEADER_W} onTempo={setTempoMap} />
+    <MetronomeRow {tempo} {view} width={lanesWidth} {rate} {playhead} headerW={headerW} onTempo={setTempoMap} />
   {/if}
   {#if doc && ((tempo.changes?.length ?? 0) > 0 || ed.timeFormat === "bars")}
     <div class="ruler-row tempo-row">
-      <div class="corner tempo-corner" style:width="{HEADER_W}px" title="Tempo and time signature changes. The tempo and time signature where the playhead is are next to the metronome, under the tracks.">Tempo</div>
+      <div class="corner tempo-corner" style:width="{headerW}px" title="Tempo and time signature changes. The tempo and time signature where the playhead is are next to the metronome, under the tracks.">Tempo</div>
       <TempoStrip {tempo} {view} width={lanesWidth} {rate} onChange={setTempoMap} onMenu={(e, items) => (menu = { x: e.clientX, y: e.clientY, items })} />
     </div>
   {/if}
@@ -2361,7 +2386,9 @@
     }}
   >
     <div class="rows" bind:clientHeight={rowsH}>
-      <div class="headers" style:width="{HEADER_W}px">
+      <div class="headers" style:width="{headerW}px">
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="header-grip" title="Drag to make the track headers wider or narrower" onpointerdown={startHeaderDrag}></div>
         {#each headerRows as row (row.id)}
           {#if row.kind === "track"}
           {@const track = row.track}
@@ -3297,9 +3324,24 @@
   }
 
   .headers {
+    position: relative;
     flex: none;
     border-right: 3px solid var(--track-gap);
     background: var(--track-gap);
+  }
+
+  .header-grip {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: -3px;
+    z-index: 6;
+    width: 7px;
+    cursor: col-resize;
+  }
+
+  .header-grip:hover {
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
   }
 
   .header {
@@ -3687,9 +3729,10 @@
     bottom: 0;
     left: 0;
     z-index: 1;
-    width: 10px;
-    background: var(--track-color, var(--border-strong));
-    background-image: repeating-linear-gradient(180deg, transparent 0 3px, rgba(0, 0, 0, 0.28) 3px 4px);
+    width: 8px;
+    /* A softer strip: the track color blended toward the header, with faint grip lines. */
+    background: color-mix(in srgb, var(--track-color, var(--border-strong)) 62%, var(--header-a));
+    background-image: repeating-linear-gradient(180deg, transparent 0 3px, rgba(0, 0, 0, 0.09) 3px 4px);
     cursor: grab;
   }
 

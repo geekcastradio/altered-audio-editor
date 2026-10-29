@@ -623,6 +623,44 @@ mod tests {
         }
     }
 
+    fn bits_of(plan: Plan, block: usize, frames: usize) -> Vec<u32> {
+        let mut r = Renderer::new(plan, 0);
+        let mut out = vec![Vec::new()];
+        let mut bits = Vec::new();
+        let mut done = 0;
+        while done < frames {
+            let n = block.min(frames - done);
+            r.render(n, &mut out);
+            bits.extend(out[0].iter().map(|s| s.to_bits()));
+            done += n;
+        }
+        bits
+    }
+
+    #[test]
+    fn the_same_session_renders_to_identical_bits_every_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let plan = click_plan(click_file(dir.path()));
+        let a = bits_of(plan.clone(), 1_000, 20_000);
+        let b = bits_of(plan, 1_000, 20_000);
+        assert!(
+            a.iter().any(|x| f32::from_bits(*x) > 0.5),
+            "it rendered something"
+        );
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn the_block_size_does_not_change_the_rendered_bits() {
+        let dir = tempfile::tempdir().unwrap();
+        let plan = click_plan(click_file(dir.path()));
+        let a = bits_of(plan.clone(), 1_000, 20_000);
+        let b = bits_of(plan.clone(), 333, 20_000);
+        let c = bits_of(plan, 4_096, 20_000);
+        assert_eq!(a, b);
+        assert_eq!(a, c);
+    }
+
     #[test]
     fn loop_jump_repeats_the_range() {
         let dir = tempfile::tempdir().unwrap();

@@ -241,6 +241,7 @@ export const CATEGORY_COLORS: Record<string, string> = {
   Amplitude: "#8bc06a",
   Restoration: "#b07ad8",
   "Time and Pitch": "#d86f9b",
+  Modulation: "#5fbfb0",
   "Delay and Reverb": "#9d7cf0",
   Vocal: "#ec6a92",
 };

@@ -76,6 +76,8 @@ describe("menu model", () => {
       "multitrack.profile.clear",
       "help.shortcuts",
       "help.website",
+      "help.plugins",
+      "help.support",
       "fx.invert",
       "fx.reverse",
       "help.discord",
