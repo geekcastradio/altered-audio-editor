@@ -1514,3 +1514,8 @@ Several requests compared behavior to another editor; per the guardrails they ar
 
 - With the "Nothing open" start screen showing, Record (button, menu or shortcut) asks for a new audio file first, then starts recording into it, as Audition does. Cancelling the dialog records nothing.
 - On that screen every transport and zoom button is greyed out except Record. They work again as soon as a file or session is open.
+
+## 2026-10-28: Release 0.7.0
+
+- 0.7.0 ships duck music, the Audio FX Panel v1, the Multiband Compressor, the Amp Model setting, WebVTT and midroll files in the package, and the Record-with-nothing-open fix.
+- The metadata panel and a click, clip and hum report, first planned for 0.7.0, move to 0.8.0 with the effect families so this release is not held up. Modulation effects, determinism tests and the "Under the hood" README section also wait for 0.8.0.
