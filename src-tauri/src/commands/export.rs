@@ -410,6 +410,33 @@ pub async fn export_embed_chapters(
     .map_err(|e| e.to_string())?
 }
 
+/// Writes every marker (not only chapters) into an exported WAV as cue points with
+/// labels and range lengths, or into a FLAC as a cue sheet. Returns how many were written;
+/// other formats get none.
+#[tauri::command]
+pub async fn export_embed_markers(
+    path: PathBuf,
+    markers: Vec<crate::export::chapters::Marker>,
+) -> Result<usize, String> {
+    spawn_blocking(move || {
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let r = match ext.as_str() {
+            "wav" => {
+                crate::export::chapters::embed_wav_markers(&path, &markers).map(|_| markers.len())
+            }
+            "flac" => crate::export::chapters::embed_flac_cuesheet(&path, &markers),
+            _ => Ok(0),
+        };
+        r.map_err(|e| format!("Could not add markers: {e}"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Makes the reversed copy a reversed clip of `path` plays from (once; it
 /// is kept in the working files folder). The file itself is not changed.
 #[tauri::command]

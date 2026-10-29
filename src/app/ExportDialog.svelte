@@ -22,6 +22,8 @@
     addToFiles: boolean;
     /** Write chapter markers into the file (WAV, FLAC, MP3 and M4A). */
     chapters: boolean;
+    /** Also write every other marker: WAV cue points, or a FLAC cue sheet. */
+    markers?: boolean;
     /** Read the file back after saving and check it. */
     verify: boolean;
     /** A loudness target to bring the file to (an id from Check Loudness); "" leaves it as mixed. */
@@ -61,12 +63,14 @@
     onScan?: (scope: ExportScope) => Promise<LoudnessReport | null>;
     /** Chapter markers in the session. */
     chapterCount?: number;
+    /** Markers of every type in the session. */
+    markerCount?: number;
     /** 3D Space sessions: the session's speaker layout, to offer every layout and binaural. */
     spaceLayout?: SpaceLayout | null;
     onDone: (value: ExportSettings | null) => void;
   }
 
-  const { initial, scopes, source, onBrowse, onScan, chapterCount = 0, spaceLayout = null, onDone }: Props = $props();
+  const { initial, scopes, source, onBrowse, onScan, chapterCount = 0, markerCount = 0, spaceLayout = null, onDone }: Props = $props();
 
   // svelte-ignore state_referenced_locally
   let s = $state<ExportSettings>({ ...initial, format: { ...initial.format }, formats: { ...(initial.formats ?? {}) } });
@@ -220,6 +224,17 @@
       {:else}
         <label class="check off" title="Set a marker's type to Chapter, or use Edit > Markers > Add Chapter Marker.">
           <input type="checkbox" disabled /> Add chapters to the file (no chapter markers yet)
+        </label>
+      {/if}
+      {#if markerCount > 0 && (s.format.kind === "wav" || s.format.kind === "flac")}
+        <label
+          class="check"
+          title={s.format.kind === "wav"
+            ? "Every marker, not only chapters, goes in as a cue point that other editors can read. Ranges keep their length. This replaces the chapter cue points, since chapters are included."
+            : "Writes a FLAC cue sheet with a track at each marker start. A cue sheet has no names, and players built on ffmpeg show it as unnamed chapters instead of the named ones, so leave this off unless a program asks for a cue sheet."}
+        >
+          <input type="checkbox" bind:checked={s.markers} />
+          {s.format.kind === "wav" ? `Add all ${markerCount} ${markerCount === 1 ? "marker" : "markers"} as cue points` : `Add all ${markerCount} ${markerCount === 1 ? "marker" : "markers"} as a cue sheet`}
         </label>
       {/if}
       <label class="check" title="Reads the finished file back from start to end: it opens, every sample decodes, it is the right length and the chapters are in it."><input type="checkbox" bind:checked={s.verify} /> Check the file after saving</label>

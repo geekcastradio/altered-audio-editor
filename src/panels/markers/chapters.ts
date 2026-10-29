@@ -121,6 +121,21 @@ export function embedList(markers: readonly MarkerDoc[], rate: number, range: [n
     }));
 }
 
+/** Every marker, of any type, to write as WAV cue points or a FLAC cue sheet. Same timing rules as `embedList`. */
+export function markerList(markers: readonly MarkerDoc[], rate: number, range: [number, number] | null): { title: string; startMs: number; endMs: number | null; kind: string }[] {
+  const [a, b] = range ?? [0, Number.POSITIVE_INFINITY];
+  return markers
+    .filter((m) => m.position >= a && m.position < b)
+    .slice()
+    .sort((x, y) => x.position - y.position)
+    .map((m) => ({
+      title: m.name.trim() || "Untitled",
+      startMs: Math.round(((m.position - a) / rate) * 1000),
+      endMs: m.duration > 0 ? Math.round(((Math.min(m.position + m.duration, b) - a) / rate) * 1000) : null,
+      kind: m.kind,
+    }));
+}
+
 /** A chapter marker's link, or "". */
 export function chapterUrl(m: Pick<MarkerDoc, "chapter">): string {
   const info = m.chapter as { url?: string | null } | null;

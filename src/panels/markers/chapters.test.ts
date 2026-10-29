@@ -3,7 +3,7 @@
 // This file is part of Altered Audio Editor.
 
 import { describe, expect, it } from "vitest";
-import { chapterUrl, chaptersOf, clock, embedList, isChapterUrl, render, titleTips, warnings } from "./chapters";
+import { chapterUrl, chaptersOf, clock, embedList, isChapterUrl, markerList, render, titleTips, warnings } from "./chapters";
 import { newMarker } from "./markers";
 
 const R = 48_000;
@@ -78,5 +78,21 @@ describe("chapter links and title tips", () => {
     expect(titleTips("")).toEqual([]);
     expect(titleTips("A very long chapter title that goes on and on and on")).toHaveLength(2);
     expect(titleTips("Movie review: movie night")).toEqual(['"movie" appears twice.']);
+  });
+  it("lists every marker of any type for WAV cue points, ranges included", () => {
+    const all = markerList(marks, R, null);
+    expect(all.map((m) => [m.title, m.kind])).toEqual([
+      ["Intro", "chapter"],
+      ["Breath here", "cue"],
+      ["Main topic", "chapter"],
+      ['Ad, "midroll"', "chapter"],
+    ]);
+    expect(all[3]).toMatchObject({ startMs: 3_725_000, endMs: 3_785_000 });
+    expect(all[1]?.endMs).toBeNull();
+    // A time-selection export moves the markers so the range starts at 0.
+    expect(markerList(marks, R, [20 * R, 100 * R]).map((m) => [m.title, m.startMs])).toEqual([
+      ["Breath here", 10_000],
+      ["Main topic", 75_000],
+    ]);
   });
 });

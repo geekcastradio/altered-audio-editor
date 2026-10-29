@@ -1566,3 +1566,10 @@ Several requests compared behavior to another editor; per the guardrails they ar
 - Dither now has a shape (triangular, rectangular, gaussian), an amount (0.25 to 2 steps of the target depth) and noise shaping (none, light, strong). Light is a first-order error feedback, Strong second order. Both are plain error feedback on the quantizer, kept per channel, with the stored error clamped so a clipped peak cannot make the loop ring. Defaults are the old behavior: triangular, one step, no shaping.
 - The numbers are our own and are not claimed to match Audition's presets or filters one for one.
 - The same controls appear in Export Mixdown (Sample type window) and Batch Convert (Sample Settings).
+
+## 2026-10-29: Marker compatibility (export pack 3)
+
+- Export Mixdown has a second marker checkbox for WAV and FLAC. For WAV it writes every marker, of any type, as a cue point with its name, and gives range markers an `ltxt` length. It replaces the chapter cue points, since chapters are among the markers. The Check step then compares all of them.
+- For FLAC it writes a CUESHEET block with a track at each marker start. It is off by default: a cue sheet has no names, and ffmpeg (so ffprobe and players built on it) turns the cue sheet into chapters and then ignores the named CHAPTER comments. A test now pins that behavior, and `flac -t` accepts the file.
+- MP3 and M4A keep chapters only, since their chapter formats are for podcast chapters, not general markers.
+- The README has a table of what each format holds. It says which parts are checked here and does not promise how other editors read them.

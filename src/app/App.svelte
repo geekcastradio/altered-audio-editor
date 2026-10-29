@@ -83,7 +83,7 @@
   import { setMeterSpeed, type TransportStore } from "../stores/transport";
   import GenerateDialog, { type GenerateMode, type GenerateValues } from "./GenerateDialog.svelte";
   import { naturalLength, stretchTo, unstretch } from "../panels/editor/stretch";
-  import { CHAPTER_FORMATS, embedList, type ChapterFormat } from "../panels/markers/chapters";
+  import { CHAPTER_FORMATS, embedList, markerList, type ChapterFormat } from "../panels/markers/chapters";
   import { matchChanges, matchItems, matchRow, type MatchItem, type MatchRow } from "./loudness-match";
   import { DEFAULT_REGION, DEFAULT_TARGET, setCustomTarget, targetById, targetsFor, type LoudnessReport } from "./loudness";
   import ClipColorDialog from "./ClipColorDialog.svelte";
@@ -150,6 +150,7 @@
     exportPickPath,
     exportText,
     exportEmbedChapters,
+    exportEmbedMarkers,
     exportVerify,
     publishWriteFiles,
     generateAudio,
@@ -1386,6 +1387,7 @@
         formats: sanitizeMemory((saved as { formats?: unknown } | null)?.formats),
         addToFiles: saved?.addToFiles === true,
         chapters: (saved as { chapters?: unknown } | null)?.chapters !== false,
+        markers: (saved as { markers?: unknown } | null)?.markers === true,
         verify: (saved as { verify?: unknown } | null)?.verify !== false,
         normalize: (() => {
           const n = (saved as { normalize?: unknown } | null)?.normalize;
@@ -1401,7 +1403,7 @@
   async function finishExportDialog(v: ExportSettings | null) {
     exportReq = null;
     if (!v) return;
-    prefs.set(KEY_EXPORT, { format: v.format, formats: v.formats, folder: v.folder, addToFiles: v.addToFiles, chapters: v.chapters, verify: v.verify, normalize: v.normalize });
+    prefs.set(KEY_EXPORT, { format: v.format, formats: v.formats, folder: v.folder, addToFiles: v.addToFiles, chapters: v.chapters, markers: v.markers === true, verify: v.verify, normalize: v.normalize });
     const sep = v.folder.includes("\\") ? "\\" : "/";
     const path = `${v.folder.replace(/[\\/]+$/, "")}${sep}${fileSafe(v.name)}.${extensionOf(v.format.kind)}`;
     const [exists] = await pathsExist([path]);
@@ -1412,7 +1414,7 @@
       ]);
       if (ok !== "yes") return;
     }
-    await runMixdown(v.scope, v.addToFiles ? "files-panel" : "file", path, v.format, v.chapters, v.speakers, v.normalize, v.verify);
+    await runMixdown(v.scope, v.addToFiles ? "files-panel" : "file", path, v.format, v.chapters, v.speakers, v.normalize, v.verify, undefined, v.markers === true);
   }
 
   async function mixDown(source: MixSource, target: MixTarget) {
@@ -1533,7 +1535,7 @@
     await runMixdown("all", "file", `${folder}${sep}${audioName}`, v.format, true, undefined, v.normalize, true, { episode: v.episode, folder, audioName });
   }
 
-  async function runMixdown(source: MixSource, target: MixTarget, path: string, format: OutputFormat | null, chapters = false, speakers?: string, normalize = "", verify = false, pack?: { episode: EpisodeInfo; folder: string; audioName: string }) {
+  async function runMixdown(source: MixSource, target: MixTarget, path: string, format: OutputFormat | null, chapters = false, speakers?: string, normalize = "", verify = false, pack?: { episode: EpisodeInfo; folder: string; audioName: string }, allMarkers = false) {
     // A 3D Space speaker bed is written as mixed; every other file can be brought to a loudness.
     const bed = !!speakers && speakers !== "binaural" && speakers !== "2.0";
     const goal = normalize && !bed ? targetsFor().find((t) => t.id === normalize) : undefined;
@@ -1561,7 +1563,21 @@
       let writtenChapters: { title: string; startMs: number; endMs: number | null; url?: string | null }[] = [];
       const levelNote = goal ? ` Brought to ${goal.lufs} LUFS with peaks under ${goal.peak} dBTP.` : "";
       const doc = session.current;
-      if (chapters && doc && (format?.kind === "mp3" || format?.kind === "flac" || format?.kind === "wav" || format?.kind === "m4a")) {
+      // Every marker as WAV cue points replaces the chapter cue points: chapters are among them.
+      const markersAsCues = allMarkers && doc && format?.kind === "wav";
+      if (markersAsCues && doc) {
+        const all = markerList(doc.markers, doc.sample_rate, what.range ?? null);
+        if (all.length) {
+          try {
+            await exportEmbedMarkers(path, all);
+            writtenChapters = all.map((m) => ({ title: m.title, startMs: m.startMs, endMs: null }));
+            chapterNote = ` ${all.length} ${all.length === 1 ? "marker" : "markers"} added.`;
+          } catch (e) {
+            chapterNote = ` The markers could not be added: ${e instanceof Error ? e.message : String(e)}`;
+          }
+        }
+      }
+      if (!markersAsCues && chapters && doc && (format?.kind === "mp3" || format?.kind === "flac" || format?.kind === "wav" || format?.kind === "m4a")) {
         const list = embedList(doc.markers, doc.sample_rate, what.range ?? null);
         if (list.length) {
           try {
@@ -1571,6 +1587,17 @@
           } catch (e) {
             // The audio is saved either way; say why the chapters are not in it.
             chapterNote = ` The chapters could not be added: ${e instanceof Error ? e.message : String(e)}`;
+          }
+        }
+      }
+      if (allMarkers && doc && format?.kind === "flac") {
+        const all = markerList(doc.markers, doc.sample_rate, what.range ?? null);
+        if (all.length) {
+          try {
+            const n = await exportEmbedMarkers(path, all);
+            chapterNote += ` Cue sheet with ${n} ${n === 1 ? "track" : "tracks"} added.`;
+          } catch (e) {
+            chapterNote += ` The cue sheet could not be added: ${e instanceof Error ? e.message : String(e)}`;
           }
         }
       }
@@ -5242,6 +5269,7 @@
     scopes={exportReq.scopes}
     source={exportReq.source}
     chapterCount={session.current?.markers.filter((m) => m.kind === "chapter").length ?? 0}
+    markerCount={session.current?.markers.length ?? 0}
     spaceLayout={session.current?.space?.layout ?? null}
     onBrowse={(from) => exportPickFolder(from || null, "Export To")}
     onScan={(scope) => scanForExport(scope)}

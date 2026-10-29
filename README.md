@@ -134,6 +134,20 @@ Every file the app writes is versioned JSON with a `format` and `schema_version`
 | Host voice profile | `altaudio.host_profile` | `.alhost` |
 | Keyboard shortcuts | `altaudio.keymap` | `.alkeys` |
 
+## Markers and chapters inside exported files
+
+What Export Mixdown writes into the audio file itself, and what we have checked. "Checked" means the app reads the file back after export, and our test suite also runs `ffprobe` and `flac -t` on the files. Other programs differ in what they read, so the last column says what to expect rather than promising it.
+
+| Format | What is written | Names | Ranges | Checked here | Notes |
+| --- | --- | --- | --- | --- | --- |
+| MP3 | ID3v2.3 chapters (`CHAP` frames and a `CTOC` table of contents), with a link per chapter | yes | start and end | read back by the app and `ffprobe` | Chapter markers only. The format podcast apps read. |
+| M4A | A `chpl` chapter list | yes | start only | read back by the app and `ffprobe` | Chapter markers only. |
+| FLAC | `CHAPTERnnn` and `CHAPTERnnnNAME` comments | yes | start only | read back by the app and `ffprobe` | Chapter markers only. |
+| FLAC, optional cue sheet | A `CUESHEET` block with a track at each marker start, for every marker type | no | start only | `flac -t` accepts it | Off by default. A cue sheet has no names, and programs built on ffmpeg then show it as unnamed chapters in place of the named ones. Use it only when a program asks for a cue sheet. |
+| WAV | `cue ` points with `labl` names, and an `ltxt` length for ranges | yes | start and length | read back by the app | By default chapter markers only. With "Add all markers", every marker type goes in. `ffprobe` does not show cue points as chapters. Not written to RF64 files (over 4 GB). |
+
+Audio editors that keep markers in WAV cue chunks, which includes most of the editors the app imports from, are the ones to try first for WAV markers. We have not tested every editor, so if one drops names or ranges, open an issue with the editor and version.
+
 ## Project docs
 
 - [CLAUDE.md](CLAUDE.md): scope, phase plan, architecture and clean-room rules.

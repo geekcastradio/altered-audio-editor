@@ -1076,6 +1076,11 @@ export function exportEmbedChapters(path: string, chapters: { title: string; sta
   return invoke<boolean>("export_embed_chapters", { path, chapters, totalMs });
 }
 
+/** Writes every marker into an exported WAV (cue points, with range lengths) or FLAC (a cue sheet). Returns how many went in. */
+export function exportEmbedMarkers(path: string, markers: { title: string; startMs: number; endMs: number | null; kind: string }[]): Promise<number> {
+  return invoke<number>("export_embed_markers", { path, markers });
+}
+
 /** One line of an export check. */
 export interface VerifyCheck {
   name: string;
