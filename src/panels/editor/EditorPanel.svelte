@@ -50,6 +50,7 @@
   import { laneWidths } from "../time-info/time-info";
   import WaveformView from "./WaveformView.svelte";
   import TransportBar, { type ZoomKind } from "./TransportBar.svelte";
+  import { startScreen } from "../../stores/start";
   import TempoStrip from "./TempoStrip.svelte";
   import MetronomeRow from "./MetronomeRow.svelte";
   import AutoLane from "./AutoLane.svelte";
@@ -161,6 +162,10 @@
   // Only the blank session the app opened with shows the start screen; a
   // new or opened session, or any track or clip added, puts the tracks up.
   const showStart = $derived(!startDismissed && doc != null && session.isScratch(doc));
+  $effect(() => {
+    startScreen.set(showStart);
+    return () => startScreen.set(false);
+  });
   const shown = $derived(listedTracks(doc?.tracks ?? []));
   const headerTracks = $derived(showStart ? [] : shown);
   const listedIds = $derived(new Set(shown.map((t) => t.id)));
@@ -2862,6 +2867,7 @@
     zoom={onZoom}
     amplitude
     tracks
+    idle={showStart}
   />
 </section>
 {/if}

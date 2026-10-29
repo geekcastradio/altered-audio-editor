@@ -7,7 +7,7 @@
 -->
 <script lang="ts">
   import { metronomeRecording, startMetronome } from "../stores/metronome";
-  import { onMount, type Component } from "svelte";
+  import { onMount, tick, type Component } from "svelte";
   import {
     workspaceDelete,
     exitApp,
@@ -226,6 +226,7 @@
   import NewSessionDialog, { type NewSessionSettings } from "./NewSessionDialog.svelte";
   import { closeWaveFile, forgetParked, newEmptyWaveFile, parkedUnsaved, newWaveFromClips, newWaveFromMix, openWaveFile, saveWaveFile, savesInPlace, spectralSelection, wave, waveFile, waveHistory, waveTransport, waveZoom } from "../stores/wave";
   import { get, writable } from "svelte/store";
+  import { startScreen } from "../stores/start";
   import type { SessionRow } from "../panels/files/session-row";
   import { rasterize } from "../panels/editor/spectrum";
   import { inputLevels, liveTakes, LiveWave, recordControl, recording } from "../stores/record";
@@ -2834,6 +2835,8 @@
     return true;
   }
 
+  /** Record pressed with nothing open: start recording once the new audio file exists. */
+  let recordAfterNew = false;
   async function toggleRecord() {
     if (countdown !== null) {
       // Pressing Record again during the count cancels it.
@@ -2844,13 +2847,20 @@
       await finishRecord();
       return;
     }
+    // Nothing open: ask for a new audio file first, then record into it.
+    if (get(startScreen) && !inWave()) {
+      recordAfterNew = true;
+      askNewAudio();
+      return;
+    }
     if (!(await countIn())) return;
     try {
       if (inWave()) {
         const d = wave.current;
         const f = waveFile.current();
         if (!d || !f) {
-          showNotice("Open or create a file in the Waveform editor first.");
+          recordAfterNew = true;
+          askNewAudio();
           return;
         }
         await waveTransport.stop();
@@ -3129,6 +3139,11 @@
     editor.setMode("waveform");
     dock.show("editor");
     actions.invalidate();
+    if (recordAfterNew) {
+      recordAfterNew = false;
+      await tick();
+      await toggleRecord();
+    }
   }
 
   // File > New Session.
@@ -5215,6 +5230,7 @@
     onDone={(v) => {
       newAudio = null;
       if (v) void makeNewAudio(v);
+      else recordAfterNew = false;
     }}
   />
 {/if}

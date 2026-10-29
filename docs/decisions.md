@@ -1509,3 +1509,8 @@ Several requests compared behavior to another editor; per the guardrails they ar
 - Settings gets "Offer the Amp Model in the Add effect menus without Music Mode" (off by default), so it can live in the tabbed side panels outside the Music workspace.
 - Zoom Reset (All Axes) already exists in the menu and keymap; the old backlog note was stale.
 - Order set by the owner: Audition parity first (next two releases), then QOL. Transcripts and captions, then on-device AI (voice cloning last), after 0.9.0. Scripting and a local-only MCP endpoint ride with the opt-in RSS.com upload near the end, both off by default. Video comes later and must save the edited audio back into its original container (industry-standard formats only). MIDI mapping, soundboard pads and CLAP stay out for now; VST3 only.
+
+## 2026-10-28: Record with nothing open
+
+- With the "Nothing open" start screen showing, Record (button, menu or shortcut) asks for a new audio file first, then starts recording into it, as Audition does. Cancelling the dialog records nothing.
+- On that screen every transport and zoom button is greyed out except Record. They work again as soon as a file or session is open.
