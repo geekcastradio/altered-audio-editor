@@ -116,7 +116,8 @@ export function packageFiles(info: EpisodeInfo, audioName: string, durationMs: n
   if (chapters.length) notes.push("", "Chapters", render(chapters, "timestamps").trimEnd());
 
   const files: PackageFile[] = [{ name: "episode.json", content: JSON.stringify(episode, null, 2) + "\n" }, { name: "show-notes.txt", content: notes.join("\n").trimEnd() + "\n" }];
-  if (chapters.length) files.push({ name: "chapters.json", content: render(chapters, "podcast-json") });
+  if (chapters.length) files.push({ name: "chapters.json", content: render(chapters, "podcast-json") }, { name: "chapters.vtt", content: chaptersVtt(chapters, durationMs) });
+  if (midrolls.length) files.push({ name: "midrolls.json", content: JSON.stringify({ midrolls: episode.midrolls }, null, 2) + "\n" });
   if (clips.length) files.push({ name: "soundbites.json", content: JSON.stringify({ soundbites: (episode.soundbites as unknown[]) }, null, 2) + "\n" });
 
   const lines = [
@@ -128,6 +129,8 @@ export function packageFiles(info: EpisodeInfo, audioName: string, durationMs: n
     "  show-notes.txt  the description, with a timestamp list when there are chapters",
   ];
   if (chapters.length) lines.push("  chapters.json  the chapters as a Podcasting 2.0 chapters file, for hosts that take a file");
+  if (chapters.length) lines.push("  chapters.vtt  the same chapters as a WebVTT file, for hosts and players that take that");
+  if (midrolls.length) lines.push("  midrolls.json  the ad positions, in milliseconds from the start");
   if (clips.length) lines.push("  soundbites.json  the soundbite positions");
   lines.push(
     "",
@@ -142,6 +145,34 @@ export function packageFiles(info: EpisodeInfo, audioName: string, durationMs: n
   );
   files.push({ name: "README.txt", content: lines.join("\n") + "\n" });
   return files;
+}
+
+/** WebVTT time: 00:01:02.345 (hours always shown). */
+export function vttTime(ms: number): string {
+  const t = Math.max(0, Math.round(ms));
+  const h = Math.floor(t / 3600000);
+  const m = Math.floor((t % 3600000) / 60000);
+  const sec = Math.floor((t % 60000) / 1000);
+  const f = t % 1000;
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${two(h)}:${two(m)}:${two(sec)}.${String(f).padStart(3, "0")}`;
+}
+
+/**
+ * The chapters as a WebVTT file: one cue per chapter, each ending where the
+ * next begins (the last one at the end of the episode). Titles keep their
+ * text; a line break in a title becomes a space, and "-->" cannot appear.
+ */
+export function chaptersVtt(chapters: readonly Chapter[], durationMs: number): string {
+  const lines = ["WEBVTT", ""];
+  chapters.forEach((c, i) => {
+    const start = Math.round(c.start * 1000);
+    const next = chapters[i + 1];
+    const end = Math.max(start, next ? Math.round(next.start * 1000) : durationMs);
+    const title = c.title.replace(/\s+/g, " ").replace(/-->/g, "->").trim() || "Untitled";
+    lines.push(String(i + 1), `${vttTime(start)} --> ${vttTime(end)}`, title, "");
+  });
+  return lines.join("\n");
 }
 
 function clockOf(totalMs: number): string {

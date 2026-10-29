@@ -1496,3 +1496,9 @@ Several requests compared behavior to another editor; per the guardrails they ar
 - **Export check.** Our own decode-based check runs after each export (default on); CI adds `flac -t` and `ffprobe` on Linux, where the tools are required.
 - **Publish Package writes files only.** No upload: the privacy guard forbids network code. The RSS.com API step stays a separate, opt-in decision.
 - **Deferred past 0.6.0:** FX Panel analysis suggestions, A/B compare and Separate Speakers (large, untuned); VST3 shared-folder presets.
+
+## 2026-10-28: Duck, Audio FX Panel v1, package additions (toward 0.7.0)
+
+- **Auto-duck is plain effects.** Multitrack > Duck Music Under Voice adds one keyed Dynamics slot per voice track to the music track's Voice Chain (threshold -45 dB, attack 30 ms, release 500 ms, ratio from the chosen depth against a voice about 25 dB over the threshold). Running it again replaces its own slots; Remove Ducking takes them out. With two voices talking at once the reductions add up; a bus key is the alternative if that proves too strong. A Rust test checks that "Medium" drops the music about 10 dB.
+- **Audio FX Panel is a front end, not an engine.** Four dialogue looks (Restoration, Level, Clarity, Polish), each Off, Light, Medium or Strong, write ordinary slots at the front of the chain, tagged `Audio FX: <look>/<strength>` so the panel can read them back and replace them. It aims at the selected clip, else the selected track, else the Waveform editor's preview chain. One undo step, named after the looks. Left for 0.8.0: suggested settings from analysis, loudness-matched A/B, before and after readout, other audio types, host profile auto-load.
+- **Publish Package** also writes chapters.vtt (WebVTT, each chapter ending where the next starts) and midrolls.json.

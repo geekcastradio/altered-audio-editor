@@ -1571,6 +1571,48 @@ mod tests {
     }
 
     #[test]
+    fn the_duck_music_settings_drop_the_music_by_about_their_depth() {
+        // The settings Multitrack > Duck Music Under Voice writes for "Medium"
+        // (10 dB): a voice at about -20 dBFS must pull the music down roughly 10 dB.
+        let dir = tempfile::tempdir().unwrap();
+        let tone = wav(dir.path(), "tone.wav", |i| {
+            (i as f32 * 220.0 * std::f32::consts::TAU / RATE as f32).sin() * 0.5
+        });
+        let voice = wav(dir.path(), "voice.wav", |i| {
+            if (12_000..40_000).contains(&i) {
+                (i as f32 * 440.0 * std::f32::consts::TAU / RATE as f32).sin() * 0.14
+            } else {
+                0.0
+            }
+        });
+        let mut s = Session::new("t", RATE);
+        let v = track(&mut s, &voice, 0, 0, 48_000);
+        let m = track(&mut s, &tone, 0, 0, 48_000);
+        let mut duck = chain(
+            "altaudio.dynamics",
+            &[
+                ("threshold", -45.0),
+                ("ratio", 1.7),
+                ("attack", 30.0),
+                ("release", 500.0),
+                ("knee", 6.0),
+                ("makeup", 0.0),
+            ],
+        );
+        duck.slots[0].sidechain = Some(s.tracks[v].id);
+        s.tracks[m].effects = duck;
+        s.tracks[v].muted = true;
+        let out = &render(&s, true, 0, 48_000)[0];
+        let before = peak(out, 2_000, 10_000);
+        let during = peak(out, 25_000, 39_000);
+        let dropped = 20.0 * (before / during).log10();
+        assert!(
+            (7.0..13.5).contains(&dropped),
+            "about 10 dB down: {dropped}"
+        );
+    }
+
+    #[test]
     fn levels_change_live_and_ramp() {
         let dir = tempfile::tempdir().unwrap();
         let dc = wav(dir.path(), "dc.wav", |_| 0.5);
