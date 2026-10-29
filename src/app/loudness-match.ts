@@ -8,6 +8,7 @@
  * core; this file turns measurements into rows and rows into one edit.
  */
 
+import type { AnalysisReport } from "./analysis";
 import type { LoudnessReport, LoudnessTarget } from "./loudness";
 import type { ClipChange, SessionDoc } from "../stores/session";
 
@@ -43,6 +44,34 @@ export function matchRow(item: MatchItem, r: LoudnessReport, t: LoudnessTarget):
   const change = Math.round((t.lufs - measured) * 10) / 10;
   const peakAfter = Math.round((r.truePeak + change) * 10) / 10;
   return { ...item, measured, truePeak: r.truePeak, change, peakAfter, measurable: true, peakWarning: peakAfter > t.peak };
+}
+
+/** What a match brings each item to: a loudness target, its loudest sample, or its average level. */
+export type MatchBasis = "loudness" | "peak" | "rms";
+
+/** Where Peak and RMS start, in dB below full scale. */
+export const BASIS_LEVEL: Record<"peak" | "rms", number> = { peak: -1, rms: -18 };
+
+/** Loudest sample and average (RMS) level of both channels together, in dB below full scale. */
+export function levelsOf(r: AnalysisReport): { peakDb: number; rmsDb: number } {
+  const peakDb = Math.max(r.left.peakDb, r.right.peakDb);
+  const power = (Math.pow(10, r.left.rmsDb / 10) + Math.pow(10, r.right.rmsDb / 10)) / 2;
+  return { peakDb, rmsDb: power > 0 ? 10 * Math.log10(power) : Number.NEGATIVE_INFINITY };
+}
+
+/**
+ * The row for matching by peak or RMS: the change that puts the item at `level` dB.
+ * A change that would push the loudest sample past full scale is flagged.
+ */
+export function levelRow(item: MatchItem, basis: "peak" | "rms", level: number, r: AnalysisReport): MatchRow {
+  const { peakDb, rmsDb } = levelsOf(r);
+  const measured = basis === "peak" ? peakDb : rmsDb;
+  if (!Number.isFinite(measured) || measured <= -120) {
+    return { ...item, measured, truePeak: peakDb, change: 0, peakAfter: peakDb, measurable: false, peakWarning: false };
+  }
+  const change = Math.round((level - measured) * 10) / 10;
+  const peakAfter = Math.round((peakDb + change) * 10) / 10;
+  return { ...item, measured, truePeak: peakDb, change, peakAfter, measurable: true, peakWarning: peakAfter > 0 };
 }
 
 /** The clip gain changes for the chosen rows, as one edit. Gain stays within the clip gain limits. */

@@ -209,6 +209,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v5
+        with:
+          path: src
+          sparse-checkout: docs
       - uses: actions/download-artifact@v4
         with:
           path: files
@@ -224,11 +228,18 @@ jobs:
           if [ -f NO-ASIO.txt ]; then echo "::warning::The ASIO build failed; the Windows installer has no ASIO."; rm NO-ASIO.txt; fi
           # The manifest the in-app updater reads (Windows only: the other builds are experimental).
           setup="Altered-Audio-Editor-$tag-setup.exe"
+          # What changed: this version's release notes from the repo, shown in the update dialog and on the release page.
+          notesfile="../src/docs/release-notes-${tag#v}.md"
+          if [ -f "$notesfile" ]; then cp "$notesfile" ../notes.md; else echo "See the release page for what changed." > ../notes.md; fi
           if [ -f "$setup.sig" ]; then
-            jq -n --arg version "${tag#v}" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg sig "$(cat "$setup.sig")" --arg url "https://github.com/$GH_REPO/releases/download/$tag/$setup" '{version: $version, notes: "See the release page for what changed.", pub_date: $date, platforms: {"windows-x86_64": {signature: $sig, url: $url}}}' > latest.json
+            jq -n --rawfile notes ../notes.md --arg version "${tag#v}" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg sig "$(cat "$setup.sig")" --arg url "https://github.com/$GH_REPO/releases/download/$tag/$setup" '{version: $version, notes: $notes, pub_date: $date, platforms: {"windows-x86_64": {signature: $sig, url: $url}}}' > latest.json
           else
             echo "::warning::No installer signature, so no latest.json: the in-app updater will not see this release."
           fi
           sha256sum * > SHA256SUMS.txt
           ls -la
-          gh release create "$tag" --draft --title "Altered Audio Editor $tag" --generate-notes ./*
+          if [ -f "$notesfile" ]; then
+            gh release create "$tag" --draft --title "Altered Audio Editor $tag" --notes-file ../notes.md ./*
+          else
+            gh release create "$tag" --draft --title "Altered Audio Editor $tag" --generate-notes ./*
+          fi

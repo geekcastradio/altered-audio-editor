@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { sessionEnd, type ClipDoc, type Op, type SessionDoc } from "../../stores/session";
 import { previewTracks } from "./clip-edit";
 import { pointsOf } from "./envelope";
-import { amplifyRange, clampRange, copyRange, cropTo, deleteRange, fadeDb, fadeRange, insertFile, mixPasteAt, pasteAt, replaceRange, silenceRange, stretchRange } from "./wave-edit";
+import { amplifyRange, clampRange, copyRange, crossfadeSeams, cropTo, deleteRange, fadeDb, fadeRange, insertFile, mixPasteAt, pasteAt, replaceRange, silenceRange, stretchRange } from "./wave-edit";
 
 const fade = () => ({ length: 0, shape: "linear" as const, curve: 0 });
 
@@ -182,6 +182,32 @@ describe("Waveform editor edits", () => {
     const board = { ...copyRange(file(), 0, 1_000)!, rate: 2_000 };
     const r = pasteAt(file(), board, 0, id)!;
     expect(r.length).toBe(500);
+  });
+
+  it("Paste with Crossfade lets each side of a join run on and fades across the overlap", () => {
+    const board = copyRange(file(), 1_000, 3_000)!;
+    const pasted = apply(file(), pasteAt(file(), board, 5_000, id)!.op);
+    const x = crossfadeSeams(pasted, [5_000, 7_000], 100)!;
+    expect(x.joins).toBe(2);
+    const doc = apply(pasted, x.op);
+    expect(layout(doc)).toEqual([
+      [0, 0, 5_100],
+      [5_000, 1_000, 3_100],
+      [7_000, 5_000, 10_000],
+    ]);
+    const [a, b, c] = [...doc.tracks[0]!.clips].sort((p, q) => p.start - q.start);
+    expect([a!.fade_out.length, b!.fade_in.length, b!.fade_out.length, c!.fade_in.length]).toEqual([100, 100, 100, 100]);
+    // No audio is lost and nothing past the pasted piece moves.
+    expect(sessionEnd(doc)).toBe(12_000);
+  });
+
+  it("Paste with Crossfade skips a join with no audio left to run on", () => {
+    const doc = file();
+    // Two pieces of one file that already use all of the first piece's audio: nothing follows it.
+    const clip = doc.tracks[0]!.clips[0]!;
+    const media = { ...doc.media[0]!, length: 5_000 };
+    const tight = { ...doc, media: [media], tracks: [{ ...doc.tracks[0]!, clips: [{ ...clip, source_out: 5_000 }, { ...clip, id: "c1", start: 5_000, source_in: 0, source_out: 1_000 }] }] };
+    expect(crossfadeSeams(tight, [5_000], 100)).toBeNull();
   });
 
   it("Mix Paste layers audio without moving anything", () => {

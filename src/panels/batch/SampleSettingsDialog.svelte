@@ -5,11 +5,27 @@
 
   Sample Settings: what each converted file's audio becomes. Sample
   rate, channels (with how much of each side goes into a mono file) and
-  bit depth (with dither on or off). "Same as each file" keeps it.
+  bit depth (with dither type, amount and noise shaping). "Same as each file" keeps it.
 -->
 <script lang="ts">
   import { formatRate } from "../files/format";
-  import { depthsFor, MP3_MAX_RATE, OUTPUT_RATES, type OutputFormat } from "../../app/output-format";
+  import {
+    applyPreset,
+    depthsFor,
+    DITHER_AMOUNTS,
+    DITHER_CHOICES,
+    ditherChoice,
+    MP3_MAX_RATE,
+    OUTPUT_RATES,
+    RESAMPLE_CHOICES,
+    SAMPLE_PRESETS,
+    SHAPING_CHOICES,
+    withDither,
+    type DitherKind,
+    type NoiseShaping,
+    type OutputFormat,
+    type ResampleQuality,
+  } from "../../app/output-format";
 
   interface Props {
     format: OutputFormat;
@@ -34,6 +50,25 @@
     <h1 id="ss-title">Sample Settings</h1>
 
     <fieldset>
+      <legend>Preset</legend>
+      <label class="row">
+        <span>Preset</span>
+        <select
+          value=""
+          onchange={(e) => {
+            f = applyPreset(f, e.currentTarget.value);
+            e.currentTarget.value = "";
+          }}
+        >
+          <option value="">Pick a starting point…</option>
+          {#each SAMPLE_PRESETS as p (p.id)}
+            <option value={p.id}>{p.label}</option>
+          {/each}
+        </select>
+      </label>
+    </fieldset>
+
+    <fieldset>
       <legend>Sample rate</legend>
       <label class="row">
         <span>Rate</span>
@@ -44,7 +79,15 @@
           {/each}
         </select>
       </label>
-      <p class="note">Rate changes use high-quality resampling with filtering, so nothing folds back as noise.</p>
+      <label class="row" class:off={f.sampleRate === null}>
+        <span>Quality</span>
+        <select value={f.resampleQuality} disabled={f.sampleRate === null} onchange={(e) => (f.resampleQuality = e.currentTarget.value as ResampleQuality)}>
+          {#each RESAMPLE_CHOICES as r (r.value)}
+            <option value={r.value}>{r.label}</option>
+          {/each}
+        </select>
+      </label>
+      <p class="note">Rate changes are filtered so nothing folds back as noise. Higher quality filters longer: sharper at the top, slower to convert.</p>
     </fieldset>
 
     <fieldset>
@@ -88,12 +131,29 @@
       {#if moreDepth}
         <label class="row">
           <span>Dither</span>
-          <select value={f.dither ? "on" : "off"} onchange={(e) => (f.dither = e.currentTarget.value === "on")}>
-            <option value="on">On (triangular)</option>
-            <option value="off">Off</option>
+          <select value={ditherChoice(f)} onchange={(e) => (f = withDither(f, e.currentTarget.value as "none" | DitherKind))}>
+            {#each DITHER_CHOICES as d (d.value)}
+              <option value={d.value}>{d.label}</option>
+            {/each}
           </select>
         </label>
-        <p class="note">Dither adds a whisper of noise when going to fewer bits so quiet fades stay smooth. Leave it on unless the file is going straight back into an editor. 32-bit float never needs it.</p>
+        <label class="row" class:off={!f.dither}>
+          <span>Amount</span>
+          <select value={f.ditherAmount} disabled={!f.dither} onchange={(e) => (f.ditherAmount = Number(e.currentTarget.value))}>
+            {#each DITHER_AMOUNTS as d (d.value)}
+              <option value={d.value}>{d.label}</option>
+            {/each}
+          </select>
+        </label>
+        <label class="row">
+          <span>Shaping</span>
+          <select value={f.noiseShaping} onchange={(e) => (f.noiseShaping = e.currentTarget.value as NoiseShaping)}>
+            {#each SHAPING_CHOICES as d (d.value)}
+              <option value={d.value}>{d.label}</option>
+            {/each}
+          </select>
+        </label>
+        <p class="note">Dither adds a whisper of noise when going to fewer bits so quiet fades stay smooth. Leave it on unless the file is going straight back into an editor. Noise shaping tucks the rounding noise up where the ear hears it least. 32-bit float never needs either.</p>
       {/if}
     </fieldset>
 

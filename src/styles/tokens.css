@@ -32,6 +32,9 @@
   /* Gap color between panels. */
   --gutter: #0e0e10;
   --danger: #e5534b;
+  /* Dialog title bars: light gray so a pop-up stands out from the editor behind it. */
+  --title-bar: #c6c7ce;
+  --title-bar-text: #1a1a1e;
 
   /* Multitrack lanes: alternating rows, a clearly lighter selected
      track, and a dark gap between tracks. */
@@ -86,4 +89,14 @@ body {
   font-size: var(--font-size);
   user-select: none;
   overflow: hidden;
+}
+
+/* Dialog title bars. A dialog sets --dialog-pad-x / --dialog-pad-y when its padding is not 14px. */
+.dialog > h1:first-child,
+[role="dialog"] > h1:first-child {
+  margin: calc(-1 * var(--dialog-pad-y, 14px)) calc(-1 * var(--dialog-pad-x, 14px)) 0;
+  padding: 7px var(--dialog-pad-x, 14px);
+  background: var(--title-bar);
+  color: var(--title-bar-text);
+  user-select: none;
 }

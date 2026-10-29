@@ -768,6 +768,18 @@ export function loudnessCheck(request: MixdownRequest): Promise<import("./loudne
   });
 }
 
+/** Analyzes the mix (spectrum, statistics, histogram). Progress arrives as `export-progress`; `exportCancel` stops it. */
+export function analyzeAudio(request: MixdownRequest): Promise<import("./analysis").AnalysisReport> {
+  return invoke("analyze_audio", {
+    request: { range: request.range ?? null, clips: request.clips ?? null, bit_depth: null, track: request.track ?? null, clip_only: request.clipOnly ?? false, dry: request.dry ?? false },
+  });
+}
+
+/** Moves each frame to the nearest zero crossing of the Waveform editor's file within `reach` frames. Frames with none nearby come back as they were. */
+export function waveZeroCrossings(frames: number[], reach: number): Promise<number[]> {
+  return invoke<number[]>("wave_zero_crossings", { frames, reach });
+}
+
 export function exportCancel(): Promise<void> {
   return invoke<void>("export_cancel");
 }
@@ -1067,6 +1079,31 @@ export function generateAudio(path: string, request: GenerateRequest): Promise<s
 /** Writes chapters into an exported WAV, FLAC, MP3 or M4A. False when the format has no chapter support here. */
 export function exportEmbedChapters(path: string, chapters: { title: string; startMs: number; endMs: number | null; url?: string | null }[], totalMs: number): Promise<boolean> {
   return invoke<boolean>("export_embed_chapters", { path, chapters, totalMs });
+}
+
+/** The tags of an audio file. */
+export interface FileTags {
+  title?: string | null;
+  artist?: string | null;
+  album?: string | null;
+  year?: string | null;
+  genre?: string | null;
+  comment?: string | null;
+  track?: string | null;
+}
+
+export function tagsRead(path: string): Promise<FileTags> {
+  return invoke<FileTags>("tags_read", { path });
+}
+
+/** Writes the filled-in tags into a WAV, FLAC, MP3 or M4A file. False for other formats. */
+export function tagsWrite(path: string, tags: FileTags): Promise<boolean> {
+  return invoke<boolean>("tags_write", { path, tags });
+}
+
+/** Writes every marker into an exported WAV (cue points, with range lengths) or FLAC (a cue sheet). Returns how many went in. */
+export function exportEmbedMarkers(path: string, markers: { title: string; startMs: number; endMs: number | null; kind: string }[]): Promise<number> {
+  return invoke<number>("export_embed_markers", { path, markers });
 }
 
 /** One line of an export check. */

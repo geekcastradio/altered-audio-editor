@@ -7,7 +7,7 @@
   until Install and Restart is clicked.
 -->
 <script lang="ts">
-  import type { UpdateInfo } from "./update";
+  import { plainNotes, type UpdateInfo } from "./update";
 
   interface Props {
     info: UpdateInfo;
@@ -27,7 +27,8 @@
   <div class="dialog" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="update-title" onclick={(e) => e.stopPropagation()}>
     <h1 id="update-title">Version {info.version} is available</h1>
     <p class="version">You have version {info.current}.</p>
-    {#if info.notes}<p class="notes">{info.notes}</p>{/if}
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    {#if info.notes}<div class="notes" tabindex="0" aria-label="What changed">{plainNotes(info.notes)}</div>{/if}
     {#if info.canInstall}
       <p class="fine">Save your work first. The update downloads, installs and restarts the app. Unsaved sessions are offered a recovery copy, but saving is safer.</p>
     {:else}
@@ -54,6 +55,8 @@
   }
 
   .dialog {
+    --dialog-pad-x: 24px;
+    --dialog-pad-y: 18px;
     width: 440px;
     padding: 18px 24px 16px;
     border: 1px solid var(--border-strong);
@@ -79,7 +82,8 @@
   }
 
   .notes {
-    max-height: 160px;
+    max-height: 200px;
+    margin: 0 0 10px;
     overflow: auto;
     padding: 6px 8px;
     border-left: 2px solid var(--accent);

@@ -94,6 +94,7 @@ export const MENUS: readonly Menu[] = [
       item("file.import-files", "Import Files..."),
       item("file.import-folder", "Import Folder..."),
       item("file.import-sesx", "Import Session (.sesx)..."),
+      item("file.edit-tags", "Edit File Tags..."),
       sep,
       item("file.save", "Save"),
       item("file.save-as", "Save As..."),
@@ -133,8 +134,10 @@ export const MENUS: readonly Menu[] = [
       item("edit.paste", "Paste"),
       item("edit.paste-new", "Paste to New File"),
       item("edit.mix-paste", "Mix Paste..."),
+      item("edit.paste-crossfade", "Paste with Crossfade..."),
       item("edit.delete", "Delete"),
       item("edit.crop", "Crop"),
+      item("edit.snap-zero", "Snap Selection to Zero Crossings"),
       sub("Tool", [
         item("tool.move", "Move"),
         item("tool.razor", "Razor"),
@@ -337,6 +340,12 @@ export const MENUS: readonly Menu[] = [
         item("clip.fade-out", "Fade Out"),
         sep,
         item("clip.auto-crossfade", "Automatic Crossfades"),
+        sep,
+        item("clip.shape.cosine", "Shape: S Curve"),
+        item("clip.shape.linear", "Shape: Linear"),
+        item("clip.shape.logarithmic", "Shape: Logarithmic"),
+        item("clip.shape.exponential", "Shape: Exponential"),
+        item("clip.shape.equal_power", "Shape: Equal Power"),
       ]),
       sub("Trim", [
         item("clip.trim.selection", "To Time Selection"),
@@ -382,6 +391,7 @@ export const MENUS: readonly Menu[] = [
       ]),
       sub("Amplitude", [
         item("fx.add.gain", "Gain (in the Voice Chain)"),
+        item("fx.add.channel-mixer", "Channel Mixer"),
         item("fx.amplify", "Amplify..."),
         item("fx.normalize", "Normalize..."),
         item("fx.fade-in", "Fade In"),
@@ -398,17 +408,23 @@ export const MENUS: readonly Menu[] = [
       sortedSub("Delay and Reverb", [
         item("fx.add.echo", "Delay and Echo"),
         item("fx.add.convolution_reverb", "Convolution Reverb"),
-        item("fx.space", "More effects arrive later", {
-          pending: P5,
-          placeholder: true,
-        }),
+        item("fx.add.room-reverb", "Room Reverb"),
+        item("fx.add.tape-delay", "Tape Delay"),
       ]),
+      sortedSub("Modulation", [
+        item("fx.add.chorus", "Chorus"),
+        item("fx.add.flanger", "Flanger"),
+        item("fx.add.phaser", "Phaser"),
+      ]),
+      sortedSub("Special", [item("fx.add.distortion", "Distortion")]),
       sortedSub("Dynamics", [
         item("fx.add.dynamics", "Dynamics"),
         item("fx.add.limiter", "Limiter"),
         item("fx.add.breath_gate", "Breath Gate"),
         item("fx.add.deesser", "De-Esser"),
         item("fx.add.speech_leveler", "Speech Leveler"),
+        item("fx.add.multiband", "Multiband Compressor"),
+        item("fx.add.expander", "Expander / Gate"),
       ]),
       sortedSub("EQ and Filters", [
         item("fx.add.parametric_eq", "Parametric EQ"),
@@ -450,6 +466,7 @@ export const MENUS: readonly Menu[] = [
       sortedSub("Stereo and Channels", [
         item("fx.add.center_remover", "Center Remover (remove vocals)"),
         item("fx.add.phase_rotate", "Phase Rotate"),
+        item("fx.add.stereo-expander", "Stereo Expander"),
       ]),
       sep,
       item("fx.vst", "VST", {
@@ -457,6 +474,16 @@ export const MENUS: readonly Menu[] = [
       }),
       popup("fx.vst3", "VST3"),
       item("fx.plugin-manager", "Plug-in Manager..."),
+    ],
+  },
+  {
+    label: "Analysis",
+    mnemonic: "A",
+    items: [
+      item("analysis.frequency", "Frequency Analysis..."),
+      item("analysis.statistics", "Amplitude Statistics..."),
+      item("analysis.histogram", "Histogram..."),
+      item("analysis.problems", "Find Problems (Clicks, Clipping, Hum)..."),
     ],
   },
   {
@@ -531,16 +558,14 @@ export const MENUS: readonly Menu[] = [
       item("help.shortcuts", "Keyboard Shortcuts"),
       sep,
       item("help.website", "The GCRN Website"),
-      item("help.plugins", "GCRN Plugins", {
-        pending: "The plugins page on thegcrn.com is not live yet.",
-      }),
+      item("help.plugins", "GCRN Plugins"),
+      item("help.discord", "GCRN Community on Discord"),
       sep,
-      item("help.book", "Book: Altered Audio, Podcasting Demystified"),
+      item("help.book", "Altered Audio: Podcasting Demystified Book"),
       item("help.support", "Support Altered Audio Editor..."),
       sep,
-      item("help.discord", "Join the GCRN Community on Discord"),
       item("help.update", "Check for Updates..."),
-      item("help.github", "Source Code on GitHub"),
+      item("help.github", "Altered Audio Editor Github"),
       item("help.report", "Report a Problem..."),
       sep,
       item("help.about", "About Altered Audio Editor"),

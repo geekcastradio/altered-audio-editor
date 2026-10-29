@@ -1033,9 +1033,23 @@ mod tests {
             };
             match kind {
                 FormatKind::Wav => embed_wav(&out, &chapters).unwrap(),
-                FormatKind::Flac => embed_flac(&out, &chapters).unwrap(),
+                FormatKind::Flac => {
+                    embed_flac(&out, &chapters).unwrap();
+                    // The reference decoder (flac -t, below) checks the cue sheet too.
+                    let marks: Vec<_> = chapters
+                        .iter()
+                        .map(|c| crate::export::chapters::Marker {
+                            title: c.title.clone(),
+                            start_ms: c.start_ms,
+                            end_ms: None,
+                            kind: "cue".into(),
+                        })
+                        .collect();
+                    crate::export::chapters::embed_flac_cuesheet(&out, &marks).unwrap();
+                }
                 FormatKind::Mp3 => embed_mp3(&out, &chapters, 3_000).unwrap(),
                 FormatKind::M4a => write_m4a_chapters(&out, &chapters).unwrap(),
+                FormatKind::Aac => {}
             }
             let rep = verify(
                 &out,
@@ -1084,7 +1098,11 @@ mod tests {
                         3,
                         "{kind:?}: {text}"
                     );
-                    assert!(text.contains("Middle part"), "{kind:?}: {text}");
+                    // ffmpeg turns a FLAC cue sheet into chapters and then ignores the named
+                    // CHAPTER comments, so with a cue sheet in the file the names are lost there.
+                    if kind != FormatKind::Flac {
+                        assert!(text.contains("Middle part"), "{kind:?}: {text}");
+                    }
                 }
             }
         }

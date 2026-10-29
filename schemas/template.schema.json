@@ -757,11 +757,25 @@
     },
     "FadeShape": {
       "description": "Shape of a fade curve.",
-      "type": "string",
-      "enum": [
-        "linear",
-        "logarithmic",
-        "cosine"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "linear",
+            "logarithmic",
+            "cosine"
+          ]
+        },
+        {
+          "description": "Slow start, fast finish: the mirror of Logarithmic.",
+          "type": "string",
+          "const": "exponential"
+        },
+        {
+          "description": "Constant power across a crossfade: the in side and the out side together keep the\nlevel of unrelated material steady.",
+          "type": "string",
+          "const": "equal_power"
+        }
       ]
     },
     "Marker": {

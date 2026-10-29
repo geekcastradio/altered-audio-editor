@@ -372,6 +372,10 @@ pub fn fade_curve((shape, bend): FadeLook, t: f32) -> f32 {
         FadeShape::Logarithmic => 1.0 - (1.0 - t) * (1.0 - t),
         // S-curve: gentle at both ends.
         FadeShape::Cosine => 0.5 - 0.5 * (std::f32::consts::PI * t).cos(),
+        // Slow start, fast finish.
+        FadeShape::Exponential => t * t,
+        // A quarter sine: fading out the mirror of it (a quarter cosine) keeps the power steady.
+        FadeShape::EqualPower => (std::f32::consts::FRAC_PI_2 * t).sin(),
     }
 }
 
@@ -871,7 +875,13 @@ mod tests {
 
     #[test]
     fn a_fade_bend_moves_the_curve_and_zero_leaves_it() {
-        for shape in [FadeShape::Linear, FadeShape::Logarithmic, FadeShape::Cosine] {
+        for shape in [
+            FadeShape::Linear,
+            FadeShape::Logarithmic,
+            FadeShape::Cosine,
+            FadeShape::Exponential,
+            FadeShape::EqualPower,
+        ] {
             assert_eq!(fade_curve((shape, 0.0), 0.3), fade_curve((shape, 0.0), 0.3));
             assert!((fade_curve((shape, 0.5), 0.0)).abs() < 1e-6);
             assert!((fade_curve((shape, 0.5), 1.0) - 1.0).abs() < 1e-6);
@@ -882,6 +892,22 @@ mod tests {
                 fade_curve((shape, 0.0), 0.4)
             );
         }
+    }
+
+    #[test]
+    fn equal_power_crossfades_keep_the_power_and_the_others_keep_their_shape() {
+        for k in 0..=20 {
+            let t = k as f32 / 20.0;
+            let (i, o) = (
+                fade_curve((FadeShape::EqualPower, 0.0), t),
+                fade_curve((FadeShape::EqualPower, 0.0), 1.0 - t),
+            );
+            assert!((i * i + o * o - 1.0).abs() < 1e-5, "power at {t}");
+        }
+        // Exponential starts slower than linear and Logarithmic faster.
+        assert!(fade_curve((FadeShape::Exponential, 0.0), 0.3) < 0.3);
+        assert!(fade_curve((FadeShape::Logarithmic, 0.0), 0.3) > 0.3);
+        assert!((fade_curve((FadeShape::Exponential, 0.0), 1.0) - 1.0).abs() < 1e-6);
     }
     use crate::session::model::{new_id, ChannelLayout, MediaRef, Track};
     use crate::session::ops::{apply, ClipSpec, Op};

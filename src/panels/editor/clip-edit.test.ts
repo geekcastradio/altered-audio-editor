@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { ClipDoc, SessionDoc, TrackDoc } from "../../stores/session";
-import { clipsAt, copyClips, copyMoved, fadeClip, gapAt, LockedError, MIN_CLIP, moveClips, nearest, pasteClips, previewTracks, rippleDeleteClips, rippleDeleteRange, snapTargets, trimToRange, splitClips, trimClip, trimToPlayhead, withCrossfades, withGroups, withLayers, TOP_LAYER, withVolume, withEnvelope, envelopeId, loopChanges } from "./clip-edit";
+import { clipsAt, copyClips, copyMoved, fadeClip, gapAt, LockedError, MIN_CLIP, moveClips, nearest, pasteClips, previewTracks, rippleDeleteClips, rippleDeleteRange, snapTargets, trimToRange, splitClips, trimClip, trimToPlayhead, withCrossfades, fadeShapeChanges, withGroups, withLayers, TOP_LAYER, withVolume, withEnvelope, envelopeId, loopChanges } from "./clip-edit";
 
 const fade = () => ({ length: 0, shape: "linear" as const, curve: 0 });
 
@@ -464,5 +464,12 @@ describe("withLayers", () => {
   it("leaves a clip tucked under the same clip where it is", () => {
     const doc = session([track("A", [clip("a", 10_000), clip("b", 0)])]);
     expect(withLayers(doc, [{ id: "a", start: 12_000 }])).toEqual([{ id: "a", start: 12_000 }]);
+  });
+
+  it("gives existing fades the chosen shape and leaves unfaded clips alone", () => {
+    const a = { ...clip("a", 0), fade_in: { length: 100, shape: "linear" as const, curve: 0 } };
+    const b = clip("b", 1_000);
+    expect(fadeShapeChanges([a, b], "equal_power")).toEqual([{ id: "a", fade_in: { length: 100, shape: "equal_power", curve: 0 } }]);
+    expect(fadeShapeChanges([a], "linear")).toEqual([]);
   });
 });

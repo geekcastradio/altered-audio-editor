@@ -259,6 +259,29 @@ pub(crate) fn set_flac_comments(
     path: &Path,
     edit: impl FnOnce(Vec<String>) -> Vec<String>,
 ) -> std::io::Result<()> {
+    rewrite_flac(path, |blocks| {
+        let mut old = Vec::new();
+        let mut kept: Vec<(u8, Vec<u8>)> = Vec::new();
+        for (kind, body) in blocks {
+            if kind == 4 {
+                old.extend(vorbis_items(&body));
+            } else {
+                kept.push((kind, body));
+            }
+        }
+        let at = 1.min(kept.len());
+        kept.insert(at, (4, vorbis_block(&edit(old))));
+        Ok(kept)
+    })
+}
+
+/// Reads a FLAC file's metadata blocks, lets `edit` change the list, and writes the file
+/// again with the audio untouched. Written beside the file, then swapped in, so a failure
+/// never leaves half a file.
+fn rewrite_flac(
+    path: &Path,
+    edit: impl FnOnce(Vec<(u8, Vec<u8>)>) -> std::io::Result<Vec<(u8, Vec<u8>)>>,
+) -> std::io::Result<()> {
     let bad = || std::io::Error::new(std::io::ErrorKind::InvalidData, "Not a FLAC file.");
     let mut src = BufReader::new(File::open(path)?);
     let mut magic = [0u8; 4];
@@ -266,29 +289,21 @@ pub(crate) fn set_flac_comments(
     if &magic != b"fLaC" {
         return Err(bad());
     }
-    // Read only the metadata blocks, keeping all but the old Vorbis comment. The audio
-    // after them can be hours long, so it is copied across and never held in memory.
+    // Read only the metadata blocks. The audio after them can be hours long, so it is
+    // copied across and never held in memory.
     let mut blocks: Vec<(u8, Vec<u8>)> = Vec::new();
-    let mut old = Vec::new();
     loop {
         let mut head = [0u8; 4];
         src.read_exact(&mut head).map_err(|_| bad())?;
         let len = (usize::from(head[1]) << 16) | (usize::from(head[2]) << 8) | usize::from(head[3]);
         let mut body = vec![0u8; len];
         src.read_exact(&mut body).map_err(|_| bad())?;
-        let kind = head[0] & 0x7f;
-        if kind == 4 {
-            old.extend(vorbis_items(&body));
-        } else {
-            blocks.push((kind, body));
-        }
+        blocks.push((head[0] & 0x7f, body));
         if head[0] & 0x80 != 0 {
             break;
         }
     }
-    let comments = vorbis_block(&edit(old));
-    blocks.insert(1.min(blocks.len()), (4, comments));
-    // Written beside the file, then swapped in, so a failure never leaves half a file.
+    let blocks = edit(blocks)?;
     let tmp = path.with_extension("chapters.tmp");
     let written = write_flac_copy(&tmp, &blocks, &mut src);
     // Closed before the swap: Windows will not replace a file that is still open.
@@ -300,6 +315,94 @@ pub(crate) fn set_flac_comments(
             Err(e)
         }
     }
+}
+
+/// The most tracks a FLAC cue sheet holds besides its lead-out.
+pub const CUESHEET_MAX: usize = 254;
+
+/// A FLAC CUESHEET block body: one track per marker start, then the lead-out. Not a CD
+/// cue sheet, so positions are plain sample offsets. A cue sheet has no names or lengths.
+pub fn cuesheet_block(starts: &[u64], total_samples: u64) -> Vec<u8> {
+    let starts = &starts[..starts.len().min(CUESHEET_MAX)];
+    let mut b = vec![0u8; 128]; // catalog number: none
+    b.extend_from_slice(&0u64.to_be_bytes()); // lead-in samples: not a CD
+    b.extend_from_slice(&[0u8; 259]); // is-CD flag and reserved bytes
+    b.push(starts.len() as u8 + 1);
+    let track = |b: &mut Vec<u8>, offset: u64, number: u8, indexes: u8| {
+        b.extend_from_slice(&offset.to_be_bytes());
+        b.push(number);
+        b.extend_from_slice(&[0u8; 12]); // ISRC: none
+        b.extend_from_slice(&[0u8; 14]); // audio track, no pre-emphasis, reserved
+        b.push(indexes);
+        for i in 0..indexes {
+            b.extend_from_slice(&0u64.to_be_bytes());
+            b.push(i + 1);
+            b.extend_from_slice(&[0u8; 3]);
+        }
+    };
+    for (i, s) in starts.iter().enumerate() {
+        track(&mut b, *s, i as u8 + 1, 1);
+    }
+    track(&mut b, total_samples, 255, 0);
+    b
+}
+
+/// Track start offsets in a CUESHEET block body, without the lead-out.
+pub fn cuesheet_starts(body: &[u8]) -> Vec<u64> {
+    let mut out = Vec::new();
+    let Some(&n) = body.get(395) else {
+        return out;
+    };
+    let mut at = 396;
+    for _ in 0..n {
+        let Some(h) = body.get(at..at + 36) else {
+            break;
+        };
+        let offset = u64::from_be_bytes(h[..8].try_into().unwrap_or_default());
+        let (number, indexes) = (h[8], usize::from(h[35]));
+        if number != 255 {
+            out.push(offset);
+        }
+        at += 36 + indexes * 12;
+    }
+    out
+}
+
+/// Adds a cue sheet to a FLAC file with a track at each marker start, replacing any old
+/// one. Returns how many tracks were written.
+pub fn embed_flac_cuesheet(path: &Path, markers: &[Marker]) -> std::io::Result<usize> {
+    let bad = |m: &str| std::io::Error::new(std::io::ErrorKind::InvalidData, m.to_string());
+    let mut written = 0;
+    rewrite_flac(path, |mut blocks| {
+        // STREAMINFO: sample rate is 20 bits at byte 10, total samples 36 bits after the
+        // channel and depth bits.
+        let info = blocks
+            .first()
+            .filter(|b| b.0 == 0 && b.1.len() >= 18)
+            .ok_or_else(|| bad("Not a FLAC file."))?;
+        let rate = (u64::from(info.1[10]) << 12)
+            | (u64::from(info.1[11]) << 4)
+            | u64::from(info.1[12] >> 4);
+        let total = (u64::from(info.1[13] & 0x0f) << 32)
+            | (u64::from(info.1[14]) << 24)
+            | (u64::from(info.1[15]) << 16)
+            | (u64::from(info.1[16]) << 8)
+            | u64::from(info.1[17]);
+        let mut starts: Vec<u64> = markers
+            .iter()
+            .map(|m| m.start_ms * rate / 1000)
+            .filter(|s| *s < total)
+            .collect();
+        starts.sort_unstable();
+        starts.dedup();
+        written = starts.len().min(CUESHEET_MAX);
+        blocks.retain(|b| b.0 != 5);
+        if !starts.is_empty() {
+            blocks.push((5, cuesheet_block(&starts, total)));
+        }
+        Ok(blocks)
+    })?;
+    Ok(written)
 }
 
 /// A new FLAC file at `tmp`: the marker, `blocks` (the last flagged as last), then
@@ -326,9 +429,39 @@ fn write_flac_copy(
 /// is not rewritten: the chunks go on the end and the RIFF size is fixed.
 /// Plain RIFF only; a file that already has cue points is left alone.
 pub fn embed_wav(path: &Path, chapters: &[Chapter]) -> std::io::Result<()> {
+    let points: Vec<Marker> = chapters
+        .iter()
+        .map(|c| Marker {
+            title: c.title.clone(),
+            start_ms: c.start_ms,
+            end_ms: None,
+            kind: "chapter".into(),
+        })
+        .collect();
+    embed_wav_markers(path, &points)
+}
+
+/// Any marker on the timeline, chapter or not, for the formats that keep plain markers
+/// (WAV cue points, a FLAC cue sheet) rather than podcast chapters.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Marker {
+    pub title: String,
+    pub start_ms: u64,
+    /// Where a range marker ends. None is a point.
+    #[serde(default)]
+    pub end_ms: Option<u64>,
+    /// The marker's type, such as "cue", "chapter" or "ad_slot".
+    #[serde(default)]
+    pub kind: String,
+}
+
+/// Adds every marker to a WAV file: a cue point and label for each, and a length
+/// (`ltxt`) for ranges. Same rules as [`embed_wav`].
+pub fn embed_wav_markers(path: &Path, markers: &[Marker]) -> std::io::Result<()> {
     use crate::codecs::cue::{chunks, Cue};
     let bad = |m: &str| std::io::Error::new(std::io::ErrorKind::InvalidData, m.to_string());
-    if chapters.is_empty() {
+    if markers.is_empty() {
         return Ok(());
     }
     let mut f = fs::OpenOptions::new().read(true).write(true).open(path)?;
@@ -363,12 +496,18 @@ pub fn embed_wav(path: &Path, chapters: &[Chapter]) -> std::io::Result<()> {
     if rate == 0 {
         return Err(bad("Not a WAV file."));
     }
-    let cues: Vec<Cue> = chapters
+    let frames = |ms: u64| ms * u64::from(rate) / 1000;
+    let mut sorted: Vec<&Marker> = markers.iter().collect();
+    sorted.sort_by_key(|m| m.start_ms);
+    let cues: Vec<Cue> = sorted
         .iter()
-        .map(|c| Cue {
-            position: c.start_ms * u64::from(rate) / 1000,
-            length: 0,
-            label: c.title.clone(),
+        .map(|m| Cue {
+            position: frames(m.start_ms),
+            length: m
+                .end_ms
+                .filter(|e| *e > m.start_ms)
+                .map_or(0, |e| frames(e) - frames(m.start_ms)),
+            label: m.title.clone(),
         })
         .collect();
     let add = chunks(&cues);
@@ -762,5 +901,140 @@ mod tests {
         assert_eq!(got[0].url, None);
         assert_eq!(got[1].url.as_deref(), Some("https://example.com/talk"));
         assert_eq!(got[1].title, "Café talk");
+    }
+
+    fn mk(title: &str, start_ms: u64, end_ms: Option<u64>, kind: &str) -> Marker {
+        Marker {
+            title: title.into(),
+            start_ms,
+            end_ms,
+            kind: kind.into(),
+        }
+    }
+
+    fn silent_wav(p: &Path) {
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 8000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut w = hound::WavWriter::create(p, spec).unwrap();
+        for _ in 0..8000 * 10 {
+            w.write_sample(0i16).unwrap();
+        }
+        w.finalize().unwrap();
+    }
+
+    #[test]
+    fn every_marker_type_goes_into_a_wav_with_range_lengths() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.wav");
+        silent_wav(&p);
+        // Out of order on purpose; a range, an ad slot and a plain cue.
+        embed_wav_markers(
+            &p,
+            &[
+                mk("Ad break", 4_000, Some(6_500), "ad_slot"),
+                mk("Start", 0, None, "cue"),
+                mk("Chapter two", 8_000, None, "chapter"),
+            ],
+        )
+        .unwrap();
+        let cues = crate::codecs::cue::read_cues(&p);
+        let got: Vec<(&str, u64, u64)> = cues
+            .iter()
+            .map(|c| (c.label.as_str(), c.position, c.length))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("Start", 0, 0),
+                ("Ad break", 4_000 * 8, 2_500 * 8),
+                ("Chapter two", 8_000 * 8, 0),
+            ]
+        );
+        assert_eq!(hound::WavReader::open(&p).unwrap().len(), 8000 * 10);
+        // A range that ends before it starts is a point.
+        let q = dir.path().join("b.wav");
+        silent_wav(&q);
+        embed_wav_markers(&q, &[mk("Odd", 5_000, Some(4_000), "cue")]).unwrap();
+        assert_eq!(crate::codecs::cue::read_cues(&q)[0].length, 0);
+    }
+
+    /// A FLAC file with a valid STREAMINFO (44.1 kHz, 16-bit, mono) and stand-in audio.
+    fn flac_shell(p: &Path, total: u64) {
+        let mut info = vec![0u8; 34];
+        let rate: u64 = 44_100;
+        let packed = (rate << 44) | (15 << 36) | total; // mono, 16-bit
+        info[10..18].copy_from_slice(&packed.to_be_bytes());
+        let mut f = b"fLaC".to_vec();
+        f.extend_from_slice(&[0x80, 0, 0, 34]);
+        f.extend_from_slice(&info);
+        f.extend_from_slice(&[9, 8, 7, 6]);
+        fs::write(p, f).unwrap();
+    }
+
+    #[test]
+    fn a_flac_cue_sheet_holds_each_marker_start_and_keeps_comments() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.flac");
+        flac_shell(&p, 44_100 * 60);
+        embed_flac(&p, &three()).unwrap();
+        let n = embed_flac_cuesheet(
+            &p,
+            &[
+                mk("B", 30_000, None, "cue"),
+                mk("A", 0, None, "chapter"),
+                mk("Again", 30_000, Some(40_000), "cue"),
+                mk("Past the end", 90_000, None, "cue"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(n, 2, "duplicates and anything past the end are dropped");
+        // Read the blocks back.
+        let d = fs::read(&p).unwrap();
+        let (mut at, mut kinds, mut sheet) = (4, Vec::new(), Vec::new());
+        loop {
+            let len = (usize::from(d[at + 1]) << 16)
+                | (usize::from(d[at + 2]) << 8)
+                | usize::from(d[at + 3]);
+            let kind = d[at] & 0x7f;
+            kinds.push(kind);
+            if kind == 5 {
+                sheet = cuesheet_starts(&d[at + 4..at + 4 + len]);
+            }
+            let last = d[at] & 0x80 != 0;
+            at += 4 + len;
+            if last {
+                break;
+            }
+        }
+        assert_eq!(kinds[0], 0, "STREAMINFO stays first");
+        assert!(kinds.contains(&4) && kinds.contains(&5));
+        assert_eq!(sheet, vec![0, 44_100 * 30]);
+        assert_eq!(&d[at..], &[9, 8, 7, 6], "audio untouched");
+        // The chapters written earlier are still readable.
+        assert_eq!(read_chapters(&p).len(), 3);
+        // Writing again replaces the sheet rather than adding a second.
+        embed_flac_cuesheet(&p, &[mk("Only", 1_000, None, "cue")]).unwrap();
+        let d = fs::read(&p).unwrap();
+        let sheets = {
+            let (mut at, mut n) = (4, 0);
+            loop {
+                let len = (usize::from(d[at + 1]) << 16)
+                    | (usize::from(d[at + 2]) << 8)
+                    | usize::from(d[at + 3]);
+                if d[at] & 0x7f == 5 {
+                    n += 1;
+                }
+                let last = d[at] & 0x80 != 0;
+                at += 4 + len;
+                if last {
+                    break n;
+                }
+            }
+        };
+        assert_eq!(sheets, 1);
     }
 }

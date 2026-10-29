@@ -11,7 +11,7 @@
 
 It follows the editing workflow that experienced audio editors already know, with its own original design, then adds tools built for podcast production.
 
-> Status: in active development (phase P5, effects). Version 0.7.0 adds music ducking under voices, an Audio FX Panel and a Multiband Compressor, and the Publish Package gains WebVTT chapters and ad positions. Editing, playback, recording, the Voice Chain effects, conversion and mixdown work today. Transcripts are still to come. Pre-release: keep backups of your recordings.
+> Status: in active development (phase P5, effects). Version 0.8.0 adds an Analysis menu, a redesigned Export dialog, Convert Sample Type presets with dither and noise shaping, markers inside exported WAV and FLAC files, new effects (modulation, reverb, delay, distortion, gate), and new editing tools. Editing, playback, recording, the Voice Chain effects, conversion and mixdown work today. Transcripts are still to come. Pre-release: keep backups of your recordings.
 
 ![Multitrack editor with a four-track episode: themes, a host and a co-host with the Podcast Voice chain on the host track, a promo, fades, a volume envelope and chapter markers](docs/images/multitrack.png)
 
@@ -72,6 +72,13 @@ Early versions are pre-releases. Expect rough edges and keep backups of your rec
 - **Help > Check for Updates** finds new versions and can install them (installer copies only; the portable zip gets the download page).
 - **Imports `.sesx` sessions:** brings in tracks, clips and positions from `.sesx` multitrack session files.
 
+## Under the hood
+- **A Rust audio engine.** Memory-safe by design, with no `unsafe` code in the app's own engine and file handling.
+- **Plug-ins run in their own process.** A VST3 plug-in that crashes shows an error on its slot; your session carries on.
+- **Predictable output.** The same session renders to the same bits every time, whatever block size the sound card uses, and every built-in effect gives identical results on a repeat run. Tests check this on every change.
+- **Native 64-bit.** Big sessions are fine.
+- **Audio on the CPU.** Sound processing stays off the graphics card on purpose: it is light work, and the CPU keeps latency low and results exact.
+
 ## Private by design
 
 - No account and no login. Ever.
@@ -126,6 +133,20 @@ Every file the app writes is versioned JSON with a `format` and `schema_version`
 | Workspace | `altaudio.workspace` | `.alworkspace` |
 | Host voice profile | `altaudio.host_profile` | `.alhost` |
 | Keyboard shortcuts | `altaudio.keymap` | `.alkeys` |
+
+## Markers and chapters inside exported files
+
+What Export Mixdown writes into the audio file itself, and what we have checked. "Checked" means the app reads the file back after export, and our test suite also runs `ffprobe` and `flac -t` on the files. Other programs differ in what they read, so the last column says what to expect rather than promising it.
+
+| Format | What is written | Names | Ranges | Checked here | Notes |
+| --- | --- | --- | --- | --- | --- |
+| MP3 | ID3v2.3 chapters (`CHAP` frames and a `CTOC` table of contents), with a link per chapter | yes | start and end | read back by the app and `ffprobe` | Chapter markers only. The format podcast apps read. |
+| M4A | A `chpl` chapter list | yes | start only | read back by the app and `ffprobe` | Chapter markers only. |
+| FLAC | `CHAPTERnnn` and `CHAPTERnnnNAME` comments | yes | start only | read back by the app and `ffprobe` | Chapter markers only. |
+| FLAC, optional cue sheet | A `CUESHEET` block with a track at each marker start, for every marker type | no | start only | `flac -t` accepts it | Off by default. A cue sheet has no names, and programs built on ffmpeg then show it as unnamed chapters in place of the named ones. Use it only when a program asks for a cue sheet. |
+| WAV | `cue ` points with `labl` names, and an `ltxt` length for ranges | yes | start and length | read back by the app | By default chapter markers only. With "Add all markers", every marker type goes in. `ffprobe` does not show cue points as chapters. Not written to RF64 files (over 4 GB). |
+
+Audio editors that keep markers in WAV cue chunks, which includes most of the editors the app imports from, are the ones to try first for WAV markers. We have not tested every editor, so if one drops names or ranges, open an issue with the editor and version.
 
 ## Project docs
 

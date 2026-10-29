@@ -132,7 +132,7 @@ fn components(
 fn fade_type(shape: FadeShape) -> &'static str {
     match shape {
         FadeShape::Logarithmic => "log",
-        FadeShape::Cosine => "cosine",
+        FadeShape::Cosine | FadeShape::EqualPower => "cosine",
         _ => "linear",
     }
 }

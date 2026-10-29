@@ -3,7 +3,7 @@
 // This file is part of Altered Audio Editor.
 
 import { describe, expect, it } from "vitest";
-import { updateDue, WEEK_MS } from "./update";
+import { plainNotes, updateDue, WEEK_MS } from "./update";
 
 describe("updateDue", () => {
   it("never runs while the setting is off", () => {
@@ -22,5 +22,12 @@ describe("updateDue", () => {
 
   it("runs when the clock went backwards", () => {
     expect(updateDue(true, 2e12, 1e12)).toBe(true);
+  });
+});
+
+describe("plainNotes", () => {
+  it("turns Markdown release notes into plain text", () => {
+    const md = "# Altered Audio Editor 0.7.0\n\n## Added\n- **Duck Music.** Turns the music `down`.\n- See [the guide](https://x.y/z).\n\n\n\n## Fixed\n";
+    expect(plainNotes(md)).toBe("Altered Audio Editor 0.7.0\n\nAdded\n\u2022 Duck Music. Turns the music down.\n\u2022 See the guide.\n\nFixed");
   });
 });

@@ -7,6 +7,7 @@
 
 pub mod aac;
 pub mod adpcm;
+pub mod analysis;
 pub mod chapters;
 pub mod convert;
 pub mod encode;

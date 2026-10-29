@@ -4,7 +4,7 @@
 
 [package]
 name = "altered-audio-editor"
-version = "0.7.0"
+version = "0.8.0"
 description = "Free, open-source multitrack audio editor for podcasters and voiceover."
 authors = ["The GeekCast Radio Network, LLC"]
 license = "GPL-3.0-or-later"
@@ -50,7 +50,7 @@ realfft = "3"
 opus-decoder = "0.1.1"
 mp3lame-encoder = "0.2.5"
 flacenc = { version = "0.5.1", default-features = false }
-zip = { version = "9.0.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip = { version = "9.0.5", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [dev-dependencies]
 pretty_assertions = "1"

@@ -18,6 +18,9 @@
     minimizeWindow,
     openLink,
     pickMediaFiles,
+    tagsRead,
+    tagsWrite,
+    type FileTags,
     pickMediaFolder,
     revealMedia,
     saveKeymapOverrides,
@@ -56,16 +59,20 @@
   import { anchorStart, clipsFrom, clipsUpTo, nextClipId } from "./clip-select";
   import { hasClipIn, showOnly } from "../panels/editor/visibility";
   import { clipLength, sessionEnd, setErrorSink, type ClipDoc, type Op, type TrackDoc } from "../stores/session";
-  import { fit, maxSppFor, zoomAround } from "../panels/editor/timeline";
+  import { fit, MIN_TRACK_H, maxSppFor, zoomAround } from "../panels/editor/timeline";
   import ChoiceDialog, { type ChoiceButton } from "./ChoiceDialog.svelte";
   import ExportDialog, { type ExportScopeInfo, type ExportSettings } from "./ExportDialog.svelte";
   import PublishDialog, { type PublishSettings } from "./PublishDialog.svelte";
   import { EMPTY_EPISODE, packageFiles, slugOf, type EpisodeInfo } from "./publish";
-  import { DEFAULT_FORMAT, describeFormat, extensionOf, kindOfPath, sanitizeFormat, type OutputFormat } from "./output-format";
+  import { DEFAULT_FORMAT, describeFormat, extensionOf, kindOfPath, sanitizeFormat, sanitizeMemory, type OutputFormat } from "./output-format";
   import SessionPropertiesDialog from "./SessionPropertiesDialog.svelte";
   import PromptDialog from "./PromptDialog.svelte";
   import ExportProgress from "./ExportProgress.svelte";
   import LoudnessDialog from "./LoudnessDialog.svelte";
+  import AnalysisDialog from "./AnalysisDialog.svelte";
+  import TagsDialog from "./TagsDialog.svelte";
+  import { TAGGABLE } from "./tags";
+  import type { AnalysisReport, AnalysisTab } from "./analysis";
   import LoudnessMatchDialog from "./LoudnessMatchDialog.svelte";
   import ExportMarkersDialog from "./ExportMarkersDialog.svelte";
   import StretchDialog from "./StretchDialog.svelte";
@@ -81,8 +88,8 @@
   import { setMeterSpeed, type TransportStore } from "../stores/transport";
   import GenerateDialog, { type GenerateMode, type GenerateValues } from "./GenerateDialog.svelte";
   import { naturalLength, stretchTo, unstretch } from "../panels/editor/stretch";
-  import { CHAPTER_FORMATS, embedList, type ChapterFormat } from "../panels/markers/chapters";
-  import { matchChanges, matchItems, matchRow, type MatchItem, type MatchRow } from "./loudness-match";
+  import { CHAPTER_FORMATS, embedList, markerList, type ChapterFormat } from "../panels/markers/chapters";
+  import { BASIS_LEVEL, levelRow, matchChanges, matchItems, matchRow, type MatchBasis, type MatchItem, type MatchRow } from "./loudness-match";
   import { DEFAULT_REGION, DEFAULT_TARGET, setCustomTarget, targetById, targetsFor, type LoudnessReport } from "./loudness";
   import ClipColorDialog from "./ClipColorDialog.svelte";
   import MarkersPanel from "../panels/markers/MarkersPanel.svelte";
@@ -111,6 +118,8 @@
     trimToRange,
     findMidiClips,
     midiSpan,
+    FADE_SHAPES,
+    fadeShapeChanges,
     type ClipBoard,
   } from "../panels/editor/clip-edit";
   import { AUDIO_TYPES, type ClipChange, type MarkerDoc } from "../stores/session";
@@ -142,12 +151,14 @@
     sessionForget,
     mediaCopyIn,
     waveChannelEdit,
+    waveZeroCrossings,
     sessionOpen,
     sessionPickOpen,
     filePickOpen,
     exportPickPath,
     exportText,
     exportEmbedChapters,
+    exportEmbedMarkers,
     exportVerify,
     publishWriteFiles,
     generateAudio,
@@ -168,6 +179,7 @@
     pickTrackFiles,
     unzipMedia,
     loudnessCheck,
+    analyzeAudio,
     sessionPickSave,
     sessionImportSesx,
     sessionRecover,
@@ -230,7 +242,7 @@
   import type { SessionRow } from "../panels/files/session-row";
   import { rasterize } from "../panels/editor/spectrum";
   import { inputLevels, liveTakes, LiveWave, recordControl, recording } from "../stores/record";
-  import { stretchRange, amplifyRange, clampRange, copyRange, cropTo, deleteRange, fadeRange, insertFile, mixPasteAt, pasteAt, replaceRange, silenceRange, type WaveBoard } from "../panels/editor/wave-edit";
+  import { stretchRange, amplifyRange, clampRange, copyRange, crossfadeSeams, cropTo, deleteRange, fadeRange, insertFile, mixPasteAt, pasteAt, replaceRange, silenceRange, type WaveBoard } from "../panels/editor/wave-edit";
 
   let info = $state<AppInfo | null>(null);
   let coreError = $state<string | null>(null);
@@ -863,7 +875,7 @@
     if (!doc) return;
     const ops = doc.tracks.flatMap((t) => {
       if (t.collapsed) return [];
-      const h = Math.max(40, Math.min(600, Math.round(next(t.height))));
+      const h = Math.max(MIN_TRACK_H, Math.min(600, Math.round(next(t.height))));
       return h === t.height ? [] : [{ op: "set_track" as const, id: t.id, changes: { height: h } }];
     });
     if (ops.length > 0) await session.edit("Track Height", { op: "batch", ops }, sessionHistory);
@@ -1380,8 +1392,10 @@
         name: `${fileSafe(doc.name)}${suffix}`,
         folder,
         format: sanitizeFormat(saved?.format),
+        formats: sanitizeMemory((saved as { formats?: unknown } | null)?.formats),
         addToFiles: saved?.addToFiles === true,
         chapters: (saved as { chapters?: unknown } | null)?.chapters !== false,
+        markers: (saved as { markers?: unknown } | null)?.markers === true,
         verify: (saved as { verify?: unknown } | null)?.verify !== false,
         normalize: (() => {
           const n = (saved as { normalize?: unknown } | null)?.normalize;
@@ -1397,7 +1411,7 @@
   async function finishExportDialog(v: ExportSettings | null) {
     exportReq = null;
     if (!v) return;
-    prefs.set(KEY_EXPORT, { format: v.format, folder: v.folder, addToFiles: v.addToFiles, chapters: v.chapters, verify: v.verify, normalize: v.normalize });
+    prefs.set(KEY_EXPORT, { format: v.format, formats: v.formats, folder: v.folder, addToFiles: v.addToFiles, chapters: v.chapters, markers: v.markers === true, verify: v.verify, normalize: v.normalize });
     const sep = v.folder.includes("\\") ? "\\" : "/";
     const path = `${v.folder.replace(/[\\/]+$/, "")}${sep}${fileSafe(v.name)}.${extensionOf(v.format.kind)}`;
     const [exists] = await pathsExist([path]);
@@ -1408,7 +1422,7 @@
       ]);
       if (ok !== "yes") return;
     }
-    await runMixdown(v.scope, v.addToFiles ? "files-panel" : "file", path, v.format, v.chapters, v.speakers, v.normalize, v.verify);
+    await runMixdown(v.scope, v.addToFiles ? "files-panel" : "file", path, v.format, v.chapters, v.speakers, v.normalize, v.verify, undefined, v.markers === true);
   }
 
   async function mixDown(source: MixSource, target: MixTarget) {
@@ -1529,7 +1543,7 @@
     await runMixdown("all", "file", `${folder}${sep}${audioName}`, v.format, true, undefined, v.normalize, true, { episode: v.episode, folder, audioName });
   }
 
-  async function runMixdown(source: MixSource, target: MixTarget, path: string, format: OutputFormat | null, chapters = false, speakers?: string, normalize = "", verify = false, pack?: { episode: EpisodeInfo; folder: string; audioName: string }) {
+  async function runMixdown(source: MixSource, target: MixTarget, path: string, format: OutputFormat | null, chapters = false, speakers?: string, normalize = "", verify = false, pack?: { episode: EpisodeInfo; folder: string; audioName: string }, allMarkers = false) {
     // A 3D Space speaker bed is written as mixed; every other file can be brought to a loudness.
     const bed = !!speakers && speakers !== "binaural" && speakers !== "2.0";
     const goal = normalize && !bed ? targetsFor().find((t) => t.id === normalize) : undefined;
@@ -1557,7 +1571,21 @@
       let writtenChapters: { title: string; startMs: number; endMs: number | null; url?: string | null }[] = [];
       const levelNote = goal ? ` Brought to ${goal.lufs} LUFS with peaks under ${goal.peak} dBTP.` : "";
       const doc = session.current;
-      if (chapters && doc && (format?.kind === "mp3" || format?.kind === "flac" || format?.kind === "wav" || format?.kind === "m4a")) {
+      // Every marker as WAV cue points replaces the chapter cue points: chapters are among them.
+      const markersAsCues = allMarkers && doc && format?.kind === "wav";
+      if (markersAsCues && doc) {
+        const all = markerList(doc.markers, doc.sample_rate, what.range ?? null);
+        if (all.length) {
+          try {
+            await exportEmbedMarkers(path, all);
+            writtenChapters = all.map((m) => ({ title: m.title, startMs: m.startMs, endMs: null }));
+            chapterNote = ` ${all.length} ${all.length === 1 ? "marker" : "markers"} added.`;
+          } catch (e) {
+            chapterNote = ` The markers could not be added: ${e instanceof Error ? e.message : String(e)}`;
+          }
+        }
+      }
+      if (!markersAsCues && chapters && doc && (format?.kind === "mp3" || format?.kind === "flac" || format?.kind === "wav" || format?.kind === "m4a")) {
         const list = embedList(doc.markers, doc.sample_rate, what.range ?? null);
         if (list.length) {
           try {
@@ -1567,6 +1595,17 @@
           } catch (e) {
             // The audio is saved either way; say why the chapters are not in it.
             chapterNote = ` The chapters could not be added: ${e instanceof Error ? e.message : String(e)}`;
+          }
+        }
+      }
+      if (allMarkers && doc && format?.kind === "flac") {
+        const all = markerList(doc.markers, doc.sample_rate, what.range ?? null);
+        if (all.length) {
+          try {
+            const n = await exportEmbedMarkers(path, all);
+            chapterNote += ` Cue sheet with ${n} ${n === 1 ? "track" : "tracks"} added.`;
+          } catch (e) {
+            chapterNote += ` The cue sheet could not be added: ${e instanceof Error ? e.message : String(e)}`;
           }
         }
       }
@@ -1680,6 +1719,34 @@
     }
   }
 
+  // Analysis menu: spectrum, statistics and histogram of the mix or the time selection.
+  let tagsEdit = $state<{ path: string; tags: FileTags } | null>(null);
+  let analysis = $state<{ report: AnalysisReport | null; progress: number | null; tab: AnalysisTab; scope: string } | null>(null);
+
+  async function runAnalysis() {
+    if (!analysis || analysis.progress !== null) return;
+    const r = timeSel();
+    analysis = { ...analysis, progress: 0, scope: r ? "the time selection" : "the whole session" };
+    let off: (() => void) | null = null;
+    try {
+      off = await listen<{ done: number; total: number }>("export-progress", (e) => {
+        if (analysis && analysis.progress !== null) analysis = { ...analysis, progress: e.payload.total > 0 ? e.payload.done / e.payload.total : 0 };
+      });
+      const report = await analyzeAudio(r ? { range: [r.start, r.end] } : {});
+      if (analysis) analysis = { ...analysis, progress: null, report: report.cancelled ? analysis.report : report };
+    } catch (e) {
+      if (analysis) analysis = { ...analysis, progress: null };
+      showError(e);
+    } finally {
+      off?.();
+    }
+  }
+
+  function openAnalysis(tab: AnalysisTab) {
+    analysis = { report: null, progress: null, tab, scope: "" };
+    return runAnalysis();
+  }
+
   async function applyMasterGain(db: number) {
     const cur = session.current?.master?.volume_db ?? 0;
     const next = Math.round((cur + db) * 10) / 10;
@@ -1691,7 +1758,8 @@
 
   // Effects > Loudness Match: clip gain so each selected clip, or each track, reaches a target.
   const KEY_MATCH_TARGET = "loudness.match-target";
-  let lm = $state<{ mode: "clips" | "tracks"; items: MatchItem[]; rows: MatchRow[] | null; progress: number | null; target: string; region: string } | null>(null);
+  const KEY_MATCH_BASIS = "loudness.match-basis";
+  let lm = $state<{ mode: "clips" | "tracks"; items: MatchItem[]; rows: MatchRow[] | null; progress: number | null; target: string; region: string; basis: MatchBasis; level: number } | null>(null);
   let lmStop = false;
 
   function openLoudnessMatch() {
@@ -1699,7 +1767,9 @@
     if (!doc) return;
     const { mode, items } = matchItems(doc, editor.current().selectedClips);
     if (items.length === 0) return showNotice("There are no clips to match.");
-    lm = { mode, items, rows: null, progress: null, target: prefs.string(KEY_MATCH_TARGET, DEFAULT_TARGET), region: prefs.string(KEY_LOUD_REGION, DEFAULT_REGION) };
+    const basis = ((b) => (b === "peak" || b === "rms" ? b : "loudness"))(prefs.string(KEY_MATCH_BASIS, "loudness")) as MatchBasis;
+    const level = basis === "loudness" ? BASIS_LEVEL.peak : BASIS_LEVEL[basis];
+    lm = { mode, items, rows: null, progress: null, target: prefs.string(KEY_MATCH_TARGET, DEFAULT_TARGET), region: prefs.string(KEY_LOUD_REGION, DEFAULT_REGION), basis, level };
     void measureMatch();
   }
 
@@ -1714,16 +1784,23 @@
     try {
       for (let i = 0; i < lm.items.length; i++) {
         const item = lm.items[i]!;
-        let report: LoudnessReport;
+        let request: { range?: [number, number]; clips?: string[]; track?: string; clipOnly: boolean };
         if (lm.mode === "clips") {
           const clip = doc.tracks.flatMap((x) => x.clips).find((c) => c.id === item.clipIds[0]);
           if (!clip) continue;
-          report = await loudnessCheck({ range: [clip.start, clipEnd(clip, media, doc.sample_rate)], clips: [clip.id], clipOnly: true });
+          request = { range: [clip.start, clipEnd(clip, media, doc.sample_rate)], clips: [clip.id], clipOnly: true };
         } else {
-          report = await loudnessCheck({ track: item.key, clipOnly: true });
+          request = { track: item.key, clipOnly: true };
         }
-        if (report.cancelled || lmStop || !lm) break;
-        rows.push(matchRow(item, report, t));
+        if (lm.basis === "loudness") {
+          const report: LoudnessReport = await loudnessCheck(request);
+          if (report.cancelled || lmStop || !lm) break;
+          rows.push(matchRow(item, report, t));
+        } else {
+          const stats = await analyzeAudio(request);
+          if (stats.cancelled || lmStop || !lm) break;
+          rows.push(levelRow(item, lm.basis, lm.level, stats));
+        }
         lm = { ...lm, progress: (i + 1) / lm.items.length };
       }
       if (lm) lm = { ...lm, progress: null, rows: lmStop ? lm.rows : rows };
@@ -2296,6 +2373,16 @@
     "center_remover",
     "phase_rotate",
     "convolution_reverb",
+    "multiband",
+    "expander",
+    "room-reverb",
+    "tape-delay",
+    "chorus",
+    "flanger",
+    "phaser",
+    "distortion",
+    "channel-mixer",
+    "stereo-expander",
   ];
   function fxTarget(): { target: EffectTarget; chain: EffectChainDoc | undefined; name: string; wave?: boolean } | null {
     if (inWave()) {
@@ -2463,7 +2550,7 @@
       if (!path) return false;
       if (kindOfPath(path) === null) path = `${path}.wav`;
       const lossyKind = kindOfPath(path);
-      if (lossyKind === "mp3" || lossyKind === "m4a") {
+      if (lossyKind === "mp3" || lossyKind === "m4a" || lossyKind === "aac") {
         const name = lossyKind === "mp3" ? "MP3" : "AAC";
         const ok = await ask(`Save as ${name}?`, `${name} is lossy: fine for publishing, but keep a WAV or FLAC copy if you'll edit it again.`, [
           { label: `Save ${name}`, value: "yes", primary: true },
@@ -3408,6 +3495,55 @@
         enabled: () => waveBoard !== null,
         reason: () => "Copy or cut audio in the Waveform editor first.",
       }),
+      actions.register({
+        id: "edit.snap-zero",
+        run: async () => {
+          const r = waveSel();
+          const d = wave.current;
+          if (!r || !d) return;
+          try {
+            // Looks up to 20 ms either way for the nearest place the sound crosses zero.
+            const [a, b] = await waveZeroCrossings([r[0], r[1]], Math.round(d.sample_rate * 0.02));
+            if (a === undefined || b === undefined) return;
+            if (b <= a) return showNotice("The two edges would land on the same spot, so the selection was left as it was.");
+            if (a === r[0] && b === r[1]) return showNotice("Both edges were already at zero crossings, or none is within 20 ms.");
+            waveSetSelection([a, b]);
+            const ms = (n: number) => Math.round((Math.abs(n) / d.sample_rate) * 10000) / 10;
+            showNotice(`Selection edges moved ${ms(a - r[0])} ms and ${ms(b - r[1])} ms to the nearest zero crossings.`);
+          } catch (e) {
+            showError(e);
+          }
+        },
+        enabled: () => waveFocus() && waveSel() !== null,
+        reason: () => (waveIsOpen() ? NEED_WAVE_SEL : NOT_WAVE),
+      }),
+      actions.register({
+        id: "edit.paste-crossfade",
+        run: async () => {
+          if (!waveBoard) return;
+          const d0 = wave.current;
+          if (!d0) return;
+          const v = await promptText("Paste with Crossfade", "Crossfade length (ms, 1 to 500)", "10");
+          if (v === null) return;
+          const ms = Number(v);
+          if (!Number.isFinite(ms) || ms < 1 || ms > 500) return showNotice("Enter a length between 1 and 500 milliseconds.");
+          if (pasteTake(get(waveChannels), waveBoard.channel) && (d0.media[0]?.channels ?? 1) > 1) {
+            return showNotice("Paste with Crossfade works on all channels at once. Switch every channel on first.");
+          }
+          // Pasting over a selection replaces it, as Paste does.
+          const r = waveSel();
+          if (r) await waveEdit("Delete", deleteRange(wave.current!, r[0], r[1], uuid));
+          const at = r ? r[0] : wavePlayhead();
+          const p = pasteAt(wave.current!, waveBoard, at, uuid);
+          if (!p || !(await waveEdit("Paste", p.op))) return;
+          const x = crossfadeSeams(wave.current!, [at, at + p.length], Math.round((ms / 1000) * wave.current!.sample_rate));
+          if (x) await waveEdit("Crossfade", x.op);
+          waveSetSelection([at, at + p.length], at);
+          showNotice(x ? `Pasted with a ${ms} ms crossfade at ${x.joins === 1 ? "one join" : "both joins"}. Undo takes it back in steps: the crossfade, then the paste.` : "Pasted. There was no audio left to run on at the joins, so no crossfade was made.");
+        },
+        enabled: () => waveFocus() && waveBoard !== null,
+        reason: () => (waveIsOpen() ? "Copy or cut audio in the Waveform editor first." : NOT_WAVE),
+      }),
       ov(waveFocus, {
         id: "edit.mix-paste",
         run: async () => {
@@ -3609,6 +3745,22 @@
       actions.register({
         id: "file.import-files",
         run: async () => importPaths(await pickMediaFiles()),
+      }),
+      actions.register({
+        id: "file.edit-tags",
+        run: async () => {
+          const [path] = await pickMediaFiles();
+          if (!path) return;
+          if (waveFile.current()?.path === path) {
+            showNotice("That file is open in the Waveform editor. Save and close it first, then edit its tags.");
+            return;
+          }
+          try {
+            tagsEdit = { path, tags: await tagsRead(path) };
+          } catch (e) {
+            showError(e);
+          }
+        },
       }),
       actions.register({
         id: "file.import-folder",
@@ -4156,6 +4308,14 @@
         enabled: () => exporting === null && contentEnd() > 0,
         reason: () => "The session has no clips yet.",
       }),
+      ...(["frequency", "statistics", "histogram", "problems"] as const).map((tab) =>
+        actions.register({
+          id: `analysis.${tab}`,
+          run: () => openAnalysis(tab),
+          enabled: () => exporting === null && contentEnd() > 0,
+          reason: () => "The session has no clips yet.",
+        }),
+      ),
       actions.register({
         id: "file.publish-package",
         run: () => openPublishDialog(),
@@ -4703,6 +4863,22 @@
         },
         reason: () => "Select a clip first.",
       }),
+      ...FADE_SHAPES.map((sh) =>
+        actions.register({
+          id: `clip.shape.${sh.id}`,
+          run: async () => {
+            const changes = fadeShapeChanges(selectedClipDocs(), sh.id);
+            if (changes.length === 0) return showNotice("The selected clips have no fades to reshape yet, or already use that shape.");
+            await session.edit(`Fade shape: ${sh.label}`, { op: "set_clips", changes }, sessionHistory);
+          },
+          enabled: () => editor.current().selectedClips.size > 0,
+          checked: () => {
+            const fades = selectedClipDocs().flatMap((c) => [c.fade_in, c.fade_out]).filter((f) => f.length > 0);
+            return fades.length > 0 && fades.every((f) => f.shape === sh.id);
+          },
+          reason: () => "Select a clip first.",
+        }),
+      ),
       actions.register({
         id: "clip.fade-out",
         run: () => toggleFade("out"),
@@ -5001,6 +5177,40 @@
   />
 {/if}
 
+{#if tagsEdit}
+  <TagsDialog
+    name={tagsEdit.path.split(/[\\/]/).pop() ?? tagsEdit.path}
+    tags={tagsEdit.tags}
+    unsupported={!TAGGABLE.test(tagsEdit.path)}
+    onSave={async (t) => {
+      const path = tagsEdit?.path;
+      tagsEdit = null;
+      if (!path) return;
+      try {
+        showNotice((await tagsWrite(path, t)) ? "Tags saved." : "That format can't take tags here.");
+      } catch (e) {
+        showError(e);
+      }
+    }}
+    onClose={() => (tagsEdit = null)}
+  />
+{/if}
+
+{#if analysis}
+  <AnalysisDialog
+    report={analysis.report}
+    progress={analysis.progress}
+    tab={analysis.tab}
+    scope={analysis.scope}
+    onTab={(t) => {
+      if (analysis) analysis = { ...analysis, tab: t };
+    }}
+    onMeasure={() => void runAnalysis()}
+    onCancel={() => void exportCancel()}
+    onClose={() => (analysis = null)}
+  />
+{/if}
+
 {#if loud}
   <LoudnessDialog
     report={loud.report}
@@ -5131,6 +5341,17 @@
     progress={lm.progress}
     targetId={lm.target}
     region={lm.region}
+    basis={lm.basis}
+    level={lm.level}
+    onBasis={(b) => {
+      prefs.set(KEY_MATCH_BASIS, b);
+      if (lm) lm = { ...lm, basis: b, level: b === "loudness" ? lm.level : BASIS_LEVEL[b], rows: null };
+      void measureMatch();
+    }}
+    onLevel={(db) => {
+      if (lm) lm = { ...lm, level: db, rows: null };
+      void measureMatch();
+    }}
     onTarget={(id) => {
       prefs.set(KEY_MATCH_TARGET, id);
       if (lm) lm = { ...lm, target: id, rows: null };
@@ -5178,6 +5399,7 @@
     scopes={exportReq.scopes}
     source={exportReq.source}
     chapterCount={session.current?.markers.filter((m) => m.kind === "chapter").length ?? 0}
+    markerCount={session.current?.markers.length ?? 0}
     spaceLayout={session.current?.space?.layout ?? null}
     onBrowse={(from) => exportPickFolder(from || null, "Export To")}
     onScan={(scope) => scanForExport(scope)}

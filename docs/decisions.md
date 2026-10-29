@@ -1519,3 +1519,75 @@ Several requests compared behavior to another editor; per the guardrails they ar
 
 - 0.7.0 ships duck music, the Audio FX Panel v1, the Multiband Compressor, the Amp Model setting, WebVTT and midroll files in the package, and the Record-with-nothing-open fix.
 - The metadata panel and a click, clip and hum report, first planned for 0.7.0, move to 0.8.0 with the effect families so this release is not held up. Modulation effects, determinism tests and the "Under the hood" README section also wait for 0.8.0.
+## 2026-10-28: Modulation family (0.8.0 pre-build)
+
+- Added Chorus, Flanger and Phaser under a new Modulation family, written from textbook methods (swept delay lines, swept all-pass chain). Each passes the sound untouched at zero mix.
+- Audiform leftovers move to 0.9.0 unless they touch 0.8.0 files. 0.8.0 order: modulation, Channel Mixer and Stereo Expander, distortion, algorithmic reverb, expander mode, analysis panels, editing items.
+## 2026-10-28: Determinism tests and "under the hood" wording
+
+- Added tests that a session renders to identical bits on repeat and at different block sizes, and that every built-in effect is deterministic. They run with the normal cargo tests.
+- README gets an "Under the hood" section. It claims only what is tested or visible in the code: Rust engine, no unsafe code in our own crates, plug-ins in a separate process, identical output, 64-bit, audio on the CPU. It does not claim "no memory leaks" (the web view side is not soak-tested) and does not claim GPU acceleration (not wanted for audio).
+
+## 2026-10-29: Channel Mixer, Stereo Expander and Distortion
+
+- Channel Mixer (Amplitude) is a 2x2 gain matrix, each cell from -200% to 200%, with a polarity flip per output. Defaults pass the sound untouched. Swap, mono fold and flip are the same control set to different numbers.
+- Stereo Expander (new Stereo Imagery family) scales the side signal of a mid/side split from 0% (mono) to 300%. "Keep bass centered below" leaves the side signal under that frequency at its own level, so low notes do not spread. It uses a one-pole split, a gentle slope by design.
+- Distortion (new Special family) has four curves (soft clip, hard clip, tube, fold), Drive, a Tone low-pass after the curve, Output and Mix. It evaluates the curve at the frame and its midpoint and averages them, which tames aliasing a little but is not full oversampling. A proper oversampled mode can come later if the harshness shows in real use.
+- All three add no latency and pass the existing determinism test.
+
+## 2026-10-29: Room Reverb and Tape Delay
+
+- Room Reverb is an algorithmic reverb (eight damped feedback combs per side into four all-pass diffusers, the right side slightly longer for width), so there is a reverb that needs no impulse file. Each comb's feedback is set from its own length and the Decay time, so the tail falls 60 dB in about that many seconds, and its input is scaled so the wet level stays about the same at any Decay. Size stretches the delay lengths. Convolution Reverb stays for real spaces.
+- Tape Delay (an analog-style delay) darkens each repeat with a low-pass, softens it with a bounded saturation, and wobbles the delay time slightly. The saturation is level-neutral for small sounds, so turning it up does not change the repeat level, and it keeps even 95% feedback from running away. Delay and Echo stays as the clean, exact version.
+- Both pass the sound untouched at zero mix, add no latency, and pass the determinism test.
+
+## 2026-10-29: Expander / Gate
+
+- One Dynamics effect with two modes. Expander cuts quiet sound by (ratio - 1) dB for every dB it sits under the threshold, never more than Max reduction. Gate drops straight to Max reduction once the sound has stayed under the threshold for the Hold time. Attack is how fast it opens, Release how fast it closes, and it can listen to another track as a sidechain like Breath Gate.
+- Breath Gate stays as the simple one-knob-set version for voice. Normalize already exists as an Amplitude menu action, which is the right shape for it because it needs the loudest sample of the whole file; it is not an effect in a chain.
+
+## 2026-10-29: Analysis menu, and the new effects in the Effects menu
+
+- A new Analysis menu has Frequency Analysis, Amplitude Statistics and Histogram. They share one window with a tab for each and measure the mix, or the time selection when there is one, through the same render a mixdown uses. So the numbers describe what is heard, and nothing about them reads a file the export would not.
+- Frequency Analysis is the average of half-overlapped Hann-windowed 8192-point blocks of the mono mix, drawn on a log frequency axis from 20 Hz. A full-scale sine reads about 0 dB. Statistics report peak, min and max sample, RMS, DC offset and clipped samples per side, plus the quietest, average and loudest 50 ms window and the crest figure. The histogram counts samples in 1 dB steps below full scale, drawn on a log scale so quiet detail shows.
+- The Effects menu now lists everything built so far that was only reachable from the Voice Chain: Multiband Compressor, Expander / Gate, Chorus, Flanger, Phaser, Room Reverb, Tape Delay, Distortion, Channel Mixer and Stereo Expander. The "more effects arrive later" placeholder under Delay and Reverb is gone.
+
+## 2026-10-29: Export dialog redesign (pack 1)
+
+- Export Mixdown now shows the choices as summary boxes (format, sample rate and bit depth, loudness, metadata) with a Change… button each, instead of one long form. An (i) icon beside Format explains what each format is for.
+- Settings are remembered per format. Switching from MP3 to FLAC and back restores each format's own bitrate, depth and options. Stored in the `export.mixdown` pref under `formats`.
+- M4A (AAC in an MP4 container) and raw AAC (ADTS, `.aac`) are separate choices. Raw AAC sits under "Other formats" so the common list stays short. Both use Windows Media Foundation, so they are Windows only; the raw path is not yet tested on a real encoder.
+- Loudness normalization is a checkbox with a target drop-down, off by default.
+
+## 2026-10-29: Convert Sample Type parity (export pack 2)
+
+- Sample settings gain a Preset menu (CD, podcast mono and stereo, video and broadcast, high resolution, voice only, telephone). A preset sets rate, channels and depth together; anything else the user already chose stays.
+- Resample quality has four steps (Draft, Good, Best, Highest) that set the length of the resampling filter. Best is the filter exports used before, so existing exports are unchanged. Shown only when a rate is chosen.
+- Dither now has a shape (triangular, rectangular, gaussian), an amount (0.25 to 2 steps of the target depth) and noise shaping (none, light, strong). Light is a first-order error feedback, Strong second order. Both are plain error feedback on the quantizer, kept per channel, with the stored error clamped so a clipped peak cannot make the loop ring. Defaults are the old behavior: triangular, one step, no shaping.
+- The numbers are our own and are not claimed to match Audition's presets or filters one for one.
+- The same controls appear in Export Mixdown (Sample type window) and Batch Convert (Sample Settings).
+
+## 2026-10-29: Marker compatibility (export pack 3)
+
+- Export Mixdown has a second marker checkbox for WAV and FLAC. For WAV it writes every marker, of any type, as a cue point with its name, and gives range markers an `ltxt` length. It replaces the chapter cue points, since chapters are among the markers. The Check step then compares all of them.
+- For FLAC it writes a CUESHEET block with a track at each marker start. It is off by default: a cue sheet has no names, and ffmpeg (so ffprobe and players built on it) turns the cue sheet into chapters and then ignores the named CHAPTER comments. A test now pins that behavior, and `flac -t` accepts the file.
+- MP3 and M4A keep chapters only, since their chapter formats are for podcast chapters, not general markers.
+- The README has a table of what each format holds. It says which parts are checked here and does not promise how other editors read them.
+
+## 2026-10-30: Editing pack (0.8.0 part 9)
+
+- Two more fade shapes: Exponential (slow start, the mirror of Logarithmic) and Equal Power (a quarter sine, so an equal-power pair keeps constant power across a crossfade). Clip > Fades has a Shape item for each, which reshapes the fades a clip already has and leaves clips without fades alone. Settings > General can start new fades in either. Export to Audition's session format writes Equal Power as its S curve and Exponential as linear, because that format has no names for them.
+- Edit > Snap Selection to Zero Crossings moves both edges of a Waveform editor selection to the nearest place the sound crosses zero, within 20 ms either way, averaging the channels. It is an action, not a mode: it runs when asked and tells you how far each edge moved. A mode that snaps every selection waits for 0.9.0.
+- Edit > Paste with Crossfade pastes like Paste, then lets the audio on each side of both joins run on by the chosen length (1 to 500 ms) and fades across the overlap, using the file's own audio past each join. Where no audio is left to run on, that join is left as a plain cut. It is three undo steps at most (delete if a selection was replaced, paste, crossfade) because each step reuses the existing edit path.
+- Loudness Match can match by Peak or RMS as well as by loudness. Peak and RMS read both channels of the clip or track; RMS combines them as power. A change that would push the loudest sample past full scale is flagged and starts unticked, as with loudness.
+
+## 2026-10-30: Problems report and file tags (0.8.0 part 10)
+
+- Analysis > Find Problems reports clicks, clipped and flattened peaks, and mains hum (50 or 60 Hz with its harmonics) as a tab in the Analysis dialog, with times you can read off. It reports; it does not repair. Repair stays in the effects that already exist, so one report cannot silently change audio.
+- File > Edit File Tags opens a small dialog for title, artist, album, year, genre, track and comment on a WAV, FLAC, MP3 or M4A file. Only filled-in fields are written, so blank fields never wipe what a file has, and chapters and audio are untouched. A file open in the Waveform editor is refused so two writers never touch one file.
+- It is a dialog, not a docked Metadata panel. The panel waits for 0.9.0.
+
+## 2026-10-30: Release 0.8.0
+
+- Version bumped to 0.8.0 with `scripts/bump-version.mjs`. Release notes are in `docs/release-notes-0.8.0.md` and say what is untested (raw AAC on real encoders, Find Problems on varied recordings).
+- Moved to 0.9.0: FX Panel analysis, suggested settings and A/B (needs raw recordings), the installer, leftover Audiform items, the User Guide, a persistent snap-to-zero mode, a docked Metadata panel, and the CI Node 20 warning.

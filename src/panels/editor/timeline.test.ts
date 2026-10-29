@@ -20,6 +20,9 @@ import {
   xOf,
   zoomAround,
   MIN_SPP,
+  MIN_TRACK_H,
+  COLLAPSED_H,
+  trackHeight,
 } from "./timeline";
 
 describe("timeline geometry", () => {
@@ -181,5 +184,16 @@ describe("bars and beats", () => {
     ]);
     const bars = gridLines({ spp: 10, scroll: 0 }, 1_000, rate, t).filter((l) => l.bar);
     expect(bars.map((l) => Math.round(l.x))).toEqual([0, 200, 400, 700, 1_000]);
+  });
+});
+
+describe("track height", () => {
+  it("never shows an open track shorter than its full header", () => {
+    expect(trackHeight({ height: 60 })).toBe(MIN_TRACK_H);
+    expect(trackHeight({ height: 200 })).toBe(200);
+  });
+
+  it("still lets a track be folded to its name row", () => {
+    expect(trackHeight({ height: 200, collapsed: true })).toBe(COLLAPSED_H);
   });
 });

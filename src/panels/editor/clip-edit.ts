@@ -792,6 +792,27 @@ export function withCrossfades(doc: SessionDoc, changes: ClipChange[]): ClipChan
   return [...merged.values()];
 }
 
+/** The fade shapes a clip can have, with the names the menu shows. */
+export const FADE_SHAPES: { id: string; label: string }[] = [
+  { id: "cosine", label: "S Curve" },
+  { id: "linear", label: "Linear" },
+  { id: "logarithmic", label: "Logarithmic" },
+  { id: "exponential", label: "Exponential" },
+  { id: "equal_power", label: "Equal Power" },
+];
+
+/** Gives every fade the clips already have the chosen shape. Clips with no fades are left alone. */
+export function fadeShapeChanges(clips: readonly ClipDoc[], shape: string): ClipChange[] {
+  const out: ClipChange[] = [];
+  for (const c of clips) {
+    const change: ClipChange = { id: c.id };
+    if (c.fade_in.length > 0 && c.fade_in.shape !== shape) change.fade_in = { ...c.fade_in, shape };
+    if (c.fade_out.length > 0 && c.fade_out.shape !== shape) change.fade_out = { ...c.fade_out, shape };
+    if (change.fade_in || change.fade_out) out.push(change);
+  }
+  return out;
+}
+
 /** The ids plus every clip that shares a group with one of them. */
 export function withGroups(doc: SessionDoc, ids: Iterable<string>): string[] {
   const want = new Set(ids);

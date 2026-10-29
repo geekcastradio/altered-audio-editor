@@ -14,6 +14,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use super::session::OpenSession;
+use crate::export::analysis::{self, AnalysisReport};
 use crate::export::encode::FormatKind;
 use crate::export::loudness::{self, LoudnessReport};
 use crate::export::mixdown::{self, MixdownRequest, MixdownResult};
@@ -51,6 +52,7 @@ pub async fn export_pick_path(
         FormatKind::Flac => "FLAC audio",
         FormatKind::Mp3 => "MP3 audio",
         FormatKind::M4a => "AAC audio (M4A)",
+        FormatKind::Aac => "Raw AAC audio",
     };
     spawn_blocking(move || {
         let mut d = app
@@ -65,6 +67,7 @@ pub async fn export_pick_path(
                 FormatKind::Flac,
                 FormatKind::Mp3,
                 FormatKind::M4a,
+                FormatKind::Aac,
             ] {
                 if k != kind {
                     d = d.add_filter(label(k), &[k.extension()]);
@@ -291,6 +294,32 @@ pub async fn loudness_check(
     .map_err(|e| e.to_string())?
 }
 
+/// Analyzes the open session's mix: spectrum, statistics and histogram.
+/// Emits `export-progress` and stops on `export_cancel`.
+#[tauri::command]
+pub async fn analyze_audio(
+    app: AppHandle,
+    open: State<'_, OpenSession>,
+    cancel: State<'_, ExportCancel>,
+    request: MixdownRequest,
+) -> Result<AnalysisReport, String> {
+    let session = open.0.lock().map_err(|e| e.to_string())?.session.clone();
+    let flag = cancel.0.clone();
+    flag.store(false, Ordering::Relaxed);
+    spawn_blocking(move || {
+        let mut last = 0u64;
+        analysis::analyze(&session, &request, &flag, |done, total| {
+            if done == total || done - last >= total / 100 {
+                last = done;
+                let _ = app.emit("export-progress", Progress { done, total });
+            }
+        })
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub fn export_cancel(cancel: State<'_, ExportCancel>) {
     cancel.0.store(true, Ordering::Relaxed);
@@ -376,6 +405,54 @@ pub async fn export_embed_chapters(
             _ => Ok(false),
         };
         r.map_err(|e| format!("Could not add chapters: {e}"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Writes every marker (not only chapters) into an exported WAV as cue points with
+/// labels and range lengths, or into a FLAC as a cue sheet. Returns how many were written;
+/// other formats get none.
+#[tauri::command]
+pub async fn export_embed_markers(
+    path: PathBuf,
+    markers: Vec<crate::export::chapters::Marker>,
+) -> Result<usize, String> {
+    spawn_blocking(move || {
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let r = match ext.as_str() {
+            "wav" => {
+                crate::export::chapters::embed_wav_markers(&path, &markers).map(|_| markers.len())
+            }
+            "flac" => crate::export::chapters::embed_flac_cuesheet(&path, &markers),
+            _ => Ok(0),
+        };
+        r.map_err(|e| format!("Could not add markers: {e}"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The title, artist and other tags in an audio file. Files that can't be read give none.
+#[tauri::command]
+pub async fn tags_read(path: PathBuf) -> Result<crate::export::tags::Tags, String> {
+    spawn_blocking(move || crate::export::tags::read_tags(&path))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Writes tags into a WAV, FLAC, MP3 or M4A file. Only fields that are filled in are
+/// written; the rest of the file, chapters included, stays as it is. False when the
+/// format has no tag support here.
+#[tauri::command]
+pub async fn tags_write(path: PathBuf, tags: crate::export::tags::Tags) -> Result<bool, String> {
+    spawn_blocking(move || {
+        crate::export::tags::write_tags(&path, &tags)
+            .map_err(|e| format!("Could not write the tags: {e}"))
     })
     .await
     .map_err(|e| e.to_string())?
