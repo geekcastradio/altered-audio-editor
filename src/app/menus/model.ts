@@ -382,6 +382,7 @@ export const MENUS: readonly Menu[] = [
       ]),
       sub("Amplitude", [
         item("fx.add.gain", "Gain (in the Voice Chain)"),
+        item("fx.add.channel-mixer", "Channel Mixer"),
         item("fx.amplify", "Amplify..."),
         item("fx.normalize", "Normalize..."),
         item("fx.fade-in", "Fade In"),
@@ -398,17 +399,23 @@ export const MENUS: readonly Menu[] = [
       sortedSub("Delay and Reverb", [
         item("fx.add.echo", "Delay and Echo"),
         item("fx.add.convolution_reverb", "Convolution Reverb"),
-        item("fx.space", "More effects arrive later", {
-          pending: P5,
-          placeholder: true,
-        }),
+        item("fx.add.room-reverb", "Room Reverb"),
+        item("fx.add.tape-delay", "Tape Delay"),
       ]),
+      sortedSub("Modulation", [
+        item("fx.add.chorus", "Chorus"),
+        item("fx.add.flanger", "Flanger"),
+        item("fx.add.phaser", "Phaser"),
+      ]),
+      sortedSub("Special", [item("fx.add.distortion", "Distortion")]),
       sortedSub("Dynamics", [
         item("fx.add.dynamics", "Dynamics"),
         item("fx.add.limiter", "Limiter"),
         item("fx.add.breath_gate", "Breath Gate"),
         item("fx.add.deesser", "De-Esser"),
         item("fx.add.speech_leveler", "Speech Leveler"),
+        item("fx.add.multiband", "Multiband Compressor"),
+        item("fx.add.expander", "Expander / Gate"),
       ]),
       sortedSub("EQ and Filters", [
         item("fx.add.parametric_eq", "Parametric EQ"),
@@ -450,6 +457,7 @@ export const MENUS: readonly Menu[] = [
       sortedSub("Stereo and Channels", [
         item("fx.add.center_remover", "Center Remover (remove vocals)"),
         item("fx.add.phase_rotate", "Phase Rotate"),
+        item("fx.add.stereo-expander", "Stereo Expander"),
       ]),
       sep,
       item("fx.vst", "VST", {
@@ -457,6 +465,15 @@ export const MENUS: readonly Menu[] = [
       }),
       popup("fx.vst3", "VST3"),
       item("fx.plugin-manager", "Plug-in Manager..."),
+    ],
+  },
+  {
+    label: "Analysis",
+    mnemonic: "A",
+    items: [
+      item("analysis.frequency", "Frequency Analysis..."),
+      item("analysis.statistics", "Amplitude Statistics..."),
+      item("analysis.histogram", "Histogram..."),
     ],
   },
   {

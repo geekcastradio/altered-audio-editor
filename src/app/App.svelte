@@ -66,6 +66,8 @@
   import PromptDialog from "./PromptDialog.svelte";
   import ExportProgress from "./ExportProgress.svelte";
   import LoudnessDialog from "./LoudnessDialog.svelte";
+  import AnalysisDialog from "./AnalysisDialog.svelte";
+  import type { AnalysisReport, AnalysisTab } from "./analysis";
   import LoudnessMatchDialog from "./LoudnessMatchDialog.svelte";
   import ExportMarkersDialog from "./ExportMarkersDialog.svelte";
   import StretchDialog from "./StretchDialog.svelte";
@@ -168,6 +170,7 @@
     pickTrackFiles,
     unzipMedia,
     loudnessCheck,
+    analyzeAudio,
     sessionPickSave,
     sessionImportSesx,
     sessionRecover,
@@ -1680,6 +1683,33 @@
     }
   }
 
+  // Analysis menu: spectrum, statistics and histogram of the mix or the time selection.
+  let analysis = $state<{ report: AnalysisReport | null; progress: number | null; tab: AnalysisTab; scope: string } | null>(null);
+
+  async function runAnalysis() {
+    if (!analysis || analysis.progress !== null) return;
+    const r = timeSel();
+    analysis = { ...analysis, progress: 0, scope: r ? "the time selection" : "the whole session" };
+    let off: (() => void) | null = null;
+    try {
+      off = await listen<{ done: number; total: number }>("export-progress", (e) => {
+        if (analysis && analysis.progress !== null) analysis = { ...analysis, progress: e.payload.total > 0 ? e.payload.done / e.payload.total : 0 };
+      });
+      const report = await analyzeAudio(r ? { range: [r.start, r.end] } : {});
+      if (analysis) analysis = { ...analysis, progress: null, report: report.cancelled ? analysis.report : report };
+    } catch (e) {
+      if (analysis) analysis = { ...analysis, progress: null };
+      showError(e);
+    } finally {
+      off?.();
+    }
+  }
+
+  function openAnalysis(tab: AnalysisTab) {
+    analysis = { report: null, progress: null, tab, scope: "" };
+    return runAnalysis();
+  }
+
   async function applyMasterGain(db: number) {
     const cur = session.current?.master?.volume_db ?? 0;
     const next = Math.round((cur + db) * 10) / 10;
@@ -2296,6 +2326,16 @@
     "center_remover",
     "phase_rotate",
     "convolution_reverb",
+    "multiband",
+    "expander",
+    "room-reverb",
+    "tape-delay",
+    "chorus",
+    "flanger",
+    "phaser",
+    "distortion",
+    "channel-mixer",
+    "stereo-expander",
   ];
   function fxTarget(): { target: EffectTarget; chain: EffectChainDoc | undefined; name: string; wave?: boolean } | null {
     if (inWave()) {
@@ -4156,6 +4196,14 @@
         enabled: () => exporting === null && contentEnd() > 0,
         reason: () => "The session has no clips yet.",
       }),
+      ...(["frequency", "statistics", "histogram"] as const).map((tab) =>
+        actions.register({
+          id: `analysis.${tab}`,
+          run: () => openAnalysis(tab),
+          enabled: () => exporting === null && contentEnd() > 0,
+          reason: () => "The session has no clips yet.",
+        }),
+      ),
       actions.register({
         id: "file.publish-package",
         run: () => openPublishDialog(),
@@ -4998,6 +5046,21 @@
       colorFor = null;
       if (target && c !== null) void editClips("Clip Color", target.ids.map((id) => ({ id, color: c }))).catch(showError);
     }}
+  />
+{/if}
+
+{#if analysis}
+  <AnalysisDialog
+    report={analysis.report}
+    progress={analysis.progress}
+    tab={analysis.tab}
+    scope={analysis.scope}
+    onTab={(t) => {
+      if (analysis) analysis = { ...analysis, tab: t };
+    }}
+    onMeasure={() => void runAnalysis()}
+    onCancel={() => void exportCancel()}
+    onClose={() => (analysis = null)}
   />
 {/if}
 

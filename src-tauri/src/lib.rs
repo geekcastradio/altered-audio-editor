@@ -169,6 +169,7 @@ pub fn run() {
             commands::export::clip_reverse_prepare,
             commands::export::export_cancel,
             commands::export::loudness_check,
+            commands::export::analyze_audio,
             commands::export::export_merge,
             commands::export::export_region_copy,
             commands::wave::wave_open,

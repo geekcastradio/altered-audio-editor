@@ -1545,3 +1545,9 @@ Several requests compared behavior to another editor; per the guardrails they ar
 
 - One Dynamics effect with two modes. Expander cuts quiet sound by (ratio - 1) dB for every dB it sits under the threshold, never more than Max reduction. Gate drops straight to Max reduction once the sound has stayed under the threshold for the Hold time. Attack is how fast it opens, Release how fast it closes, and it can listen to another track as a sidechain like Breath Gate.
 - Breath Gate stays as the simple one-knob-set version for voice. Normalize already exists as an Amplitude menu action, which is the right shape for it because it needs the loudest sample of the whole file; it is not an effect in a chain.
+
+## 2026-10-29: Analysis menu, and the new effects in the Effects menu
+
+- A new Analysis menu has Frequency Analysis, Amplitude Statistics and Histogram. They share one window with a tab for each and measure the mix, or the time selection when there is one, through the same render a mixdown uses. So the numbers describe what is heard, and nothing about them reads a file the export would not.
+- Frequency Analysis is the average of half-overlapped Hann-windowed 8192-point blocks of the mono mix, drawn on a log frequency axis from 20 Hz. A full-scale sine reads about 0 dB. Statistics report peak, min and max sample, RMS, DC offset and clipped samples per side, plus the quietest, average and loudest 50 ms window and the crest figure. The histogram counts samples in 1 dB steps below full scale, drawn on a log scale so quiet detail shows.
+- The Effects menu now lists everything built so far that was only reachable from the Voice Chain: Multiband Compressor, Expander / Gate, Chorus, Flanger, Phaser, Room Reverb, Tape Delay, Distortion, Channel Mixer and Stereo Expander. The "more effects arrive later" placeholder under Delay and Reverb is gone.

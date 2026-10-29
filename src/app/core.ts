@@ -768,6 +768,13 @@ export function loudnessCheck(request: MixdownRequest): Promise<import("./loudne
   });
 }
 
+/** Analyzes the mix (spectrum, statistics, histogram). Progress arrives as `export-progress`; `exportCancel` stops it. */
+export function analyzeAudio(request: MixdownRequest): Promise<import("./analysis").AnalysisReport> {
+  return invoke("analyze_audio", {
+    request: { range: request.range ?? null, clips: request.clips ?? null, bit_depth: null, track: request.track ?? null, clip_only: request.clipOnly ?? false, dry: request.dry ?? false },
+  });
+}
+
 export function exportCancel(): Promise<void> {
   return invoke<void>("export_cancel");
 }

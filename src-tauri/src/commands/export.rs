@@ -14,6 +14,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use super::session::OpenSession;
+use crate::export::analysis::{self, AnalysisReport};
 use crate::export::encode::FormatKind;
 use crate::export::loudness::{self, LoudnessReport};
 use crate::export::mixdown::{self, MixdownRequest, MixdownResult};
@@ -280,6 +281,32 @@ pub async fn loudness_check(
     spawn_blocking(move || {
         let mut last = 0u64;
         loudness::measure(&session, &request, &flag, |done, total| {
+            if done == total || done - last >= total / 100 {
+                last = done;
+                let _ = app.emit("export-progress", Progress { done, total });
+            }
+        })
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Analyzes the open session's mix: spectrum, statistics and histogram.
+/// Emits `export-progress` and stops on `export_cancel`.
+#[tauri::command]
+pub async fn analyze_audio(
+    app: AppHandle,
+    open: State<'_, OpenSession>,
+    cancel: State<'_, ExportCancel>,
+    request: MixdownRequest,
+) -> Result<AnalysisReport, String> {
+    let session = open.0.lock().map_err(|e| e.to_string())?.session.clone();
+    let flag = cancel.0.clone();
+    flag.store(false, Ordering::Relaxed);
+    spawn_blocking(move || {
+        let mut last = 0u64;
+        analysis::analyze(&session, &request, &flag, |done, total| {
             if done == total || done - last >= total / 100 {
                 last = done;
                 let _ = app.emit("export-progress", Progress { done, total });
