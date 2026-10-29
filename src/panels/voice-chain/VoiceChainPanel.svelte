@@ -156,10 +156,10 @@
   const known = $derived(new Set(catalog.map((e) => e.id)));
   const categories = $derived([...new Set(catalog.map((e) => e.category))]);
   // Music tools are offered in the Add effect menus only with Music Mode on; a slot that already holds one keeps working.
-  let music = $state(settings.current.musicMode);
+  let music = $state(settings.current.musicMode || settings.current.ampModelAlways);
   $effect(() =>
     settings.subscribe((v) => {
-      music = v.musicMode;
+      music = v.musicMode || v.ampModelAlways;
     }),
   );
   const menuCatalog = $derived(music ? catalog : catalog.filter((e) => e.id !== "altaudio.amp_model"));

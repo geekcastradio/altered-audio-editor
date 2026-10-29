@@ -543,7 +543,7 @@ Decision (project lead): broadcast and CD features stay in the plan for people w
 - **Older versions drop new fields.** 0.2.0 and earlier discard the optional fields 0.3.0 adds (space, MIDI data, gain_db, tempo changes, beat_unit, show_automation) when they save. Consider warning when a newer session is opened.
 - **Hardware testing owed:** buses and sends on real interfaces, real VST3 instruments and effects, MIDI input, killing the plug-in host process while playing, real-time safety under load, Linux and macOS builds.
 - **Amp Model:** decide whether Tube Preamp and Opto Leveler should also sit behind Music Mode (left in the normal list for now). Confirm the capture-loading code and credits.
-- **Zoom chords** (zoom out to full, zoom all axes) are in the keymap; the all-axes menu item is still pending.
+- **Zoom chords** (zoom out to full, zoom all axes) are in the keymap and the View menu.
 - **Contributor flow:** ask nwh212 to confirm the CLA on GitHub too, and to send smaller pull requests that keep new features behind Music Mode.
 
 ## Added 2026-10-27, after 0.6.0 prep

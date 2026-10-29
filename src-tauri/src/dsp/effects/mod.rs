@@ -35,7 +35,7 @@ use serde::Serialize;
 
 use crate::session::model::{EffectChain, EffectSlot, Id};
 
-pub use dynamics::{Compressor, DeEsser, Gate, Limiter, SpeechLeveler};
+pub use dynamics::{Compressor, DeEsser, Gate, Limiter, Multiband, SpeechLeveler};
 pub use eq::{HumCut, ParametricEq};
 pub use restore::{find_spots, repair_spots, Spots};
 
@@ -183,6 +183,7 @@ pub fn catalog() -> Vec<EffectInfo> {
         phase::phase_info(),
         phase_curve::phase_curve_info(),
         dynamics::compressor_info(),
+        dynamics::multiband_info(),
         dynamics::limiter_info(),
         dynamics::gate_info(),
         dynamics::deesser_info(),
@@ -419,6 +420,7 @@ pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
         "altaudio.parametric_eq" => Box::new(ParametricEq::new(&p, rate)),
         "altaudio.hum_cut" => Box::new(HumCut::new(&p, rate)),
         "altaudio.dynamics" => Box::new(Compressor::new(&p, rate)),
+        "altaudio.multiband" => Box::new(Multiband::new(&p, rate)),
         "altaudio.limiter" => Box::new(Limiter::new(&p, rate)),
         "altaudio.breath_gate" => Box::new(Gate::new(&p, rate)),
         "altaudio.deesser" => Box::new(DeEsser::new(&p, rate)),

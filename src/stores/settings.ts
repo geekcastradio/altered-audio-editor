@@ -89,6 +89,8 @@ export interface AppSettings {
   phaseWheel: PhaseWheelPrefs;
   /** View > Music Mode: offers the music tools (MIDI tracks, the Amp Model, the metronome). Off keeps them out of the way. */
   musicMode: boolean;
+  /** Offer the Amp Model in the Add effect menus even with Music Mode off (it is a music tool, so off by default). */
+  ampModelAlways: boolean;
   /** The metronome, kept between runs. */
   metronome: MetronomePrefs;
   /** Help > Check for Updates once a week on its own. Off unless turned on (Settings > Privacy). */
@@ -187,6 +189,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   timecodeFps: 30,
   phaseWheel: { size: 4096, fps: 60, a: "left", b: "right" },
   musicMode: false,
+  ampModelAlways: false,
   updateCheck: false,
   lastUpdateCheck: 0,
   spaceSnap: true,
@@ -285,6 +288,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       : d.timecodeFps,
     phaseWheel: phasePrefs(o.phaseWheel),
     musicMode: bool(o.musicMode, d.musicMode),
+    ampModelAlways: bool(o.ampModelAlways, d.ampModelAlways),
     updateCheck: bool(o.updateCheck, d.updateCheck),
     lastUpdateCheck:
       typeof o.lastUpdateCheck === "number" && Number.isFinite(o.lastUpdateCheck) && o.lastUpdateCheck > 0
