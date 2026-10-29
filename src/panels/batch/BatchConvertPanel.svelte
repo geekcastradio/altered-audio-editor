@@ -88,7 +88,7 @@
   const waiting = $derived(rows.filter((r) => r.status !== "done" && !problems.has(r.id)));
   const outputSummary = $derived.by(() => {
     const f = s.format;
-    const kind = f.kind === "mp3" ? (f.mp3Mode === "cbr" ? `MP3 ${f.mp3Bitrate} kbps` : `MP3 VBR q${f.mp3Quality}`) : f.kind === "m4a" ? `AAC ${f.aacBitrate} kbps` : f.kind.toUpperCase();
+    const kind = f.kind === "mp3" ? (f.mp3Mode === "cbr" ? `MP3 ${f.mp3Bitrate} kbps` : `MP3 VBR q${f.mp3Quality}`) : f.kind === "m4a" || f.kind === "aac" ? `${f.kind === "aac" ? "Raw AAC" : "AAC"} ${f.aacBitrate} kbps` : f.kind.toUpperCase();
     const where = s.folder ? `into ${fileName(s.folder) || s.folder}` : "next to each original";
     return `${kind}, ${where}`;
   });

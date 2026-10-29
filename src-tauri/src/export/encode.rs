@@ -36,6 +36,8 @@ pub enum FormatKind {
     Mp3,
     /// AAC in an M4A file.
     M4a,
+    /// Raw AAC (ADTS), a `.aac` file with no container.
+    Aac,
 }
 
 impl FormatKind {
@@ -45,6 +47,7 @@ impl FormatKind {
             FormatKind::Flac => "flac",
             FormatKind::Mp3 => "mp3",
             FormatKind::M4a => "m4a",
+            FormatKind::Aac => "aac",
         }
     }
 
@@ -55,6 +58,7 @@ impl FormatKind {
             "flac" => Some(FormatKind::Flac),
             "mp3" => Some(FormatKind::Mp3),
             "m4a" => Some(FormatKind::M4a),
+            "aac" => Some(FormatKind::Aac),
             _ => None,
         }
     }
@@ -175,13 +179,13 @@ impl OutputFormat {
                 0..=16 => 16,
                 _ => 24,
             },
-            FormatKind::Mp3 | FormatKind::M4a => 16,
+            FormatKind::Mp3 | FormatKind::M4a | FormatKind::Aac => 16,
         };
         if let Some(b) = self.bit_depth {
             let ok = match self.kind {
                 FormatKind::Wav => [4, 8, 16, 24, 32].contains(&b),
                 FormatKind::Flac => [16, 24].contains(&b),
-                FormatKind::Mp3 | FormatKind::M4a => true,
+                FormatKind::Mp3 | FormatKind::M4a | FormatKind::Aac => true,
             };
             if !ok {
                 return Err(EncodeError::Settings(format!(
@@ -208,7 +212,7 @@ impl OutputFormat {
                 )));
             }
         }
-        if self.kind == FormatKind::M4a {
+        if matches!(self.kind, FormatKind::M4a | FormatKind::Aac) {
             if !super::aac::AVAILABLE {
                 return Err(EncodeError::Settings(super::aac::UNAVAILABLE.into()));
             }
@@ -268,6 +272,9 @@ impl Resolved {
             FormatKind::Wav => format!("WAV {}-bit, {} Hz {ch}", self.bits, self.rate),
             FormatKind::Flac => format!("FLAC {}-bit, {} Hz {ch}", self.bits, self.rate),
             FormatKind::M4a => format!("AAC {} kbps, {} Hz {ch}", self.aac_bitrate, self.rate),
+            FormatKind::Aac => {
+                format!("AAC (raw) {} kbps, {} Hz {ch}", self.aac_bitrate, self.rate)
+            }
         }
     }
 }
@@ -508,9 +515,18 @@ impl Writer {
     ) -> Result<Self, EncodeError> {
         let out_ch = usize::from(fmt.channels);
         let inner = match fmt.kind {
-            FormatKind::M4a => Inner::Aac {
-                w: super::aac::AacWriter::create(path, fmt.rate, fmt.channels, fmt.aac_bitrate)
-                    .map_err(EncodeError::Write)?,
+            FormatKind::M4a | FormatKind::Aac => Inner::Aac {
+                w: if fmt.kind == FormatKind::Aac {
+                    super::aac::AacWriter::create_adts(
+                        path,
+                        fmt.rate,
+                        fmt.channels,
+                        fmt.aac_bitrate,
+                    )
+                } else {
+                    super::aac::AacWriter::create(path, fmt.rate, fmt.channels, fmt.aac_bitrate)
+                }
+                .map_err(EncodeError::Write)?,
                 dither: Dither::with(16, fmt.dither),
                 buf: Vec::new(),
             },
@@ -1054,5 +1070,36 @@ mod aac_tests {
             assert!(r.is_err(), "says plainly that AAC is not available here");
         }
         assert_eq!(FormatKind::from_extension("M4A"), Some(FormatKind::M4a));
+        assert_eq!(FormatKind::from_extension("aac"), Some(FormatKind::Aac));
+        assert_eq!(FormatKind::Aac.extension(), "aac");
+    }
+
+    /// Raw AAC is a stream of ADTS frames: each starts with a 12-bit sync
+    /// word, and there is no MP4 box header at the front.
+    #[test]
+    fn raw_aac_is_an_adts_stream() {
+        // The Windows encoder has crashed the test process before, so (as in
+        // the mixdown test) it runs there only when asked: AAE_TEST_AAC=1.
+        if !super::super::aac::AVAILABLE
+            || (cfg!(windows) && std::env::var_os("AAE_TEST_AAC").is_none())
+        {
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("t.aac");
+        let fmt = OutputFormat {
+            kind: FormatKind::Aac,
+            ..Default::default()
+        };
+        let resolved = fmt.resolve(48_000, 2, 16).unwrap();
+        let mut w = Writer::create(&path, &resolved, 48_000, 2).unwrap();
+        let data: Vec<f32> = (0..96_000).map(|i| (i as f32 * 0.05).sin() * 0.3).collect();
+        w.write(&data).unwrap();
+        w.finish().unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        assert!(bytes.len() > 1000);
+        assert_eq!(bytes[0], 0xFF, "an ADTS sync word starts the file");
+        assert_eq!(bytes[1] & 0xF0, 0xF0);
+        assert_ne!(&bytes[4..8], b"ftyp");
     }
 }

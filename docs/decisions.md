@@ -1551,3 +1551,10 @@ Several requests compared behavior to another editor; per the guardrails they ar
 - A new Analysis menu has Frequency Analysis, Amplitude Statistics and Histogram. They share one window with a tab for each and measure the mix, or the time selection when there is one, through the same render a mixdown uses. So the numbers describe what is heard, and nothing about them reads a file the export would not.
 - Frequency Analysis is the average of half-overlapped Hann-windowed 8192-point blocks of the mono mix, drawn on a log frequency axis from 20 Hz. A full-scale sine reads about 0 dB. Statistics report peak, min and max sample, RMS, DC offset and clipped samples per side, plus the quietest, average and loudest 50 ms window and the crest figure. The histogram counts samples in 1 dB steps below full scale, drawn on a log scale so quiet detail shows.
 - The Effects menu now lists everything built so far that was only reachable from the Voice Chain: Multiband Compressor, Expander / Gate, Chorus, Flanger, Phaser, Room Reverb, Tape Delay, Distortion, Channel Mixer and Stereo Expander. The "more effects arrive later" placeholder under Delay and Reverb is gone.
+
+## 2026-10-29: Export dialog redesign (pack 1)
+
+- Export Mixdown now shows the choices as summary boxes (format, sample rate and bit depth, loudness, metadata) with a Change… button each, instead of one long form. An (i) icon beside Format explains what each format is for.
+- Settings are remembered per format. Switching from MP3 to FLAC and back restores each format's own bitrate, depth and options. Stored in the `export.mixdown` pref under `formats`.
+- M4A (AAC in an MP4 container) and raw AAC (ADTS, `.aac`) are separate choices. Raw AAC sits under "Other formats" so the common list stays short. Both use Windows Media Foundation, so they are Windows only; the raw path is not yet tested on a real encoder.
+- Loudness normalization is a checkbox with a target drop-down, off by default.

@@ -16,9 +16,11 @@
     format: OutputFormat;
     /** What "Same as source" means here, for example "Session" or "Same as each file". */
     sourceLabel: string;
+    /** "all" shows every control; "type" only rate, channels and depth; "settings" only the format's own options. */
+    parts?: "all" | "type" | "settings";
   }
 
-  let { format = $bindable(), sourceLabel }: Props = $props();
+  let { format = $bindable(), sourceLabel, parts = "all" }: Props = $props();
 
   const depths = $derived(depthsFor(format.kind));
   const lossy = $derived(FORMAT_KINDS.find((k) => k.value === format.kind)?.lossy ?? false);
@@ -33,85 +35,99 @@
 </script>
 
 <div class="fields">
-  <label>
-    <span>Format</span>
-    <select bind:value={format.kind}>
-      {#each FORMAT_KINDS as k (k.value)}
-        <option value={k.value} disabled={!available(k.value)}>{k.label}{available(k.value) ? "" : " (Windows only for now)"}</option>
-      {/each}
-    </select>
-  </label>
-  <label>
-    <span>Sample rate</span>
-    <select bind:value={format.sampleRate}>
-      <option value={null}>{sourceLabel}</option>
-      {#each OUTPUT_RATES as r (r)}
-        <option value={r}>{rateLabel(r)}</option>
-      {/each}
-    </select>
-  </label>
-  <label>
-    <span>Channels</span>
-    <select bind:value={format.channels}>
-      <option value={null}>{sourceLabel}</option>
-      <option value={1}>Mono</option>
-      <option value={2}>Stereo</option>
-    </select>
-  </label>
-  {#if format.kind === "m4a"}
+  {#if parts === "all"}
     <label>
-      <span>Kbps</span>
-      <select bind:value={format.aacBitrate}>
-        {#each AAC_BITRATES as b (b)}
-          <option value={b}>{b} kbps{b === 128 ? " (spoken word)" : b === 192 ? " (music)" : ""}</option>
+      <span>Format</span>
+      <select bind:value={format.kind}>
+        {#each FORMAT_KINDS.filter((k) => k.group === "main") as k (k.value)}
+          <option value={k.value} disabled={!available(k.value)}>{k.label}{available(k.value) ? "" : " (Windows only for now)"}</option>
+        {/each}
+        <optgroup label="Other formats">
+          {#each FORMAT_KINDS.filter((k) => k.group === "other") as k (k.value)}
+            <option value={k.value} disabled={!available(k.value)}>{k.label}{available(k.value) ? "" : " (Windows only for now)"}</option>
+          {/each}
+        </optgroup>
+      </select>
+    </label>
+  {/if}
+  {#if parts !== "settings"}
+    <label>
+      <span>Sample rate</span>
+      <select bind:value={format.sampleRate}>
+        <option value={null}>{sourceLabel}</option>
+        {#each OUTPUT_RATES as r (r)}
+          <option value={r}>{rateLabel(r)}</option>
         {/each}
       </select>
     </label>
-  {:else if format.kind === "mp3"}
     <label>
-      <span>Bit rate</span>
-      <select bind:value={format.mp3Mode}>
-        <option value="cbr">Constant</option>
-        <option value="vbr">Variable</option>
+      <span>Channels</span>
+      <select bind:value={format.channels}>
+        <option value={null}>{sourceLabel}</option>
+        <option value={1}>Mono</option>
+        <option value={2}>Stereo</option>
       </select>
     </label>
-    {#if format.mp3Mode === "cbr"}
+    {#if depths.length > 0}
       <label>
-        <span>Kbps</span>
-        <select bind:value={format.mp3Bitrate}>
-          {#each MP3_BITRATES as b (b)}
-            <option value={b}>{b} kbps{b === 128 ? " (spoken word)" : b === 192 ? " (common)" : ""}</option>
-          {/each}
-        </select>
-      </label>
-    {:else}
-      <label>
-        <span>Quality</span>
-        <select bind:value={format.mp3Quality}>
-          {#each [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] as q (q)}
-            <option value={q}>{q}{q === 0 ? " (best, largest)" : q === 9 ? " (smallest)" : ""}</option>
+        <span>Bit depth</span>
+        <select bind:value={format.bitDepth}>
+          <option value={null}>{sourceLabel}</option>
+          {#each depths as d (d.value)}
+            <option value={d.value}>{d.label}</option>
           {/each}
         </select>
       </label>
     {/if}
-  {:else}
-    <label>
-      <span>Bit depth</span>
-      <select bind:value={format.bitDepth}>
-        <option value={null}>{sourceLabel}</option>
-        {#each depths as d (d.value)}
-          <option value={d.value}>{d.label}</option>
-        {/each}
-      </select>
-    </label>
+  {/if}
+  {#if parts !== "type"}
+    {#if format.kind === "m4a" || format.kind === "aac"}
+      <label>
+        <span>Kbps</span>
+        <select bind:value={format.aacBitrate}>
+          {#each AAC_BITRATES as b (b)}
+            <option value={b}>{b} kbps{b === 128 ? " (spoken word)" : b === 192 ? " (music)" : ""}</option>
+          {/each}
+        </select>
+      </label>
+    {:else if format.kind === "mp3"}
+      <label>
+        <span>Bit rate</span>
+        <select bind:value={format.mp3Mode}>
+          <option value="cbr">Constant</option>
+          <option value="vbr">Variable</option>
+        </select>
+      </label>
+      {#if format.mp3Mode === "cbr"}
+        <label>
+          <span>Kbps</span>
+          <select bind:value={format.mp3Bitrate}>
+            {#each MP3_BITRATES as b (b)}
+              <option value={b}>{b} kbps{b === 128 ? " (spoken word)" : b === 192 ? " (common)" : ""}</option>
+            {/each}
+          </select>
+        </label>
+      {:else}
+        <label>
+          <span>Quality</span>
+          <select bind:value={format.mp3Quality}>
+            {#each [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] as q (q)}
+              <option value={q}>{q}{q === 0 ? " (best, largest)" : q === 9 ? " (smallest)" : ""}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
+    {/if}
   {/if}
 </div>
-{#if lossy}
-  <p class="note">{format.kind === "m4a" ? "AAC" : "MP3"} is lossy: fine for publishing, but keep a WAV or FLAC master for editing.{format.kind === "m4a" ? " AAC is written at 44.1 or 48 kHz, mono or stereo, using the encoder built into Windows." : ""}</p>
-{:else if format.kind === "wav" && format.bitDepth === 4}
-  <p class="note">4-bit ADPCM is lossy and about a quarter the size of 16-bit. Good for phone systems and voice prompts, not for masters.</p>
-{:else if format.kind === "wav" && format.bitDepth === 8}
-  <p class="note">8-bit has audible hiss on quiet passages. Use it only when a system asks for it.</p>
+{#if parts !== "settings"}
+  {#if format.kind === "wav" && format.bitDepth === 4}
+    <p class="note">4-bit ADPCM is lossy and about a quarter the size of 16-bit. Good for phone systems and voice prompts, not for masters.</p>
+  {:else if format.kind === "wav" && format.bitDepth === 8}
+    <p class="note">8-bit has audible hiss on quiet passages. Use it only when a system asks for it.</p>
+  {:else if lossy && parts === "all"}
+    <p class="note">{format.kind === "mp3" ? "MP3" : "AAC"} is lossy: fine for publishing, but keep a WAV or FLAC master for editing.{format.kind !== "mp3" ? " AAC is written at 44.1 or 48 kHz, mono or stereo, using the encoder built into Windows." : ""}</p>
+  {/if}
 {/if}
 
 <style>

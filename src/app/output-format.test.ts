@@ -3,7 +3,7 @@
 // This file is part of Altered Audio Editor.
 
 import { describe, expect, it } from "vitest";
-import { DEFAULT_FORMAT, depthsFor, describeFormat, estimateBytes, kindOfPath, sanitizeFormat } from "./output-format";
+import { DEFAULT_FORMAT, depthsFor, describeFormat, describeSampleType, describeSettings, estimateBytes, kindOfPath, sanitizeFormat, sanitizeMemory, switchFormat } from "./output-format";
 
 const src = { sampleRate: 48_000, channels: 2, bitDepth: 24 };
 
@@ -43,5 +43,41 @@ describe("output format", () => {
     expect(estimateBytes(DEFAULT_FORMAT, 1, src)).toBe(288_000);
     expect(kindOfPath("C:\\a\\Ep 1.FLAC")).toBe("flac");
     expect(kindOfPath("ep.m4a")).toBe("m4a");
+  });
+});
+
+
+describe("export dialog summaries and per-format memory", () => {
+  it("describes the sample type as the file will have it", () => {
+    expect(describeSampleType({ ...DEFAULT_FORMAT }, src)).toBe("48000 Hz, stereo, 24-bit");
+    expect(describeSampleType({ ...DEFAULT_FORMAT, kind: "mp3", sampleRate: 96_000, channels: 1 }, src)).toBe("48000 Hz, mono");
+    expect(describeSampleType({ ...DEFAULT_FORMAT, kind: "wav", bitDepth: 32 }, src)).toBe("48000 Hz, stereo, 32-bit float");
+  });
+
+  it("describes format settings, and says nothing for formats without any", () => {
+    expect(describeSettings({ ...DEFAULT_FORMAT, kind: "mp3" })).toBe("MP3, 192 kbps, constant");
+    expect(describeSettings({ ...DEFAULT_FORMAT, kind: "aac", aacBitrate: 96 })).toBe("Raw AAC, 96 kbps");
+    expect(describeSettings({ ...DEFAULT_FORMAT, kind: "wav" })).toBeNull();
+  });
+
+  it("keeps settings per format", () => {
+    const mp3 = { ...DEFAULT_FORMAT, kind: "mp3" as const, mp3Bitrate: 128, sampleRate: 44_100 };
+    const a = switchFormat({}, mp3, "wav");
+    expect(a.format.kind).toBe("wav");
+    expect(a.format.mp3Bitrate).toBe(192);
+    const wav = { ...a.format, bitDepth: 24 };
+    const b = switchFormat(a.memory, wav, "mp3");
+    expect(b.format.mp3Bitrate).toBe(128);
+    expect(b.format.sampleRate).toBe(44_100);
+    expect(switchFormat(b.memory, b.format, "wav").format.bitDepth).toBe(24);
+  });
+
+  it("cleans a stored memory and knows the raw AAC extension", () => {
+    expect(sanitizeMemory(null)).toEqual({});
+    const m = sanitizeMemory({ mp3: { kind: "wav", mp3Bitrate: 12345 }, nope: {} });
+    expect(m.mp3?.kind).toBe("mp3");
+    expect(m.mp3?.mp3Bitrate).toBe(192);
+    expect(Object.keys(m)).toEqual(["mp3"]);
+    expect(kindOfPath("a/b.AAC")).toBe("aac");
   });
 });

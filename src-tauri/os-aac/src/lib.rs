@@ -34,6 +34,15 @@ impl AacWriter {
     ) -> Result<Self, String> {
         Err(UNAVAILABLE.into())
     }
+    /// A raw AAC (ADTS) file, `.aac`, instead of an M4A.
+    pub fn create_adts(
+        _path: &std::path::Path,
+        _rate: u32,
+        _channels: u16,
+        _kbps: u16,
+    ) -> Result<Self, String> {
+        Err(UNAVAILABLE.into())
+    }
     pub fn write(&mut self, _samples: &[i16]) -> Result<(), String> {
         Err(UNAVAILABLE.into())
     }
@@ -52,9 +61,9 @@ mod windows_impl {
         IMFAttributes, IMFByteStream, IMFMediaType, IMFSinkWriter, MFAudioFormat_AAC,
         MFAudioFormat_PCM, MFCreateAttributes, MFCreateMediaType, MFCreateMemoryBuffer,
         MFCreateSample, MFCreateSinkWriterFromURL, MFMediaType_Audio, MFShutdown, MFStartup,
-        MFTranscodeContainerType_MPEG4, MFSTARTUP_LITE, MF_MT_AUDIO_AVG_BYTES_PER_SECOND,
-        MF_MT_AUDIO_BITS_PER_SAMPLE, MF_MT_AUDIO_BLOCK_ALIGNMENT, MF_MT_AUDIO_NUM_CHANNELS,
-        MF_MT_AUDIO_SAMPLES_PER_SECOND, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE,
+        MFTranscodeContainerType_ADTS, MFTranscodeContainerType_MPEG4, MFSTARTUP_LITE,
+        MF_MT_AUDIO_AVG_BYTES_PER_SECOND, MF_MT_AUDIO_BITS_PER_SAMPLE, MF_MT_AUDIO_BLOCK_ALIGNMENT,
+        MF_MT_AUDIO_NUM_CHANNELS, MF_MT_AUDIO_SAMPLES_PER_SECOND, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE,
         MF_TRANSCODE_CONTAINERTYPE, MF_VERSION,
     };
     use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
@@ -98,6 +107,26 @@ mod windows_impl {
 
     impl AacWriter {
         pub fn create(path: &Path, rate: u32, channels: u16, kbps: u16) -> Result<Self, String> {
+            Self::create_with(path, rate, channels, kbps, false)
+        }
+
+        /// A raw AAC (ADTS) file, `.aac`, instead of an M4A.
+        pub fn create_adts(
+            path: &Path,
+            rate: u32,
+            channels: u16,
+            kbps: u16,
+        ) -> Result<Self, String> {
+            Self::create_with(path, rate, channels, kbps, true)
+        }
+
+        fn create_with(
+            path: &Path,
+            rate: u32,
+            channels: u16,
+            kbps: u16,
+            adts: bool,
+        ) -> Result<Self, String> {
             unsafe {
                 // Fine if COM is already set up on this thread in either mode.
                 let com = CoInitializeEx(None, COINIT_MULTITHREADED).is_ok();
@@ -115,13 +144,17 @@ mod windows_impl {
                             .encode_wide()
                             .chain(std::iter::once(0))
                             .collect();
-                        // Ask for an MPEG-4 (M4A) file outright rather than relying on the extension.
+                        // Ask for the container outright (MPEG-4 for M4A, ADTS for raw AAC) rather than relying on the extension.
                         let mut attrs: Option<IMFAttributes> = None;
                         let made = MFCreateAttributes(&mut attrs, 1);
                         if let (Ok(()), Some(a)) = (made, attrs.as_ref()) {
                             let _ = a.SetGUID(
                                 &MF_TRANSCODE_CONTAINERTYPE,
-                                &MFTranscodeContainerType_MPEG4,
+                                if adts {
+                                    &MFTranscodeContainerType_ADTS
+                                } else {
+                                    &MFTranscodeContainerType_MPEG4
+                                },
                             );
                         }
                         match MFCreateSinkWriterFromURL(

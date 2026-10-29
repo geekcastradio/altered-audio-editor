@@ -61,7 +61,7 @@
   import ExportDialog, { type ExportScopeInfo, type ExportSettings } from "./ExportDialog.svelte";
   import PublishDialog, { type PublishSettings } from "./PublishDialog.svelte";
   import { EMPTY_EPISODE, packageFiles, slugOf, type EpisodeInfo } from "./publish";
-  import { DEFAULT_FORMAT, describeFormat, extensionOf, kindOfPath, sanitizeFormat, type OutputFormat } from "./output-format";
+  import { DEFAULT_FORMAT, describeFormat, extensionOf, kindOfPath, sanitizeFormat, sanitizeMemory, type OutputFormat } from "./output-format";
   import SessionPropertiesDialog from "./SessionPropertiesDialog.svelte";
   import PromptDialog from "./PromptDialog.svelte";
   import ExportProgress from "./ExportProgress.svelte";
@@ -1383,6 +1383,7 @@
         name: `${fileSafe(doc.name)}${suffix}`,
         folder,
         format: sanitizeFormat(saved?.format),
+        formats: sanitizeMemory((saved as { formats?: unknown } | null)?.formats),
         addToFiles: saved?.addToFiles === true,
         chapters: (saved as { chapters?: unknown } | null)?.chapters !== false,
         verify: (saved as { verify?: unknown } | null)?.verify !== false,
@@ -1400,7 +1401,7 @@
   async function finishExportDialog(v: ExportSettings | null) {
     exportReq = null;
     if (!v) return;
-    prefs.set(KEY_EXPORT, { format: v.format, folder: v.folder, addToFiles: v.addToFiles, chapters: v.chapters, verify: v.verify, normalize: v.normalize });
+    prefs.set(KEY_EXPORT, { format: v.format, formats: v.formats, folder: v.folder, addToFiles: v.addToFiles, chapters: v.chapters, verify: v.verify, normalize: v.normalize });
     const sep = v.folder.includes("\\") ? "\\" : "/";
     const path = `${v.folder.replace(/[\\/]+$/, "")}${sep}${fileSafe(v.name)}.${extensionOf(v.format.kind)}`;
     const [exists] = await pathsExist([path]);
@@ -2503,7 +2504,7 @@
       if (!path) return false;
       if (kindOfPath(path) === null) path = `${path}.wav`;
       const lossyKind = kindOfPath(path);
-      if (lossyKind === "mp3" || lossyKind === "m4a") {
+      if (lossyKind === "mp3" || lossyKind === "m4a" || lossyKind === "aac") {
         const name = lossyKind === "mp3" ? "MP3" : "AAC";
         const ok = await ask(`Save as ${name}?`, `${name} is lossy: fine for publishing, but keep a WAV or FLAC copy if you'll edit it again.`, [
           { label: `Save ${name}`, value: "yes", primary: true },

@@ -1036,6 +1036,7 @@ mod tests {
                 FormatKind::Flac => embed_flac(&out, &chapters).unwrap(),
                 FormatKind::Mp3 => embed_mp3(&out, &chapters, 3_000).unwrap(),
                 FormatKind::M4a => write_m4a_chapters(&out, &chapters).unwrap(),
+                FormatKind::Aac => {}
             }
             let rep = verify(
                 &out,

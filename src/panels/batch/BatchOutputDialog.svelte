@@ -49,7 +49,7 @@
   const sampleSummary = (f: OutputFormat) => {
     const rate = f.sampleRate ? `${f.sampleRate} Hz` : "same rate";
     const ch = f.channels === 1 ? `mono${f.mixLeft !== 0.5 || f.mixRight !== 0.5 ? ` (L ${Math.round(f.mixLeft * 100)}%, R ${Math.round(f.mixRight * 100)}%)` : ""}` : f.channels === 2 ? "stereo" : "same channels";
-    const depth = f.kind === "mp3" || f.kind === "m4a" ? "" : f.bitDepth === 32 ? ", 32-bit float" : f.bitDepth ? `, ${f.bitDepth}-bit${f.dither ? "" : ", no dither"}` : ", same depth";
+    const depth = f.kind === "mp3" || f.kind === "m4a" || f.kind === "aac" ? "" : f.bitDepth === 32 ? ", 32-bit float" : f.bitDepth ? `, ${f.bitDepth}-bit${f.dither ? "" : ", no dither"}` : ", same depth";
     return `${rate}, ${ch}${depth}`;
   };
   const encoderSummary = $derived(
@@ -57,8 +57,8 @@
       ? s.format.mp3Mode === "cbr"
         ? `MP3 ${s.format.mp3Bitrate} kbps constant`
         : `MP3 variable, quality ${s.format.mp3Quality} (0 is best)`
-      : s.format.kind === "m4a"
-        ? `AAC ${s.format.aacBitrate} kbps`
+      : s.format.kind === "m4a" || s.format.kind === "aac"
+        ? `${s.format.kind === "aac" ? "Raw AAC" : "AAC"} ${s.format.aacBitrate} kbps`
         : s.format.kind === "flac"
           ? "FLAC, lossless"
           : "WAV, uncompressed",
@@ -174,7 +174,7 @@
                 </select>
               {/if}
             </div>
-          {:else if s.format.kind === "m4a"}
+          {:else if s.format.kind === "m4a" || s.format.kind === "aac"}
             <select bind:value={s.format.aacBitrate} aria-label="Kbps">
               {#each AAC_BITRATES as b (b)}<option value={b}>{b} kbps{b === 128 ? " (spoken word)" : b === 192 ? " (music)" : ""}</option>{/each}
             </select>

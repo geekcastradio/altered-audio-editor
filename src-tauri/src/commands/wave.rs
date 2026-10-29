@@ -620,7 +620,7 @@ pub async fn wave_save(
             bit_depth: match kind {
                 FormatKind::Wav => Some(depth),
                 FormatKind::Flac => Some(depth.min(24)),
-                FormatKind::Mp3 | FormatKind::M4a => None,
+                FormatKind::Mp3 | FormatKind::M4a | FormatKind::Aac => None,
             },
             channels: Some(channels),
             ..Default::default()

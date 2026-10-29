@@ -52,6 +52,7 @@ pub async fn export_pick_path(
         FormatKind::Flac => "FLAC audio",
         FormatKind::Mp3 => "MP3 audio",
         FormatKind::M4a => "AAC audio (M4A)",
+        FormatKind::Aac => "Raw AAC audio",
     };
     spawn_blocking(move || {
         let mut d = app
@@ -66,6 +67,7 @@ pub async fn export_pick_path(
                 FormatKind::Flac,
                 FormatKind::Mp3,
                 FormatKind::M4a,
+                FormatKind::Aac,
             ] {
                 if k != kind {
                     d = d.add_filter(label(k), &[k.extension()]);
