@@ -11,7 +11,7 @@
 
 It follows the editing workflow that experienced audio editors already know, with its own original design, then adds tools built for podcast production.
 
-> Status: in active development (phase P5, effects). Version 0.7.0 adds music ducking under voices, an Audio FX Panel and a Multiband Compressor, and the Publish Package gains WebVTT chapters and ad positions. Editing, playback, recording, the Voice Chain effects, conversion and mixdown work today. Transcripts are still to come. Pre-release: keep backups of your recordings.
+> Status: in active development (phase P5, effects). Version 0.8.0 adds an Analysis menu, a redesigned Export dialog, Convert Sample Type presets with dither and noise shaping, markers inside exported WAV and FLAC files, new effects (modulation, reverb, delay, distortion, gate), and new editing tools. Editing, playback, recording, the Voice Chain effects, conversion and mixdown work today. Transcripts are still to come. Pre-release: keep backups of your recordings.
 
 ![Multitrack editor with a four-track episode: themes, a host and a co-host with the Podcast Voice chain on the host track, a promo, fades, a volume envelope and chapter markers](docs/images/multitrack.png)
 

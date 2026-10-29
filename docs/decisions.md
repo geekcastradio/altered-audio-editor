@@ -1586,3 +1586,8 @@ Several requests compared behavior to another editor; per the guardrails they ar
 - Analysis > Find Problems reports clicks, clipped and flattened peaks, and mains hum (50 or 60 Hz with its harmonics) as a tab in the Analysis dialog, with times you can read off. It reports; it does not repair. Repair stays in the effects that already exist, so one report cannot silently change audio.
 - File > Edit File Tags opens a small dialog for title, artist, album, year, genre, track and comment on a WAV, FLAC, MP3 or M4A file. Only filled-in fields are written, so blank fields never wipe what a file has, and chapters and audio are untouched. A file open in the Waveform editor is refused so two writers never touch one file.
 - It is a dialog, not a docked Metadata panel. The panel waits for 0.9.0.
+
+## 2026-10-30: Release 0.8.0
+
+- Version bumped to 0.8.0 with `scripts/bump-version.mjs`. Release notes are in `docs/release-notes-0.8.0.md` and say what is untested (raw AAC on real encoders, Find Problems on varied recordings).
+- Moved to 0.9.0: FX Panel analysis, suggested settings and A/B (needs raw recordings), the installer, leftover Audiform items, the User Guide, a persistent snap-to-zero mode, a docked Metadata panel, and the CI Node 20 warning.
