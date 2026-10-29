@@ -1573,3 +1573,10 @@ Several requests compared behavior to another editor; per the guardrails they ar
 - For FLAC it writes a CUESHEET block with a track at each marker start. It is off by default: a cue sheet has no names, and ffmpeg (so ffprobe and players built on it) turns the cue sheet into chapters and then ignores the named CHAPTER comments. A test now pins that behavior, and `flac -t` accepts the file.
 - MP3 and M4A keep chapters only, since their chapter formats are for podcast chapters, not general markers.
 - The README has a table of what each format holds. It says which parts are checked here and does not promise how other editors read them.
+
+## 2026-10-30: Editing pack (0.8.0 part 9)
+
+- Two more fade shapes: Exponential (slow start, the mirror of Logarithmic) and Equal Power (a quarter sine, so an equal-power pair keeps constant power across a crossfade). Clip > Fades has a Shape item for each, which reshapes the fades a clip already has and leaves clips without fades alone. Settings > General can start new fades in either. Export to Audition's session format writes Equal Power as its S curve and Exponential as linear, because that format has no names for them.
+- Edit > Snap Selection to Zero Crossings moves both edges of a Waveform editor selection to the nearest place the sound crosses zero, within 20 ms either way, averaging the channels. It is an action, not a mode: it runs when asked and tells you how far each edge moved. A mode that snaps every selection waits for 0.9.0.
+- Edit > Paste with Crossfade pastes like Paste, then lets the audio on each side of both joins run on by the chosen length (1 to 500 ms) and fades across the overlap, using the file's own audio past each join. Where no audio is left to run on, that join is left as a plain cut. It is three undo steps at most (delete if a selection was replaced, paste, crossfade) because each step reuses the existing edit path.
+- Loudness Match can match by Peak or RMS as well as by loudness. Peak and RMS read both channels of the clip or track; RMS combines them as power. A change that would push the loudest sample past full scale is flagged and starts unticked, as with loudness.

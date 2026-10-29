@@ -4,7 +4,8 @@
 
 import { describe, expect, it } from "vitest";
 import { targetById, type LoudnessReport } from "./loudness";
-import { matchChanges, matchItems, matchRow } from "./loudness-match";
+import type { AnalysisReport } from "./analysis";
+import { levelRow, levelsOf, matchChanges, matchItems, matchRow } from "./loudness-match";
 import type { SessionDoc } from "../stores/session";
 
 const rep = (i: number, tp: number, mono = i - 3): LoudnessReport => ({ integrated: i, integratedMono: mono, range: 5, truePeak: tp, samplePeak: tp, seconds: 60, cancelled: false });
@@ -47,5 +48,19 @@ describe("loudness match", () => {
     const all = matchItems(doc, new Set());
     expect(all.mode).toBe("tracks");
     expect(all.items.map((i) => i.key)).toEqual(["h", "g"]);
+  });
+  it("matches by the loudest sample or the average level", () => {
+    const side = (peakDb: number, rmsDb: number) => ({ peakDb, rmsDb, minSample: 0, maxSample: 0, dcOffset: 0, clipped: 0 });
+    const stats = (l: [number, number], r: [number, number]) => ({ left: side(...l), right: side(...r) }) as unknown as AnalysisReport;
+    const item = { key: "a", label: "a", clipIds: ["a"] };
+    // The louder channel sets the peak; the two RMS values combine as power.
+    expect(levelsOf(stats([-6, -20], [-3, -20]))).toEqual({ peakDb: -3, rmsDb: expect.closeTo(-20, 5) });
+    const p = levelRow(item, "peak", -1, stats([-6, -20], [-3, -20]));
+    expect(p).toMatchObject({ measured: -3, change: 2, peakAfter: -1, peakWarning: false });
+    const r = levelRow(item, "rms", -18, stats([-4, -24], [-4, -24]));
+    expect(r.change).toBe(6);
+    expect(r.peakAfter).toBe(2);
+    expect(r.peakWarning).toBe(true);
+    expect(levelRow(item, "peak", -1, stats([-200, -200], [-200, -200])).measurable).toBe(false);
   });
 });

@@ -1019,7 +1019,6 @@ mod tests {
         // Writing again replaces the sheet rather than adding a second.
         embed_flac_cuesheet(&p, &[mk("Only", 1_000, None, "cue")]).unwrap();
         let d = fs::read(&p).unwrap();
-        assert_eq!(d.windows(1).filter(|_| false).count(), 0);
         let sheets = {
             let (mut at, mut n) = (4, 0);
             loop {

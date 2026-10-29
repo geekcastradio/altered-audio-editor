@@ -775,6 +775,11 @@ export function analyzeAudio(request: MixdownRequest): Promise<import("./analysi
   });
 }
 
+/** Moves each frame to the nearest zero crossing of the Waveform editor's file within `reach` frames. Frames with none nearby come back as they were. */
+export function waveZeroCrossings(frames: number[], reach: number): Promise<number[]> {
+  return invoke<number[]>("wave_zero_crossings", { frames, reach });
+}
+
 export function exportCancel(): Promise<void> {
   return invoke<void>("export_cancel");
 }

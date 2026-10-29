@@ -999,6 +999,11 @@ pub enum FadeShape {
     Linear,
     Logarithmic,
     Cosine,
+    /// Slow start, fast finish: the mirror of Logarithmic.
+    Exponential,
+    /// Constant power across a crossfade: the in side and the out side together keep the
+    /// level of unrelated material steady.
+    EqualPower,
 }
 
 /// A clip fade. Length 0 means no fade.

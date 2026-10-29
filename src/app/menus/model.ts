@@ -133,8 +133,10 @@ export const MENUS: readonly Menu[] = [
       item("edit.paste", "Paste"),
       item("edit.paste-new", "Paste to New File"),
       item("edit.mix-paste", "Mix Paste..."),
+      item("edit.paste-crossfade", "Paste with Crossfade..."),
       item("edit.delete", "Delete"),
       item("edit.crop", "Crop"),
+      item("edit.snap-zero", "Snap Selection to Zero Crossings"),
       sub("Tool", [
         item("tool.move", "Move"),
         item("tool.razor", "Razor"),
@@ -337,6 +339,12 @@ export const MENUS: readonly Menu[] = [
         item("clip.fade-out", "Fade Out"),
         sep,
         item("clip.auto-crossfade", "Automatic Crossfades"),
+        sep,
+        item("clip.shape.cosine", "Shape: S Curve"),
+        item("clip.shape.linear", "Shape: Linear"),
+        item("clip.shape.logarithmic", "Shape: Logarithmic"),
+        item("clip.shape.exponential", "Shape: Exponential"),
+        item("clip.shape.equal_power", "Shape: Equal Power"),
       ]),
       sub("Trim", [
         item("clip.trim.selection", "To Time Selection"),
