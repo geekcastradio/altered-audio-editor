@@ -106,7 +106,9 @@ jobs:
   linux:
     name: Linux AppImage and deb (experimental)
     needs: verify
-    runs-on: ubuntu-24.04
+    # The oldest Ubuntu LTS still supported: an AppImage can only run on systems with at least the
+    # glibc it was built against, so building on the newest runner locks out older distributions.
+    runs-on: ubuntu-22.04
     continue-on-error: true
     env:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -128,7 +130,7 @@ jobs:
       - name: Install system libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential file xdg-utils libxdo-dev libssl-dev libfuse2t64 libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev patchelf
+          sudo apt-get install -y build-essential file xdg-utils libxdo-dev libssl-dev libfuse2 libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev patchelf
 
       - name: Install frontend dependencies
         run: npm ci
@@ -146,7 +148,7 @@ jobs:
           tag="${{ github.ref_name }}"
           out="$RUNNER_TEMP/release"
           mkdir -p "$out"
-          cp src-tauri/target/release/bundle/appimage/*.AppImage "$out/Altered-Audio-Editor-$tag-linux-x86_64.AppImage"
+          cp src-tauri/target/release/bundle/appimage/*.AppImage "$out/Altered-Audio-Editor-$tag-x86_64.AppImage"
           cp src-tauri/target/release/bundle/deb/*.deb "$out/Altered-Audio-Editor-$tag-linux-amd64.deb"
 
       - uses: actions/upload-artifact@v4
