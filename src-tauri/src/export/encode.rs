@@ -21,7 +21,7 @@ use std::num::NonZeroU32;
 use std::path::Path;
 
 use audioadapter_buffers::owned::InterleavedOwned;
-use rubato::{Async, FixedAsync, Resampler, SincInterpolationParameters};
+use rubato::{Async, FixedAsync, Resampler, SincInterpolationParameters, WindowFunction};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -74,6 +74,45 @@ pub enum Mp3Mode {
     Vbr,
 }
 
+/// The shape of the random noise dither adds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DitherKind {
+    /// One uniform random value: the least noise, but it can leave a faint pattern.
+    Rectangular,
+    /// Two summed: removes the pattern completely. The usual choice.
+    #[default]
+    Triangular,
+    /// Bell-shaped noise, the most natural sounding and the loudest.
+    Gaussian,
+}
+
+/// Pushes the rounding noise out of the range the ear is most sensitive to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum NoiseShaping {
+    #[default]
+    None,
+    /// First order: noise moves up gently.
+    Light,
+    /// Second order: much quieter in the midrange, louder near the top.
+    Strong,
+}
+
+/// How carefully a sample rate change filters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ResampleQuality {
+    /// Short filter. Fast; the top octave rolls off early.
+    Draft,
+    Good,
+    /// What exports used before this setting existed.
+    #[default]
+    Best,
+    /// Longest filter. Slowest, sharpest.
+    Highest,
+}
+
 /// What to write. Unset fields keep the source's value.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -93,6 +132,11 @@ pub struct OutputFormat {
     pub aac_bitrate: u16,
     /// Dither when writing fewer bits than the audio has. On unless turned off.
     pub dither: bool,
+    pub dither_kind: DitherKind,
+    /// Dither size in steps of the target depth: 0.25 to 2. One is the standard.
+    pub dither_amount: f32,
+    pub noise_shaping: NoiseShaping,
+    pub resample_quality: ResampleQuality,
     /// Going from stereo to mono: how much of the left and right goes in,
     /// 0 to 1 each.
     pub mix_left: f32,
@@ -111,6 +155,10 @@ impl Default for OutputFormat {
             mp3_quality: 2,
             aac_bitrate: 128,
             dither: true,
+            dither_kind: DitherKind::Triangular,
+            dither_amount: 1.0,
+            noise_shaping: NoiseShaping::None,
+            resample_quality: ResampleQuality::Best,
             mix_left: 0.5,
             mix_right: 0.5,
         }
@@ -138,6 +186,10 @@ pub struct Resolved {
     pub mp3_quality: u8,
     pub aac_bitrate: u16,
     pub dither: bool,
+    pub dither_kind: DitherKind,
+    pub dither_amount: f32,
+    pub noise_shaping: NoiseShaping,
+    pub resample_quality: ResampleQuality,
     /// Left and right weights for a stereo-to-mono fold.
     pub mix: [f32; 2],
 }
@@ -239,6 +291,14 @@ impl OutputFormat {
             mp3_quality: self.mp3_quality.min(9),
             aac_bitrate: super::aac::nearest_bitrate(self.aac_bitrate),
             dither: self.dither,
+            dither_kind: self.dither_kind,
+            dither_amount: if self.dither_amount.is_finite() {
+                self.dither_amount.clamp(0.25, 2.0)
+            } else {
+                1.0
+            },
+            noise_shaping: self.noise_shaping,
+            resample_quality: self.resample_quality,
             mix: [
                 self.mix_left.clamp(0.0, 1.0),
                 self.mix_right.clamp(0.0, 1.0),
@@ -279,18 +339,42 @@ impl Resolved {
     }
 }
 
-/// Triangular dither of one step at the target depth. Off for float.
+/// Dither and noise shaping when writing fewer bits. Off for float.
 pub(crate) struct Dither {
     on: bool,
+    float: bool,
+    kind: DitherKind,
+    amount: f32,
+    shaping: NoiseShaping,
     state: u32,
+    /// Next channel of the interleaved stream, and each channel's last two errors.
+    at: usize,
+    err: Vec<[f32; 2]>,
 }
 
 impl Dither {
-    /// Dither that can be turned off; float output never dithers.
+    /// Standard triangular dither for one channel; float output never dithers.
     pub(crate) fn with(bits: u16, on: bool) -> Self {
         Self {
-            on: on && bits < 32,
+            on,
+            float: bits >= 32,
+            kind: DitherKind::Triangular,
+            amount: 1.0,
+            shaping: NoiseShaping::None,
             state: 0x1234_5678,
+            at: 0,
+            err: vec![[0.0; 2]],
+        }
+    }
+
+    /// The dither this format asks for, for an interleaved stream written at `bits`.
+    pub(crate) fn for_format(fmt: &Resolved, bits: u16) -> Self {
+        Self {
+            kind: fmt.dither_kind,
+            amount: fmt.dither_amount,
+            shaping: fmt.noise_shaping,
+            err: vec![[0.0; 2]; usize::from(fmt.channels.max(1))],
+            ..Self::with(bits, fmt.dither)
         }
     }
 
@@ -304,22 +388,46 @@ impl Dither {
         (x as f32 / u32::MAX as f32) - 0.5
     }
 
+    /// One dither value in steps of the target depth.
     pub(crate) fn next(&mut self) -> f32 {
-        if self.on {
-            self.uniform() + self.uniform()
-        } else {
-            0.0
+        if !self.on || self.float {
+            return 0.0;
         }
+        let v = match self.kind {
+            DitherKind::Rectangular => self.uniform(),
+            DitherKind::Triangular => self.uniform() + self.uniform(),
+            // Four uniforms make a bell; the scale gives it the triangular's loudness.
+            DitherKind::Gaussian => {
+                (self.uniform() + self.uniform() + self.uniform() + self.uniform())
+                    * std::f32::consts::FRAC_1_SQRT_2
+            }
+        };
+        v * self.amount
     }
 
-    /// One float sample as a dithered integer at `bits` (8, 16 or 24).
+    /// One float sample as a dithered integer at `bits` (8, 16 or 24). Samples
+    /// come interleaved, so the channel is tracked from one call to the next.
     pub(crate) fn int(&mut self, v: f32, bits: u16) -> i32 {
         let max = match bits {
             8 => 127.0,
             16 => 32_767.0,
             _ => 8_388_607.0,
         };
-        (v * max + self.next()).round().clamp(-max - 1.0, max) as i32
+        let ch = self.at;
+        self.at = (self.at + 1) % self.err.len();
+        let mut x = v * max;
+        let [e1, e2] = self.err[ch];
+        if !self.float {
+            x -= match self.shaping {
+                NoiseShaping::None => 0.0,
+                NoiseShaping::Light => e1,
+                NoiseShaping::Strong => 2.0 * e1 - e2,
+            };
+        }
+        let q = (x + self.next()).round().clamp(-max - 1.0, max);
+        // The error is kept small so a clipped peak can't set the loop ringing.
+        self.err[ch] = [(q - x).clamp(-4.0, 4.0), e1];
+        q as i32
     }
 }
 
@@ -337,17 +445,22 @@ struct Resample {
 const RESAMPLE_CHUNK: usize = 1_024;
 
 impl Resample {
-    fn new(from: u32, to: u32, ch: usize) -> Result<Self, EncodeError> {
+    fn new(from: u32, to: u32, ch: usize, quality: ResampleQuality) -> Result<Self, EncodeError> {
         let ratio = f64::from(to) / f64::from(from);
-        let r = Async::<f32>::new_sinc(
-            ratio,
-            1.0,
-            &SincInterpolationParameters::default(),
-            RESAMPLE_CHUNK,
-            ch,
-            FixedAsync::Input,
-        )
-        .map_err(|e| EncodeError::Settings(e.to_string()))?;
+        let params = match quality {
+            ResampleQuality::Draft => SincInterpolationParameters::new(64, WindowFunction::Hann2),
+            ResampleQuality::Good => {
+                SincInterpolationParameters::new(128, WindowFunction::BlackmanHarris2)
+            }
+            ResampleQuality::Best => SincInterpolationParameters::default(),
+            ResampleQuality::Highest => {
+                let mut p = SincInterpolationParameters::new(512, WindowFunction::BlackmanHarris2);
+                p.oversampling_factor = 256;
+                p
+            }
+        };
+        let r = Async::<f32>::new_sinc(ratio, 1.0, &params, RESAMPLE_CHUNK, ch, FixedAsync::Input)
+            .map_err(|e| EncodeError::Settings(e.to_string()))?;
         Ok(Self {
             skip: r.output_delay() * ch,
             r,
@@ -527,12 +640,12 @@ impl Writer {
                     super::aac::AacWriter::create(path, fmt.rate, fmt.channels, fmt.aac_bitrate)
                 }
                 .map_err(EncodeError::Write)?,
-                dither: Dither::with(16, fmt.dither),
+                dither: Dither::for_format(fmt, 16),
                 buf: Vec::new(),
             },
             FormatKind::Wav if fmt.bits == 4 => Inner::Adpcm {
                 w: super::adpcm::AdpcmWriter::create(path, fmt.rate, fmt.channels).map_err(werr)?,
-                dither: Dither::with(16, fmt.dither),
+                dither: Dither::for_format(fmt, 16),
                 buf: Vec::new(),
             },
             FormatKind::Wav => {
@@ -549,7 +662,7 @@ impl Writer {
                 Inner::Wav {
                     w: hound::WavWriter::create(path, spec).map_err(werr)?,
                     bits: fmt.bits,
-                    dither: Dither::with(fmt.bits, fmt.dither),
+                    dither: Dither::for_format(fmt, fmt.bits),
                 }
             }
             FormatKind::Flac => {
@@ -589,7 +702,7 @@ impl Writer {
                     frame: 0,
                     ch: out_ch,
                     bits: fmt.bits,
-                    dither: Dither::with(fmt.bits, fmt.dither),
+                    dither: Dither::for_format(fmt, fmt.bits),
                 }))
             }
             FormatKind::Mp3 => {
@@ -661,7 +774,12 @@ impl Writer {
             }
         };
         let resample = if in_rate != fmt.rate {
-            Some(Resample::new(in_rate, fmt.rate, out_ch)?)
+            Some(Resample::new(
+                in_rate,
+                fmt.rate,
+                out_ch,
+                fmt.resample_quality,
+            )?)
         } else {
             None
         };
@@ -1046,6 +1164,100 @@ mod tests {
                 .map(|(a, b)| (a - b).abs())
                 .fold(0.0f32, f32::max);
             assert!(err < 0.05, "{bits}-bit: worst error {err}");
+        }
+    }
+
+    fn noise_power(kind: DitherKind, amount: f32) -> f32 {
+        let mut d = Dither::with(16, true);
+        d.kind = kind;
+        d.amount = amount;
+        let n = 200_000;
+        (0..n).map(|_| d.next().powi(2)).sum::<f32>() / n as f32
+    }
+
+    #[test]
+    fn dither_kinds_differ_in_loudness_and_amount_scales_them() {
+        let rect = noise_power(DitherKind::Rectangular, 1.0);
+        let tri = noise_power(DitherKind::Triangular, 1.0);
+        let gauss = noise_power(DitherKind::Gaussian, 1.0);
+        // Mean squares: 1/12, 1/6 and 1/6.
+        assert!((rect - 1.0 / 12.0).abs() < 0.005, "rectangular {rect}");
+        assert!((tri - 1.0 / 6.0).abs() < 0.008, "triangular {tri}");
+        assert!((gauss - 1.0 / 6.0).abs() < 0.01, "gaussian {gauss}");
+        let double = noise_power(DitherKind::Triangular, 2.0);
+        assert!((double / tri - 4.0).abs() < 0.3, "amount 2 gave {double}");
+    }
+
+    /// Error of a quiet slow sine at 8 bits, with its highs averaged away so what is left
+    /// is the part the ear hears most.
+    fn low_error(shaping: NoiseShaping) -> f32 {
+        let mut d = Dither::with(8, true);
+        d.shaping = shaping;
+        let n = 48_000;
+        let err: Vec<f32> = (0..n)
+            .map(|i| {
+                let v = (i as f32 * 200.0 * std::f32::consts::TAU / 48_000.0).sin() * 0.3;
+                d.int(v, 8) as f32 / 127.0 - v
+            })
+            .collect();
+        let blocks: Vec<f32> = (0..err.len() / 32)
+            .map(|b| err[b * 32..(b + 1) * 32].iter().sum::<f32>() / 32.0)
+            .collect();
+        blocks.iter().map(|b| b * b).sum::<f32>() / blocks.len() as f32
+    }
+
+    #[test]
+    fn noise_shaping_moves_rounding_noise_out_of_the_low_range() {
+        let flat = low_error(NoiseShaping::None);
+        let light = low_error(NoiseShaping::Light);
+        let strong = low_error(NoiseShaping::Strong);
+        assert!(light < flat * 0.6, "light {light} vs flat {flat}");
+        assert!(strong < flat * 0.2, "strong {strong} vs flat {flat}");
+    }
+
+    #[test]
+    fn shaping_keeps_each_channel_apart_and_stays_in_range() {
+        let mut d = Dither::for_format(
+            &OutputFormat {
+                channels: Some(2),
+                noise_shaping: NoiseShaping::Strong,
+                ..Default::default()
+            }
+            .resolve(48_000, 2, 16)
+            .unwrap(),
+            16,
+        );
+        for i in 0..20_000 {
+            // Left is full scale and clips; right is silent and must stay silent-ish.
+            let l = d.int(1.5, 16);
+            let r = d.int(0.0, 16);
+            assert_eq!(l, 32_767);
+            assert!(r.abs() <= 6, "right wandered to {r} at {i}");
+        }
+    }
+
+    #[test]
+    fn every_resample_quality_keeps_the_length_and_the_level() {
+        for q in [
+            ResampleQuality::Draft,
+            ResampleQuality::Good,
+            ResampleQuality::Best,
+            ResampleQuality::Highest,
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let p = dir.path().join("q.wav");
+            let fmt = OutputFormat {
+                bit_depth: Some(24),
+                sample_rate: Some(48_000),
+                resample_quality: q,
+                ..Default::default()
+            };
+            let data = sine(44_100, 1, 1.0);
+            assert_eq!(write(&p, fmt, 44_100, 1, &data), 48_000, "{q:?}");
+            let (_, _, back) = read_all(&p);
+            let mid = &back[10_000..38_000];
+            let rms = (mid.iter().map(|v| v * v).sum::<f32>() / mid.len() as f32).sqrt();
+            assert!((rms - 0.3536).abs() < 0.02, "{q:?}: level {rms}");
         }
     }
 }

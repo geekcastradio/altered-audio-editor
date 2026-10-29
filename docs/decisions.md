@@ -1558,3 +1558,11 @@ Several requests compared behavior to another editor; per the guardrails they ar
 - Settings are remembered per format. Switching from MP3 to FLAC and back restores each format's own bitrate, depth and options. Stored in the `export.mixdown` pref under `formats`.
 - M4A (AAC in an MP4 container) and raw AAC (ADTS, `.aac`) are separate choices. Raw AAC sits under "Other formats" so the common list stays short. Both use Windows Media Foundation, so they are Windows only; the raw path is not yet tested on a real encoder.
 - Loudness normalization is a checkbox with a target drop-down, off by default.
+
+## 2026-10-29: Convert Sample Type parity (export pack 2)
+
+- Sample settings gain a Preset menu (CD, podcast mono and stereo, video and broadcast, high resolution, voice only, telephone). A preset sets rate, channels and depth together; anything else the user already chose stays.
+- Resample quality has four steps (Draft, Good, Best, Highest) that set the length of the resampling filter. Best is the filter exports used before, so existing exports are unchanged. Shown only when a rate is chosen.
+- Dither now has a shape (triangular, rectangular, gaussian), an amount (0.25 to 2 steps of the target depth) and noise shaping (none, light, strong). Light is a first-order error feedback, Strong second order. Both are plain error feedback on the quantizer, kept per channel, with the stored error clamped so a clipped peak cannot make the loop ring. Defaults are the old behavior: triangular, one step, no shaping.
+- The numbers are our own and are not claimed to match Audition's presets or filters one for one.
+- The same controls appear in Export Mixdown (Sample type window) and Batch Convert (Sample Settings).

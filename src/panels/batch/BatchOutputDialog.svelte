@@ -10,7 +10,7 @@
 -->
 <script lang="ts">
   import { PLATFORM } from "../../lib/platform";
-  import { AAC_BITRATES, extensionOf, formatAvailable, FORMAT_KINDS, MP3_BITRATES, type OutputFormat } from "../../app/output-format";
+  import { AAC_BITRATES, ditherNote, extensionOf, formatAvailable, FORMAT_KINDS, MP3_BITRATES, type OutputFormat } from "../../app/output-format";
   import { effectiveTemplate, expandTemplate, type BatchSettings, type TagFields } from "./batch";
   import SampleSettingsDialog from "./SampleSettingsDialog.svelte";
 
@@ -49,7 +49,7 @@
   const sampleSummary = (f: OutputFormat) => {
     const rate = f.sampleRate ? `${f.sampleRate} Hz` : "same rate";
     const ch = f.channels === 1 ? `mono${f.mixLeft !== 0.5 || f.mixRight !== 0.5 ? ` (L ${Math.round(f.mixLeft * 100)}%, R ${Math.round(f.mixRight * 100)}%)` : ""}` : f.channels === 2 ? "stereo" : "same channels";
-    const depth = f.kind === "mp3" || f.kind === "m4a" || f.kind === "aac" ? "" : f.bitDepth === 32 ? ", 32-bit float" : f.bitDepth ? `, ${f.bitDepth}-bit${f.dither ? "" : ", no dither"}` : ", same depth";
+    const depth = f.kind === "mp3" || f.kind === "m4a" || f.kind === "aac" ? "" : f.bitDepth === 32 ? ", 32-bit float" : f.bitDepth ? `, ${f.bitDepth}-bit${ditherNote(f) ? `, ${ditherNote(f)}` : ""}` : ", same depth";
     return `${rate}, ${ch}${depth}`;
   };
   const encoderSummary = $derived(

@@ -10,7 +10,26 @@
 <script lang="ts">
   import { PLATFORM } from "../lib/platform";
   import { formatRate } from "../panels/files/format";
-  import { AAC_BITRATES, depthsFor, formatAvailable, FORMAT_KINDS, MP3_BITRATES, MP3_MAX_RATE, OUTPUT_RATES, type OutputFormat } from "./output-format";
+  import {
+    AAC_BITRATES,
+    applyPreset,
+    depthsFor,
+    DITHER_AMOUNTS,
+    DITHER_CHOICES,
+    ditherChoice,
+    formatAvailable,
+    FORMAT_KINDS,
+    MP3_BITRATES,
+    MP3_MAX_RATE,
+    OUTPUT_RATES,
+    RESAMPLE_CHOICES,
+    SAMPLE_PRESETS,
+    SHAPING_CHOICES,
+    withDither,
+    type DitherKind,
+    type NoiseShaping,
+    type OutputFormat,
+  } from "./output-format";
 
   interface Props {
     format: OutputFormat;
@@ -29,6 +48,9 @@
   $effect(() => {
     if (format.bitDepth !== null && !depths.some((d) => d.value === format.bitDepth)) format = { ...format, bitDepth: null };
   });
+
+  // Dither only matters when the file has fewer bits than the audio can carry.
+  const dithers = $derived(depths.length > 0 && format.bitDepth !== 32);
 
   const available = (k: (typeof FORMAT_KINDS)[number]["value"]) => formatAvailable(k, PLATFORM);
   const rateLabel = (r: number) => `${formatRate(r)}${format.kind === "mp3" && r > MP3_MAX_RATE ? " (MP3 uses 48 kHz)" : ""}`;
@@ -51,6 +73,21 @@
     </label>
   {/if}
   {#if parts !== "settings"}
+    <label class="wide">
+      <span>Preset</span>
+      <select
+        value=""
+        onchange={(e) => {
+          format = applyPreset(format, e.currentTarget.value);
+          e.currentTarget.value = "";
+        }}
+      >
+        <option value="">Pick a starting point…</option>
+        {#each SAMPLE_PRESETS as p (p.id)}
+          <option value={p.id}>{p.label}</option>
+        {/each}
+      </select>
+    </label>
     <label>
       <span>Sample rate</span>
       <select bind:value={format.sampleRate}>
@@ -68,12 +105,48 @@
         <option value={2}>Stereo</option>
       </select>
     </label>
+    {#if format.sampleRate !== null}
+      <label>
+        <span>Resample quality</span>
+        <select bind:value={format.resampleQuality}>
+          {#each RESAMPLE_CHOICES as r (r.value)}
+            <option value={r.value}>{r.label}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
     {#if depths.length > 0}
       <label>
         <span>Bit depth</span>
         <select bind:value={format.bitDepth}>
           <option value={null}>{sourceLabel}</option>
           {#each depths as d (d.value)}
+            <option value={d.value}>{d.label}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
+    {#if dithers}
+      <label>
+        <span>Dither</span>
+        <select value={ditherChoice(format)} onchange={(e) => (format = withDither(format, e.currentTarget.value as "none" | DitherKind))}>
+          {#each DITHER_CHOICES as d (d.value)}
+            <option value={d.value}>{d.label}</option>
+          {/each}
+        </select>
+      </label>
+      <label class:off={!format.dither}>
+        <span>Dither amount</span>
+        <select value={format.ditherAmount} disabled={!format.dither} onchange={(e) => (format.ditherAmount = Number(e.currentTarget.value))}>
+          {#each DITHER_AMOUNTS as d (d.value)}
+            <option value={d.value}>{d.label}</option>
+          {/each}
+        </select>
+      </label>
+      <label>
+        <span>Noise shaping</span>
+        <select value={format.noiseShaping} onchange={(e) => (format.noiseShaping = e.currentTarget.value as NoiseShaping)}>
+          {#each SHAPING_CHOICES as d (d.value)}
             <option value={d.value}>{d.label}</option>
           {/each}
         </select>
@@ -121,6 +194,9 @@
   {/if}
 </div>
 {#if parts !== "settings"}
+  {#if dithers && (format.dither || format.noiseShaping !== "none")}
+    <p class="note">Dither adds a whisper of noise when going to fewer bits so quiet fades stay smooth. Noise shaping tucks the rounding noise up where the ear hears it least; use Light first, Strong only for very quiet material.</p>
+  {/if}
   {#if format.kind === "wav" && format.bitDepth === 4}
     <p class="note">4-bit ADPCM is lossy and about a quarter the size of 16-bit. Good for phone systems and voice prompts, not for masters.</p>
   {:else if format.kind === "wav" && format.bitDepth === 8}
@@ -135,6 +211,14 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
     gap: 8px 10px;
+  }
+
+  .wide {
+    grid-column: 1 / -1;
+  }
+
+  .off {
+    opacity: 0.5;
   }
 
   label {
