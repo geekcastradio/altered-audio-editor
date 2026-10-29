@@ -437,6 +437,27 @@ pub async fn export_embed_markers(
     .map_err(|e| e.to_string())?
 }
 
+/// The title, artist and other tags in an audio file. Files that can't be read give none.
+#[tauri::command]
+pub async fn tags_read(path: PathBuf) -> Result<crate::export::tags::Tags, String> {
+    spawn_blocking(move || crate::export::tags::read_tags(&path))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Writes tags into a WAV, FLAC, MP3 or M4A file. Only fields that are filled in are
+/// written; the rest of the file, chapters included, stays as it is. False when the
+/// format has no tag support here.
+#[tauri::command]
+pub async fn tags_write(path: PathBuf, tags: crate::export::tags::Tags) -> Result<bool, String> {
+    spawn_blocking(move || {
+        crate::export::tags::write_tags(&path, &tags)
+            .map_err(|e| format!("Could not write the tags: {e}"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Makes the reversed copy a reversed clip of `path` plays from (once; it
 /// is kept in the working files folder). The file itself is not changed.
 #[tauri::command]

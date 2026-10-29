@@ -1580,3 +1580,9 @@ Several requests compared behavior to another editor; per the guardrails they ar
 - Edit > Snap Selection to Zero Crossings moves both edges of a Waveform editor selection to the nearest place the sound crosses zero, within 20 ms either way, averaging the channels. It is an action, not a mode: it runs when asked and tells you how far each edge moved. A mode that snaps every selection waits for 0.9.0.
 - Edit > Paste with Crossfade pastes like Paste, then lets the audio on each side of both joins run on by the chosen length (1 to 500 ms) and fades across the overlap, using the file's own audio past each join. Where no audio is left to run on, that join is left as a plain cut. It is three undo steps at most (delete if a selection was replaced, paste, crossfade) because each step reuses the existing edit path.
 - Loudness Match can match by Peak or RMS as well as by loudness. Peak and RMS read both channels of the clip or track; RMS combines them as power. A change that would push the loudest sample past full scale is flagged and starts unticked, as with loudness.
+
+## 2026-10-30: Problems report and file tags (0.8.0 part 10)
+
+- Analysis > Find Problems reports clicks, clipped and flattened peaks, and mains hum (50 or 60 Hz with its harmonics) as a tab in the Analysis dialog, with times you can read off. It reports; it does not repair. Repair stays in the effects that already exist, so one report cannot silently change audio.
+- File > Edit File Tags opens a small dialog for title, artist, album, year, genre, track and comment on a WAV, FLAC, MP3 or M4A file. Only filled-in fields are written, so blank fields never wipe what a file has, and chapters and audio are untouched. A file open in the Waveform editor is refused so two writers never touch one file.
+- It is a dialog, not a docked Metadata panel. The panel waits for 0.9.0.

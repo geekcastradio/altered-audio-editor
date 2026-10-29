@@ -26,6 +26,14 @@ pub const HIST_BINS: usize = 96;
 const WINDOW_SECONDS: f64 = 0.05;
 /// A sample this close to full scale counts as clipped.
 const CLIP_LEVEL: f32 = 0.9999;
+/// Three or more samples in a row this close to full scale are a flattened peak.
+const FLAT_LEVEL: f32 = 0.999;
+const FLAT_RUN: u32 = 3;
+/// A click is a jump this many times the recent average jump, and at least this big.
+const CLICK_RATIO: f32 = 10.0;
+const CLICK_MIN: f32 = 0.08;
+/// Problem times listed in the report; the counts are always complete.
+const LISTED: usize = 50;
 
 /// Level of one side, or of both mixed for the "all" figures.
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
@@ -37,6 +45,38 @@ pub struct ChannelStats {
     pub rms_db: f64,
     pub dc_offset: f64,
     pub clipped: u64,
+}
+
+/// One tone of a hum: its frequency and how far it stands above the sound around it.
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct HumTone {
+    pub hz: f32,
+    pub excess_db: f32,
+}
+
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Hum {
+    /// 50 or 60: the mains frequency the tones line up with.
+    pub base_hz: u32,
+    /// The strongest tone's height over its surroundings.
+    pub strength_db: f32,
+    pub tones: Vec<HumTone>,
+}
+
+/// What looks wrong in the audio. Times are seconds from the start of what was analyzed.
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Problems {
+    /// Sudden jumps far above the surrounding sound.
+    pub clicks: u64,
+    pub click_times: Vec<f64>,
+    /// Flattened peaks: places three or more samples in a row sit at full scale.
+    pub clip_regions: u64,
+    pub clip_samples: u64,
+    pub clip_times: Vec<f64>,
+    pub hum: Option<Hum>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
@@ -60,6 +100,7 @@ pub struct AnalysisReport {
     /// Frequencies and levels (dB) of the average spectrum.
     pub spectrum_hz: Vec<f32>,
     pub spectrum_db: Vec<f32>,
+    pub problems: Problems,
     pub cancelled: bool,
 }
 
@@ -184,6 +225,140 @@ impl Spectrum {
     }
 }
 
+/// Finds clicks and flattened peaks while the audio streams past.
+struct Flaws {
+    rate: f64,
+    frame: u64,
+    prev: [f32; 2],
+    /// Recent average size of the sample-to-sample change.
+    avg: f32,
+    alpha: f32,
+    last_click: Option<u64>,
+    run: u32,
+    out: Problems,
+}
+
+impl Flaws {
+    fn new(rate: u32) -> Self {
+        let rate = f64::from(rate.max(1));
+        Self {
+            rate,
+            frame: 0,
+            prev: [0.0; 2],
+            avg: 0.0,
+            alpha: (1.0 / (0.05 * rate)) as f32,
+            last_click: None,
+            run: 0,
+            out: Problems::default(),
+        }
+    }
+
+    fn secs(&self, frame: u64) -> f64 {
+        frame as f64 / self.rate
+    }
+
+    fn feed(&mut self, f: [f32; 2]) {
+        let step = (f[0] - self.prev[0]).abs().max((f[1] - self.prev[1]).abs());
+        self.prev = f;
+        // Not before the first tenth of a second: the average has to settle first.
+        if self.frame as f64 > self.rate / 10.0
+            && step > CLICK_MIN
+            && step > CLICK_RATIO * self.avg
+            && self
+                .last_click
+                .is_none_or(|c| (self.frame - c) as f64 > self.rate * 0.003)
+        {
+            self.out.clicks += 1;
+            if self.out.click_times.len() < LISTED {
+                self.out.click_times.push(self.secs(self.frame));
+            }
+            self.last_click = Some(self.frame);
+        }
+        // A spike must not teach the average that spikes are normal.
+        self.avg += self.alpha * (step.min(self.avg * 4.0 + 1e-4) - self.avg);
+
+        if f[0].abs() >= FLAT_LEVEL || f[1].abs() >= FLAT_LEVEL {
+            self.run += 1;
+            if self.run == FLAT_RUN {
+                self.out.clip_regions += 1;
+                self.out.clip_samples += u64::from(FLAT_RUN);
+                if self.out.clip_times.len() < LISTED {
+                    let start = self.frame + 1 - u64::from(FLAT_RUN);
+                    self.out.clip_times.push(self.secs(start));
+                }
+            } else if self.run > FLAT_RUN {
+                self.out.clip_samples += 1;
+            }
+        } else {
+            self.run = 0;
+        }
+        self.frame += 1;
+    }
+}
+
+impl Spectrum {
+    /// Mains hum: tones at 50 or 60 Hz and their multiples standing well above the sound
+    /// around them. Needs at least two such tones, so one bass note is not taken for hum.
+    fn hum(&self, rate: u32) -> Option<Hum> {
+        if self.blocks == 0 {
+            return None;
+        }
+        let bin_hz = f64::from(rate) / FFT as f64;
+        let nyquist = f64::from(rate) / 2.0;
+        let power = |b: usize| self.power.get(b).copied().unwrap_or(0.0);
+        let mut best: Option<(f32, Hum)> = None;
+        for base in [50u32, 60] {
+            let mut tones = Vec::new();
+            for h in 1..=4u32 {
+                let f = f64::from(base * h);
+                if f + 40.0 >= nyquist {
+                    break;
+                }
+                let c = (f / bin_hz).round() as usize;
+                let peak = (c.saturating_sub(1)..=c + 1).map(power).fold(0.0, f64::max);
+                // The level around the tone: the middle of the bins 10 to 30 Hz either side.
+                let a = (((f - 30.0) / bin_hz).ceil() as usize).max(1);
+                let b = ((f - 10.0) / bin_hz).floor() as usize;
+                let c2 = ((f + 10.0) / bin_hz).ceil() as usize;
+                let d = ((f + 30.0) / bin_hz).floor() as usize;
+                let mut around: Vec<f64> =
+                    (a..=b.max(a)).chain(c2..=d.max(c2)).map(power).collect();
+                around.sort_by(f64::total_cmp);
+                let floor = around
+                    .get(around.len() / 2)
+                    .copied()
+                    .unwrap_or(0.0)
+                    .max(1e-20);
+                let excess = (10.0 * (peak.max(1e-20) / floor).log10()) as f32;
+                tones.push(HumTone {
+                    hz: f as f32,
+                    excess_db: excess,
+                });
+            }
+            let strong: Vec<f32> = tones
+                .iter()
+                .map(|t| t.excess_db)
+                .filter(|e| *e >= 8.0)
+                .collect();
+            if strong.len() >= 2 {
+                let score: f32 = strong.iter().sum();
+                let strength = strong.iter().copied().fold(0.0, f32::max);
+                if best.as_ref().is_none_or(|(s, _)| score > *s) {
+                    best = Some((
+                        score,
+                        Hum {
+                            base_hz: base,
+                            strength_db: strength,
+                            tones,
+                        },
+                    ));
+                }
+            }
+        }
+        best.map(|(_, h)| h)
+    }
+}
+
 /// Analyzes the requested part of the session.
 pub fn analyze(
     session: &Session,
@@ -197,6 +372,7 @@ pub fn analyze(
     let mut hist = vec![0u64; HIST_BINS];
     let mut silent = 0u64;
     let mut spectrum = Spectrum::new();
+    let mut flaws = Flaws::new(rate);
     let (mut w_sum, mut w_n) = (0f64, 0usize);
     let (mut w_min, mut w_max, mut w_total, mut w_count) =
         (f64::INFINITY, f64::NEG_INFINITY, 0f64, 0u64);
@@ -216,6 +392,7 @@ pub fn analyze(
                 }
             }
             spectrum.feed((f[0] + f[1]) * 0.5);
+            flaws.feed([f[0], f[1]]);
             w_sum += f64::from(f[0]) * f64::from(f[0]) + f64::from(f[1]) * f64::from(f[1]);
             w_n += 1;
             if w_n == window {
@@ -255,6 +432,10 @@ pub fn analyze(
         histogram: hist,
         spectrum_hz,
         spectrum_db,
+        problems: Problems {
+            hum: spectrum.hum(rate),
+            ..flaws.out
+        },
         cancelled: rendered.cancelled,
     })
 }
@@ -442,5 +623,109 @@ mod tests {
             "held offset"
         );
         assert_eq!(nearest_zero_crossing(&[], 0, 10), None);
+    }
+
+    /// Both sides play `f(sample index)`, `seconds` long.
+    fn signal(dir: &Path, seconds: u32, f: impl Fn(usize) -> f32) -> Session {
+        let path = dir.join("sig.wav");
+        let spec = hound::WavSpec {
+            channels: 2,
+            sample_rate: 48_000,
+            bits_per_sample: 32,
+            sample_format: hound::SampleFormat::Float,
+        };
+        let mut w = hound::WavWriter::create(&path, spec).unwrap();
+        for i in 0..48_000 * seconds as usize {
+            let v = f(i);
+            w.write_sample(v).unwrap();
+            w.write_sample(v).unwrap();
+        }
+        w.finalize().unwrap();
+        session_of(path, 48_000 * u64::from(seconds))
+    }
+
+    fn problems(s: &Session) -> Problems {
+        analyze(
+            s,
+            &MixdownRequest::default(),
+            &AtomicBool::new(false),
+            |_, _| {},
+        )
+        .unwrap()
+        .problems
+    }
+
+    fn sine(i: usize, hz: f32, amp: f32) -> f32 {
+        amp * (std::f32::consts::TAU * hz * i as f32 / 48_000.0).sin()
+    }
+
+    /// Repeatable noise between -1 and 1.
+    fn noise(i: usize) -> f32 {
+        let mut z = (i as u64).wrapping_add(0x9E37_79B9_7F4A_7C15);
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^= z >> 31;
+        (z >> 11) as f32 / (1u64 << 52) as f32 - 1.0
+    }
+
+    #[test]
+    fn finds_a_click_and_not_a_clean_tone() {
+        let dir = tempfile::tempdir().unwrap();
+        let clean = problems(&signal(dir.path(), 3, |i| sine(i, 220.0, 0.1)));
+        assert_eq!(clean.clicks, 0);
+        let s = signal(dir.path(), 3, |i| {
+            sine(i, 220.0, 0.1) + if i == 96_000 { 0.7 } else { 0.0 }
+        });
+        let p = problems(&s);
+        assert_eq!(p.clicks, 1, "{p:?}");
+        assert!((p.click_times[0] - 2.0).abs() < 0.01, "{:?}", p.click_times);
+    }
+
+    #[test]
+    fn finds_flattened_peaks() {
+        let dir = tempfile::tempdir().unwrap();
+        // 100 Hz at 1.6 times full scale and cut off: two flat tops per cycle.
+        let s = signal(dir.path(), 1, |i| sine(i, 100.0, 1.6).clamp(-1.0, 1.0));
+        let p = problems(&s);
+        assert!(p.clip_regions >= 190 && p.clip_regions <= 210, "{p:?}");
+        assert!(p.clip_samples > 3 * p.clip_regions);
+        assert_eq!(
+            p.clip_times.len(),
+            LISTED,
+            "the list is capped, the count is not"
+        );
+        let none = problems(&signal(dir.path(), 1, |i| sine(i, 100.0, 0.5)));
+        assert_eq!(none.clip_regions, 0);
+    }
+
+    #[test]
+    fn finds_mains_hum_at_50_or_60_and_not_plain_noise() {
+        let dir = tempfile::tempdir().unwrap();
+        let hum = |base: f32| {
+            move |i: usize| {
+                sine(i, base, 0.02)
+                    + sine(i, base * 2.0, 0.015)
+                    + sine(i, base * 3.0, 0.01)
+                    + noise(i) * 0.01
+            }
+        };
+        let fifty = problems(&signal(dir.path(), 4, hum(50.0)));
+        let h = fifty.hum.as_ref().expect("50 Hz hum");
+        assert_eq!(h.base_hz, 50, "{h:?}");
+        assert!(h.strength_db > 10.0, "{h:?}");
+        let sixty = problems(&signal(dir.path(), 4, hum(60.0)));
+        assert_eq!(
+            sixty.hum.as_ref().map(|h| h.base_hz),
+            Some(60),
+            "{:?}",
+            sixty.hum
+        );
+        let plain = problems(&signal(dir.path(), 4, |i| noise(i) * 0.05));
+        assert_eq!(plain.hum, None, "{:?}", plain.hum);
+        // One bass note is not hum.
+        let bass = problems(&signal(dir.path(), 4, |i| {
+            sine(i, 50.0, 0.2) + noise(i) * 0.01
+        }));
+        assert_eq!(bass.hum, None, "{:?}", bass.hum);
     }
 }

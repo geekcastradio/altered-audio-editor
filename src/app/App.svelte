@@ -18,6 +18,9 @@
     minimizeWindow,
     openLink,
     pickMediaFiles,
+    tagsRead,
+    tagsWrite,
+    type FileTags,
     pickMediaFolder,
     revealMedia,
     saveKeymapOverrides,
@@ -67,6 +70,8 @@
   import ExportProgress from "./ExportProgress.svelte";
   import LoudnessDialog from "./LoudnessDialog.svelte";
   import AnalysisDialog from "./AnalysisDialog.svelte";
+  import TagsDialog from "./TagsDialog.svelte";
+  import { TAGGABLE } from "./tags";
   import type { AnalysisReport, AnalysisTab } from "./analysis";
   import LoudnessMatchDialog from "./LoudnessMatchDialog.svelte";
   import ExportMarkersDialog from "./ExportMarkersDialog.svelte";
@@ -1715,6 +1720,7 @@
   }
 
   // Analysis menu: spectrum, statistics and histogram of the mix or the time selection.
+  let tagsEdit = $state<{ path: string; tags: FileTags } | null>(null);
   let analysis = $state<{ report: AnalysisReport | null; progress: number | null; tab: AnalysisTab; scope: string } | null>(null);
 
   async function runAnalysis() {
@@ -3741,6 +3747,22 @@
         run: async () => importPaths(await pickMediaFiles()),
       }),
       actions.register({
+        id: "file.edit-tags",
+        run: async () => {
+          const [path] = await pickMediaFiles();
+          if (!path) return;
+          if (waveFile.current()?.path === path) {
+            showNotice("That file is open in the Waveform editor. Save and close it first, then edit its tags.");
+            return;
+          }
+          try {
+            tagsEdit = { path, tags: await tagsRead(path) };
+          } catch (e) {
+            showError(e);
+          }
+        },
+      }),
+      actions.register({
         id: "file.import-folder",
         run: async () => {
           const folder = await pickMediaFolder();
@@ -4286,7 +4308,7 @@
         enabled: () => exporting === null && contentEnd() > 0,
         reason: () => "The session has no clips yet.",
       }),
-      ...(["frequency", "statistics", "histogram"] as const).map((tab) =>
+      ...(["frequency", "statistics", "histogram", "problems"] as const).map((tab) =>
         actions.register({
           id: `analysis.${tab}`,
           run: () => openAnalysis(tab),
@@ -5152,6 +5174,25 @@
       colorFor = null;
       if (target && c !== null) void editClips("Clip Color", target.ids.map((id) => ({ id, color: c }))).catch(showError);
     }}
+  />
+{/if}
+
+{#if tagsEdit}
+  <TagsDialog
+    name={tagsEdit.path.split(/[\\/]/).pop() ?? tagsEdit.path}
+    tags={tagsEdit.tags}
+    unsupported={!TAGGABLE.test(tagsEdit.path)}
+    onSave={async (t) => {
+      const path = tagsEdit?.path;
+      tagsEdit = null;
+      if (!path) return;
+      try {
+        showNotice((await tagsWrite(path, t)) ? "Tags saved." : "That format can't take tags here.");
+      } catch (e) {
+        showError(e);
+      }
+    }}
+    onClose={() => (tagsEdit = null)}
   />
 {/if}
 

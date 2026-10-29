@@ -1081,6 +1081,26 @@ export function exportEmbedChapters(path: string, chapters: { title: string; sta
   return invoke<boolean>("export_embed_chapters", { path, chapters, totalMs });
 }
 
+/** The tags of an audio file. */
+export interface FileTags {
+  title?: string | null;
+  artist?: string | null;
+  album?: string | null;
+  year?: string | null;
+  genre?: string | null;
+  comment?: string | null;
+  track?: string | null;
+}
+
+export function tagsRead(path: string): Promise<FileTags> {
+  return invoke<FileTags>("tags_read", { path });
+}
+
+/** Writes the filled-in tags into a WAV, FLAC, MP3 or M4A file. False for other formats. */
+export function tagsWrite(path: string, tags: FileTags): Promise<boolean> {
+  return invoke<boolean>("tags_write", { path, tags });
+}
+
 /** Writes every marker into an exported WAV (cue points, with range lengths) or FLAC (a cue sheet). Returns how many went in. */
 export function exportEmbedMarkers(path: string, markers: { title: string; startMs: number; endMs: number | null; kind: string }[]): Promise<number> {
   return invoke<number>("export_embed_markers", { path, markers });

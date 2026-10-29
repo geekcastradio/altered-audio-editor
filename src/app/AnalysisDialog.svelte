@@ -7,7 +7,7 @@
   one window with a tab for each, measuring the mix (or the time selection).
 -->
 <script lang="ts">
-  import { binDb, dbY, fmtDb, fmtHz, fmtSample, FREQ_TICKS, histogramBars, logX, type AnalysisReport, type AnalysisTab } from "./analysis";
+  import { binDb, dbY, findings, fmtDb, fmtHz, fmtSample, FREQ_TICKS, histogramBars, logX, type AnalysisReport, type AnalysisTab } from "./analysis";
 
   interface Props {
     report: AnalysisReport | null;
@@ -28,6 +28,7 @@
     { id: "frequency", label: "Frequency" },
     { id: "statistics", label: "Statistics" },
     { id: "histogram", label: "Histogram" },
+    { id: "problems", label: "Problems" },
   ];
 
   const W = 560;
@@ -111,6 +112,17 @@
         {#if Math.abs(report.left.dcOffset) > 0.005 || Math.abs(report.right.dcOffset) > 0.005}
           <p class="advice">There is a noticeable DC offset. The DC Offset Fix effect removes it.</p>
         {/if}
+      {:else if tab === "problems"}
+        <ul class="finds">
+          {#each findings(report) as f (f.id)}
+            <li class:warn={f.found}>
+              <strong>{f.text}</strong>
+              {#if f.at.length > 0}<span class="at">At {f.at.join(", ")}</span>{/if}
+              {#if f.found}<span class="fix">{f.advice}</span>{/if}
+            </li>
+          {/each}
+        </ul>
+        <p class="scope">A quick check, not a verdict: it flags what is worth a listen. Times count from the start of what was analyzed.</p>
       {:else}
         <svg viewBox="0 0 {W} {H + 22}" class="plot" role="img" aria-label="Level histogram">
           {#each bars as b, i (i)}
@@ -278,6 +290,30 @@
     color: var(--value);
     font-family: var(--font-mono);
     text-align: right;
+  }
+
+  .finds {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .finds li {
+    display: grid;
+    gap: 2px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-dim);
+  }
+  .finds li.warn {
+    border-color: var(--warning, #c9a227);
+    color: var(--text);
+  }
+  .finds .at,
+  .finds .fix {
+    color: var(--text-faint);
   }
 
   .advice {

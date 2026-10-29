@@ -160,6 +160,8 @@ pub fn run() {
             commands::export::export_text,
             commands::export::export_embed_chapters,
             commands::export::export_embed_markers,
+            commands::export::tags_read,
+            commands::export::tags_write,
             commands::export::export_verify,
             commands::export::publish_write_files,
             commands::export::export_pick_folder,

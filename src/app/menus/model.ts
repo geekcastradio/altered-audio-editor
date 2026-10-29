@@ -94,6 +94,7 @@ export const MENUS: readonly Menu[] = [
       item("file.import-files", "Import Files..."),
       item("file.import-folder", "Import Folder..."),
       item("file.import-sesx", "Import Session (.sesx)..."),
+      item("file.edit-tags", "Edit File Tags..."),
       sep,
       item("file.save", "Save"),
       item("file.save-as", "Save As..."),
@@ -482,6 +483,7 @@ export const MENUS: readonly Menu[] = [
       item("analysis.frequency", "Frequency Analysis..."),
       item("analysis.statistics", "Amplitude Statistics..."),
       item("analysis.histogram", "Histogram..."),
+      item("analysis.problems", "Find Problems (Clicks, Clipping, Hum)..."),
     ],
   },
   {
