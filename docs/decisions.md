@@ -1527,3 +1527,10 @@ Several requests compared behavior to another editor; per the guardrails they ar
 
 - Added tests that a session renders to identical bits on repeat and at different block sizes, and that every built-in effect is deterministic. They run with the normal cargo tests.
 - README gets an "Under the hood" section. It claims only what is tested or visible in the code: Rust engine, no unsafe code in our own crates, plug-ins in a separate process, identical output, 64-bit, audio on the CPU. It does not claim "no memory leaks" (the web view side is not soak-tested) and does not claim GPU acceleration (not wanted for audio).
+
+## 2026-10-29: Channel Mixer, Stereo Expander and Distortion
+
+- Channel Mixer (Amplitude) is a 2x2 gain matrix, each cell from -200% to 200%, with a polarity flip per output. Defaults pass the sound untouched. Swap, mono fold and flip are the same control set to different numbers.
+- Stereo Expander (new Stereo Imagery family) scales the side signal of a mid/side split from 0% (mono) to 300%. "Keep bass centered below" leaves the side signal under that frequency at its own level, so low notes do not spread. It uses a one-pole split, a gentle slope by design.
+- Distortion (new Special family) has four curves (soft clip, hard clip, tube, fold), Drive, a Tone low-pass after the curve, Output and Mix. It evaluates the curve at the frame and its midpoint and averages them, which tames aliasing a little but is not full oversampling. A proper oversampled mode can come later if the harshness shows in real use.
+- All three add no latency and pass the existing determinism test.
