@@ -353,6 +353,7 @@
           <label class="off"><input type="checkbox" disabled checked /> Marker changes can be undone <span class="why">Always on.</span></label>
           <label class="off"><input type="checkbox" disabled checked /> Markers move with cuts, pastes and crops <span class="why">Always on.</span></label>
           <label class="off"><input type="checkbox" disabled checked /> Write chapters into exported MP3 and FLAC files <span class="why">Chosen in each export.</span></label>
+          <label><input type="checkbox" bind:checked={d.app.ampModelAlways} /> Offer the Amp Model in the Add effect menus without Music Mode</label>
           <label class="row">Name for new markers <input type="text" maxlength="40" bind:value={d.app.markerName} /> (numbered after it)</label>
         {:else if page === "Multitrack"}
           <fieldset>

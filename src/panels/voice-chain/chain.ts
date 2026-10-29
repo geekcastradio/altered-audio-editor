@@ -327,6 +327,9 @@ const gate = (threshold: number) =>
     range: -30,
   });
 
+/** The building blocks the built-in chains are made of, for guided panels that write plain effects. */
+export const BLOCKS = { fx, voiceEq, leveler, comp, limit, cleanNoise, gate };
+
 export const BUILTIN_PRESETS: ChainPreset[] = [
   trackOnly(
     chainP("Podcast Voice", "Voice chains", [

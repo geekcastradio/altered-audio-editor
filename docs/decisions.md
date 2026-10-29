@@ -1496,3 +1496,26 @@ Several requests compared behavior to another editor; per the guardrails they ar
 - **Export check.** Our own decode-based check runs after each export (default on); CI adds `flac -t` and `ffprobe` on Linux, where the tools are required.
 - **Publish Package writes files only.** No upload: the privacy guard forbids network code. The RSS.com API step stays a separate, opt-in decision.
 - **Deferred past 0.6.0:** FX Panel analysis suggestions, A/B compare and Separate Speakers (large, untuned); VST3 shared-folder presets.
+
+## 2026-10-28: Duck, Audio FX Panel v1, package additions (toward 0.7.0)
+
+- **Auto-duck is plain effects.** Multitrack > Duck Music Under Voice adds one keyed Dynamics slot per voice track to the music track's Voice Chain (threshold -45 dB, attack 30 ms, release 500 ms, ratio from the chosen depth against a voice about 25 dB over the threshold). Running it again replaces its own slots; Remove Ducking takes them out. With two voices talking at once the reductions add up; a bus key is the alternative if that proves too strong. A Rust test checks that "Medium" drops the music about 10 dB.
+- **Audio FX Panel is a front end, not an engine.** Four dialogue looks (Restoration, Level, Clarity, Polish), each Off, Light, Medium or Strong, write ordinary slots at the front of the chain, tagged `Audio FX: <look>/<strength>` so the panel can read them back and replace them. It aims at the selected clip, else the selected track, else the Waveform editor's preview chain. One undo step, named after the looks. Left for 0.8.0: suggested settings from analysis, loudness-matched A/B, before and after readout, other audio types, host profile auto-load.
+- **Publish Package** also writes chapters.vtt (WebVTT, each chapter ending where the next starts) and midrolls.json.
+
+## 2026-10-28: Multiband Compressor, Amp Model setting, roadmap order
+
+- Added the Multiband Compressor (three bands, Linkwitz-Riley splits, each band with its own threshold, ratio and gain). It is the first of the Audition catch-up features planned across 0.7.0 and 0.8.0.
+- Settings gets "Offer the Amp Model in the Add effect menus without Music Mode" (off by default), so it can live in the tabbed side panels outside the Music workspace.
+- Zoom Reset (All Axes) already exists in the menu and keymap; the old backlog note was stale.
+- Order set by the owner: Audition parity first (next two releases), then QOL. Transcripts and captions, then on-device AI (voice cloning last), after 0.9.0. Scripting and a local-only MCP endpoint ride with the opt-in RSS.com upload near the end, both off by default. Video comes later and must save the edited audio back into its original container (industry-standard formats only). MIDI mapping, soundboard pads and CLAP stay out for now; VST3 only.
+
+## 2026-10-28: Record with nothing open
+
+- With the "Nothing open" start screen showing, Record (button, menu or shortcut) asks for a new audio file first, then starts recording into it, as Audition does. Cancelling the dialog records nothing.
+- On that screen every transport and zoom button is greyed out except Record. They work again as soon as a file or session is open.
+
+## 2026-10-28: Release 0.7.0
+
+- 0.7.0 ships duck music, the Audio FX Panel v1, the Multiband Compressor, the Amp Model setting, WebVTT and midroll files in the package, and the Record-with-nothing-open fix.
+- The metadata panel and a click, clip and hum report, first planned for 0.7.0, move to 0.8.0 with the effect families so this release is not held up. Modulation effects, determinism tests and the "Under the hood" README section also wait for 0.8.0.

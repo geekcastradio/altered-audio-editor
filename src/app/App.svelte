@@ -7,7 +7,7 @@
 -->
 <script lang="ts">
   import { metronomeRecording, startMetronome } from "../stores/metronome";
-  import { onMount, type Component } from "svelte";
+  import { onMount, tick, type Component } from "svelte";
   import {
     workspaceDelete,
     exitApp,
@@ -74,6 +74,7 @@
   import { ALIGN_MAX_MS, alignOps, alignPair, describeAlign } from "../panels/editor/align";
   import SettingsDialog from "./settings/SettingsDialog.svelte";
   import { balance, balanceItems, describeBalance } from "./speaker-balance";
+  import { DUCK_DEPTHS, duckKeys, hasDuck, withDuck, withoutDuck } from "./duck";
   import { HOST_PROFILES, profileById, profileOp } from "./host-profiles";
   import type { SettingsDraft } from "./settings/pages";
   import { colorVars, meterPercent, sanitizeSettings, settings, type AppSettings } from "../stores/settings";
@@ -204,6 +205,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import type { EffectChainDoc, EffectTarget, MediaRefDoc, SessionDoc } from "../stores/session";
   import PendingPanel from "../panels/PendingPanel.svelte";
+  import AudioFxPanel from "../panels/audio-fx/AudioFxPanel.svelte";
   import VoiceChainPanel from "../panels/voice-chain/VoiceChainPanel.svelte";
   import { addSlot, chainOf, newSlot, type MenuPlugin } from "../panels/voice-chain/chain";
   import { effectSearch, vst3Items } from "../panels/voice-chain/slot-drag";
@@ -224,6 +226,7 @@
   import NewSessionDialog, { type NewSessionSettings } from "./NewSessionDialog.svelte";
   import { closeWaveFile, forgetParked, newEmptyWaveFile, parkedUnsaved, newWaveFromClips, newWaveFromMix, openWaveFile, saveWaveFile, savesInPlace, spectralSelection, wave, waveFile, waveHistory, waveTransport, waveZoom } from "../stores/wave";
   import { get, writable } from "svelte/store";
+  import { startScreen } from "../stores/start";
   import type { SessionRow } from "../panels/files/session-row";
   import { rasterize } from "../panels/editor/spectrum";
   import { inputLevels, liveTakes, LiveWave, recordControl, recording } from "../stores/record";
@@ -1170,6 +1173,38 @@
     const rate = m.sample_rate || doc.sample_rate;
     return musicFit(m.path, f.clip.source_in / rate, f.clip.source_out / rate, seconds, FIT_XFADE);
   }
+  // Multitrack > Duck Music Under Voice.
+  const duckTarget = () => {
+    const doc = session.current;
+    const music = selectedTrack();
+    return doc && music ? { doc, music, keys: duckKeys(doc, music) } : null;
+  };
+  async function runDuck() {
+    const at = duckTarget();
+    if (!at) return;
+    const { music, keys } = at;
+    const own = hasDuck(music);
+    const buttons: ChoiceButton[] = [
+      ...DUCK_DEPTHS.map((d) => ({ label: d.label, value: d.id, primary: d.id === "medium" })),
+      ...(own ? [{ label: "Remove Ducking", value: "remove" }] : []),
+      { label: "Cancel", value: "cancel" },
+    ];
+    const who = keys.length === 1 ? keys[0]!.name : `${keys.length} voice tracks`;
+    const pick = await ask("Duck Music Under Voice", `Turn ${music.name} down while ${who} talks, and bring it back after. It adds plain Dynamics effects to ${music.name} that you can still edit in the Voice Chain. How far should it drop?`, buttons);
+    if (pick === "cancel" || pick === null) return;
+    const chain = chainOf(music.effects);
+    if (pick === "remove") {
+      await session.edit("Remove Ducking", { op: "set_effects", target: { kind: "track", id: music.id }, chain: withoutDuck(chain) }, sessionHistory);
+      return showNotice(`Removed ducking from ${music.name}.`);
+    }
+    const depth = DUCK_DEPTHS.find((d) => d.id === pick);
+    if (!depth) return;
+    const next = withDuck(chain, keys.map((k) => k.id), depth.db, uuid);
+    if (!next) return showNotice(`${music.name}'s Voice Chain is full: it holds 16 effects.`);
+    await session.edit("Duck Music Under Voice", { op: "set_effects", target: { kind: "track", id: music.id }, chain: next }, sessionHistory);
+    showNotice(`${music.name} now ducks about ${depth.db} dB under ${who}. Adjust it in the Voice Chain.`);
+  }
+
   // Multitrack > Speaker Balance.
   let balancing = $state(false);
   async function runSpeakerBalance() {
@@ -1984,6 +2019,8 @@
           component: asComponent(VoiceChainPanel),
           props: { session, runner: sessionHistory, prefs, ask: promptText, transport, wave, waveTransport, onApplyWave: applyWaveChain, onNotice: showNotice, onError: showError },
         };
+      case "audio-fx":
+        return { component: asComponent(AudioFxPanel), props: { session, runner: sessionHistory, wave, onNotice: showNotice, onError: showError } };
       case "quickpass":
         return {
           component: asComponent(QuickPassPanel),
@@ -2798,6 +2835,8 @@
     return true;
   }
 
+  /** Record pressed with nothing open: start recording once the new audio file exists. */
+  let recordAfterNew = false;
   async function toggleRecord() {
     if (countdown !== null) {
       // Pressing Record again during the count cancels it.
@@ -2808,13 +2847,20 @@
       await finishRecord();
       return;
     }
+    // Nothing open: ask for a new audio file first, then record into it.
+    if (get(startScreen) && !inWave()) {
+      recordAfterNew = true;
+      askNewAudio();
+      return;
+    }
     if (!(await countIn())) return;
     try {
       if (inWave()) {
         const d = wave.current;
         const f = waveFile.current();
         if (!d || !f) {
-          showNotice("Open or create a file in the Waveform editor first.");
+          recordAfterNew = true;
+          askNewAudio();
           return;
         }
         await waveTransport.stop();
@@ -3093,6 +3139,11 @@
     editor.setMode("waveform");
     dock.show("editor");
     actions.invalidate();
+    if (recordAfterNew) {
+      recordAfterNew = false;
+      await tick();
+      await toggleRecord();
+    }
   }
 
   // File > New Session.
@@ -4527,6 +4578,15 @@
         },
       }),
       actions.register({
+        id: "multitrack.duck-music",
+        run: () => void runDuck().catch(showError),
+        enabled: () => {
+          const at = duckTarget();
+          return !!at && at.keys.length > 0;
+        },
+        reason: () => (selectedTrack() ? "Needs another track with a voice on it to listen to." : "Select the music track first."),
+      }),
+      actions.register({
         id: "multitrack.speaker-balance",
         run: () => void runSpeakerBalance().catch(showError),
         enabled: () => !balancing && session.current !== null && balanceItems(session.current).length >= 2,
@@ -5170,6 +5230,7 @@
     onDone={(v) => {
       newAudio = null;
       if (v) void makeNewAudio(v);
+      else recordAfterNew = false;
     }}
   />
 {/if}

@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { MarkerDoc } from "../stores/session";
-import { EMPTY_EPISODE, episodeProblems, packageFiles, slugOf } from "./publish";
+import { EMPTY_EPISODE, chaptersVtt, episodeProblems, packageFiles, slugOf, vttTime } from "./publish";
 
 const m = (name: string, kind: MarkerDoc["kind"], position: number, duration = 0): MarkerDoc => ({ id: name, name, kind, position, duration, description: "", chapter: null, contracted_duration: null });
 
@@ -52,5 +52,21 @@ describe("packageFiles", () => {
     expect(JSON.parse(get("chapters.json")).chapters).toHaveLength(2);
     expect(get("README.txt")).toContain("Ad positions (1): 0:30");
     expect(files.map((f) => f.name)).toContain("soundbites.json");
+  });
+
+  it("writes the chapters as WebVTT, each ending where the next starts", () => {
+    expect(get("chapters.vtt")).toBe("WEBVTT\n\n1\n00:00:00.000 --> 00:01:30.000\nIntro\n\n2\n00:01:30.000 --> 00:02:05.000\nWrap\n");
+  });
+
+  it("lists the ad positions in their own file", () => {
+    expect(JSON.parse(get("midrolls.json"))).toEqual({ midrolls: [{ start_time_ms: 30_000 }] });
+    expect(get("README.txt")).toContain("midrolls.json");
+  });
+
+  it("keeps a title from breaking a WebVTT cue", () => {
+    expect(vttTime(3_723_456)).toBe("01:02:03.456");
+    const v = chaptersVtt([{ title: "A --> B\nline", start: 0, end: null, kind: "chapter", description: "", url: null }], 5000);
+    expect(v).toContain("A -> B line");
+    expect(v).toContain("00:00:00.000 --> 00:00:05.000");
   });
 });

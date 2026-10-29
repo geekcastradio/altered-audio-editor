@@ -118,7 +118,7 @@ export const PANELS: readonly PanelDef[] = [
       { reference: "editor", direction: "right" },
       { edge: "right" },
     ],
-    pending: "Not built yet.",
+    pending: null,
   },
   {
     id: "libraries",

@@ -17,6 +17,8 @@ describe("app settings", () => {
     expect(s.meterRedDb).toBe(-9);
     expect(s.musicMode).toBe(false);
     expect(sanitizeSettings({ musicMode: true }).musicMode).toBe(true);
+    expect(sanitizeSettings({ ampModelAlways: true }).ampModelAlways).toBe(true);
+    expect(sanitizeSettings({}).ampModelAlways).toBe(false);
     expect(sanitizeSettings({ musicMode: "yes" }).musicMode).toBe(false);
   });
 
