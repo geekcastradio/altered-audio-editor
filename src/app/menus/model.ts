@@ -59,7 +59,6 @@ const popup = (id: string, label: string): MenuItem => ({ kind: "popup", id, lab
 const P2 = "Arrives with playback (P2).";
 const P3 = "Arrives with editing (P3).";
 const P5 = "Arrives with effects (P5).";
-const NEXT_FX = "Arrives in the next effects batch.";
 const P7 = "Arrives with podcast publishing (P7).";
 const LATER = "Not built yet.";
 
@@ -102,6 +101,8 @@ export const MENUS: readonly Menu[] = [
       item("file.save-all", "Save All"),
       sep,
       item("file.close", "Close"),
+      item("files.next-open", "Next Session or File"),
+      item("files.prev-open", "Previous Session or File"),
       item("file.close-all", "Close All"),
       item("file.close-unused", "Close Unused Media"),
       item("file.collect-media", "Collect Session Media"),
@@ -138,6 +139,7 @@ export const MENUS: readonly Menu[] = [
       item("edit.delete", "Delete"),
       item("edit.crop", "Crop"),
       item("edit.snap-zero", "Snap Selection to Zero Crossings"),
+      item("edit.snap-zero-mode", "Snap Selections to Zero Crossings (Always)"),
       sub("Tool", [
         item("tool.move", "Move"),
         item("tool.razor", "Razor"),
@@ -319,6 +321,7 @@ export const MENUS: readonly Menu[] = [
       item("clip.merge", "Merge Clips"),
       item("clip.unique", "Make Unique Copy"),
       item("clip.split-channels", "Split Channels to Tracks"),
+      item("clip.split-bands", "Split into Frequency Bands..."),
       item("clip.edit-source", "Open in Waveform Editor"),
       sep,
       item("clip.gain", "Clip Gain..."),
@@ -419,6 +422,7 @@ export const MENUS: readonly Menu[] = [
       sortedSub("Special", [item("fx.add.distortion", "Distortion")]),
       sortedSub("Dynamics", [
         item("fx.add.dynamics", "Dynamics"),
+        item("fx.add.dynamics_suite", "Dynamics (Gate, Compressor, Expander, Limiter)"),
         item("fx.add.limiter", "Limiter"),
         item("fx.add.breath_gate", "Breath Gate"),
         item("fx.add.deesser", "De-Esser"),
@@ -450,12 +454,8 @@ export const MENUS: readonly Menu[] = [
         item("fx.add.pitch_shift", "Pitch Shift"),
         item("clip.stretch", "Time Stretch..."),
         item("clip.music-fit", "Fit Music to Length..."),
-        item("fx.pitch-tune", "Pitch Tune (automatic correction)", {
-          pending: NEXT_FX,
-        }),
-        item("fx.pitch-curve", "Pitch Curve (pitch over time)", {
-          pending: NEXT_FX,
-        }),
+        item("fx.pitch-tune", "Pitch Tune (automatic correction)..."),
+        item("fx.pitch-curve", "Pitch Curve (bend over time)..."),
       ]),
       sortedSub("QuickPass", [
         item("fx.quickpass", "Presets arrive in P5", {

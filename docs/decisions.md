@@ -1591,3 +1591,81 @@ Several requests compared behavior to another editor; per the guardrails they ar
 
 - Version bumped to 0.8.0 with `scripts/bump-version.mjs`. Release notes are in `docs/release-notes-0.8.0.md` and say what is untested (raw AAC on real encoders, Find Problems on varied recordings).
 - Moved to 0.9.0: FX Panel analysis, suggested settings and A/B (needs raw recordings), the installer, leftover Audiform items, the User Guide, a persistent snap-to-zero mode, a docked Metadata panel, and the CI Node 20 warning.
+
+## 2026-10-30: Snap to zero crossings as a mode (0.9.0)
+
+- Edit > Snap Selections to Zero Crossings (Always) is a checked setting, off by default and saved between runs. When on, a dragged Waveform editor selection moves its edges to the nearest zero crossings within 20 ms when the mouse is let go. A click (no drag) is unchanged. If the lookup fails or the edges would meet, the selection stays where it was dragged. The one-shot Edit action stays.
+
+## 2026-10-30: Metadata panel (0.9.0)
+
+- Window > Metadata is a docked panel for the tags inside WAV, FLAC, MP3 and M4A files: add files, search them (by name, title, artist, album or genre), edit one file's fields, and keep named tag sets such as a show's artist, album and genre. A set can fill the open file's fields (nothing is written until Save) or be written to every file in the list. Sets are stored in the app preferences.
+- It reuses the File > Edit File Tags writer, so the same rules hold: only filled-in fields are written, clearing a field does not remove it from the file yet, chapters and audio are untouched, and a file open in the Waveform editor is refused. Year must be four digits and Track a number or a number and total.
+- Cover art is MP3 only (an ID3v2.3 APIC frame, JPEG or PNG, up to 8 MB, one picture, replaced when a new one is chosen). Writing text tags keeps the picture. FLAC and M4A cover art wait; the MP3 path is the one podcast hosts read.
+- The File > Edit File Tags dialog stays for a quick edit of one file.
+
+## 2026-10-30: Frequency bands (0.9.0)
+
+- Clip > Split into Frequency Bands cuts a clip into two or three tracks (Low, Mid, High) at the frequencies you type, so each band can be compressed or EQ'd on its own. Each new track plays a copy of the clip through pairs of 2nd-order Butterworth Precision Filters at each edge, which is a 4th-order Linkwitz-Riley crossover. It is built from the filters that already exist, so everything can be opened and changed in the Voice Chain, and it is one undoable step. The original clip is muted, not removed.
+- A cargo test adds the bands back together and requires the result within 0.4 dB of flat. With three bands that only holds when the two frequencies are at least six times apart (200 and 1200 Hz pass, 250 and 1000 do not, about 1 dB off), so the dialog refuses closer pairs. Four bands were also tried and dipped about 0.9 dB, so the limit is three. Fixing both needs an all-pass slot, which the effect list does not have.
+- Reversed and locked clips are skipped. Clip volume and pan envelopes are not copied to the band clips.
+- Precision Filter already has Butterworth, Chebyshev, Bessel and Elliptic, Phase Curve is the graphic phase shifter, and Hum Cut exists, so those roadmap items are not gaps.
+
+## 2026-10-30: Pitch Tune and Pitch Curve (0.9.0)
+
+- Effects > Pitch and Time > Pitch Tune and Pitch Curve work in the Waveform editor on the selection or the whole file, as one undoable edit. Pitch Tune pulls a voice toward a key and scale (strength, speed, and a limit past which a note is left alone as probably intended). Pitch Curve bends the pitch along straight lines between a start, an optional middle and an end point, up to 700 cents either way.
+- One engine does both: the Show Pitch tracker reads the pitch every 10 ms, marks are placed on the waveform's peaks, and one-period grains are laid back at the new spacing (pitch-synchronous overlap-add). Each grain keeps its own spectrum, so the voice keeps its character and its formants stay where they were, which is the formant keeping the roadmap listed. Stretches with no clear pitch are left as they are, with 6 ms fades at the ends of the stretches that change.
+- It is for one voice or instrument and small moves. A pure test tone gets a smeared waveform edge from the overlap, and large moves, several voices at once and noisy recordings will sound worse. Tests check the result with numbers (the pitch lands on the note, the bend follows its line, level and stereo balance hold, noise is untouched, strength 0 returns the audio unchanged) but nobody has listened to it on real speech yet, so the release notes call it experimental.
+- Stereo and multichannel files move together: the pitch is read from the average of the channels and the same grains are moved in each.
+
+## 2026-10-30: Release 0.9.0
+
+- Version bumped to 0.9.0 with `scripts/bump-version.mjs`; notes in `docs/release-notes-0.9.0.md`. Adaptive noise reduction was on the plan but the Noise Reducer already learns the background as it plays, so nothing was added. The roadmap items that need a design call (master track and bus chains, automation modes) and the items that need Steve at the PC (Audiform, FX Panel analysis from raw recordings, installer, User Guide) are left for the next version.
+
+## 0.9.0: Files panel menus
+
+Right-click in the Files panel now gives two menus laid out like Audition's: one for empty space (New, Open, Import, Close Selected Files, Close All, Link Media, Dismiss Error Messages, Cancel Running Operations) and one for a file (Edit File, Insert into Multitrack, the same close group, Reveal, Import). Remove Unused Files, Try Reading Again and Select All stay as this editor's own extras. Close All removes every file and asks first when clips use them; it is undoable. Link Media points one selected file (and its session entry) at a new location in one undo step, then reads it again. Dismiss Error Messages removes the failed entries; Cancel Running Operations stops reads still waiting (a read already under way finishes). Middle-click on a file or session row closes it, like a browser tab. Context menus are now light with a blue highlight so they stand out from the dark panels. There is no separate file browser panel, so the Reveal in browser command is left out.
+
+## 0.9.0: Browser-style tab keys
+
+Approved by the project lead (2026-10-29), for a mouse with macro buttons that send browser tab keys. Ctrl+W and Ctrl+F4 run Close (the Audio File or session in front). Ctrl+Tab or Ctrl+PageDown steps to the next entry in the Files panel (sessions first, then ready files) and Ctrl+Shift+Tab or Ctrl+PageUp to the previous, wrapping around. A session comes to the front in Multitrack; a file opens in the Waveform editor. File menu: Next Session or File, Previous Session or File.
+
+## 0.9.0: Clip look closer to Audition
+
+The solid colored title bar on multitrack clips is gone; the clip name now floats over the clip in light text, as in Audition, and the Envelopes or Volume chip stays at the top right. The volume line's readout is a light box with dark text centered under the pointer and always signed (+0.0 dB). Other readouts (pan, fades, level handle) use the same box.
+
+The fade handles at the top corners of each clip are no longer solid white boxes. Each is a small two-tone box that draws that fade's curve (light under the curve, dark above), rising for the fade in and falling for the fade out, so the shape shows at a glance.
+
+## 0.9.0: Small fixes from real use
+
+- Volume and pan dials draw their origin (0 dB, center) at 12 o'clock; the ends sweep 135 degrees either way.
+- End in the Waveform editor goes to the end of the file (it used the multitrack's end before). In Multitrack, Home and End go to the start and the end of the last clip in the session.
+- Dragging the view with the middle button shows the grabbing hand over the clips.
+- QuickPass: the Scan button shows how far the scan is (`quickpass-progress` events, one per clip). A single long clip jumps from 0 to 100.
+- Voice Chain presets open as a pop-out menu: Voice Chains split into Podcast Voices, Character Types, Cleanup and Voice Over, then the one-effect groups. Each built-in chain has a short description on the right (`PRESET_INFO` in chain.ts). Save your own chain under a name like "Podcast Voice - Host" to keep it in the Yours group.
+
+## 0.9.0: QuickPass strip, delete and track choice
+
+Delete (or Backspace) on the findings list strips the highlighted findings whatever Fix by is set to; Ctrl+A highlights them all; right-click gives Strip Selected, Strip All, the current action for selected or all, and Select All. A Tracks button lists the tracks with check marks to leave some out of the scan; locked clips are always left alone. The Scan tab shows the Gaps choice (leave open, close on that track, close on all tracks) when Fix by is Strip, so it is visible before stripping. A test pins that "leave open" moves nothing after the gap.
+
+The Razor tool's toolbar icon and cursor are now a safety-razor blade (flat blade with a slot and two holes, one bevelled edge) instead of a knife.
+
+Grouped clips share a color of their own (picked from the group), so a group stands out from single clips. A clip's own color is ignored while it is grouped and returns when it is ungrouped.
+
+The volume line shows by default for new settings (as in Audition); the Envelopes chip still turns it off. Over the volume line and its points the pointer is the normal arrow. Check marks in context menus sit in the left margin so labels line up whether or not a row has one.
+
+Ripple Delete is in the clip right-click menu, and Shift+Delete joins Shift+Backspace for it. Menu items now report errors instead of failing silently. An edit shortcut that cannot run (nothing selected, wrong panel) shows why in a notice.
+
+Effect settings windows open in the middle of the screen and have a light title bar (title, On/Off and close button) so they stand out from the dark panels.
+
+## 0.9.0: Speech Leveler window, panel sizes, scan progress
+
+- The Speech Leveler window follows the classic speech leveler layout: Target Volume Level, Leveling Amount, Target Dynamic Range, Boost Low Signals, and an Advanced section with a Compressor (threshold) and a Noise Gate (offset). Our Most boost, Most cut, Response and Ignore below stay under Advanced. New engine settings: `amount`, `range`, `boost_low`, `comp_on`, `comp_thr`, `gate_on`, `gate_off`. Target Dynamic Range is our approximation: it widens the zone around the target where the level is left alone (range / 20 dB each side), so the default 45 gives a little over 2 dB. The compressor is a fixed 4:1 on the peaks left after leveling. The gate eases the sound down 20 dB below the floor plus the offset. Not tuned by ear.
+- Every dockable panel has a minimum size (`MIN_SIZE` in docking/registry.ts), applied to groups, so a panel no longer squeezes its controls together.
+- The loudness scan in the export dialogs shows a percent like the QuickPass scan.
+- The Linux release job moves to ubuntu-22.04 and the AppImage loses "linux" from its name, after the AppImage catalog test failed on glibc 2.39. `release.yml` is delivered separately (a workflow file).
+
+## 2026-10-29 Dynamics suite effect
+
+- New effect `altaudio.dynamics_suite` (Effects > Dynamics): Gate, Compressor, Expander and Limiter in one window, run in that order, each section with its own On switch (Gate on by default, the rest off).
+- It reuses the existing Gate, Compressor, Expander and Limiter processors, so the sound is the proven one. Latency is the limiter's.
+- Built-in preset names from Audition (Hard Limiting, Noise Gate, and so on) are not shipped yet: single-effect presets are user-saved only. Held until Steve picks the values.

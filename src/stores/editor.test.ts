@@ -33,4 +33,10 @@ describe("play mode", () => {
     expect(parseSettings({ playMode: "loop" }).playMode).toBe("loop");
     expect(parseSettings({ playMode: "sideways" }).playMode).toBe("normal");
   });
+
+  it("snap to zero crossings is off by default, saved, and ignores junk", () => {
+    expect(parseSettings(null).snapZero).toBe(false);
+    expect(parseSettings({ snapZero: true }).snapZero).toBe(true);
+    expect(parseSettings({ snapZero: "yes" }).snapZero).toBe(false);
+  });
 });

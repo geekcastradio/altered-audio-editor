@@ -202,6 +202,9 @@ Standard Windows shortcuts only. No application-specific keymap beyond these:
 | Action | Shortcut |
 | --- | --- |
 | Undo | Ctrl+Z |
+| Ripple delete selected clips, second key | Shift+Delete (approved by the project lead, 2026-10-29) |
+| Close (session or Audio File in front) | Ctrl+W or Ctrl+F4 (approved by the project lead, 2026-10-29) |
+| Next / previous session or file in the Files panel | Ctrl+Tab and Ctrl+Shift+Tab, or Ctrl+PageDown and Ctrl+PageUp (approved by the project lead, 2026-10-29) |
 | Redo | Ctrl+Y |
 | Save | Ctrl+S |
 | Open | Ctrl+O |
@@ -246,6 +249,8 @@ Approved 2026-10-20 and assigned in 0.1.9 (disabled menu items hold the chord fo
 | Nudge clip left, right, up, down | Alt+comma, Alt+period, Alt+Up, Alt+Down |
 | Mute, Solo, Record or Monitor on all tracks | Ctrl+Shift+click |
 | Dial fine and coarse steps | Ctrl+drag, Shift+drag |
+
+Approved 2026-10-29 (match Audition's shipped shortcuts; the full comparison is docs/audition-shortcuts.md): Deselect All Ctrl+D, Preferences Ctrl+Comma, Zoom to Selection Shift+S, Alt+Delete and Ctrl+Shift+Delete as second ripple keys, Keyboard Shortcuts Alt+K, Redo also Ctrl+Shift+Z, Crop Ctrl+T, Add Cue Marker also F8, Insert Files Ctrl+Shift+I, Paste to New Ctrl+Alt+V, Mix Paste Ctrl+Shift+V, Edit Original Ctrl+E, New Audio File Ctrl+Shift+N, Save As Ctrl+Shift+S, Save All Ctrl+Alt+Shift+S, Import Ctrl+I, Export Ctrl+Shift+E, Quit Ctrl+Q, Save Selection As Ctrl+Alt+S, tools E D P B, Snapping S, Split All Ctrl+Alt+Shift+K, Clip Gain Shift+G, Show All Tracks Alt+Shift+A, Hide Selected Tracks Alt+H, Amplitude Statistics Ctrl+Alt+A, Frequency Analysis Ctrl+Alt+F, Trim to Time Selection Alt+T, Previous and Next Edge Alt+Left and Alt+Right, Range Marker Ctrl+Shift+M, Noise Print Reducer Ctrl+Shift+P.
 
 Approved 2026-10-23 (the right-click menu rework; disabled items hold their chords):
 

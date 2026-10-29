@@ -84,7 +84,7 @@
     void tick;
     return actions.isEnabled(id);
   };
-  const run = (id: string) => void actions.run(id);
+  const run = (id: string) => void actions.run(id).catch((e) => console.error(e));
   const tip = (label: string, id: string) => {
     const key = shortcutFor(id);
     return key ? `${label} (${key})` : label;
@@ -107,7 +107,7 @@
   let sortKey = $state<SortKey | null>(null);
   let descending = $state(false);
   let anchor = $state<string | null>(null);
-  let menu = $state<{ x: number; y: number } | null>(null);
+  let menu = $state<{ x: number; y: number; on: "blank" | "file" } | null>(null);
   /** Right-click on a session row: its own menu. */
   let sessionMenu = $state<{ x: number; y: number; id: string } | null>(null);
 
@@ -260,13 +260,16 @@
     window.addEventListener("pointerup", up, true);
   }
 
-  function openMenu(e: MouseEvent) {
+  function openMenu(e: MouseEvent, on: "blank" | "file" = "blank") {
     e.preventDefault();
-    menu = { x: e.clientX, y: e.clientY };
+    e.stopPropagation();
+    menu = { x: e.clientX, y: e.clientY, on };
   }
 
+  /** The menus follow Audition's layout; Remove Unused, Try Reading Again and Select All are this editor's own. */
   const menuItems = $derived.by((): ContextItem[] => {
     void tick;
+    const onFile = menu?.on === "file";
     const selected = snap ? pool.selectedItems() : [];
     const failed = selected.filter((it) => it.status === "error");
     const item = (id: string, label: string): ContextItem => ({
@@ -276,31 +279,64 @@
       disabled: !actions.isEnabled(id),
       shortcut: shortcutFor(id),
     });
-    const out: ContextItem[] = [
-      item("files.edit", "Edit File"),
+    const closeGroup: ContextItem[] = [
+      item("files.close-selected", selected.length > 1 ? `Close ${selected.length} Selected Files` : "Close Selected Files"),
+      item("files.close-all", "Close All"),
+      item("file.close-unused", "Remove Unused Files"),
+      { kind: "sep" },
+      item("files.link-media", "Link Media..."),
+      item("files.dismiss-errors-selected", "Dismiss Error Messages for Selected Files..."),
+      item("files.dismiss-errors", "Dismiss Error Messages for All Files..."),
+      item("files.cancel-ops-selected", "Cancel Running Operations for Selected Files..."),
+      item("files.cancel-ops", "Cancel Running Operations for All Files..."),
+    ];
+    const retry: ContextItem[] = failed.length
+      ? [{ kind: "item", label: "Try Reading Again", run: () => failed.forEach((it) => pool.retry(it.id)) }]
+      : [];
+    if (onFile) {
+      return [
+        item("files.edit", "Edit File"),
+        {
+          kind: "sub",
+          label: "Insert into Multitrack",
+          items: [item("files.insert-at-playhead", "At the Playhead on the Selected Track"), item("multitrack.insert-selected-tracks", "As New Tracks")],
+        },
+        { kind: "sep" },
+        ...closeGroup,
+        { kind: "sep" },
+        item("file.reveal", revealLabel()),
+        ...retry,
+        { kind: "sep" },
+        item("file.import-files", "Import Files..."),
+        item("file.import-folder", "Import Folder..."),
+        item("edit.select-all", "Select All"),
+      ];
+    }
+    return [
       {
         kind: "sub",
-        label: "Insert into Multitrack",
-        items: [item("files.insert-at-playhead", "At the Playhead on the Selected Track"), item("multitrack.insert-selected-tracks", "As New Tracks")],
+        label: "New",
+        items: [item("file.new-session", "Multitrack Session..."), item("file.new-audio", "Audio File...")],
       },
+      item("file.open", "Open..."),
       { kind: "sep" },
       item("file.import-files", "Import Files..."),
       item("file.import-folder", "Import Folder..."),
       { kind: "sep" },
-      item("edit.delete", selected.length > 1 ? `Remove ${selected.length} Files` : "Remove from Session"),
-      item("file.close-unused", "Remove Unused Files"),
-      item("file.reveal", revealLabel()),
+      ...closeGroup,
+      ...retry,
+      { kind: "sep" },
+      item("edit.select-all", "Select All"),
     ];
-    if (failed.length > 0) {
-      out.push({
-        kind: "item",
-        label: "Try Reading Again",
-        run: () => failed.forEach((it) => pool.retry(it.id)),
-      });
-    }
-    out.push({ kind: "sep" }, item("edit.select-all", "Select All"));
-    return out;
   });
+
+  /** Middle-click closes a row, as it does on a browser tab. */
+  function onRowAux(e: MouseEvent, item: MediaItem) {
+    if (e.button !== 1) return;
+    e.preventDefault();
+    pool.setSelection([item.id]);
+    run("files.close-selected");
+  }
 
   // Preview: hear a file without adding it to a track. Loop restarts it
   // when it ends; Auto-Play previews whichever single file is selected.
@@ -390,7 +426,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<section class="panel" class:dropping aria-label="Files" data-area="files" bind:this={root} oncontextmenu={openMenu}>
+<section class="panel" class:dropping aria-label="Files" data-area="files" bind:this={root} oncontextmenu={(e) => openMenu(e, "blank")}>
   <div class="toolbar">
     <button type="button" class="tool" title={tip("New Session", "file.new-session")} aria-label="New Session" disabled={!can("file.new-session")} onclick={() => run("file.new-session")}>
       <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -494,6 +530,12 @@
           list?.focus();
         }}
         ondblclick={() => onOpenSession(sr.id)}
+        onmousedown={(e) => e.button === 1 && e.preventDefault()}
+        onauxclick={(e) => {
+          if (e.button !== 1) return;
+          e.preventDefault();
+          onCloseSession(sr.id);
+        }}
         oncontextmenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -529,6 +571,9 @@
         data-id={it.id}
         title={menu ? undefined : rowTitle(it)}
         onpointerdown={(e) => onRowPointer(e, it)}
+        onmousedown={(e) => e.button === 1 && e.preventDefault()}
+        onauxclick={(e) => onRowAux(e, it)}
+        oncontextmenu={(e) => openMenu(e, "file")}
         ondblclick={() => it.status === "ready" && onOpen(it.path)}
       >
         <span class="col name">{it.name}</span>

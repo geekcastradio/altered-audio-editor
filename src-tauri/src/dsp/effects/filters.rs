@@ -678,6 +678,71 @@ mod tests {
         assert!(band(3.0, 1000.0) < -20.0 && band(3.0, 50.0).abs() < 1.0);
     }
 
+    /// The slots of one band when a clip is split at `edges` (Hz): a pair of 2nd-order
+    /// Butterworth filters at each edge, which makes 4th-order Linkwitz-Riley crossovers.
+    fn band_slots(k: usize, edges: &[f64]) -> Vec<(&'static str, f64, f64)> {
+        let mut v = Vec::new();
+        if k > 0 {
+            v.extend([("hp", edges[k - 1], 1.0); 2]);
+        }
+        if k < edges.len() {
+            v.extend([("lp", edges[k], 0.0); 2]);
+        }
+        v
+    }
+
+    /// The peak level (dB) of every band of a split added back together, for a sine at `freq`.
+    fn band_sum(edges: &[f64], freq: f64) -> f64 {
+        let rate = 48_000;
+        let n = rate as usize;
+        let mut sum = vec![0f32; n * 2];
+        for k in 0..=edges.len() {
+            let mut b: Vec<f32> = (0..n)
+                .flat_map(|i| {
+                    let v = (2.0 * PI * freq * i as f64 / f64::from(rate)).sin() as f32 * 0.5;
+                    [v, v]
+                })
+                .collect();
+            for (_, f, mode) in band_slots(k, edges) {
+                let mut p = build(
+                    &slot(
+                        "altaudio.precision_filter",
+                        &[("design", 0.0), ("mode", mode), ("order", 0.0), ("freq", f)],
+                    ),
+                    rate,
+                )
+                .unwrap();
+                for c in b.chunks_mut(2 * 1000) {
+                    p.process(c);
+                }
+            }
+            for (a, x) in sum.iter_mut().zip(&b) {
+                *a += x;
+            }
+        }
+        let peak = sum[n..].iter().fold(0f32, |m, s| m.max(s.abs()));
+        20.0 * (f64::from(peak) / 0.5).log10()
+    }
+
+    #[test]
+    fn linkwitz_riley_bands_add_back_to_a_flat_response() {
+        for edges in [
+            vec![1000.0],
+            vec![200.0, 1200.0],
+            vec![200.0, 2000.0],
+            vec![100.0, 1000.0],
+            vec![500.0, 5000.0],
+        ] {
+            for f in [
+                40.0, 100.0, 150.0, 200.0, 350.0, 500.0, 700.0, 1000.0, 1400.0, 2000.0, 3000.0,
+                4000.0, 9000.0,
+            ] {
+                let db = band_sum(&edges, f);
+                assert!(db.abs() < 0.4, "edges {edges:?} at {f} Hz: {db:.2} dB");
+            }
+        }
+    }
+
     #[test]
     fn curve_eq_follows_its_points() {
         let mut p = vec![];

@@ -10,6 +10,7 @@ pub mod adpcm;
 pub mod analysis;
 pub mod chapters;
 pub mod convert;
+pub mod cover;
 pub mod encode;
 pub mod loudness;
 pub mod m4a_tags;

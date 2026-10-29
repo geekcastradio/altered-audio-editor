@@ -161,6 +161,20 @@ describe("MediaPool", () => {
     expect(pool.readyItems().map((i) => i.id)).toEqual([pool.current.items[0]!.id, "s1", "s2"]);
   });
 
+  it("cancels files still waiting and lets them be read again", async () => {
+    const { pool, stack } = setup();
+    await pool.importPaths(Array.from({ length: 10 }, (_, i) => `C:\\a\\f${i}.wav`), stack);
+    const stopped = pool.cancelQueued();
+    expect(stopped).toBeGreaterThan(0);
+    await pool.whenIdle();
+    const cancelled = pool.current.items.filter((it) => it.status === "error");
+    expect(cancelled).toHaveLength(stopped);
+    expect(cancelled[0]?.error).toMatch(/Cancelled/);
+    pool.retry(cancelled[0]!.id);
+    await pool.whenIdle();
+    expect(pool.get(cancelled[0]!.id)?.status).toBe("ready");
+  });
+
   it("reads file names from either slash style", () => {
     expect(fileName("C:\\Shows\\ep 12.wav")).toBe("ep 12.wav");
     expect(fileName("/home/host/bumper.mp3")).toBe("bumper.mp3");

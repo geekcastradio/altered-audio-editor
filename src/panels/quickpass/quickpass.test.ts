@@ -240,6 +240,18 @@ describe("acting on findings", () => {
     expect(starts).toEqual([0, 6_000, 18_000]);
   });
 
+  it("leaves the gap open: clips after it and on other tracks keep their place", () => {
+    const doc = mkDoc([mkClip("a", 0, 48_000), mkClip("b", 60_000, 24_000)]);
+    const op = removeOp(doc, [fnd(10_000, 20_000)], { ripple: "none", keepMs: 0 }, nid)!;
+    const t = applyLocal(doc, op).tracks[0]!;
+    const b = t.clips.find((c) => c.id === "b")!;
+    expect(b.start).toBe(60_000);
+    const starts = t.clips.map((c) => c.start).sort((x, y) => x - y);
+    expect(starts).toContain(20_000);
+    expect(starts[0]).toBe(0);
+    expect(t.clips.some((c) => c.start < 20_000 && c.start > 10_000)).toBe(false);
+  });
+
   it("splits out a silence and finds the piece again", () => {
     const doc = mkDoc([mkClip("a", 0, 48_000)]);
     const f = fnd(10_000, 20_000);

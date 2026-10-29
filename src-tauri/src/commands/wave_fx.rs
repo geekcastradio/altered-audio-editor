@@ -194,6 +194,47 @@ pub async fn wave_stretch(
     .map_err(|e| e.to_string())?
 }
 
+/// The result of Pitch Tune or Pitch Curve: the new stretch, and what was found in it.
+#[derive(Debug, serde::Serialize)]
+pub struct PitchEditResult {
+    pub media: crate::session::model::MediaRef,
+    pub start: u64,
+    pub end: u64,
+    pub report: crate::dsp::pitchedit::Report,
+}
+
+/// Waveform editor Pitch Tune and Pitch Curve on `start..end`: corrects the pitch of a voice
+/// toward a key, or bends it along a drawn line. Parts with no clear pitch are left as they
+/// are. The interface swaps the result in; Undo takes it back.
+#[tauri::command]
+pub async fn wave_pitch_edit(
+    app: AppHandle,
+    wave: State<'_, OpenWave>,
+    start: u64,
+    end: u64,
+    edit: crate::dsp::pitchedit::Edit,
+) -> Result<PitchEditResult, String> {
+    let session = snapshot(&wave)?;
+    let dir = crate::commands::cache::cache_root(&app)?.join("wave-fx");
+    spawn_blocking(move || -> Result<PitchEditResult, String> {
+        let rate = session.sample_rate;
+        let end = end.min(mixdown::session_end(&session));
+        if end <= start {
+            return Err("Select some audio first, or use the whole file.".into());
+        }
+        let (audio, n) = render_n(&session, start as i64, end as i64);
+        let (out, report) = crate::dsp::pitchedit::apply(&audio, n, rate, &edit);
+        if report.voiced == 0 {
+            return Err("No clear pitch was found in this audio. Select a stretch of a single voice or instrument.".into());
+        }
+        let frames = (end - start) as usize;
+        let media = write_n(&dir, "pitch", &out, n, 0, frames, rate)?;
+        Ok(PitchEditResult { media, start, end, report })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Reverse (play backwards) or invert (flip polarity) audio of `n` interleaved channels.
 fn reverse_or_invert(audio: &[f32], n: usize, mode: &str) -> Result<Vec<f32>, String> {
     let n = n.max(1);

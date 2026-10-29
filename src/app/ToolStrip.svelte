@@ -123,7 +123,8 @@
         {#if t.id === "move"}
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2l8 5.5-3.6.6 2.2 4.4-1.6.8-2.2-4.4L3 11.6z" fill="currentColor" /><path d="M12 10v5M9.5 12.5h5" stroke="currentColor" stroke-width="1.2" /></svg>
         {:else if t.id === "razor"}
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 14L11.5 2.5l2 1.3L6 15.2z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" /><path d="M8.2 7.5l2 1.3" stroke="currentColor" stroke-width="1.2" /><path d="M1 9h4" stroke="currentColor" stroke-width="1.2" stroke-dasharray="1.5 1.5" /></svg>
+          <!-- A safety-razor blade: a flat steel rectangle with a slot and two holes, one edge cut. -->
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 5.5h13v6h-13z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" /><path d="M1.5 5.5L3 3.5h10l1.5 2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" /><rect x="5.5" y="7.4" width="5" height="1.6" rx="0.8" fill="currentColor" /><circle cx="3.6" cy="8.2" r="0.9" fill="currentColor" /><circle cx="12.4" cy="8.2" r="0.9" fill="currentColor" /></svg>
         {:else if t.id === "slip"}
           <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="4" width="13" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1.2" /><path d="M3 8c1-2 2 2 3 0s2 2 3 0 2 2 3 0" fill="none" stroke="currentColor" stroke-width="1" opacity="0.7" /><path d="M5 1.8h6M5 1.8l1.4-1.2M5 1.8l1.4 1.2M11 1.8l-1.4-1.2M11 1.8l-1.4 1.2" fill="none" stroke="currentColor" stroke-width="1" /></svg>
         {:else}

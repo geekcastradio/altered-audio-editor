@@ -76,6 +76,8 @@
   import LoudnessMatchDialog from "./LoudnessMatchDialog.svelte";
   import ExportMarkersDialog from "./ExportMarkersDialog.svelte";
   import StretchDialog from "./StretchDialog.svelte";
+  import PitchDialog from "./PitchDialog.svelte";
+  import { DEFAULT_CHOICES, describeReport, editFor, sanitizeChoices, type PitchChoices, type PitchMode } from "./pitch-edit";
   import MusicFitDialog from "./MusicFitDialog.svelte";
   import { describeJoins, describePlan, FIT_XFADE, fitOps, type FitPlan } from "../panels/editor/musicfit";
   import { ALIGN_MAX_MS, alignOps, alignPair, describeAlign } from "../panels/editor/align";
@@ -93,6 +95,7 @@
   import { DEFAULT_REGION, DEFAULT_TARGET, setCustomTarget, targetById, targetsFor, type LoudnessReport } from "./loudness";
   import ClipColorDialog from "./ClipColorDialog.svelte";
   import MarkersPanel from "../panels/markers/MarkersPanel.svelte";
+  import MetadataPanel from "../panels/metadata/MetadataPanel.svelte";
   import PlaylistPanel from "../panels/playlist/PlaylistPanel.svelte";
   import { exportNames } from "../panels/playlist/playlist";
   import { newMarker, nextMarkerName } from "../panels/markers/markers";
@@ -125,6 +128,7 @@
   import { AUDIO_TYPES, type ClipChange, type MarkerDoc } from "../stores/session";
   import { propertiesOp, type SessionProperties } from "./session-properties";
   import { splitChannelsOp, splittable } from "../panels/properties/split-channels";
+  import { bandSplitOp, bandSplittable, checkEdges, parseEdges } from "../panels/properties/band-split";
   import { placeTake, punchStopAfter, recordPlan, sanitizeRecordOptions, type RecordOptions, type RecordPlan } from "./recording";
   import RecordOptionsDialog from "./RecordOptionsDialog.svelte";
   import AddTracksDialog, { type AddTracksValues } from "./AddTracksDialog.svelte";
@@ -211,6 +215,7 @@
     probeMedia,
     sessionExportSesx,
     waveStretch,
+    wavePitchEdit,
     waveReverseInvert,
   } from "./core";
   import { isTauri } from "@tauri-apps/api/core";
@@ -915,6 +920,35 @@
     }
     await session.edit("Split Channels to Tracks", op, sessionHistory);
     showNotice("Split into one track per channel. The original clip is muted. The LFE track starts muted, as the default fold-down leaves it out.");
+  }
+
+  /** Selected clips that Split into Frequency Bands can use. */
+  const bandClips = () => {
+    const doc = session.current;
+    return doc ? bandSplittable(findClips(doc, editor.current().selectedClips)) : [];
+  };
+
+  /** Split into Frequency Bands: a track per band under the clip's track, as one undoable step. */
+  async function splitBands() {
+    const doc = session.current;
+    if (!doc) return;
+    const found = bandClips();
+    if (found.length === 0) {
+      showNotice("Select a clip that is not locked or reversed.");
+      return;
+    }
+    const text = await promptText("Split into Frequency Bands", "Crossover frequencies in Hz: one for two bands, or two for three (such as 200, 2000)", "200, 2000");
+    if (text === null) return;
+    const edges = parseEdges(text);
+    const bad = edges ? checkEdges(edges) : "Type one or two frequencies in Hz, such as 200, 2000.";
+    if (!edges || bad) {
+      showNotice(bad ?? "Type one or two frequencies in Hz.");
+      return;
+    }
+    const op = bandSplitOp(doc, found, edges, uuid);
+    if (!op) return;
+    await session.edit("Split into Frequency Bands", op, sessionHistory);
+    showNotice("Split into one track per band, each with Precision Filters. The original clip is muted. The bands add back to the original level.");
   }
 
   /** The time selection that Capture Noise Print learns from. */
@@ -2124,6 +2158,11 @@
           component: asComponent(PlaylistPanel),
           props: { session, transport, runner: sessionHistory, onExport: (items: MarkerDoc[]) => void exportPlaylist(items).catch(showError), onError: showError },
         };
+      case "metadata":
+        return {
+          component: asComponent(MetadataPanel),
+          props: { prefs, ask: promptText, openPath: () => waveFile.current()?.path ?? null, onNotice: showNotice, onError: showError },
+        };
       case "markers":
         return {
           component: asComponent(MarkersPanel),
@@ -2375,6 +2414,7 @@
     "convolution_reverb",
     "multiband",
     "expander",
+    "dynamics_suite",
     "room-reverb",
     "tape-delay",
     "chorus",
@@ -2735,6 +2775,39 @@
       if (wave.current?.tracks[0]?.id !== t.id) return showNotice("You switched files while that was running, so it was not applied.");
       await waveEdit(label, replaceRange(wave.current ?? d, res.start, res.end, res.media, label, uuid), [res.start, res.end]);
     } catch (e) {
+      showError(e);
+    }
+  }
+
+  const KEY_PITCH = "pitch.edit.choices";
+  let pitchDialog = $state<{ choices: PitchChoices; scope: string; busy: boolean } | null>(null);
+
+  /** Pitch Tune / Pitch Curve (Waveform editor): opens the dialog on the selection or the whole file. */
+  function openPitchEdit(mode: PitchMode) {
+    if (!waveAll()) return;
+    const saved = sanitizeChoices(prefs.raw(KEY_PITCH) ?? DEFAULT_CHOICES);
+    pitchDialog = { choices: { ...saved, mode }, scope: waveSel() ? "the selection" : "the whole file", busy: false };
+  }
+
+  async function applyPitchEdit(choices: PitchChoices) {
+    const d = wave.current;
+    const r = waveAll();
+    const t = d?.tracks[0];
+    if (!d || !r || !t || !pitchDialog) return;
+    prefs.set(KEY_PITCH, choices);
+    pitchDialog = { ...pitchDialog, busy: true };
+    try {
+      const res = await wavePitchEdit(r[0], r[1], editFor(choices));
+      if (wave.current?.tracks[0]?.id !== t.id) {
+        pitchDialog = null;
+        return showNotice("You switched files while that was running, so it was not applied.");
+      }
+      const label = choices.mode === "tune" ? "Pitch Tune" : "Pitch Curve";
+      await waveEdit(label, replaceRange(wave.current ?? d, res.start, res.end, res.media, label, uuid), [res.start, res.end]);
+      pitchDialog = null;
+      showNotice(describeReport(res.report));
+    } catch (e) {
+      pitchDialog = pitchDialog ? { ...pitchDialog, busy: false } : null;
       showError(e);
     }
   }
@@ -3403,7 +3476,7 @@
       ...["fx.spectrum.reduce-12", "fx.spectrum.reduce-24", "fx.spectrum.remove", "fx.spectrum.repair"].map((id) =>
         actions.register({ id, run: () => {}, enabled: () => false, reason: () => NOT_WAVE }),
       ),
-      ...["edit.mix-paste", "edit.crop", "fx.invert", "fx.reverse", "fx.silence", "fx.fade-in", "fx.fade-out", "fx.amplify", "fx.normalize"].map((id) =>
+      ...["edit.mix-paste", "edit.crop", "fx.invert", "fx.reverse", "fx.silence", "fx.fade-in", "fx.fade-out", "fx.amplify", "fx.normalize", "fx.pitch-tune", "fx.pitch-curve"].map((id) =>
         actions.register({ id, run: () => {}, enabled: () => false, reason: () => NOT_WAVE }),
       ),
       ov(waveFocus, {
@@ -3619,6 +3692,8 @@
         },
       }),
       ov(waveIsOpen, { id: "fx.normalize", run: () => waveNormalize() }),
+      ov(waveIsOpen, { id: "fx.pitch-tune", run: () => openPitchEdit("tune") }),
+      ov(waveIsOpen, { id: "fx.pitch-curve", run: () => openPitchEdit("bend") }),
       ov(waveIsOpen, { id: "fx.invert", run: () => waveReverseOrInvert("invert") }),
       ov(waveIsOpen, { id: "fx.reverse", run: () => waveReverseOrInvert("reverse") }),
       ov(waveIsOpen, { id: "clip.stretch", run: () => waveStretchTo(), label: () => "Stretch Selection or File..." }),
@@ -3703,6 +3778,7 @@
       ov(waveIsOpen, { id: "multitrack.play-pause", run: () => spaceToggle(waveTransport) }),
       ov(waveIsOpen, { id: "multitrack.stop", run: () => (take ? finishRecord() : waveTransport.stop()) }),
       ov(waveIsOpen, { id: "transport.go-start", run: () => waveTransport.seek(0) }),
+      ov(waveIsOpen, { id: "transport.go-end", run: () => waveTransport.seek(wave.current ? sessionEnd(wave.current) : 0) }),
       ov(waveIsOpen, { id: "view.zoom-in", run: () => waveZoom.run?.("in") }),
       ov(waveIsOpen, { id: "view.zoom-out", run: () => waveZoom.run?.("out") }),
       ov(waveIsOpen, { id: "view.zoom-session", run: () => waveZoom.run?.("full") }),
@@ -4152,6 +4228,12 @@
         reason: () => "Select a clip from a file with two or more channels.",
       }),
       actions.register({
+        id: "clip.split-bands",
+        run: () => splitBands(),
+        enabled: () => !inWave() && exporting === null && bandClips().length > 0,
+        reason: () => "Select a clip that is not locked or reversed.",
+      }),
+      actions.register({
         id: "fx.capture-noise-print",
         run: () => captureNoisePrint(),
         enabled: () => noiseSelection() !== null && fxTarget() !== null,
@@ -4485,6 +4567,11 @@
         run: () => editor.setSnap({ ruler: !editor.current().snap.ruler }),
         checked: () => editor.current().snap.ruler,
         enabled: () => editor.current().snap.on,
+      }),
+      actions.register({
+        id: "edit.snap-zero-mode",
+        run: () => editor.setSnapZero(!editor.current().snapZero),
+        checked: () => editor.current().snapZero,
       }),
       actions.register({
         id: "clip.auto-crossfade",
@@ -4936,6 +5023,111 @@
         reason: () => "No files in the session.",
       }),
     );
+    /** Ctrl+Tab and Ctrl+Shift+Tab: step through the Files panel's sessions, then its files, and wrap. */
+    const stepOpen = async (dir: 1 | -1) => {
+      type Stop = { kind: "session"; id: string } | { kind: "file"; path: string };
+      const ring: Stop[] = [
+        ...get(sessionRows).map((r): Stop => ({ kind: "session", id: r.id })),
+        ...mediaPool.current.items.filter((it) => it.status === "ready").map((it): Stop => ({ kind: "file", path: it.path })),
+      ];
+      if (ring.length === 0) return;
+      const open = inWave() ? waveFile.current() : null;
+      const at = open
+        ? ring.findIndex((r) => r.kind === "file" && r.path.toLowerCase() === open.path.toLowerCase())
+        : ring.findIndex((r) => r.kind === "session" && get(sessionRows).find((x) => x.id === r.id)?.front);
+      const next = ring[at < 0 ? (dir === 1 ? 0 : ring.length - 1) : (at + dir + ring.length) % ring.length]!;
+      if (next.kind === "file") return openInWaveform(next.path);
+      if (get(sessionRows).find((x) => x.id === next.id)?.front) return actions.run("view.editor.multitrack");
+      await files.switchTo(next.id);
+      await actions.run("view.editor.multitrack");
+    };
+    offs.push(
+      actions.register({ id: "files.next-open", run: () => stepOpen(1).then(() => undefined).catch(showError), enabled: () => get(sessionRows).length + mediaPool.size > 1, reason: () => "Nothing else is open." }),
+      actions.register({ id: "files.prev-open", run: () => stepOpen(-1).then(() => undefined).catch(showError), enabled: () => get(sessionRows).length + mediaPool.size > 1, reason: () => "Nothing else is open." }),
+    );
+    offs.push(
+      actions.register({
+        id: "files.close-selected",
+        run: async () => {
+          const ids = [...mediaPool.current.selected];
+          await closeWaveIfRemoved(ids, () => removeFiles(ids));
+        },
+        enabled: () => mediaPool.current.selected.size > 0,
+        reason: () => "Select one or more files in the Files panel.",
+      }),
+      actions.register({
+        id: "files.close-all",
+        run: async () => {
+          const ids = mediaPool.current.items.map((it) => it.id);
+          await closeWaveIfRemoved(ids, () => removeFiles(ids));
+        },
+        enabled: () => mediaPool.size > 0,
+        reason: () => "No files in the Files panel.",
+      }),
+      actions.register({
+        id: "files.link-media",
+        run: async () => {
+          const item = mediaPool.selectedItems()[0];
+          if (!item) return;
+          const [path] = await pickMediaFiles();
+          if (!path || path === item.path) return;
+          if (mediaPool.current.items.some((it) => it.id !== item.id && it.path.toLowerCase() === path.toLowerCase())) {
+            showNotice("That file is already in the Files panel.");
+            return;
+          }
+          const ops = (session.current?.media ?? [])
+            .filter((m) => m.path === item.path)
+            .map((m) => ({ op: "set_media" as const, media: { ...m, path, relative_path: null } }));
+          const parts = [
+            ...(ops.length ? [session.command("Link Media", { op: "batch", ops })] : []),
+            ...[mediaPool.repathCommand([{ id: item.id, path }], "Link Media")].filter((c) => c !== null),
+          ];
+          if (!parts.length) return;
+          await sessionHistory.execute(new CompoundCommand("Link Media", parts));
+          mediaPool.retry(item.id);
+        },
+        enabled: () => mediaPool.current.selected.size === 1,
+        reason: () => "Select the one file to point at a new location.",
+      }),
+      actions.register({
+        id: "files.dismiss-errors",
+        run: async () => {
+          const sel = mediaPool.current.selected;
+          const failed = mediaPool.current.items.filter((it) => it.status === "error" && (sel.size === 0 || sel.has(it.id))).map((it) => it.id);
+          await closeWaveIfRemoved(failed, () => removeFiles(failed));
+        },
+        enabled: () => mediaPool.current.items.some((it) => it.status === "error"),
+        reason: () => "No files have errors.",
+      }),
+      actions.register({
+        id: "files.dismiss-errors-selected",
+        run: async () => {
+          const sel = mediaPool.current.selected;
+          const failed = mediaPool.current.items.filter((it) => it.status === "error" && sel.has(it.id)).map((it) => it.id);
+          await closeWaveIfRemoved(failed, () => removeFiles(failed));
+        },
+        enabled: () => mediaPool.selectedItems().some((it) => it.status === "error"),
+        reason: () => "None of the selected files has an error.",
+      }),
+      actions.register({
+        id: "files.cancel-ops",
+        run: () => {
+          const n = mediaPool.cancelQueued();
+          showNotice(n ? `Cancelled ${n} waiting ${n === 1 ? "read" : "reads"}.` : "Nothing was waiting.");
+        },
+        enabled: () => mediaPool.current.items.some((it) => it.status === "probing"),
+        reason: () => "No files are being read.",
+      }),
+      actions.register({
+        id: "files.cancel-ops-selected",
+        run: () => {
+          const n = mediaPool.cancelQueued(mediaPool.current.selected);
+          showNotice(n ? `Cancelled ${n} waiting ${n === 1 ? "read" : "reads"}.` : "Nothing selected was waiting.");
+        },
+        enabled: () => mediaPool.selectedItems().some((it) => it.status === "probing"),
+        reason: () => "None of the selected files is being read.",
+      }),
+    );
     offs.push(
       actions.register({ id: "file.new-session", run: () => askNewSession() }),
       actions.register({ id: "file.save-template", run: () => saveAsTemplate() }),
@@ -5129,7 +5321,7 @@
     loadKeymapOverrides()
       .then((o) => keymap.setOverrides(o))
       .catch((e: unknown) => showError(`Saved shortcuts could not be read, using defaults: ${String(e)}`));
-    offs.push(bindKeymap(keymap, actions, showError));
+    offs.push(bindKeymap(keymap, actions, showError, showNotice));
     return () => offs.forEach((off) => off());
   });
 </script>
@@ -5175,6 +5367,10 @@
       if (target && c !== null) void editClips("Clip Color", target.ids.map((id) => ({ id, color: c }))).catch(showError);
     }}
   />
+{/if}
+
+{#if pitchDialog}
+  <PitchDialog choices={pitchDialog.choices} scope={pitchDialog.scope} busy={pitchDialog.busy} onApply={(c) => void applyPitchEdit(c)} onClose={() => (pitchDialog = null)} />
 {/if}
 
 {#if tagsEdit}

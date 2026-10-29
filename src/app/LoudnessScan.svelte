@@ -9,6 +9,7 @@
   target, the mix or the format changes, so it never shows stale numbers.
 -->
 <script lang="ts">
+  import { listen } from "@tauri-apps/api/event";
   import { predictExport, targetsFor, type LoudnessReport } from "./loudness";
 
   interface Props {
@@ -26,6 +27,19 @@
   let report = $state<LoudnessReport | null>(null);
   let seen = $state("");
   let busy = $state(false);
+  /** How far the scan has played through the mix, 0 to 1 (null until the first report). */
+  let progress = $state<number | null>(null);
+  $effect(() => {
+    let off: (() => void) | undefined;
+    let gone = false;
+    void listen<{ done: number; total: number }>("export-progress", (e) => {
+      if (busy && e.payload.total > 0) progress = e.payload.done / e.payload.total;
+    }).then((f) => (gone ? f() : (off = f)));
+    return () => {
+      gone = true;
+      off?.();
+    };
+  });
 
   $effect(() => {
     if (stamp !== seen) {
@@ -40,6 +54,7 @@
   async function run() {
     if (busy) return;
     busy = true;
+    progress = null;
     try {
       const r = await scan();
       if (r && !r.cancelled) {
@@ -55,7 +70,7 @@
 <div class="scan">
   <div class="row">
     <button type="button" onclick={run} disabled={busy} title="Plays the mix through the loudness meter without writing a file, then says what the export will come out as.">
-      {busy ? "Scanning…" : report ? "Scan again" : "Scan loudness"}
+      {busy ? (progress === null ? "Scanning…" : `Scanning ${Math.round(progress * 100)}%`) : report ? "Scan again" : "Scan loudness"}
     </button>
     {#if report}
       <span class="nums">

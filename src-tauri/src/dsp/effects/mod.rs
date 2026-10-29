@@ -30,6 +30,7 @@ pub mod reverb;
 pub mod shaped;
 mod space;
 mod stereo;
+mod suite;
 pub mod tube;
 pub mod vocal;
 
@@ -192,6 +193,7 @@ pub fn catalog() -> Vec<EffectInfo> {
         dynamics::gate_info(),
         dynamics::deesser_info(),
         expander::info(),
+        suite::info(),
         dynamics::leveler_info(),
         tube::opto_info(),
         tube::preamp_info(),
@@ -437,6 +439,7 @@ pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
         "altaudio.limiter" => Box::new(Limiter::new(&p, rate)),
         "altaudio.breath_gate" => Box::new(Gate::new(&p, rate)),
         "altaudio.expander" => Box::new(expander::Expander::new(&p, rate)),
+        suite::SUITE => Box::new(suite::Suite::new(&p, rate)),
         "altaudio.deesser" => Box::new(DeEsser::new(&p, rate)),
         "altaudio.speech_leveler" => Box::new(SpeechLeveler::new(&p, rate)),
         "altaudio.gain" => Box::new(Gain(db_to_gain(p.get("gain")))),

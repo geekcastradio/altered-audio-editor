@@ -125,6 +125,21 @@ pub fn leveler_info() -> EffectInfo {
             num("max_cut", "Most cut", "dB", 0.0, 30.0, 10.0, 0.1),
             num("speed", "Response", "ms", 100.0, 10_000.0, 1500.0, 1.0).log(),
             num("floor", "Ignore below", "dB", -80.0, -20.0, -50.0, 0.1),
+            num("amount", "Leveling amount", "%", 0.0, 100.0, 100.0, 1.0),
+            num("range", "Target dynamic range", "dB", 0.0, 60.0, 45.0, 1.0),
+            num("boost_low", "Boost low signals", "", 0.0, 1.0, 1.0, 1.0),
+            num("comp_on", "Compressor", "", 0.0, 1.0, 0.0, 1.0),
+            num(
+                "comp_thr",
+                "Compressor threshold",
+                "dB",
+                -9.0,
+                -1.0,
+                -1.0,
+                0.1,
+            ),
+            num("gate_on", "Noise gate", "", 0.0, 1.0, 0.0, 1.0),
+            num("gate_off", "Noise offset", "dB", 0.0, 25.0, 15.0, 0.1),
         ],
     }
 }
@@ -646,6 +661,15 @@ pub struct SpeechLeveler {
     max_gain: f32,
     max_cut: f32,
     floor: f32,
+    /// How much of the correction is applied, 0 to 1.
+    amount: f32,
+    /// Half-width in dB around the target where the level is left alone.
+    dead: f32,
+    comp: Option<f32>,
+    /// Noise gate threshold in dB: the floor plus the noise offset.
+    gate: Option<f32>,
+    gate_db: f32,
+    gate_coef: f32,
     /// Mean square follower (fast, about a syllable).
     ms_coef: f32,
     ms: f32,
@@ -658,9 +682,19 @@ impl SpeechLeveler {
     pub fn new(p: &Params, rate: u32) -> Self {
         Self {
             target: p.get("target") as f32,
-            max_gain: p.get("max_gain") as f32,
+            max_gain: if p.get("boost_low") >= 0.5 {
+                p.get("max_gain") as f32
+            } else {
+                0.0
+            },
             max_cut: p.get("max_cut") as f32,
             floor: p.get("floor") as f32,
+            amount: (p.get("amount") / 100.0).clamp(0.0, 1.0) as f32,
+            dead: (p.get("range") / 20.0).max(0.0) as f32,
+            comp: (p.get("comp_on") >= 0.5).then(|| db_to_gain(p.get("comp_thr"))),
+            gate: (p.get("gate_on") >= 0.5).then(|| (p.get("floor") + p.get("gate_off")) as f32),
+            gate_db: 0.0,
+            gate_coef: coef(60.0, rate),
             ms_coef: coef(300.0, rate),
             ms: 0.0,
             gain_coef: coef(p.get("speed"), rate),
@@ -678,17 +712,34 @@ impl Processor for SpeechLeveler {
             // Pauses and room noise leave the gain where it was, so the
             // noise floor is never pumped up between sentences.
             if level > self.floor {
-                let want = (self.target - level).clamp(-self.max_cut, self.max_gain);
+                let dev = self.target - level;
+                let dev = dev.signum() * (dev.abs() - self.dead).max(0.0);
+                let want = (dev * self.amount).clamp(-self.max_cut, self.max_gain);
                 self.gain_db = want + (self.gain_db - want) * self.gain_coef;
             }
-            let g = db_to_gain(f64::from(self.gain_db));
+            // The gate eases the sound down 20 dB while it sits below the threshold.
+            if let Some(thr) = self.gate {
+                let to = if level < thr { -20.0 } else { 0.0 };
+                self.gate_db = to + (self.gate_db - to) * self.gate_coef;
+            }
+            let g = db_to_gain(f64::from(self.gain_db + self.gate_db));
             f[0] *= g;
             f[1] *= g;
+            // The compressor only tames peaks left over after leveling: 4:1 above the threshold.
+            if let Some(t) = self.comp {
+                for v in f.iter_mut() {
+                    let a = v.abs();
+                    if a > t {
+                        *v = v.signum() * (t + (a - t) / 4.0);
+                    }
+                }
+            }
         }
     }
     fn reset(&mut self) {
         self.ms = 0.0;
         self.gain_db = 0.0;
+        self.gate_db = 0.0;
     }
 }
 
@@ -818,6 +869,56 @@ mod tests {
             (peak(&silent) - 0.0001).abs() < 1e-6,
             "below the floor nothing moves"
         );
+    }
+
+    #[test]
+    fn leveler_amount_boost_switch_compressor_and_gate() {
+        let quiet = sine(200.0, 0.0224, 3.0);
+        let tail = |o: &[f32]| peak(&o[o.len() - 9600..]) / 0.0224;
+        // Amount 0: nothing is corrected.
+        let none = run(
+            "altaudio.speech_leveler",
+            &[("speed", 200.0), ("amount", 0.0)],
+            quiet.clone(),
+        );
+        assert!((tail(&none) - 1.0).abs() < 0.02);
+        // Half the correction: about half the boost in dB.
+        let half = run(
+            "altaudio.speech_leveler",
+            &[("speed", 200.0), ("amount", 50.0), ("range", 0.0)],
+            quiet.clone(),
+        );
+        assert!(
+            (20.0 * tail(&half).log10() - 8.0).abs() < 0.8,
+            "{}",
+            20.0 * tail(&half).log10()
+        );
+        // Boost low signals off: quiet speech is not raised.
+        let off = run(
+            "altaudio.speech_leveler",
+            &[("speed", 200.0), ("boost_low", 0.0)],
+            quiet,
+        );
+        assert!((tail(&off) - 1.0).abs() < 0.02);
+        // Compressor: a hot peak is pulled down above the threshold.
+        let hot = run(
+            "altaudio.speech_leveler",
+            &[("comp_on", 1.0), ("comp_thr", -6.0), ("target", -6.0)],
+            sine(200.0, 0.9, 1.0),
+        );
+        assert!(peak(&hot) < 0.9);
+        // Gate: speech below the floor plus offset is eased down.
+        let gated = run(
+            "altaudio.speech_leveler",
+            &[
+                ("gate_on", 1.0),
+                ("floor", -60.0),
+                ("gate_off", 20.0),
+                ("amount", 0.0),
+            ],
+            sine(200.0, 0.005, 1.0),
+        );
+        assert!(peak(&gated[gated.len() / 2..]) < 0.0015);
     }
 
     #[test]

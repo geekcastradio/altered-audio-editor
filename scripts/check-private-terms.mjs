@@ -12,7 +12,10 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
-const root = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+const root = new URL("..", import.meta.url).pathname.replace(
+  /^\/([A-Za-z]:)/,
+  "$1",
+);
 const listFile = join(root, "private", "banned-terms.txt");
 if (!existsSync(listFile)) {
   console.log("Private term check skipped: no private/banned-terms.txt here.");
@@ -24,19 +27,50 @@ const terms = readFileSync(listFile, "utf8")
   .filter((t) => t && !t.startsWith("#"));
 
 /** Whole words only, so a short term never matches inside a longer word. */
-const patterns = terms.map((t) => new RegExp(`(^|[^a-z0-9])${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`));
+const patterns = terms.map(
+  (t) =>
+    new RegExp(
+      `(^|[^a-z0-9])${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`,
+    ),
+);
 
-const skip = new Set(["node_modules", "target", "dist", "private", "samples", "out", "portable", "gen", "vendor"]);
-const exts = [".md", ".ts", ".svelte", ".rs", ".json", ".html", ".css", ".yml", ".toml"];
+const skip = new Set([
+  "node_modules",
+  "target",
+  "dist",
+  "private",
+  "samples",
+  "out",
+  "portable",
+  "gen",
+  "vendor",
+]);
+const exts = [
+  ".md",
+  ".ts",
+  ".svelte",
+  ".rs",
+  ".json",
+  ".html",
+  ".css",
+  ".yml",
+  ".toml",
+];
 /** @type {string[]} */
 const files = [];
 /** @param {string} dir */
 function walk(dir) {
   for (const name of readdirSync(dir)) {
-    if (skip.has(name) || name.startsWith(".git") || name === "CLAUDE.local.md") continue;
+    if (skip.has(name) || name.startsWith(".git") || name === "CLAUDE.local.md")
+      continue;
     const p = join(dir, name);
     if (statSync(p).isDirectory()) walk(p);
-    else if (exts.some((e) => name.endsWith(e)) && name !== "package-lock.json" && !/\.test\.ts$/.test(name)) files.push(p);
+    else if (
+      exts.some((e) => name.endsWith(e)) &&
+      name !== "package-lock.json" &&
+      !/\.test\.ts$/.test(name)
+    )
+      files.push(p);
   }
 }
 walk(root);
@@ -44,9 +78,13 @@ walk(root);
 /** @type {string[]} */
 const problems = [];
 for (const f of files) {
-  const text = readFileSync(f, "utf8").toLowerCase();
+  const lines = readFileSync(f, "utf8").toLowerCase().split(/\r?\n/);
   for (const re of patterns) {
-    if (re.test(text)) problems.push(`${relative(root, f)}: contains a private term`);
+    // Report file and line only, never the term itself, so logs stay clean.
+    lines.forEach((line, i) => {
+      if (re.test(line))
+        problems.push(`${relative(root, f)}:${i + 1}: contains a private term`);
+    });
   }
 }
 if (problems.length > 0) {

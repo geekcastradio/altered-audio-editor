@@ -33,6 +33,7 @@ import { writable, type Readable } from "svelte/store";
 import {
   DEFAULT_LAYOUT,
   PANELS,
+  groupMin,
   panelDef,
   presetById,
   resolveHome,
@@ -341,6 +342,7 @@ export class DockController {
     this.api = api;
 
     api.onDidLayoutChange(() => {
+      this.applyMinimums();
       this.syncOpen();
       this.scheduleSave();
     });
@@ -665,6 +667,21 @@ export class DockController {
   }
 
   /** Saves the current arrangement under the current workspace now. */
+  /** Keeps every group at least as big as its panels need, so controls never squeeze together. */
+  private applyMinimums(): void {
+    const api = this.api;
+    if (!api) return;
+    for (const group of api.groups) {
+      const ids = group.panels.map((p) => (panelDef(p.id)?.id ?? p.id) as PanelId);
+      const m = groupMin(ids);
+      try {
+        group.api.setConstraints({ minimumWidth: m.w, minimumHeight: m.h });
+      } catch {
+        // A group that is going away has nothing to limit.
+      }
+    }
+  }
+
   private saveNow(): void {
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);

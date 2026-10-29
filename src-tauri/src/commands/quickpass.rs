@@ -14,13 +14,20 @@ use std::sync::atomic::AtomicBool;
 
 use serde::Serialize;
 use tauri::async_runtime::spawn_blocking;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use super::session::OpenSession;
 use crate::dsp::effects::{find_spots, repair_spots, Spots};
 use crate::export::mixdown::{self, MixdownRequest};
 use crate::export::region;
 use crate::session::model::{Id, Session};
+
+/// Scan progress, in clips, sent as `quickpass-progress` events.
+#[derive(Clone, Serialize)]
+struct ScanProgress {
+    done: usize,
+    total: usize,
+}
 
 /// Floor reported for digital silence, in dBFS.
 pub const FLOOR_DB: f32 = -120.0;
@@ -153,6 +160,7 @@ fn pick_session(
 /// Finds clicks or clipping in the given clips, as they play.
 #[tauri::command]
 pub async fn quickpass_spots(
+    app: AppHandle,
     open: State<'_, OpenSession>,
     wave_doc: State<'_, super::wave::OpenWave>,
     wave: Option<bool>,
@@ -170,14 +178,19 @@ pub async fn quickpass_spots(
             .filter(|id| wanted.contains(id))
             .collect();
         ids.sort();
+        let total = ids.len();
         ids.into_iter()
-            .filter_map(|id| {
-                let (start, audio) = render_clip(&session, id)?;
-                let spans = find_spots(&audio, 2, rate, spots)
-                    .into_iter()
-                    .map(|(a, b)| [start + a, start + b])
-                    .collect();
-                Some(ClipSpots { clip_id: id, spans })
+            .enumerate()
+            .filter_map(|(n, id)| {
+                let found = render_clip(&session, id).map(|(start, audio)| {
+                    let spans = find_spots(&audio, 2, rate, spots)
+                        .into_iter()
+                        .map(|(a, b)| [start + a, start + b])
+                        .collect();
+                    ClipSpots { clip_id: id, spans }
+                });
+                let _ = app.emit("quickpass-progress", ScanProgress { done: n + 1, total });
+                found
             })
             .collect()
     })
@@ -234,6 +247,7 @@ pub async fn quickpass_repair_copy(
 /// Measures the given clips as they play (gain and Voice Chain included).
 #[tauri::command]
 pub async fn quickpass_levels(
+    app: AppHandle,
     open: State<'_, OpenSession>,
     wave_doc: State<'_, super::wave::OpenWave>,
     wave: Option<bool>,
@@ -251,8 +265,14 @@ pub async fn quickpass_levels(
             .filter(|id| wanted.contains(id))
             .collect();
         ids.sort();
+        let total = ids.len();
         ids.into_iter()
-            .filter_map(|id| measure(&session, id, window_ms))
+            .enumerate()
+            .filter_map(|(n, id)| {
+                let found = measure(&session, id, window_ms);
+                let _ = app.emit("quickpass-progress", ScanProgress { done: n + 1, total });
+                found
+            })
             .collect()
     })
     .await

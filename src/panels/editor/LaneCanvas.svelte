@@ -110,7 +110,23 @@
     return `rgb(${mix(r)}, ${mix(gr)}, ${mix(b)})`;
   }
 
+  /** Clips in one group share a color of their own, so a group stands out from the single clips. */
+  function groupColor(group: string): string {
+    let h = 0;
+    for (let i = 0; i < group.length; i++) h = (h * 31 + group.charCodeAt(i)) >>> 0;
+    const hue = [28, 48, 150, 180, 265, 300, 330, 100][h % 8]!;
+    const sat = 0.72;
+    const l = 0.55;
+    const a = sat * Math.min(l, 1 - l);
+    const f = (n: number) => {
+      const k = (n + hue / 30) % 12;
+      const v = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+      return Math.round(v * 255).toString(16).padStart(2, "0");
+    };
+    return `#${f(0)}${f(8)}${f(4)}`;
+  }
   function clipColor(clip: ClipDoc): string {
+    if (clip.group) return groupColor(clip.group);
     const c = clip.color ?? track.color ?? defaultTrackColor(index);
     return c.startsWith("--") ? css(c) : c;
   }
@@ -187,10 +203,9 @@
       g.fillStyle = color;
       g.globalAlpha *= 0.2;
       g.fillRect(left, 1, right - left, lh - 2);
+      // No solid title bar (as in Audition): the name floats over the clip, in light text.
       g.globalAlpha = clip.muted ? 0.35 : 1;
-      g.fillStyle = color;
-      g.fillRect(left, 1, right - left, titleH);
-      g.fillStyle = "#0e0e10";
+      g.fillStyle = "#eef0f4";
       g.font = `11px ${css("--font-ui")}`;
       g.textBaseline = "middle";
       g.save();
@@ -368,17 +383,35 @@
       drawFade(g, clip.fade_out, fo, x1, body.top, body.height, false);
       g.restore();
       if (x1 - x0 > 30) {
-        // Fade handles sit just under the title bar, large and light so they are easy to see and grab.
+        // Fade handles sit just under the title bar, a small two-tone box showing the fade curve.
         const hy = 1 + titleH + 3;
-        for (const hx of [fi, fo]) {
+        for (const [hx, fade, rising] of [[fi, clip.fade_in, true], [fo, clip.fade_out, false]] as const) {
           if (hx < -8 || hx > width + 8) continue;
           const cx = Math.min(Math.max(hx, x0 + 8), x1 - 8);
-          g.fillStyle = "#ffffff";
-          g.fillRect(Math.round(cx) - 6, hy, 13, 13);
-          g.strokeStyle = "#0e0e10";
-          g.lineWidth = 1.5;
-          g.strokeRect(Math.round(cx) - 5.25, hy + 0.75, 11.5, 11.5);
+          const bx = Math.round(cx) - 6;
+          const S = 13;
+          // A small two-tone box: the part under the fade curve is light, the part above is dark.
+          g.save();
+          g.beginPath();
+          g.rect(bx, hy, S, S);
+          g.clip();
+          g.fillStyle = "rgba(14, 14, 16, 0.6)";
+          g.fillRect(bx, hy, S, S);
+          g.beginPath();
+          g.moveTo(bx, hy + S);
+          const pts = 12;
+          for (let i = 0; i <= pts; i++) {
+            const t = i / pts;
+            g.lineTo(bx + t * S, hy + S - fadeGain(fade.shape, rising ? t : 1 - t, fade.curve) * S);
+          }
+          g.lineTo(bx + S, hy + S);
+          g.closePath();
+          g.fillStyle = "rgba(226, 232, 240, 0.72)";
+          g.fill();
+          g.restore();
+          g.strokeStyle = "rgba(235, 238, 244, 0.7)";
           g.lineWidth = 1;
+          g.strokeRect(bx + 0.5, hy + 0.5, S - 1, S - 1);
         }
       }
       // Stretch handles: a white triangle filling each top corner of the

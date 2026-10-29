@@ -3,7 +3,7 @@
 // This file is part of Altered Audio Editor.
 
 import { describe, expect, it } from "vitest";
-import { DEFAULT_LAYOUT, PANELS, panelDef, presetById, resolveHome, WORKSPACE_PRESETS, workspaceId } from "./registry";
+import { MIN_SIZE, groupMin, DEFAULT_LAYOUT, PANELS, panelDef, presetById, resolveHome, WORKSPACE_PRESETS, workspaceId } from "./registry";
 
 describe("panel registry", () => {
   it("has unique ids", () => {
@@ -106,5 +106,13 @@ describe("workspace presets", () => {
     expect(workspaceId("My Mix!", new Set())).toBe("my-mix");
     expect(workspaceId("Default", new Set(["default"]))).toBe("default-2");
     expect(workspaceId("???", new Set())).toBe("workspace");
+  });
+});
+
+describe("minimum sizes", () => {
+  it("covers every panel and a group takes the largest", () => {
+    for (const p of PANELS) expect(MIN_SIZE[p.id], p.id).toBeDefined();
+    expect(groupMin(["files", "editor"])).toEqual({ w: 520, h: 260 });
+    expect(groupMin([])).toEqual({ w: 0, h: 0 });
   });
 });

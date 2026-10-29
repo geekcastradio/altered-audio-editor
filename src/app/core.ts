@@ -852,6 +852,17 @@ export function waveReverseInvert(start: number, end: number, mode: "reverse" | 
   return invoke<SpectralResult>("wave_reverse_invert", { start, end, mode });
 }
 
+export interface PitchReport {
+  frames: number;
+  voiced: number;
+  moved: number;
+}
+
+/** Pitch Tune or Pitch Curve on `start..end` of the Waveform editor's file; the result swaps in with replaceRange. */
+export function wavePitchEdit(start: number, end: number, edit: import("./pitch-edit").PitchEdit): Promise<SpectralResult & { report: PitchReport }> {
+  return invoke<SpectralResult & { report: PitchReport }>("wave_pitch_edit", { start, end, edit });
+}
+
 export function waveStretch(start: number, end: number, frames: number): Promise<SpectralResult> {
   return invoke<SpectralResult>("wave_stretch", { start, end, frames });
 }
@@ -1099,6 +1110,21 @@ export function tagsRead(path: string): Promise<FileTags> {
 /** Writes the filled-in tags into a WAV, FLAC, MP3 or M4A file. False for other formats. */
 export function tagsWrite(path: string, tags: FileTags): Promise<boolean> {
   return invoke<boolean>("tags_write", { path, tags });
+}
+
+/** The cover art of an MP3 as a data URL, or null. */
+export function coverRead(path: string): Promise<string | null> {
+  return invoke<string | null>("cover_read", { path });
+}
+
+/** Asks for a JPEG or PNG and puts it in an MP3 as its cover art. The new picture, or null when cancelled or the file is not an MP3. */
+export function coverChoose(path: string): Promise<string | null> {
+  return invoke<string | null>("cover_choose", { path });
+}
+
+/** Removes the cover art from an MP3. False when the file is not an MP3. */
+export function coverClear(path: string): Promise<boolean> {
+  return invoke<boolean>("cover_clear", { path });
 }
 
 /** Writes every marker into an exported WAV (cue points, with range lengths) or FLAC (a cue sheet). Returns how many went in. */

@@ -15,6 +15,7 @@ pub mod elliptic;
 pub mod meters;
 pub mod musicfit;
 pub mod nam;
+pub mod pitchedit;
 pub mod space;
 pub mod spectral;
 pub mod stft;

@@ -23,6 +23,7 @@ export type PanelId =
   | "drive-manager"
   | "libraries"
   | "markers"
+  | "metadata"
   | "playlist"
   | "loudness-match"
   | "properties"
@@ -155,6 +156,13 @@ export const PANELS: readonly PanelDef[] = [
   {
     id: "markers",
     title: "Markers",
+    inDefault: false,
+    home: LEFT_TABS,
+    pending: null,
+  },
+  {
+    id: "metadata",
+    title: "Metadata",
     inDefault: false,
     home: LEFT_TABS,
     pending: null,
@@ -459,4 +467,35 @@ export function workspaceId(name: string, taken: ReadonlySet<string>): string {
   let id = base;
   for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
   return id;
+}
+
+/**
+ * The smallest a panel is allowed to get, in pixels, so its controls never
+ * squeeze together. A group holding several panels takes the largest of them.
+ */
+export const MIN_SIZE: Record<PanelId, { w: number; h: number }> = {
+  files: { w: 280, h: 150 },
+  "voice-chain": { w: 300, h: 260 },
+  "batch-convert": { w: 300, h: 220 },
+  quickpass: { w: 300, h: 220 },
+  editor: { w: 520, h: 260 },
+  mixer: { w: 360, h: 220 },
+  levels: { w: 260, h: 70 },
+  "audio-fx": { w: 280, h: 160 },
+  "time-info": { w: 220, h: 110 },
+  history: { w: 220, h: 120 },
+  "drive-manager": { w: 260, h: 140 },
+  libraries: { w: 260, h: 200 },
+  markers: { w: 260, h: 140 },
+  metadata: { w: 280, h: 200 },
+  playlist: { w: 260, h: 140 },
+  "loudness-match": { w: 280, h: 160 },
+  properties: { w: 260, h: 160 },
+  "phase-wheel": { w: 200, h: 160 },
+  space: { w: 260, h: 220 },
+};
+
+/** The size limit for a group of panels. */
+export function groupMin(ids: readonly PanelId[]): { w: number; h: number } {
+  return ids.reduce((m, id) => ({ w: Math.max(m.w, MIN_SIZE[id]?.w ?? 0), h: Math.max(m.h, MIN_SIZE[id]?.h ?? 0) }), { w: 0, h: 0 });
 }

@@ -11,6 +11,8 @@
   Fix, and every change can be undone.
 -->
 <script lang="ts">
+  import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
+  import { listen } from "@tauri-apps/api/event";
   import { quickpassLevels, quickpassSpots, type ClipLevels, type SpotsRequest } from "../../app/core";
   import { editor } from "../../stores/editor";
   import type { CommandRunner } from "../../stores/media-pool";
@@ -182,16 +184,62 @@
     s = { ...DEFAULTS };
   }
 
+  /** Tracks the scan leaves alone (toggled from the Tracks button). Locked clips are always left alone. */
+  let skipped = $state<ReadonlySet<string>>(new Set());
+  let menu = $state<{ x: number; y: number; items: ContextItem[] } | null>(null);
+  function openTracks(e: MouseEvent) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const tracks = doc?.tracks ?? [];
+    menu = {
+      x: r.left,
+      y: r.bottom,
+      items: [
+        ...tracks.map((t): ContextItem => ({
+          kind: "item",
+          label: t.name,
+          checked: !skipped.has(t.id),
+          run: () => {
+            const next = new Set(skipped);
+            if (next.has(t.id)) next.delete(t.id);
+            else next.add(t.id);
+            skipped = next;
+          },
+        })),
+        { kind: "sep" },
+        { kind: "item", label: "Scan All Tracks", run: () => (skipped = new Set()) },
+      ],
+    };
+  }
+  const skippedCount = $derived((doc?.tracks ?? []).filter((t) => skipped.has(t.id)).length);
+
   function targets(): { ids: string[]; info: Map<string, { trackId: string; name: string }> } {
     const info = new Map<string, { trackId: string; name: string }>();
     for (const t of doc?.tracks ?? []) {
       for (const c of t.clips) {
+        if (skipped.has(t.id) || c.locked) continue;
         if (chosen.size > 0 ? chosen.has(c.id) : !t.muted && !c.muted) info.set(c.id, { trackId: t.id, name: c.name });
       }
     }
     return { ids: [...info.keys()], info };
   }
   const scope = $derived(inWave ? "the open file" : chosen.size > 0 ? `${chosen.size} selected ${chosen.size === 1 ? "clip" : "clips"}` : "all clips on tracks that play");
+
+  /** How far the scan is, in clips (0 to 1), or null before the first clip reports. */
+  let progress = $state<number | null>(null);
+  $effect(() => {
+    let off: (() => void) | undefined;
+    let gone = false;
+    void listen<{ done: number; total: number }>("quickpass-progress", (e) => {
+      if (e.payload.total > 0) progress = e.payload.done / e.payload.total;
+    }).then((f) => (gone ? f() : (off = f)));
+    return () => {
+      gone = true;
+      off?.();
+    };
+  });
+  $effect(() => {
+    if (!busy) progress = null;
+  });
 
   async function measure(ids: string[]): Promise<ClipLevels[]> {
     busy = true;
@@ -238,12 +286,12 @@
   const uuid = () => crypto.randomUUID();
   const t = (samples: number) => formatIn(samples, rate, "time");
 
-  async function fix(list: Finding[]) {
+  async function fix(list: Finding[], action: QuickPassSettings["action"] = s.action) {
     if (!doc || list.length === 0) return;
     try {
-      if (s.action === "repair" && inWave) {
+      if (action === "repair" && inWave) {
         return onNotice("Repair in QuickPass works in the Multitrack view. In the Waveform editor, use Effects > Noise and Repair > Click Repair or Clip Repair.");
-      } else if (s.action === "repair") {
+      } else if (action === "repair") {
         busy = true;
         let fixed: string[] = [];
         try {
@@ -252,7 +300,7 @@
           busy = false;
         }
         done = { ...done, ...Object.fromEntries(fixed.map((id) => [id, "repaired" as const])) };
-      } else if (s.action === "remove") {
+      } else if (action === "remove") {
         const op = removeOp(doc, list, s, uuid);
         if (!op) return onNotice(`Nothing to remove there. The ${many} are shorter than the pause you keep.`);
         await store().edit(`Strip ${cap(list.length === 1 ? one : many)}`, op, run());
@@ -262,12 +310,12 @@
         for (const f of list) next[f.id] = "removed";
         found = [...rest, ...list].sort((a, b) => a.start - b.start);
         done = { ...done, ...next };
-      } else if (s.action === "duck") {
+      } else if (action === "duck") {
         const op = duckOp(doc, list, s.duckDb);
         if (!op) return onNotice("Nothing to turn down there. Locked clips are left alone.");
         await store().edit(`Turn Down ${cap(list.length === 1 ? one : many)}`, op, run());
         done = { ...done, ...Object.fromEntries(list.map((f) => [f.id, "ducked" as const])) };
-      } else if (s.action === "split") {
+      } else if (action === "split") {
         const op = splitOp(doc, list, uuid);
         if (!op) return onNotice("Nothing to split there. Locked clips are left alone.");
         await store().edit(`Split at ${cap(many)}`, op, run());
@@ -296,6 +344,40 @@
     } else next.add(f.id);
     picked = next;
     void tport().seek(f.start);
+  }
+
+  /** Delete on the list: strip the picked findings, whatever Fix by is set to. */
+  function onListKey(e: KeyboardEvent) {
+    if ((e.key === "Delete" || e.key === "Backspace") && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      if (target.length === 0 || (inWave && !canStrip)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      void fix(target, "remove");
+    } else if ((e.key === "a" || e.key === "A") && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      e.stopPropagation();
+      picked = new Set(waiting.map((f) => f.id));
+    }
+  }
+  const canStrip = $derived(info.actions.includes("remove"));
+
+  function openRowMenu(e: MouseEvent, f: Finding) {
+    e.preventDefault();
+    if (!picked.has(f.id)) picked = new Set([f.id]);
+    const sel = waiting.filter((x) => picked.has(x.id));
+    menu = {
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        { kind: "item", label: sel.length > 1 ? `Strip ${sel.length} Selected` : "Strip Selected", shortcut: "Delete", disabled: !canStrip || sel.length === 0, run: () => void fix(sel, "remove") },
+        { kind: "item", label: "Strip All", disabled: !canStrip || waiting.length === 0, run: () => void fix(waiting, "remove") },
+        { kind: "sep" },
+        { kind: "item", label: `${VERB[s.action]} Selected`, disabled: sel.length === 0, run: () => void fix(sel) },
+        { kind: "item", label: `${VERB[s.action]} All`, disabled: waiting.length === 0, run: () => void fix(waiting) },
+        { kind: "sep" },
+        { kind: "item", label: "Select All", shortcut: "Ctrl+A", run: () => (picked = new Set(waiting.map((x) => x.id))) },
+      ],
+    };
   }
 
   const cap = (w: string) => w.replace(/(^|\s)\S/g, (c) => c.toUpperCase());
@@ -395,14 +477,30 @@
         {#each info.actions as a (a)}<option value={a}>{FIX_BY[a]}</option>{/each}
       </select>
     </label>
+    {#if (doc?.tracks.length ?? 0) > 1 && !inWave}
+      <div class="fixby">
+        <span>Tracks</span>
+        <button type="button" class="grow" aria-haspopup="menu" onclick={openTracks} title="Pick the tracks to scan. Locked clips are always left alone.">{skippedCount === 0 ? "All tracks" : `${(doc?.tracks.length ?? 0) - skippedCount} of ${doc?.tracks.length} tracks`} ▾</button>
+      </div>
+    {/if}
+    {#if s.action === "remove"}
+      <label class="fixby" title="Leaving the gap open keeps every track in step. Closing it moves later clips left.">Gaps
+        <select value={s.ripple} onchange={(e) => set({ ripple: e.currentTarget.value === "all" ? "all" : e.currentTarget.value === "track" ? "track" : "none" })}>
+          <option value="none">Leave them open</option>
+          <option value="track">Close on that track</option>
+          <option value="all">Close on all tracks</option>
+        </select>
+      </label>
+    {/if}
     <div class="bar">
-      <button type="button" class="go" disabled={busy} onclick={scan}>{busy ? "Scanning" : "Scan"}</button>
+      <button type="button" class="go" disabled={busy} onclick={scan}>{busy ? (progress === null ? "Scanning" : `Scanning ${Math.round(progress * 100)}%`) : "Scan"}</button>
       <span class="grow"></span>
       <button type="button" disabled={target.length === 0} onclick={() => void fix(target)}>{VERB[s.action]}</button>
       <button type="button" disabled={waiting.length === 0} onclick={() => void fix(waiting)}>{VERB[s.action]} All</button>
       <button type="button" disabled={Object.keys(done).length === 0} onclick={clearFixed}>Clear Fixed</button>
     </div>
-    <div class="body table" role="table" aria-label="Findings">
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+    <div class="body table" role="table" aria-label="Findings" tabindex="0" onkeydown={onListKey}>
       <div class="head" role="row"><span>Fixed</span><span>Start</span><span>Length</span><span>Clip</span></div>
       {#if !scanned}
         <p class="empty">Scans {scope}. Press Scan to list the {many}. Nothing changes until you fix them.</p>
@@ -410,7 +508,7 @@
         <p class="empty">No {many} found. Try adjusting the levels or times in Settings.</p>
       {:else}
         {#each found as f (f.id)}
-          <button type="button" role="row" class="row" class:picked={picked.has(f.id)} class:fixed={!!done[f.id]} disabled={!!done[f.id]} onclick={(e) => pick(f, e)}>
+          <button type="button" role="row" class="row" class:picked={picked.has(f.id)} class:fixed={!!done[f.id]} disabled={!!done[f.id]} onclick={(e) => pick(f, e)} oncontextmenu={(e) => openRowMenu(e, f)}>
             <span>{done[f.id] ? doneLabel[done[f.id]!] : ""}</span>
             <span class="num">{t(f.start)}</span>
             <span class="num">{t(f.end - f.start)}</span>
@@ -424,6 +522,10 @@
     </p>
   {/if}
 </section>
+
+{#if menu}
+  <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => (menu = null)} />
+{/if}
 
 <style>
   .qp {

@@ -295,6 +295,30 @@ export class MediaPool {
     this.pump();
   }
 
+  /**
+   * Stops files still waiting to be measured (one already being read
+   * finishes). They show as cancelled and can be read again. Returns
+   * how many were stopped.
+   */
+  cancelQueued(ids?: Iterable<string>): number {
+    const only = ids ? new Set(ids) : null;
+    let n = 0;
+    for (let i = this.waiting.length - 1; i >= 0; i--) {
+      const id = this.waiting[i]!;
+      if (only && !only.has(id)) continue;
+      const it = this.known.get(id);
+      this.waiting.splice(i, 1);
+      if (!it) continue;
+      this.known.set(id, { ...it, status: "error", info: null, error: "Cancelled. Use Try Reading Again to measure it." });
+      n++;
+    }
+    if (n) {
+      this.emit();
+      this.pump();
+    }
+    return n;
+  }
+
   setSelection(ids: Iterable<string>): void {
     this.selection = new Set([...ids].filter((id) => this.order.includes(id)));
     this.emit();

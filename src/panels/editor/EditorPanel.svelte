@@ -171,7 +171,7 @@
       tick = n;
     }),
   );
-  const run = (id: string) => void actions.run(id);
+  const run = (id: string) => void actions.run(id).catch(onError);
 
   /** Nothing in the session yet and nothing chosen: show a start screen instead of six empty tracks. */
   let startDismissed = $state(false);
@@ -669,8 +669,11 @@
    * `vertical` up and down scroll the tracks. A click that did not move
    * calls `onClick`. Used by the ruler and the middle mouse button.
    */
+  /** True while the view is dragged with the middle button: the lanes show the grabbing hand. */
+  let panning = $state(false);
   function startPan(e: PointerEvent, vertical: boolean, onClick?: (clientX: number) => void) {
     e.preventDefault();
+    panning = true;
     const startX = e.clientX;
     const startY = e.clientY;
     const startScroll = view.scroll;
@@ -688,6 +691,7 @@
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", up, true);
       document.body.style.cursor = "";
+      panning = false;
       if (!moved) onClick?.(ev.clientX);
     };
     window.addEventListener("pointermove", move, true);
@@ -990,10 +994,10 @@
       live = v;
     }),
   );
-  /** A razor blade for the Razor tool; the hot spot is the blade's cutting point. */
+  /** A safety-razor blade for the Razor tool, tilted; the hot spot is the blade's cutting corner. */
   const RAZOR_CURSOR = `url("data:image/svg+xml;utf8,${encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g transform="rotate(-35 12 12)"><rect x="9" y="1" width="6" height="15" rx="1" fill="%23e8e8ee" stroke="%23111" stroke-width="1"/><path d="M12 3v11" stroke="%23111" stroke-width="1" stroke-dasharray="2 1.5"/><rect x="10" y="16" width="4" height="6" rx="1" fill="%23e5534b" stroke="%23111" stroke-width="1"/></g></svg>',
-  ).replace(/%2523/g, "%23")}") 4 22, crosshair`;
+    '<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 26 26"><g transform="rotate(-35 13 13)"><path d="M3 9h20v9H3z" fill="%23eceef2" stroke="%23111" stroke-width="1.2" stroke-linejoin="round"/><path d="M3 9l2.5-3h15L23 9" fill="%23c9ccd4" stroke="%23111" stroke-width="1.2" stroke-linejoin="round"/><rect x="9" y="12" width="8" height="2.4" rx="1.2" fill="%23111"/><circle cx="6" cy="13.2" r="1.3" fill="%23111"/><circle cx="20" cy="13.2" r="1.3" fill="%23111"/></g></svg>',
+  ).replace(/%2523/g, "%23")}") 4 19, crosshair`;
   /** Edge trim cursors: a bracket with an arrow, pointing the way the edge moves out. */
   const trimCursor = (left: boolean) =>
     `url("data:image/svg+xml;utf8,${encodeURIComponent(
@@ -1008,8 +1012,8 @@
     "stretch-right": "ew-resize",
     "fade-in": "ew-resize",
     "fade-out": "ew-resize",
-    "env-line": "crosshair",
-    "env-point": "move",
+    "env-line": "default",
+    "env-point": "default",
     gain: "ns-resize",
   };
 
@@ -1108,7 +1112,10 @@
     if (!doc) return;
     const at = Math.round(snapAt(sampleAt(x, view), e.altKey));
     const hit = clipAt(track, x);
-    const ids = e.shiftKey ? clipsAt(doc, at, new Set()) : hit ? [hit.id] : [];
+    // Clicking a clip that is part of a selection of several cuts every selected clip under that point.
+    const sel = ed.selectedClips;
+    const together = !e.shiftKey && hit !== null && sel.size > 1 && sel.has(hit.id) ? clipsAt(doc, at, sel).filter((id) => sel.has(id)) : null;
+    const ids = e.shiftKey ? clipsAt(doc, at, new Set()) : (together ?? (hit ? [hit.id] : []));
     if (ids.length === 0) return;
     let op;
     try {
@@ -1118,7 +1125,7 @@
       throw err;
     }
     if (!op) return;
-    void session.edit(e.shiftKey ? "Split All Tracks" : "Razor Split", op, runner).catch(onError);
+    void session.edit(e.shiftKey ? "Split All Tracks" : together ? "Razor Split Selected" : "Razor Split", op, runner).catch(onError);
   }
 
   /** Slip: drag the audio inside a clip; the clip stays where it is. */
@@ -1323,7 +1330,8 @@
       const pos = ev.shiftKey ? startPos : posAt(ev.clientX);
       points = movePoint(points, at, pos, valAt(ev.clientY, ev.altKey), len, env, range);
       preview = [change(points)];
-      envTip = { x: ev.clientX + 14, y: ev.clientY - 22, text: `${name} ${formatValue(env, points[at]!.value, unit)}` };
+      const shown = formatValue(env, points[at]!.value, unit);
+      envTip = { x: ev.clientX, y: ev.clientY, text: env === "volume" ? (shown.startsWith("-") ? shown : shown.startsWith("+") ? shown : `+${shown}`) : `${name} ${shown}` };
     };
     const up = () => {
       window.removeEventListener("pointermove", move, true);
@@ -1470,7 +1478,7 @@
         const db = dragGain(clip.gain_db, ev.clientX - startX, ev.clientY - startY, ev.shiftKey);
         changes = [{ id: clip.id, gain_db: db }];
         preview = changes;
-        envTip = { x: ev.clientX, y: ev.clientY, text: db === 0 ? "0.0 dB" : gainText(db) };
+        envTip = { x: ev.clientX, y: ev.clientY, text: db === 0 ? "+0.0 dB" : gainText(db) };
         return;
       }
       // The timeline may have scrolled under the drag (see the timer below), so add what it moved.
@@ -1662,6 +1670,7 @@
         act(actions.isChecked("clip.fade-out") ? "Remove Fade Out" : "Fade Out", "clip.fade-out"),
         { kind: "sep" },
         { kind: "item", label: ed.selectedClips.size > 1 ? `Delete ${ed.selectedClips.size} Clips` : "Delete Clip", shortcut: shortcutFor("edit.delete"), run: () => run("edit.delete") },
+        { kind: "item", label: ed.selectedClips.size > 1 ? `Ripple Delete ${ed.selectedClips.size} Clips` : "Ripple Delete", shortcut: shortcutFor("edit.ripple.clips"), run: () => run("edit.ripple.clips") },
         { kind: "item", label: "Show in Files Panel", disabled: !can("clip.reveal"), run: () => run("clip.reveal") },
         { kind: "sep" },
       );
@@ -2783,7 +2792,7 @@
             <div
               class="lane"
               data-track={track.id}
-              style:cursor={preview.length > 0 && hoverCursor === "grab" ? "grabbing" : hoverCursor}
+              style:cursor={panning || (preview.length > 0 && hoverCursor === "grab") ? "grabbing" : hoverCursor}
               onmousedown={(e) => {
                 if (e.button === 1) e.preventDefault();
               }}
@@ -2981,13 +2990,16 @@
   .env-tip {
     position: fixed;
     z-index: 4000;
-    padding: 2px 6px;
-    border: 1px solid var(--border-strong);
+    /* Audition's readout: a light box under the pointer, dark text. */
+    transform: translate(-50%, 22px);
+    padding: 3px 9px;
+    border: 1px solid #7a7a72;
     border-radius: 2px;
-    background: var(--surface-3);
-    color: var(--value);
-    font-family: var(--font-mono);
-    font-size: 11px;
+    background: #f6f5ea;
+    color: #15151a;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    font-family: var(--font-ui);
+    font-size: 12px;
     pointer-events: none;
     white-space: nowrap;
   }

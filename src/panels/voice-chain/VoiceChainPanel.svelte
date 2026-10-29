@@ -16,6 +16,7 @@
 -->
 <script lang="ts">
   import Knob from "../../app/Knob.svelte";
+  import { presetMenu } from "./preset-menu";
   import { effectsCatalog, learnNoisePrint, pluginOpenWindow, pluginRestart, pluginsRegistry, type EffectInfo, type EffectParamInfo, type LearnSource } from "../../app/core";
   import { markStopped, pluginsVersion, stoppedPlugins } from "../../stores/plugins";
   import { editor, type EditorState } from "../../stores/editor";
@@ -60,6 +61,7 @@
   import EffectControls from "./EffectControls.svelte";
   import NoiseShapeGraph from "./NoiseShapeGraph.svelte";
   import TubePanel from "./TubePanel.svelte";
+  import LevelerPanel from "./LevelerPanel.svelte";
   import { settings } from "../../stores/settings";
   import AmpPanel from "./AmpPanel.svelte";
   import VoxStripPanel from "./VoxStripPanel.svelte";
@@ -274,10 +276,26 @@
   const winSlot = $derived(winOpen ? (chain.slots.find((s) => s.id === selectedSlot) ?? null) : null);
   const winInfo = $derived(winSlot ? byId.get(winSlot.effect) : undefined);
   const winIndex = $derived(winSlot ? chain.slots.indexOf(winSlot) : -1);
+  let centeredFor: string | null = null;
   function openWindow(id: string) {
     selectedSlot = id;
     winOpen = true;
+    // Each time a window opens it starts in the middle of the screen.
+    centeredFor = null;
   }
+  $effect(() => {
+    const el = winEl;
+    if (!winOpen) {
+      centeredFor = null;
+      return;
+    }
+    if (!el || centeredFor === (winSlot?.id ?? "")) return;
+    centeredFor = winSlot?.id ?? "";
+    const r = el.getBoundingClientRect();
+    const w = r.width || 380;
+    const h = r.height || 300;
+    winBox = clampBox({ x: (window.innerWidth - w) / 2, y: (window.innerHeight - h) / 2 }, w, h, window.innerWidth, window.innerHeight);
+  });
   // Hold the chain while a window is open; let go when it closes.
   $effect(() => {
     if (winOpen && !hold) hold = { owner: onMaster ? MASTER_ID : (bus?.id ?? track?.id ?? null), clip: tab === "clip" ? (clip?.id ?? null) : null };
@@ -595,7 +613,7 @@
   // or the master has no audio of its own to learn from yet.
   const canLearn = $derived(inWave || target?.kind === "track" || target?.kind === "clip");
   /** Effects whose window draws all of its own controls. */
-  const OWN_CONTROLS = new Set(["altaudio.convolution_reverb", "altaudio.shaped_noise", "altaudio.opto_leveler", "altaudio.tube_preamp", "altaudio.amp_model", "altaudio.vox_strip"]);
+  const OWN_CONTROLS = new Set(["altaudio.convolution_reverb", "altaudio.shaped_noise", "altaudio.opto_leveler", "altaudio.tube_preamp", "altaudio.amp_model", "altaudio.vox_strip", "altaudio.speech_leveler"]);
   const LEARNS = new Set(["altaudio.noise_print", "altaudio.sound_eraser", "altaudio.shaped_noise"]);
   const learnSel = $derived.by(() => {
     const v = inWave ? waveDoc?.view.selection : doc?.view.selection;
@@ -656,27 +674,18 @@
     <div class="top">
       <div class="line presets">
         <span class="plabel">Presets:</span>
-        <select
-          class="grow"
+        <button
+          type="button"
+          class="grow presetbtn"
           aria-label="Presets"
-          value=""
-          onchange={(e) => {
-            choosePreset(e.currentTarget.value);
-            e.currentTarget.value = "";
+          aria-haspopup="menu"
+          onclick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            slotMenu = { x: r.left, y: r.bottom, items: presetMenu(userPresets, BUILTIN_PRESETS, choosePreset) };
           }}
         >
-          <option value="" disabled>(Choose a preset)</option>
-          {#if userPresets.length}
-            <optgroup label="Yours">
-              {#each userPresets as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
-            </optgroup>
-          {/if}
-          {#each ["Voice chains", "Breath gates", "Processing", "Delay", "Repair", "EQ"] as g (g)}
-            <optgroup label={g === "Voice chains" ? "Voice chains (replace the chain)" : `${g} (add one effect)`}>
-              {#each BUILTIN_PRESETS.filter((p) => p.group === g) as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
-            </optgroup>
-          {/each}
-        </select>
+          <span>(Choose a preset)</span><span aria-hidden="true">▾</span>
+        </button>
         <button type="button" class="ico" title="Save this chain as a preset" aria-label="Save preset" disabled={chain.slots.length === 0} onclick={() => void savePreset()}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v7M5 6.5 8 9.5l3-3" fill="none" stroke="currentColor" stroke-width="1.5" /><path d="M2.5 10v3.5h11V10" fill="none" stroke="currentColor" stroke-width="1.5" /></svg>
         </button>
@@ -813,6 +822,8 @@
           />
         {:else if winSlot.effect === "altaudio.opto_leveler" || winSlot.effect === "altaudio.tube_preamp"}
           <TubePanel slot={winSlot} info={winInfo} onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)} />
+        {:else if winSlot.effect === "altaudio.speech_leveler"}
+          <LevelerPanel slot={winSlot} info={winInfo} onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)} />
         {:else if winSlot.effect === "altaudio.vox_strip"}
           <VoxStripPanel slot={winSlot} info={winInfo} tempo={doc?.tempo?.bpm} onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)} />
         {:else if winSlot.effect === "altaudio.amp_model"}
@@ -1213,6 +1224,14 @@
     background: var(--surface-2);
     color: var(--text);
   }
+  .presetbtn {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 22px;
+    padding: 0 8px;
+    text-align: left;
+  }
   .plabel {
     flex: none;
     color: var(--text-dim);
@@ -1282,9 +1301,25 @@
     align-items: center;
     gap: 6px;
     padding: 5px 6px 5px 10px;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid #8e919a;
+    /* A light bar, so the window's title and close button stand out from the dark panels. */
+    background: #dfe1e6;
+    color: #16171a;
     cursor: move;
     user-select: none;
+  }
+  .fxwin header .mini {
+    border-color: #9a9da6;
+    background: #f4f5f7;
+    color: #16171a;
+  }
+  .fxwin header .mini:hover {
+    background: #ffffff;
+  }
+  .fxwin header .mini.on {
+    border-color: #2f6fd0;
+    background: #2f6fd0;
+    color: #fff;
   }
   .fxwin .wtitle {
     flex: 1;

@@ -261,6 +261,30 @@ export interface ChainPreset {
   };
 }
 
+/** Where a built-in voice chain sits in the Presets menu, and what it is for. */
+export const PRESET_INFO: Record<string, { category: "Podcast Voices" | "Character Types" | "Cleanup" | "Voice Over"; blurb: string }> = {
+  "Podcast Voice": { category: "Podcast Voices", blurb: "All-round: noise, level, compress, EQ, de-ess, limit -6 dB" },
+  "Podcast Voice 2": { category: "Podcast Voices", blurb: "Noisier rooms: heavier noise cut and squeeze, gate -45 dB" },
+  "Podcast Voice 3": { category: "Podcast Voices", blurb: "Clean takes: light compress, EQ, limit -6 dB" },
+  "Podcast Voice 3 -3 dB": { category: "Podcast Voices", blurb: "Same as Voice 3, limit -3 dB" },
+  "Podcast Voice 4 -3 dB": { category: "Podcast Voices", blurb: "Uneven speakers: leveler, firmer squeeze, limit -3 dB" },
+  Godlike: { category: "Character Types", blurb: "Pitched down 3 st, big low end" },
+  Demonic: { category: "Character Types", blurb: "Pitched down 8 st, heavy" },
+  "Evil Voice": { category: "Character Types", blurb: "Pitched down 5 st, dark" },
+  Ethereal: { category: "Character Types", blurb: "Pitched up 2 st, airy" },
+  Angelic: { category: "Character Types", blurb: "Pitched up 3 st, bright" },
+  "Voice Leveler and Noise Gate": { category: "Cleanup", blurb: "Evens levels, gate -40 dB" },
+  "Clean Up and Level Voice Over": { category: "Cleanup", blurb: "Noise cut, level, de-ess, limit -3 dB" },
+  "Remote Guest Cleanup": { category: "Cleanup", blurb: "Calls and remote guests: strong noise and room cut" },
+  "Radio Announcer Voice": { category: "Voice Over", blurb: "Hard compression, limit -1 dB, big and close" },
+  "Voice Over": { category: "Voice Over", blurb: "Compress, de-ess, limit -3 dB" },
+  "DeEss and Limit Male Voice Over": { category: "Voice Over", blurb: "De-ess at 5.5 kHz, limit -3 dB" },
+  "DeEss and Limit Female Voice Over": { category: "Voice Over", blurb: "De-ess at 7.5 kHz, limit -3 dB" },
+  "Breath Gate": { category: "Cleanup", blurb: "Gate -40 dB" },
+  "Breath Gate - Low": { category: "Cleanup", blurb: "Gate -14 dB: close mic, strong voice" },
+  "Breath Gate - Medium": { category: "Cleanup", blurb: "Gate -20 dB: normal mic distance" },
+};
+
 /** True when choosing the preset adds one effect instead of replacing the chain. */
 export function addsOne(p: ChainPreset): boolean {
   return p.chain.slots.length === 1 && p.group !== "Voice chains";

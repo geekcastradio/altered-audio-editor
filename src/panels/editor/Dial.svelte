@@ -24,7 +24,12 @@
 
   const { value, min, max, step, origin, label, icon, format, onChange }: Props = $props();
 
-  const angle = (v: number) => -135 + ((Math.min(max, Math.max(min, v)) - min) / (max - min)) * 270;
+  // The origin (0 dB, or center for pan) sits at 12 o'clock; the ends sweep 135 degrees either way.
+  const angle = (v: number) => {
+    const c = Math.min(max, Math.max(min, v));
+    if (origin <= min || origin >= max) return -135 + ((c - min) / (max - min)) * 270;
+    return c >= origin ? ((c - origin) / (max - origin)) * 135 : -((origin - c) / (origin - min)) * 135;
+  };
   const a = $derived(angle(value));
   const a0 = $derived(angle(origin));
 

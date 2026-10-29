@@ -28,7 +28,7 @@
   import { timeDisplayItems } from "./time-menu";
   import { levelAt, pointsOf } from "./envelope";
   import { fit, formatIn, peakRange, pickLevel, rulerTicks, ticksFor, sampleAt, SAMPLE_SPP, xOf, zoomAround, type Viewport } from "./timeline";
-  import { mediaFrames } from "../../app/core";
+  import { mediaFrames, waveZeroCrossings } from "../../app/core";
   import TransportBar from "./TransportBar.svelte";
   import SpectrumView from "./SpectrumView.svelte";
 
@@ -548,6 +548,21 @@
     return e.clientX - el.getBoundingClientRect().left;
   }
 
+  /** Moves a fresh selection's edges to the nearest zero crossings (within 20 ms) when snap mode is on. */
+  async function snapToZero(start: number, end: number) {
+    let a = start;
+    let b = end;
+    try {
+      const r = await waveZeroCrossings([start, end], Math.round(rate * 0.02));
+      if (r[0] !== undefined && r[1] !== undefined && r[1] > r[0]) [a, b] = [r[0], r[1]];
+    } catch {
+      // Keep the selection where it was dragged.
+    }
+    // The selection may have changed while the lookup ran; only move it if it is still this one.
+    const now = doc?.view.selection;
+    if (now && now.start === start && now.end === end) setView({ selection: { start: a, end: b }, ...(tp?.playing ? {} : { playhead: a }) });
+  }
+
   function onPointer(e: PointerEvent) {
     if (!doc || e.button !== 0) return;
     const el = e.currentTarget as HTMLElement;
@@ -570,7 +585,8 @@
       if (dragged) {
         move(ev);
         const sel = doc?.view.selection;
-        if (sel && !tp?.playing) setView({ playhead: sel.start });
+        if (sel && editor.current().snapZero) void snapToZero(sel.start, sel.end);
+        else if (sel && !tp?.playing) setView({ playhead: sel.start });
         return;
       }
       // A click moves the playhead and clears the selection.

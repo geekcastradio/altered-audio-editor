@@ -458,6 +458,64 @@ pub async fn tags_write(path: PathBuf, tags: crate::export::tags::Tags) -> Resul
     .map_err(|e| e.to_string())?
 }
 
+/// The cover art of an MP3 as a data URL the page can show, or None.
+#[tauri::command]
+pub async fn cover_read(path: PathBuf) -> Result<Option<String>, String> {
+    spawn_blocking(move || {
+        crate::export::cover::read_cover(&path)
+            .map(|(mime, img)| format!("data:{mime};base64,{}", crate::export::cover::base64(&img)))
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Asks for a JPEG or PNG and puts it in an MP3 as its cover art. Returns the new
+/// picture as a data URL; None when the dialog was cancelled or the file is not an MP3.
+#[tauri::command]
+pub async fn cover_choose(app: AppHandle, path: PathBuf) -> Result<Option<String>, String> {
+    let parent = app.get_webview_window("main");
+    spawn_blocking(move || {
+        let mut d = app
+            .dialog()
+            .file()
+            .set_title("Choose Cover Art")
+            .add_filter("Pictures", &["jpg", "jpeg", "png"]);
+        if let Some(w) = parent.as_ref() {
+            d = d.set_parent(w);
+        }
+        let Some(picked) = d
+            .blocking_pick_file()
+            .and_then(|f| f.as_path().map(PathBuf::from))
+        else {
+            return Ok(None);
+        };
+        let size = std::fs::metadata(&picked).map(|m| m.len()).unwrap_or(0);
+        if size as usize > crate::export::cover::COVER_MAX {
+            return Err("The picture is larger than 8 MB.".to_string());
+        }
+        let img = std::fs::read(&picked).map_err(|e| format!("Could not read the picture: {e}"))?;
+        let done = crate::export::cover::write_cover(&path, Some(&img))
+            .map_err(|e| format!("Could not write the cover art: {e}"))?;
+        Ok(done.then(|| {
+            let mime = crate::export::cover::image_mime(&img).unwrap_or("image/jpeg");
+            format!("data:{mime};base64,{}", crate::export::cover::base64(&img))
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Removes the cover art from an MP3. False when the file is not an MP3.
+#[tauri::command]
+pub async fn cover_clear(path: PathBuf) -> Result<bool, String> {
+    spawn_blocking(move || {
+        crate::export::cover::write_cover(&path, None)
+            .map_err(|e| format!("Could not remove the cover art: {e}"))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Makes the reversed copy a reversed clip of `path` plays from (once; it
 /// is kept in the working files folder). The file itself is not changed.
 #[tauri::command]

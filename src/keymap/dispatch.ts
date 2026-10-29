@@ -80,7 +80,7 @@ export function decide(
 }
 
 /** Listens for key presses on the window. Returns a function that stops listening. */
-export function bindKeymap(keymap: Keymap, actions: ActionRegistry, onError: (e: unknown) => void): () => void {
+export function bindKeymap(keymap: Keymap, actions: ActionRegistry, onError: (e: unknown) => void, onBlocked?: (why: string) => void): () => void {
   const handler = (e: KeyboardEvent) => {
     const result = decide(e, keymap, {
       inTextField: isTextEntry(e.target),
@@ -88,7 +88,17 @@ export function bindKeymap(keymap: Keymap, actions: ActionRegistry, onError: (e:
       release: !import.meta.env.DEV,
     });
     if (result.prevent) e.preventDefault();
-    if (result.action) actions.run(result.action).catch(onError);
+    if (result.action) {
+      const id = result.action;
+      // An edit shortcut that does nothing says why, instead of failing silently.
+      actions
+        .run(id)
+        .then((ran) => {
+          const why = !ran && (id.startsWith("edit.") || id.startsWith("clip.")) ? actions.reason(id) : null;
+          if (why) onBlocked?.(why);
+        })
+        .catch(onError);
+    }
   };
   // Clicking a canvas or empty panel does not move focus, so a search box
   // would keep swallowing keys such as Space, and a list row would keep its

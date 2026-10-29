@@ -276,15 +276,15 @@
 </div>
 
 <style>
+  /* The check mark sits in the left padding, so every label lines up whether or not it has one. */
   .check {
+    position: absolute;
+    left: 5px;
     width: 12px;
-    color: var(--accent);
+    color: var(--menu-hover);
   }
-
-  .check + .label {
-    flex: 1;
-    margin-left: 6px;
-    text-align: left;
+  button.active .check {
+    color: #fff;
   }
 
   .row {
@@ -304,10 +304,10 @@
     box-sizing: border-box;
     height: 22px;
     padding: 0 6px;
-    border: 1px solid var(--border-strong);
+    border: 1px solid #9a9da6;
     border-radius: 3px;
-    background: var(--surface-0);
-    color: var(--text);
+    background: #fff;
+    color: var(--menu-text);
     font: inherit;
   }
 
@@ -316,7 +316,7 @@
   }
 
   .arrow {
-    color: var(--text-dim);
+    color: var(--menu-dim);
   }
 
   .context {
@@ -324,9 +324,16 @@
     z-index: 6000;
     min-width: 190px;
     padding: 3px 0;
-    border: 1px solid var(--border-strong);
-    background: var(--surface-2);
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+    /* A light menu, as in Audition, so it stands out from the dark panels. */
+    --menu-bg: #e4e5e9;
+    --menu-text: #16171a;
+    --menu-dim: #4c4f57;
+    --menu-faint: #8b8e97;
+    --menu-hover: #2f6fd0;
+    border: 1px solid #f5f6f8;
+    background: var(--menu-bg);
+    color: var(--menu-text);
+    box-shadow: 0 0 0 1px #000, 0 8px 22px rgba(0, 0, 0, 0.7);
     outline: none;
     /* Never taller than the window: a long list scrolls instead. */
     max-height: calc(100vh - 4px);
@@ -335,6 +342,7 @@
   }
 
   button {
+    position: relative;
     white-space: nowrap;
     display: flex;
     justify-content: space-between;
@@ -344,26 +352,31 @@
     padding: 0 12px 0 20px;
     border: 0;
     background: none;
-    color: var(--text);
+    color: var(--menu-text);
     font: inherit;
     text-align: left;
   }
 
   button.active {
-    background: var(--accent-dim);
+    background: var(--menu-hover);
+    color: #fff;
+  }
+
+  button.active .key {
+    color: #dbe6fb;
   }
 
   button:disabled {
-    color: var(--text-faint);
+    color: var(--menu-faint);
   }
 
   .key {
-    color: var(--text-dim);
+    color: var(--menu-dim);
   }
 
   .sep {
     height: 1px;
     margin: 3px 0;
-    background: var(--border);
+    background: #b4b7bf;
   }
 </style>
