@@ -27,6 +27,7 @@ pub mod print;
 mod restore;
 pub mod reverb;
 pub mod shaped;
+mod space;
 mod stereo;
 pub mod tube;
 pub mod vocal;
@@ -200,6 +201,8 @@ pub fn catalog() -> Vec<EffectInfo> {
         modulation::chorus_info(),
         modulation::flanger_info(),
         modulation::phaser_info(),
+        space::room_info(),
+        space::tape_info(),
         stereo::mixer_info(),
         stereo::expander_info(),
         stereo::distortion_info(),
@@ -471,6 +474,8 @@ pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
         "altaudio.chorus" => Box::new(modulation::Chorus::new(&p, rate)),
         "altaudio.flanger" => Box::new(modulation::Flanger::new(&p, rate)),
         "altaudio.phaser" => Box::new(modulation::Phaser::new(&p, rate)),
+        "altaudio.room-reverb" => Box::new(space::Room::new(&p, rate)),
+        "altaudio.tape-delay" => Box::new(space::Tape::new(&p, rate)),
         "altaudio.channel-mixer" => Box::new(stereo::Mixer::new(&p)),
         "altaudio.stereo-expander" => Box::new(stereo::Expander::new(&p, rate)),
         "altaudio.distortion" => Box::new(stereo::Distortion::new(&p, rate)),

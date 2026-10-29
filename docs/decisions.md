@@ -1534,3 +1534,9 @@ Several requests compared behavior to another editor; per the guardrails they ar
 - Stereo Expander (new Stereo Imagery family) scales the side signal of a mid/side split from 0% (mono) to 300%. "Keep bass centered below" leaves the side signal under that frequency at its own level, so low notes do not spread. It uses a one-pole split, a gentle slope by design.
 - Distortion (new Special family) has four curves (soft clip, hard clip, tube, fold), Drive, a Tone low-pass after the curve, Output and Mix. It evaluates the curve at the frame and its midpoint and averages them, which tames aliasing a little but is not full oversampling. A proper oversampled mode can come later if the harshness shows in real use.
 - All three add no latency and pass the existing determinism test.
+
+## 2026-10-29: Room Reverb and Tape Delay
+
+- Room Reverb is an algorithmic reverb (eight damped feedback combs per side into four all-pass diffusers, the right side slightly longer for width), so there is a reverb that needs no impulse file. Each comb's feedback is set from its own length and the Decay time, so the tail falls 60 dB in about that many seconds, and its input is scaled so the wet level stays about the same at any Decay. Size stretches the delay lengths. Convolution Reverb stays for real spaces.
+- Tape Delay (an analog-style delay) darkens each repeat with a low-pass, softens it with a bounded saturation, and wobbles the delay time slightly. The saturation is level-neutral for small sounds, so turning it up does not change the repeat level, and it keeps even 95% feedback from running away. Delay and Echo stays as the clean, exact version.
+- Both pass the sound untouched at zero mix, add no latency, and pass the determinism test.
