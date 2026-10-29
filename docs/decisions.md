@@ -1540,3 +1540,8 @@ Several requests compared behavior to another editor; per the guardrails they ar
 - Room Reverb is an algorithmic reverb (eight damped feedback combs per side into four all-pass diffusers, the right side slightly longer for width), so there is a reverb that needs no impulse file. Each comb's feedback is set from its own length and the Decay time, so the tail falls 60 dB in about that many seconds, and its input is scaled so the wet level stays about the same at any Decay. Size stretches the delay lengths. Convolution Reverb stays for real spaces.
 - Tape Delay (an analog-style delay) darkens each repeat with a low-pass, softens it with a bounded saturation, and wobbles the delay time slightly. The saturation is level-neutral for small sounds, so turning it up does not change the repeat level, and it keeps even 95% feedback from running away. Delay and Echo stays as the clean, exact version.
 - Both pass the sound untouched at zero mix, add no latency, and pass the determinism test.
+
+## 2026-10-29: Expander / Gate
+
+- One Dynamics effect with two modes. Expander cuts quiet sound by (ratio - 1) dB for every dB it sits under the threshold, never more than Max reduction. Gate drops straight to Max reduction once the sound has stayed under the threshold for the Hold time. Attack is how fast it opens, Release how fast it closes, and it can listen to another track as a sidechain like Breath Gate.
+- Breath Gate stays as the simple one-knob-set version for voice. Normalize already exists as an Amplitude menu action, which is the right shape for it because it needs the loudest sample of the whole file; it is not an effect in a chain.
