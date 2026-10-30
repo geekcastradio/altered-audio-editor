@@ -11,7 +11,7 @@
 
 It follows the editing workflow that experienced audio editors already know, with its own original design, then adds tools built for podcast production.
 
-> Status: in active development (phase P5, effects). Version 0.9.0 adds Pitch Tune and Pitch Curve (experimental), a Metadata panel with MP3 cover art and saved tag sets, a frequency band splitter, and a snap-to-zero mode. Editing, playback, recording, the Voice Chain effects, conversion and mixdown work today. Transcripts are still to come. Pre-release: keep backups of your recordings.
+> Status: in active development (phase P5, effects). Version 0.9.1 adds Pitch Tune and Pitch Curve (experimental), a Metadata panel with MP3 cover art and saved tag sets, a frequency band splitter, and a snap-to-zero mode. Editing, playback, recording, the Voice Chain effects, conversion and mixdown work today. Transcripts are still to come. Pre-release: keep backups of your recordings.
 
 ![Multitrack editor with a four-track episode: themes, a host and a co-host with the Podcast Voice chain on the host track, a promo, fades, a volume envelope and chapter markers](docs/images/multitrack.png)
 
