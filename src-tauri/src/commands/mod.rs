@@ -8,6 +8,7 @@
 pub mod align;
 pub mod amp;
 pub mod app;
+pub mod backup;
 pub mod batch;
 pub mod browse;
 pub mod cache;

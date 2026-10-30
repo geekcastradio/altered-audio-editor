@@ -94,3 +94,20 @@ export function sanitizeBank(raw: unknown): EffectPresetBank {
   }
   return out;
 }
+
+/**
+ * Presets that ship with an effect, listed apart from the user's own and never edited or
+ * deleted. Named for the job, not for any other product's presets.
+ */
+export const BUILTIN_EFFECT_PRESETS: Readonly<Record<string, readonly EffectPreset[]>> = {
+  "altaudio.dynamics": [
+    { name: "Voice, Gentle", params: { threshold: -18, ratio: 2, attack: 12, release: 180, knee: 8, makeup: 2 } },
+    { name: "Voice, Firm", params: { threshold: -24, ratio: 4, attack: 8, release: 160, knee: 6, makeup: 5 } },
+    { name: "Broadcast Squash", params: { threshold: -28, ratio: 6, attack: 4, release: 120, knee: 4, makeup: 8 } },
+    { name: "Peak Catcher", params: { threshold: -10, ratio: 12, attack: 1, release: 80, knee: 2, makeup: 0 } },
+    { name: "Music Glue", params: { threshold: -16, ratio: 2, attack: 30, release: 250, knee: 10, makeup: 1.5 } },
+    { name: "Drum Punch", params: { threshold: -20, ratio: 4, attack: 25, release: 100, knee: 3, makeup: 3 } },
+  ],
+};
+
+export const builtinPresets = (effect: string): readonly EffectPreset[] => BUILTIN_EFFECT_PRESETS[effect] ?? [];

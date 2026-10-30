@@ -11,6 +11,7 @@
   import {
     workspaceDelete,
     exitApp,
+    diskFree,
     getAppInfo,
     loadKeymapOverrides,
     workspaceGet,
@@ -59,6 +60,7 @@
   import { anchorStart, clipsFrom, clipsUpTo, nextClipId } from "./clip-select";
   import { hasClipIn, showOnly } from "../panels/editor/visibility";
   import { clipLength, sessionEnd, setErrorSink, type ClipDoc, type Op, type TrackDoc } from "../stores/session";
+  import { formatSize } from "../panels/files/format";
   import { fit, MIN_TRACK_H, maxSppFor, zoomAround } from "../panels/editor/timeline";
   import ChoiceDialog, { type ChoiceButton } from "./ChoiceDialog.svelte";
   import ExportDialog, { type ExportScopeInfo, type ExportSettings } from "./ExportDialog.svelte";
@@ -223,6 +225,7 @@
   import type { EffectChainDoc, EffectTarget, MediaRefDoc, SessionDoc } from "../stores/session";
   import PendingPanel from "../panels/PendingPanel.svelte";
   import AudioFxPanel from "../panels/audio-fx/AudioFxPanel.svelte";
+  import SoundTypesPanel from "../panels/audio-fx/SoundTypesPanel.svelte";
   import VoiceChainPanel from "../panels/voice-chain/VoiceChainPanel.svelte";
   import { addSlot, chainOf, newSlot, type MenuPlugin } from "../panels/voice-chain/chain";
   import { effectSearch, vst3Items } from "../panels/voice-chain/slot-drag";
@@ -254,6 +257,9 @@
   let lastError = $state<string | null>(null);
 
   let notice = $state<string | null>(null);
+  /** "48 kHz, 24-bit" for the open session. */
+  let format = $state<string | null>(null);
+  let freeText = $state<string | null>(null);
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
   let errorTimer: ReturnType<typeof setTimeout> | undefined;
@@ -2132,6 +2138,8 @@
         };
       case "audio-fx":
         return { component: asComponent(AudioFxPanel), props: { session, runner: sessionHistory, wave, onNotice: showNotice, onError: showError } };
+      case "sound-types":
+        return { component: asComponent(SoundTypesPanel), props: { session, runner: sessionHistory, wave, onNotice: showNotice, onError: showError } };
       case "quickpass":
         return {
           component: asComponent(QuickPassPanel),
@@ -2161,7 +2169,7 @@
       case "metadata":
         return {
           component: asComponent(MetadataPanel),
-          props: { prefs, ask: promptText, openPath: () => waveFile.current()?.path ?? null, onNotice: showNotice, onError: showError },
+          props: { prefs, router: fileDrop, ask: promptText, openPath: () => waveFile.current()?.path ?? null, onNotice: showNotice, onError: showError },
         };
       case "markers":
         return {
@@ -2202,6 +2210,8 @@
 
   const KEY_WORKSPACE = "workspace.current";
   let wsState: WorkspaceState = { current: "default", items: [] };
+  /** The same list, for the workspace switcher in the title row. */
+  let wsView = $state<WorkspaceState>({ current: "default", items: [] });
   const dock = new DockController({
     content,
     workspaces: { list: workspaceList, get: workspaceGet, put: workspacePut, remove: workspaceDelete },
@@ -2933,6 +2943,7 @@
   }
   /** Puts settings that live outside the interface's own reads into effect. */
   function applyAppSettings(s: AppSettings, autosave: boolean) {
+    document.documentElement.dataset.surface = s.surface;
     const root = document.documentElement.style;
     for (const k of ["--wave", "--playhead", "--accent", "--lane-selected"]) root.removeProperty(k);
     for (const [k, v] of Object.entries(colorVars(s.colors))) root.setProperty(k, v);
@@ -5247,6 +5258,7 @@
     offs.push(
       dock.workspaces.subscribe((w) => {
         wsState = w;
+        wsView = w;
         // The Music workspace is the music tools' home: choosing it turns them on.
         if (w.current === "music" && !settings.current.musicMode) settings.set({ ...settings.current, musicMode: true });
         actions.invalidate();
@@ -5290,6 +5302,19 @@
     offs.push(() => files.stopAutosave());
     offs.push(sessionHistory.subscribe(updateTitle));
     offs.push(session.subscribe(updateTitle));
+    offs.push(
+      session.subscribe((d) => {
+        format = d ? `${(d.sample_rate / 1000).toLocaleString("en-US", { maximumFractionDigits: 1 })} kHz, ${d.bit_depth}-bit` : null;
+      }),
+    );
+    const refreshFree = () =>
+      void diskFree(session.path ? session.path.replace(/[\\/][^\\/]*$/, "") : null).then(
+        (n) => (freeText = n === null ? null : `${formatSize(n)} free`),
+        () => (freeText = null),
+      );
+    refreshFree();
+    const freeTimer = setInterval(refreshFree, 30000);
+    offs.push(() => clearInterval(freeTimer));
     offs.push(session.subscribe(() => syncMonitor()));
     offs.push(editor.subscribe(() => (updateEditorTitle(), updateSessionRow())));
     offs.push(wave.subscribe(() => updateEditorTitle()));
@@ -5329,6 +5354,12 @@
 <div class="shell">
   <header class="top">
     <MenuBar menus={MENUS} {actions} {shortcutFor} onError={showError} popups={{ "fx.vst3": vst3Popup }} searches={{ Effects: effectsMenuSearch }} />
+    <label class="wsswitch" title="Switch workspace">
+      <span>Workspace</span>
+      <select value={wsView.current} onchange={(e) => void dock.switchTo(e.currentTarget.value)}>
+        {#each wsView.items as w (w.id)}<option value={w.id}>{w.name}</option>{/each}
+      </select>
+    </label>
   </header>
   <ToolStrip {actions} {shortcutFor} />
 
@@ -5350,6 +5381,13 @@
     {/if}
     {#if lastError}
       <span class="warn">{lastError}</span>
+    {/if}
+    <span class="grow"></span>
+    {#if format}
+      <span title="Session sample rate and bit depth">{format}</span>
+    {/if}
+    {#if freeText}
+      <span title="Free space on the drive that holds the session (or Documents)">{freeText}</span>
     {/if}
   </footer>
 </div>
@@ -5704,6 +5742,29 @@
     padding: 0;
     background: var(--surface-2);
     border-bottom: 1px solid var(--border);
+  }
+
+  .wsswitch {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    margin-left: auto;
+    padding: 0 8px;
+    color: var(--text-dim);
+  }
+
+  .wsswitch select {
+    height: 20px;
+    max-width: 180px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--surface-3);
+    color: var(--text);
+    font: inherit;
+  }
+
+  .status .grow {
+    flex: 1;
   }
 
   .body {

@@ -379,7 +379,8 @@ export const MENUS: readonly Menu[] = [
     mnemonic: "T",
     items: [
       item("window.panel.voice-chain", "Voice Chain"),
-      item("window.panel.audio-fx", "Audio FX Panel"),
+      item("window.panel.audio-fx", "Audio FX"),
+      item("window.panel.sound-types", "Sound Types"),
       item("fx.hide-windows", "Hide All Effect Windows"),
       item("fx.capture-noise-print", "Capture Noise Print"),
       sep,

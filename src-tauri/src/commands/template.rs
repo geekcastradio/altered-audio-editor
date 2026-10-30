@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use tauri::async_runtime::spawn_blocking;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
 use super::session::OpenSession;
 use crate::export::mixdown::unique_path;
@@ -31,11 +31,7 @@ pub struct TemplateEntry {
 }
 
 pub fn templates_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(app
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?
-        .join("templates"))
+    Ok(crate::paths::config_dir(app)?.join("templates"))
 }
 
 fn entry(path: &Path, t: &Template) -> TemplateEntry {

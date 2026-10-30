@@ -1673,3 +1673,32 @@ Effect settings windows open in the middle of the screen and have a light title 
 ## 2026-10-29 Startup freeze fix
 
 - The panel minimum sizes re-triggered a layout change every time they were set, which froze the window on "Connecting to core...". Limits are now set only when they change, and never re-entered. Reproduced in a browser: old code never finishes loading, fixed code does.
+
+## 2026-10-30 0.9.5 part A: settings safety
+
+- Settings stay in the per-user app config folder (never the install folder: uninstall and upgrade wipe it, and it is often read-only). A `portable` file next to the program switches to a `data` folder beside it. All config lookups go through `paths::config_dir`.
+- `.aaebackup` is a zip with a manifest and the config files. Export Everything, Import (Merge keeps mine and adds what is missing, a differing file comes in as "(restored)"; Replace takes a snapshot first), per-category checklist. Keys and tokens are left out unless asked.
+- Automatic snapshots: on any launch where something changed, and always before the first launch of a new version; the newest 10 are kept (hand-made backups are never pruned); optional copy to a sync folder. Backups live in Documents\Altered Audio Editor\Backups.
+- Settings > Backup and Restore is the page. A restore asks for a restart.
+
+## 2026-10-30 0.9.5 part B: Audition shortcut import
+
+- Edit > Keyboard Shortcuts > Import from Audition reads Audition's exported XML. Each Audition command that has a matching action here (96 of them, matched by the keys Audition ships) takes the export's keys; our own extra default keys that Audition does not use stay (so Ctrl+F4 still closes). Any other action holding an imported key gives it up. Commands with no matching action and keys the reader can't decode are counted in the notice, never dropped silently.
+- Importing your own export changes three actions (extra Audition keys on Deselect, Add Cue Marker and Settings).
+
+## 2026-10-30 0.9.5 part C: theme lift
+
+- Surface, border, lane and header tokens in `styles/tokens.css` are one to two steps lighter (Audition-like charcoal) and text is slightly brighter. The scope graphs (EQ, phase, spectrum) stay deep dark on purpose.
+- Settings > Appearance > Panel brightness: Standard, or Classic (the old darker values, kept as `:root[data-surface="classic"]`). Stored as `surface` in the app settings and applied on start and on OK.
+
+## 2026-10-29: 0.9.5 parts D, E, F (Libraries, Audio FX, layout)
+
+- **Libraries are sections, not chips.** The bin chip strip is gone. The list is grouped into collapsible sections (by bin, by type, or none), with Filter, Group, Sort and list/tile controls in one toolbar row. The view is remembered (`libraries.view` in preferences). The panel always shows the whole library now; a bin is a section you fold, and dragging items onto a section header files them. Pictures (JPEG, PNG, up to 8 MB) are library items (`kind: "image"`, with width and height) and are copied into the library's `images` folder. Tiles show real thumbnails. Clean Up Library Folder now covers `images` as well as `audio` and still asks first.
+- **Pictures drop onto cover art.** A picture dragged from Libraries onto the Metadata panel's cover slot sets MP3 cover art (`cover_set`). Chapter pictures are URLs in the chapter field, so local pictures do not drop there yet.
+- **Audio FX is the quick tab.** Renamed from Audio FX Panel. Changes apply a moment after the last click under one History label ("Audio FX"), so a run of tweaks is one undo step. Auto can be turned off for an Apply button. Descriptions moved to tooltips and the duplicate "Off" word is gone.
+- **Sound Types is the guided tab.** Dialogue, Music, SFX, Ambience: tick the jobs, pick a preset, set one Amount. It writes tagged ordinary slots (`Sound Types: <type>/<job>/<preset>/<amount>`) at the front of the chain. Sync is one way. If the effects are edited in the Voice Chain the preset reads "(Custom)" and the next change here rebuilds them. Sound Types and Audio FX replace each other's slots instead of stacking, so noise reduction is never doubled. Names avoid other products' panel names.
+- **Status bar** shows the session's sample rate and bit depth and the free space on the session's drive (Documents when unsaved), refreshed every 30 seconds. New dependency `fs4` (MIT or Apache-2.0), credited in ATTRIBUTION.md.
+- **Workspace switcher** sits at the right of the menu bar and uses the existing workspaces (Default, Focused Edit, Mixing, Voiceover, Music, Review and Export, plus saved ones). No second system.
+- **Alt+1 to Alt+0 show or hide panels** (Files, Voice Chain, Audio FX, Sound Types, Libraries, Markers, Metadata, History, Levels, Mixer). Approved by the project lead in the 0.9.5 plan.
+- **Dynamics window** draws the transfer curve (threshold and ratio handles drag on it) with sliders underneath, and ships six built-in presets listed apart from the user's own. Built-in presets are a general mechanism (`BUILTIN_EFFECT_PRESETS`) other effects can use.
+- Track header width already resizes (drag its right edge) and the track meter is already vertical, so neither changed.

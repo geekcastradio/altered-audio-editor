@@ -57,7 +57,7 @@ const FOLDER_SETTING: &str = "cache-folder.txt";
 /// `Documents/Altered Audio Editor/Cache`, else the app's own cache folder
 /// when Documents can't be found. Missing folders fall back to the default.
 pub fn cache_root(app: &AppHandle) -> Result<PathBuf, String> {
-    if let Ok(cfg) = app.path().app_config_dir() {
+    if let Ok(cfg) = crate::paths::config_dir(app) {
         if let Ok(text) = std::fs::read_to_string(cfg.join(FOLDER_SETTING)) {
             let p = PathBuf::from(text.trim());
             if !text.trim().is_empty() && p.is_dir() {
@@ -79,7 +79,7 @@ fn cache_dir(app: &AppHandle) -> Result<PathBuf, String> {
 /// default). Files already made stay where they are; drawings are rebuilt.
 #[tauri::command]
 pub fn cache_set_folder(app: AppHandle, path: Option<String>) -> Result<(), String> {
-    let cfg = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let cfg = crate::paths::config_dir(&app)?;
     std::fs::create_dir_all(&cfg).map_err(|e| e.to_string())?;
     let file = cfg.join(FOLDER_SETTING);
     match path.filter(|p| !p.trim().is_empty()) {

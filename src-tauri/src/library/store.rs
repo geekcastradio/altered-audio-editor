@@ -25,6 +25,8 @@ use crate::session::model::new_id;
 
 /// Sub-folder for files copied into a library.
 pub const AUDIO_DIR: &str = "audio";
+/// Sub-folder for pictures copied into a library.
+pub const IMAGE_DIR: &str = "images";
 
 #[derive(Debug, Error)]
 pub enum LibraryError {
@@ -109,6 +111,16 @@ pub fn import(
     let mut skipped = Vec::new();
     let mut taken: HashSet<String> = HashSet::new();
     for src in paths {
+        if is_image(src) {
+            match import_image(dir, src, copy, &mut taken, &dir_canon) {
+                Ok(item) => items.push(item),
+                Err(reason) => skipped.push(Skipped {
+                    path: src.clone(),
+                    reason,
+                }),
+            }
+            continue;
+        }
         let info = match probe(src) {
             Ok(i) => i,
             Err(e) => {
@@ -150,9 +162,109 @@ pub fn import(
             notes: String::new(),
             color: None,
             added: Utc::now(),
+            width: 0,
+            height: 0,
         });
     }
     Ok((items, skipped))
+}
+
+/// True for a JPEG or PNG by its name.
+pub fn is_image(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "png" | "jpg" | "jpeg"))
+}
+
+/// Width and height of a PNG or JPEG from its header, or None when it can't be read.
+pub fn image_size(bytes: &[u8]) -> Option<(u32, u32)> {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        let w = u32::from_be_bytes(bytes.get(16..20)?.try_into().ok()?);
+        let h = u32::from_be_bytes(bytes.get(20..24)?.try_into().ok()?);
+        return Some((w, h));
+    }
+    if !bytes.starts_with(&[0xff, 0xd8]) {
+        return None;
+    }
+    let mut i = 2;
+    while i + 9 < bytes.len() {
+        if bytes[i] != 0xff {
+            i += 1;
+            continue;
+        }
+        let marker = bytes[i + 1];
+        if marker == 0xff {
+            i += 1;
+            continue;
+        }
+        // Frame headers (not the restart, define-huffman or arithmetic markers) carry the size.
+        if (0xc0..=0xcf).contains(&marker) && !matches!(marker, 0xc4 | 0xc8 | 0xcc) {
+            let h = u32::from(u16::from_be_bytes([bytes[i + 5], bytes[i + 6]]));
+            let w = u32::from(u16::from_be_bytes([bytes[i + 7], bytes[i + 8]]));
+            return Some((w, h));
+        }
+        let len = usize::from(u16::from_be_bytes([bytes[i + 2], bytes[i + 3]]));
+        i += 2 + len.max(2);
+    }
+    None
+}
+
+fn import_image(
+    dir: &Path,
+    src: &Path,
+    copy: bool,
+    taken: &mut HashSet<String>,
+    dir_canon: &Path,
+) -> Result<LibraryItem, String> {
+    let bytes = fs::read(src).map_err(|e| e.to_string())?;
+    if bytes.len() > crate::export::cover::COVER_MAX {
+        return Err("That picture is larger than 8 MB.".into());
+    }
+    if crate::export::cover::image_mime(&bytes).is_none() {
+        return Err("Only JPEG and PNG pictures can be added.".into());
+    }
+    let (width, height) = image_size(&bytes).ok_or("That picture could not be read.")?;
+    let name = src
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "picture".into());
+    let src_canon = fs::canonicalize(src).unwrap_or_else(|_| src.to_path_buf());
+    let inside = src_canon
+        .strip_prefix(dir_canon)
+        .ok()
+        .map(Path::to_path_buf);
+    let (file, copied, original) = match (inside, copy) {
+        (Some(rel), _) => (rel, true, None),
+        (None, true) => {
+            let images = dir.join(IMAGE_DIR);
+            fs::create_dir_all(&images).map_err(|e| e.to_string())?;
+            let unique = unique_name(&images, &name, taken);
+            fs::copy(src, images.join(&unique)).map_err(|e| e.to_string())?;
+            (
+                PathBuf::from(IMAGE_DIR).join(unique),
+                true,
+                Some(src.to_path_buf()),
+            )
+        }
+        (None, false) => (src.to_path_buf(), false, None),
+    };
+    Ok(LibraryItem {
+        id: new_id(),
+        name: display_name(&name),
+        kind: LibraryItemKind::Image,
+        file,
+        copied,
+        original_path: original,
+        sample_rate: 0,
+        channels: 0,
+        length: 0,
+        tags: Vec::new(),
+        notes: String::new(),
+        color: None,
+        added: Utc::now(),
+        width,
+        height,
+    })
 }
 
 /// Files in `audio/` that no item uses. Returns how many were deleted.
@@ -165,7 +277,6 @@ pub fn clean_up(dir: &Path, lib: &Library, dry_run: bool) -> Result<usize, Libra
         Ok(saved) if saved.id == lib.id => {}
         _ => return Err(LibraryError::NotALibrary),
     }
-    let audio = dir.join(AUDIO_DIR);
     let used: HashSet<PathBuf> = lib
         .items
         .iter()
@@ -173,26 +284,30 @@ pub fn clean_up(dir: &Path, lib: &Library, dry_run: bool) -> Result<usize, Libra
         .map(|i| dir.join(&i.file))
         .collect();
     let mut removed = 0;
-    let Ok(entries) = fs::read_dir(&audio) else {
-        return Ok(0);
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        // Plain files only: never follow a link out of the folder, and
-        // only audio files the library could have copied in.
-        let Ok(meta) = fs::symlink_metadata(&path) else {
+    type Wanted = fn(&Path) -> bool;
+    let folders: [(&str, Wanted); 2] = [
+        (AUDIO_DIR, crate::codecs::is_supported),
+        (IMAGE_DIR, is_image),
+    ];
+    for (folder, wanted) in folders {
+        let Ok(entries) = fs::read_dir(dir.join(folder)) else {
             continue;
         };
-        if !meta.file_type().is_file()
-            || !crate::codecs::is_supported(&path)
-            || used.contains(&path)
-        {
-            continue;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            // Plain files only: never follow a link out of the folder, and
+            // only files the library could have copied in.
+            let Ok(meta) = fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if !meta.file_type().is_file() || !wanted(&path) || used.contains(&path) {
+                continue;
+            }
+            if !dry_run {
+                fs::remove_file(&path).map_err(io(&path))?;
+            }
+            removed += 1;
         }
-        if !dry_run {
-            fs::remove_file(&path).map_err(io(&path))?;
-        }
-        removed += 1;
     }
     Ok(removed)
 }
@@ -348,5 +463,79 @@ mod tests {
         assert!(other.path().join(AUDIO_DIR).join("mine.ogg").exists());
         let stranger = Library::new("Someone else");
         assert!(clean_up(dir.path(), &stranger, false).is_err());
+    }
+
+    fn png(w: u32, h: u32) -> Vec<u8> {
+        let mut b = vec![
+            0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, b'I', b'H', b'D', b'R',
+        ];
+        b.extend(w.to_be_bytes());
+        b.extend(h.to_be_bytes());
+        b.extend([8, 6, 0, 0, 0]);
+        b
+    }
+
+    fn jpeg(w: u16, h: u16) -> Vec<u8> {
+        let mut b = vec![
+            0xff, 0xd8, 0xff, 0xe0, 0, 16, b'J', b'F', b'I', b'F', 0, 1, 1, 0, 0, 1, 0, 1, 0, 0,
+        ];
+        b.extend([0xff, 0xc0, 0, 17, 8]);
+        b.extend(h.to_be_bytes());
+        b.extend(w.to_be_bytes());
+        b.extend([3, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1]);
+        b
+    }
+
+    #[test]
+    fn pictures_read_their_size_and_come_in_as_image_items() {
+        assert_eq!(image_size(&png(3000, 1800)), Some((3000, 1800)));
+        assert_eq!(image_size(&jpeg(1400, 1400)), Some((1400, 1400)));
+        assert_eq!(image_size(b"nope"), None);
+        let dir = tempfile::tempdir().unwrap();
+        create(dir.path(), "Art").unwrap();
+        let (src_dir, bad) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let art = src_dir.path().join("cover.PNG");
+        fs::write(&art, png(3000, 3000)).unwrap();
+        let fake = bad.path().join("fake.jpg");
+        fs::write(&fake, b"not a picture").unwrap();
+        let (items, skipped) = import(dir.path(), &[art.clone(), art, fake], true).unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(
+            skipped.len(),
+            1,
+            "a file that only claims to be a picture is refused"
+        );
+        assert_eq!(items[0].kind, LibraryItemKind::Image);
+        assert_eq!((items[0].width, items[0].height), (3000, 3000));
+        assert_eq!(items[0].file, PathBuf::from("images/cover.PNG"));
+        assert_eq!(
+            items[1].file,
+            PathBuf::from("images/cover (2).PNG"),
+            "same name gets a number"
+        );
+        assert!(dir.path().join("images/cover.PNG").exists());
+    }
+
+    #[test]
+    fn clean_up_also_clears_unused_pictures_but_keeps_used_ones() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut lib = create(dir.path(), "Art").unwrap();
+        let src = tempfile::tempdir().unwrap();
+        for n in ["a.png", "b.png"] {
+            fs::write(src.path().join(n), png(10, 10)).unwrap();
+        }
+        let (items, _) = import(
+            dir.path(),
+            &[src.path().join("a.png"), src.path().join("b.png")],
+            true,
+        )
+        .unwrap();
+        lib.items.push(items[0].clone());
+        save(dir.path(), &lib).unwrap();
+        assert_eq!(clean_up(dir.path(), &lib, true).unwrap(), 1);
+        assert_eq!(clean_up(dir.path(), &lib, false).unwrap(), 1);
+        assert!(
+            dir.path().join("images/a.png").exists() && !dir.path().join("images/b.png").exists()
+        );
     }
 }

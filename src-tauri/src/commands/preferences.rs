@@ -7,12 +7,12 @@
 use std::collections::BTreeMap;
 
 use serde_json::Value;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 use crate::session::preferences;
 
 fn config_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    app.path().app_config_dir().map_err(|e| e.to_string())
+    crate::paths::config_dir(app)
 }
 
 #[tauri::command]

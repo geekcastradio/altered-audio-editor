@@ -66,7 +66,7 @@ describe("resolveHome", () => {
     });
   });
 
-  it("puts Libraries under the Audio FX Panel", () => {
+  it("puts Libraries under the Audio FX", () => {
     expect(resolveHome("libraries", new Set(["audio-fx", "editor"]))).toEqual({
       reference: "audio-fx",
       direction: "below",

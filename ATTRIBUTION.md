@@ -32,7 +32,8 @@ Most dependencies are MIT or Apache-2.0 and are listed in `Cargo.lock` and `pack
 | `flacenc` | Apache-2.0 | FLAC encoding. |
 | `opus-decoder` | MIT or Apache-2.0 | Opus decoding. A patched copy lives in `src-tauri/vendor/opus-decoder` (faster forward FFT through `rustfft`); see the note there. |
 | ASIO SDK 2.3 (Steinberg, via `cpal`'s `asio` feature, Windows release builds only) | GPL-3.0 (dual licensed by Steinberg; we use the GPLv3 option) | Talking to ASIO audio drivers. ASIO is a trademark of Steinberg Media Technologies GmbH. We do not use the ASIO logo. |
-| `zip` | MIT | Reading zip downloads of recordings. |
+| `fs4` | MIT or Apache-2.0 | Asking the operating system how much free space a drive has, for the status bar. |
+| `zip` | MIT | Reading zip downloads of recordings, and writing and reading settings backups. |
 | `vst3` (bindings generated from the VST 3 SDK headers) and `com-scrape-types` | MIT or Apache-2.0 | Hosting VST3 plug-ins, in a separate process (`src-tauri/plughost`). The VST 3 SDK itself is MIT licensed by Steinberg (since 2025). VST is a trademark of Steinberg Media Technologies GmbH; we do not use the VST logo. VST2 is not supported (its SDK is no longer licensed). |
 | `libloading` | ISC | Loading a plug-in's library inside the plug-in host process. |
 | `windows-sys` (Windows only, plug-in host) | MIT or Apache-2.0 | The window a plug-in draws its own controls in. |

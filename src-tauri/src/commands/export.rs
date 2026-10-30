@@ -469,6 +469,30 @@ pub async fn cover_read(path: PathBuf) -> Result<Option<String>, String> {
     .map_err(|e| e.to_string())
 }
 
+/// Puts the JPEG or PNG at `picked` in the MP3 at `path` as its cover art. Returns the picture
+/// as a data URL; None when the file is not an MP3.
+fn set_cover(path: &std::path::Path, picked: &std::path::Path) -> Result<Option<String>, String> {
+    let size = std::fs::metadata(picked).map(|m| m.len()).unwrap_or(0);
+    if size as usize > crate::export::cover::COVER_MAX {
+        return Err("The picture is larger than 8 MB.".to_string());
+    }
+    let img = std::fs::read(picked).map_err(|e| format!("Could not read the picture: {e}"))?;
+    let done = crate::export::cover::write_cover(path, Some(&img))
+        .map_err(|e| format!("Could not write the cover art: {e}"))?;
+    Ok(done.then(|| {
+        let mime = crate::export::cover::image_mime(&img).unwrap_or("image/jpeg");
+        format!("data:{mime};base64,{}", crate::export::cover::base64(&img))
+    }))
+}
+
+/// Uses a picture that is already on disk (dragged in from a library) as an MP3's cover art.
+#[tauri::command]
+pub async fn cover_set(path: PathBuf, picture: PathBuf) -> Result<Option<String>, String> {
+    spawn_blocking(move || set_cover(&path, &picture))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// Asks for a JPEG or PNG and puts it in an MP3 as its cover art. Returns the new
 /// picture as a data URL; None when the dialog was cancelled or the file is not an MP3.
 #[tauri::command]
@@ -489,17 +513,7 @@ pub async fn cover_choose(app: AppHandle, path: PathBuf) -> Result<Option<String
         else {
             return Ok(None);
         };
-        let size = std::fs::metadata(&picked).map(|m| m.len()).unwrap_or(0);
-        if size as usize > crate::export::cover::COVER_MAX {
-            return Err("The picture is larger than 8 MB.".to_string());
-        }
-        let img = std::fs::read(&picked).map_err(|e| format!("Could not read the picture: {e}"))?;
-        let done = crate::export::cover::write_cover(&path, Some(&img))
-            .map_err(|e| format!("Could not write the cover art: {e}"))?;
-        Ok(done.then(|| {
-            let mime = crate::export::cover::image_mime(&img).unwrap_or("image/jpeg");
-            format!("data:{mime};base64,{}", crate::export::cover::base64(&img))
-        }))
+        set_cover(&path, &picked)
     })
     .await
     .map_err(|e| e.to_string())?
