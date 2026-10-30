@@ -667,18 +667,34 @@ export class DockController {
   }
 
   /** Saves the current arrangement under the current workspace now. */
+  private applyingMinimums = false;
+  private appliedMinimums = new Map<string, string>();
+
   /** Keeps every group at least as big as its panels need, so controls never squeeze together. */
   private applyMinimums(): void {
     const api = this.api;
-    if (!api) return;
-    for (const group of api.groups) {
-      const ids = group.panels.map((p) => (panelDef(p.id)?.id ?? p.id) as PanelId);
-      const m = groupMin(ids);
-      try {
-        group.api.setConstraints({ minimumWidth: m.w, minimumHeight: m.h });
-      } catch {
-        // A group that is going away has nothing to limit.
+    // Setting a limit lays the group out again, which reports a layout change, which
+    // lands back here. Only touch a group whose limit really changed, and never re-enter.
+    if (!api || this.applyingMinimums) return;
+    this.applyingMinimums = true;
+    try {
+      const live = new Set<string>();
+      for (const group of api.groups) {
+        live.add(group.id);
+        const ids = group.panels.map((p) => (panelDef(p.id)?.id ?? p.id) as PanelId);
+        const m = groupMin(ids);
+        const key = `${m.w}x${m.h}`;
+        if (this.appliedMinimums.get(group.id) === key) continue;
+        this.appliedMinimums.set(group.id, key);
+        try {
+          group.api.setConstraints({ minimumWidth: m.w, minimumHeight: m.h });
+        } catch {
+          // A group that is going away has nothing to limit.
+        }
       }
+      for (const id of [...this.appliedMinimums.keys()]) if (!live.has(id)) this.appliedMinimums.delete(id);
+    } finally {
+      this.applyingMinimums = false;
     }
   }
 

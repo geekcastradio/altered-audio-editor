@@ -1669,3 +1669,7 @@ Effect settings windows open in the middle of the screen and have a light title 
 - New effect `altaudio.dynamics_suite` (Effects > Dynamics): Gate, Compressor, Expander and Limiter in one window, run in that order, each section with its own On switch (Gate on by default, the rest off).
 - It reuses the existing Gate, Compressor, Expander and Limiter processors, so the sound is the proven one. Latency is the limiter's.
 - Built-in preset names from Audition (Hard Limiting, Noise Gate, and so on) are not shipped yet: single-effect presets are user-saved only. Held until Steve picks the values.
+
+## 2026-10-29 Startup freeze fix
+
+- The panel minimum sizes re-triggered a layout change every time they were set, which froze the window on "Connecting to core...". Limits are now set only when they change, and never re-entered. Reproduced in a browser: old code never finishes loading, fixed code does.
