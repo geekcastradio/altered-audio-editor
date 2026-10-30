@@ -127,32 +127,25 @@
     {@render sw("level", "Level Match")}
     {@render sw("cab", "Cabinet")}
   </div>
-  <p class="hint">Input sets how hard the capture is driven. Level Match brings every capture to about the same loudness, so switching between them is fair. The capture plays in mono; both channels get the result.</p>
 </div>
 
 <style>
+  /* Dressed like the rest of the app: neutral surfaces, the app accent for labels, and the same
+     green as the power buttons for "on". */
   .amp {
-    --ink: #e4e6e1;
-    --hot: #e2683c;
+    --ink: var(--text);
+    --hot: var(--accent);
     display: grid;
     gap: 10px;
     margin-bottom: 6px;
-    padding: 0 12px 12px;
-    border: 1px solid #000;
-    border-radius: 6px;
-    background: linear-gradient(180deg, #2b2d2c, #1d1f1e);
-    box-shadow: inset 0 0 0 2px #3c403e;
-    overflow: hidden;
+    padding: 10px 12px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius, 5px);
+    background: var(--surface-1);
     user-select: none;
   }
   .grille {
-    height: 14px;
-    margin: 0 -12px;
-    background:
-      repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.06) 0 2px, transparent 2px 5px),
-      repeating-linear-gradient(-45deg, rgba(0, 0, 0, 0.35) 0 2px, transparent 2px 5px),
-      #3a3529;
-    border-bottom: 2px solid #6b5f45;
+    display: none;
   }
   .slots {
     display: grid;
@@ -165,17 +158,15 @@
     column-gap: 8px;
     align-items: center;
     padding: 6px 8px;
-    border: 1px solid #000;
-    border-radius: 4px;
-    background: #121413;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 3px);
+    background: var(--surface-0);
   }
   .what {
     grid-area: what;
-    color: var(--hot);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 600;
   }
   .name {
     grid-area: name;
@@ -186,13 +177,12 @@
     white-space: nowrap;
   }
   .name.empty {
-    opacity: 0.5;
+    color: var(--text-dim);
     font-size: 11px;
   }
   .meta {
     grid-area: meta;
-    color: var(--ink);
-    opacity: 0.55;
+    color: var(--text-dim);
     font-size: 10px;
   }
   .btns {
@@ -223,35 +213,27 @@
     align-items: center;
     height: 22px;
     padding: 0 8px;
-    border: 1px solid #000;
-    border-radius: 3px;
-    background: linear-gradient(180deg, #3b3e3c, #262827);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm, 3px);
+    background: var(--surface-3);
     color: var(--ink);
-    font-size: 10px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font-size: 11px;
     cursor: pointer;
   }
   .led {
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: #3b1d12;
-    box-shadow: inset 0 0 0 1px #000;
+    background: var(--surface-0);
+    box-shadow: inset 0 0 0 1px var(--border-strong);
   }
   .sw.on .led {
-    background: var(--hot);
-    box-shadow: 0 0 5px var(--hot);
+    background: #5fd38d;
+    box-shadow: 0 0 5px #5fd38d;
   }
   .warn {
     margin: 0;
     color: #f0b46a;
-    font-size: 10.5px;
-  }
-  .hint {
-    margin: 0;
-    color: var(--ink);
-    opacity: 0.5;
     font-size: 10.5px;
   }
 </style>

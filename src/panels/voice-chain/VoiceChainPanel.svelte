@@ -69,6 +69,10 @@
   import { groupShown, PHASE_CURVE } from "./phase-curve";
   import { GRAPHED } from "./graph";
   import DynamicsPanel from "./DynamicsPanel.svelte";
+  import { importAuditionRacks } from "./audition-presets";
+  import { favoriteIds, KEY_FAVORITES, toggleFavorite } from "./favorites";
+  import InfoTip from "../../app/InfoTip.svelte";
+  import { effectHelp } from "./effect-help";
   import { clampBox, effectWindowRequest, hideEffectWindows, portal, type WindowBox } from "./effect-window";
   import { dropEdit, effectMenu, ownerKey, slotOver, startSlotDrag, type SlotSpot } from "./slot-drag";
 
@@ -413,7 +417,7 @@
   }
   /** The effects of each family as submenus, for adding or replacing a slot. */
   function familyItems(pick: (id: string) => void): ContextItem[] {
-    return effectMenu(menuCatalog, menuPlugins, pick) as ContextItem[];
+    return effectMenu(menuCatalog, menuPlugins, pick, favs) as ContextItem[];
   }
   /** The menu for a slot, empty or not: Edit and Remove first, then the effects to put there. */
   function slotItems(s: EffectSlotDoc | undefined, at: number): ContextItem[] {
@@ -462,6 +466,35 @@
       y: r.bottom,
       items: userPresets.map((p) => ({ kind: "item", label: `Delete "${p.name}"`, run: () => deletePreset(p.name) }) as ContextItem),
     };
+  }
+
+  let favs = $state<string[]>(favoriteIds());
+  $effect(() => {
+    void prefs.load().then(() => (favs = favoriteIds()));
+  });
+  function toggleFav(effect: string) {
+    favs = toggleFavorite(favs, effect);
+    prefs.set(KEY_FAVORITES, $state.snapshot(favs));
+  }
+
+  let auditionInput = $state<HTMLInputElement | null>(null);
+  /** Brings in the effect chains from an Audition EffectPresets.xml as Voice Chain presets. */
+  async function importAudition(file: File | undefined) {
+    if (!file) return;
+    try {
+      const r = importAuditionRacks(await file.text());
+      if (r.chains === 0) {
+        onNotice("No effect chains were found in that file. Pick Audition's EffectPresets.xml.");
+        return;
+      }
+      const names = new Set(r.presets.map((p) => p.name));
+      userPresets = [...userPresets.filter((p) => !names.has(p.name)), ...r.presets].sort((a, b) => a.name.localeCompare(b.name));
+      prefs.set(KEY_PRESETS, $state.snapshot(userPresets));
+      const left = r.missing.length ? ` ${r.missing.length} Audition ${r.missing.length === 1 ? "effect has" : "effects have"} no match here and ${r.missing.length === 1 ? "was" : "were"} left out: ${r.missing.slice(0, 4).map((m) => m.name).join(", ")}${r.missing.length > 4 ? ", and more" : ""}.` : "";
+      onNotice(`Imported ${r.chains} ${r.chains === 1 ? "chain" : "chains"} under Yours. They use the same effects in the same order with our starting settings; limiter ceilings carry over.${left}`);
+    } catch (e) {
+      onError(e);
+    }
   }
 
   function choosePreset(name: string) {
@@ -682,7 +715,7 @@
           aria-haspopup="menu"
           onclick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
-            slotMenu = { x: r.left, y: r.bottom, items: presetMenu(userPresets, BUILTIN_PRESETS, choosePreset) };
+            slotMenu = { x: r.left, y: r.bottom, items: presetMenu(userPresets, BUILTIN_PRESETS, choosePreset, () => auditionInput?.click()) };
           }}
         >
           <span>(Choose a preset)</span><span aria-hidden="true">▾</span>
@@ -693,7 +726,7 @@
         <button type="button" class="ico" title={userPresets.length ? "Delete a saved preset" : "You have no saved presets to delete"} aria-label="Delete a saved preset" aria-haspopup="menu" disabled={userPresets.length === 0} onclick={openDeleteMenu}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" fill="none" stroke="currentColor" stroke-width="1.4" /></svg>
         </button>
-        <button type="button" class="ico" disabled title="Favorite presets are not built yet" aria-label="Favorite preset">
+        <button type="button" class="ico" disabled title="Favorites presets are not built yet" aria-label="Favorites preset">
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m8 2 1.8 3.8 4.2.5-3.1 2.9.8 4.1L8 11.2 4.3 13.3l.8-4.1L2 6.3l4.2-.5Z" fill="none" stroke="currentColor" stroke-width="1.3" /></svg>
         </button>
       </div>
@@ -782,7 +815,15 @@
         <header onpointerdown={dragWindow}>
           <span class="badge" style:background={winInfo ? (CATEGORY_COLORS[winInfo.category] ?? "#888") : "#666"}></span>
           <span class="wtitle">{winInfo?.name ?? winSlot.effect}{winSlot.preset ? ` · ${winSlot.preset}` : ""}</span>
-          <button type="button" class="mini" class:on={winSlot.enabled} title={winSlot.enabled ? "Bypass" : "Turn on"} aria-pressed={winSlot.enabled} onclick={() => commit(winSlot.enabled ? "Bypass Effect" : "Turn On Effect", setSlot(chain, winSlot.id, { enabled: !winSlot.enabled }))}>{winSlot.enabled ? "On" : "Off"}</button>
+          {#if winInfo && !winInfo.plugin}
+            <button type="button" class="star" class:on={favs.includes(winSlot.effect)} title={favs.includes(winSlot.effect) ? "Remove from Favorites" : "Add to Favorites"} aria-label="Favorites" aria-pressed={favs.includes(winSlot.effect)} onclick={() => toggleFav(winSlot.effect)}>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8l1.9 4 4.3.5-3.2 3 .9 4.3L8 11.4 4.1 13.6 5 9.3 1.8 6.3l4.3-.5z" /></svg>
+            </button>
+          {/if}
+          {#if effectHelp(winSlot.effect, winInfo?.description)}<InfoTip text={effectHelp(winSlot.effect, winInfo?.description)} label="About {winInfo?.name ?? 'this effect'}" />{/if}
+          <button type="button" class="pow box" class:on={winSlot.enabled} title={winSlot.enabled ? "On: click to bypass" : "Off: click to turn on"} aria-label={winSlot.enabled ? "Bypass effect" : "Turn effect on"} aria-pressed={winSlot.enabled} onclick={() => commit(winSlot.enabled ? "Bypass Effect" : "Turn On Effect", setSlot(chain, winSlot.id, { enabled: !winSlot.enabled }))}>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v6" stroke="currentColor" stroke-width="1.8" /><path d="M4.6 4.4a5 5 0 1 0 6.8 0" fill="none" stroke="currentColor" stroke-width="1.6" /></svg>
+          </button>
           <button type="button" class="mini" title="Close (Esc)" aria-label="Close" onclick={() => (winOpen = false)}>✕</button>
         </header>
         {#if winInfo && !winInfo.plugin}
@@ -912,6 +953,8 @@
         <footer>{label} · Slot {winIndex + 1}</footer>
       </div>
     {/if}
+
+    <input type="file" accept=".xml" class="hidden" bind:this={auditionInput} onchange={(e) => { void importAudition(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }} />
 
     <div class="bottom">
       {#snippet bars(name: string, k: number)}
@@ -1175,10 +1218,18 @@
     width: 20px;
     height: 20px;
     padding: 0;
-    border: none;
-    background: none;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm, 4px);
+    background: var(--surface-3);
     color: var(--text-faint);
     cursor: pointer;
+  }
+  .pow:hover {
+    border-color: var(--text-dim);
+  }
+  .pow.box {
+    width: 24px;
+    height: 22px;
   }
   .pow svg {
     width: 14px;
@@ -1186,6 +1237,7 @@
   }
   .pow.on {
     color: #5fd38d;
+    border-color: color-mix(in srgb, #5fd38d 55%, var(--border-strong));
   }
   .slots li.over {
     box-shadow: inset 0 2px 0 var(--accent);
@@ -1207,6 +1259,9 @@
   li:hover .add,
   .add:focus-visible {
     opacity: 0.7;
+  }
+  .hidden {
+    display: none;
   }
   .mini {
     min-width: 20px;
@@ -1274,9 +1329,6 @@
     gap: 4px;
     padding-top: 4px;
   }
-  .mini.on {
-    color: var(--accent);
-  }
   .fxwin {
     position: fixed;
     z-index: 900;
@@ -1322,6 +1374,54 @@
     cursor: move;
     user-select: none;
   }
+  .fxwin header {
+    border-radius: 5px 5px 0 0;
+  }
+  .fxwin header .pow {
+    border-color: #9a9da6;
+    background: #f4f5f7;
+    color: #7a7d86;
+  }
+  .fxwin header .pow:hover {
+    background: #ffffff;
+  }
+  .fxwin header .pow.on {
+    border-color: #2c9a5c;
+    color: #1f9d55;
+  }
+  .fxwin header .star {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #8a8d96;
+    cursor: pointer;
+  }
+  .fxwin header .star svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.3;
+  }
+  .fxwin header .star.on {
+    color: #d99a1a;
+  }
+  .fxwin header .star.on svg {
+    fill: currentColor;
+  }
+  .fxwin header :global(.i) {
+    border-color: #6b6e76;
+    color: #3a3d44;
+  }
+  .fxwin header :global(.i:hover),
+  .fxwin header :global(.i[aria-expanded="true"]) {
+    border-color: #2f6fd0;
+    color: #16171a;
+  }
   .fxwin header .mini {
     border-color: #9a9da6;
     background: #f4f5f7;
@@ -1329,11 +1429,6 @@
   }
   .fxwin header .mini:hover {
     background: #ffffff;
-  }
-  .fxwin header .mini.on {
-    border-color: #2f6fd0;
-    background: #2f6fd0;
-    color: #fff;
   }
   .fxwin .wtitle {
     flex: 1;
