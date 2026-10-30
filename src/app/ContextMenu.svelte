@@ -333,6 +333,7 @@
     border: 1px solid #f5f6f8;
     background: var(--menu-bg);
     color: var(--menu-text);
+    border-radius: var(--radius, 5px);
     box-shadow: 0 0 0 1px #000, 0 8px 22px rgba(0, 0, 0, 0.7);
     outline: none;
     /* Never taller than the window: a long list scrolls instead. */

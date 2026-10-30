@@ -14,6 +14,7 @@
  * track headers.
  */
 
+import { favoriteIds } from "./favorites";
 import { writable } from "svelte/store";
 import type { EffectInfo } from "../../app/core";
 import type { EffectChainDoc, EffectSlotDoc, EffectTarget, Op, SessionDoc } from "../../stores/session";
@@ -172,15 +173,17 @@ export function effectSearch(catalog: readonly EffectInfo[], plugins: readonly M
  * The Add effect menu: a search box, the built-in effects by family
  * (families and effects alphabetical), then VST3 plug-ins by type and maker.
  */
-export function effectMenu(catalog: readonly EffectInfo[], plugins: readonly MenuPlugin[], pick: (id: string) => void): MenuItem[] {
+export function effectMenu(catalog: readonly EffectInfo[], plugins: readonly MenuPlugin[], pick: (id: string) => void, favoriteList: readonly string[] = favoriteIds()): MenuItem[] {
   const categories = [...new Set(catalog.map((e) => e.category))];
   const vstRows = vst3Items(catalog, plugins, pick);
   const vst: MenuItem = vstRows.length
     ? { kind: "sub", label: "VST3", items: vstRows }
     : { kind: "item", label: "VST3", disabled: true, reason: "No VST3 plug-ins found yet. Scan for them in Effects > Plug-in Manager.", run: () => {} };
   const byName = (a: EffectInfo, b: EffectInfo) => byLabel(a.name, b.name);
+  const favorites = favoriteList.map((id) => catalog.find((e) => e.id === id && !e.plugin)).filter((e): e is EffectInfo => !!e).sort(byName);
   return [
     { kind: "search", placeholder: "Search effects and plug-ins", find: effectSearch(catalog, plugins, pick) },
+    ...(favorites.length ? [{ kind: "sub", label: "Favorites", items: favorites.map((e): MenuItem => ({ kind: "item", label: e.name, run: () => pick(e.id) })) } as MenuItem] : []),
     ...categories
       .filter((c) => !catalog.some((e) => e.category === c && e.plugin))
       .sort(byLabel)

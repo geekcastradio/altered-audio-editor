@@ -497,6 +497,7 @@
     padding: 4px 0;
     border: 1px solid var(--border-strong);
     background: var(--surface-2);
+    border-radius: var(--radius, 5px);
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
   }
 

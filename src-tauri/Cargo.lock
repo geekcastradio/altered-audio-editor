@@ -56,7 +56,7 @@ dependencies = [
 
 [[package]]
 name = "altered-audio-editor"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "altered-os-aac",
  "altered-plughost",

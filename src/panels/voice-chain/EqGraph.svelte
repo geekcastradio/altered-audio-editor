@@ -267,7 +267,6 @@
     {/each}
   </svg>
   {#if tip}<div class="tip" style:left="{tip.x}px" style:top="{tip.y}px">{tip.text}</div>{/if}
-  <p class="hint">Drag a node to move its band. Drag the small handles either side of a band, or use the mouse wheel over its node, to change its width (Q). Double-click HP or LP to switch them on or off.</p>
 </div>
 
 <style>
@@ -353,10 +352,5 @@
     font-size: var(--font-size-small);
     white-space: nowrap;
     pointer-events: none;
-  }
-  .hint {
-    margin: 2px 0 0;
-    color: var(--text-faint);
-    font-size: var(--font-size-small);
   }
 </style>

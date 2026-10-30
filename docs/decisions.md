@@ -1702,3 +1702,16 @@ Effect settings windows open in the middle of the screen and have a light title 
 - **Alt+1 to Alt+0 show or hide panels** (Files, Voice Chain, Audio FX, Sound Types, Libraries, Markers, Metadata, History, Levels, Mixer). Approved by the project lead in the 0.9.5 plan.
 - **Dynamics window** draws the transfer curve (threshold and ratio handles drag on it) with sliders underneath, and ships six built-in presets listed apart from the user's own. Built-in presets are a general mechanism (`BUILTIN_EFFECT_PRESETS`) other effects can use.
 - Track header width already resizes (drag its right edge) and the track meter is already vertical, so neither changed.
+
+## 2026-10-30: UI polish after 0.9.5 testing
+
+- **Slight rounding everywhere.** New tokens `--radius-sm` (3px), `--radius` (5px), `--radius-lg` (7px). Context menus, the menu bar's drop-downs, dialogs (and their title bars) and fields use them. The Audition look is a small rounding, not pills.
+- **Readable drop-downs.** Option lists now take the theme's text and surface colors, and a disabled row such as "(No saved presets yet)" is dimmed grey instead of black on dark.
+- **Effect windows lose their paragraphs.** How-to text moved behind an (i) in the window's title bar (`effect-help.ts`: the effect's description plus any how-to). Amp, Tube/Opto, Parametric EQ, Shaped Noise and Phase Curve no longer print hint lines.
+- **One power button.** The "On/Off" text in an effect window's title bar is now the same power icon as the Voice Chain rows, in a rounded box. The row buttons got the same box so both read as buttons.
+- **Amp Model dressed like the app.** Neutral surfaces, the app accent for labels, the same green as the power buttons for "on". The grille and orange are gone.
+
+## 2026-10-30: 0.9.6 Audition chains and effect favorites
+
+- **Import Chains from Audition** (Voice Chain > Presets, last row). Reads the racks in Audition's `EffectPresets.xml` (Windows: `%AppData%\Adobe\Audition\<version>\`), and makes a Voice Chain preset named "<rack> (Audition)" for each, under Yours. Same effects in the same order; effects switched off in the rack are left out so the chain sounds as it did there; effects with no equivalent here (its reverbs, channel mixer, graphic EQs and a few others) are skipped and named in the notice. Values are ours, except the limiter ceiling, which is stored as 1 + dB/100 and matches the preset names (0.999 is -0.1 dB, 0.97 is -3, 0.94 is -6). Everything else Audition keeps as normalized numbers or binary chunks whose scales we have not worked out; decoding more needs paired samples (a preset saved at known settings). Factory preset values are not in the file at all (names only), and Adobe's factory set is not bundled.
+- **Effect favorites.** A star in the effect window's title bar adds an effect to Favorites, a short list kept in preferences (`effects.favorites`) and shown first in every effect menu (Voice Chain rows, track header effects).

@@ -153,7 +153,6 @@
   </svg>
   {#if tip}<div class="tip" style:left="{tip.x}px" style:top="{tip.y}px">{tip.text}</div>{/if}
   <div class="row">
-    <p class="hint">Drag a point; click empty space to add one ({pointCount(slot)} of 8); double-click or right-click a point to remove it.</p>
     <button type="button" title="A flat curve at 0°: two points, no turn" onclick={reset}>Reset</button>
   </div>
 </div>
@@ -217,12 +216,6 @@
     display: flex;
     gap: 8px;
     align-items: center;
-  }
-  .hint {
-    flex: 1;
-    margin: 2px 0 0;
-    color: var(--text-faint);
-    font-size: var(--font-size-small);
   }
   .row button {
     height: 20px;

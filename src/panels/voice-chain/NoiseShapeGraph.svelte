@@ -304,7 +304,6 @@
       </div>
     {/if}
   </div>
-  {#if learned}<p class="hint">Frequencies under the orange threshold are turned down. Drag a node to raise or lower the threshold around it, or pick it below to type its settings. The mouse wheel over a node changes its width; double-click switches it on or off.</p>{/if}
 </div>
 
 <style>
@@ -481,10 +480,5 @@
     font-size: var(--font-size-small);
     white-space: nowrap;
     pointer-events: none;
-  }
-  .hint {
-    margin: 2px 0 0;
-    color: var(--text-faint);
-    font-size: var(--font-size-small);
   }
 </style>

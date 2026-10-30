@@ -10,6 +10,11 @@
 :root {
   color-scheme: dark;
 
+  /* A slight rounding on menus, dialogs and fields, as Audition has. */
+  --radius-sm: 3px;
+  --radius: 5px;
+  --radius-lg: 7px;
+
   /* Surfaces, darkest to lightest */
   --surface-0: #1f1f23;
   --surface-1: #29292e;
@@ -117,4 +122,36 @@ body {
   background: var(--title-bar);
   color: var(--title-bar-text);
   user-select: none;
+}
+
+/* Dropdown lists: readable on the dark surfaces, including a disabled "(No saved presets yet)" row. */
+select {
+  color: var(--text);
+}
+select option,
+select optgroup {
+  background-color: var(--surface-2);
+  color: var(--text);
+}
+select option:disabled {
+  color: var(--text-dim);
+}
+select option:checked {
+  background-color: var(--accent);
+  color: var(--on-accent, #fff);
+}
+
+/* Rounded dialogs and fields. */
+.dialog,
+[role="dialog"] {
+  border-radius: var(--radius-lg);
+}
+.dialog > h1:first-child,
+[role="dialog"] > h1:first-child {
+  border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+select,
+textarea {
+  border-radius: var(--radius-sm);
 }
