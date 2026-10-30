@@ -8,12 +8,12 @@
 use std::path::PathBuf;
 
 use serde_json::Value;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 use crate::session::workspace;
 
 fn config_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path().app_config_dir().map_err(|e| e.to_string())
+    crate::paths::config_dir(app)
 }
 
 /// Returns the saved layout, or null when none has been saved.

@@ -241,6 +241,7 @@ Approved 2026-10-20 and assigned in 0.1.9 (disabled menu items hold the chord fo
 | Zoom reset, zoom in full, zoom out full (selected track, all axes) | Backslash, Shift+/, Shift+Backslash, Ctrl+Backslash |
 | Show spectral display, show HUD | Shift+D, Shift+U |
 | Hide all effect windows | Ctrl+Shift+H |
+| Show or hide a panel: Files, Voice Chain, Audio FX, Sound Types, Libraries, Markers, Metadata, History, Levels, Mixer | Alt+1 to Alt+9, Alt+0 (in that order) |
 | Meter input signal | Alt+I |
 | Repeat last command (with its dialog, then the dialog only) | Shift+R, Ctrl+R |
 | Convert sample type | Shift+T |

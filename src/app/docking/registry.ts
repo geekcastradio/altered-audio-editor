@@ -18,6 +18,7 @@ export type PanelId =
   | "mixer"
   | "levels"
   | "audio-fx"
+  | "sound-types"
   | "time-info"
   | "history"
   | "drive-manager"
@@ -112,13 +113,20 @@ export const PANELS: readonly PanelDef[] = [
   },
   {
     id: "audio-fx",
-    title: "Audio FX Panel",
+    title: "Audio FX",
     inDefault: true,
     home: [
       { reference: "libraries", direction: "above" },
       { reference: "editor", direction: "right" },
       { edge: "right" },
     ],
+    pending: null,
+  },
+  {
+    id: "sound-types",
+    title: "Sound Types",
+    inDefault: false,
+    home: [{ reference: "audio-fx", direction: "within" }, { reference: "editor", direction: "right" }, { edge: "right" }],
     pending: null,
   },
   {
@@ -482,6 +490,7 @@ export const MIN_SIZE: Record<PanelId, { w: number; h: number }> = {
   mixer: { w: 360, h: 220 },
   levels: { w: 260, h: 70 },
   "audio-fx": { w: 280, h: 160 },
+  "sound-types": { w: 280, h: 160 },
   "time-info": { w: 220, h: 110 },
   history: { w: 220, h: 120 },
   "drive-manager": { w: 260, h: 140 },

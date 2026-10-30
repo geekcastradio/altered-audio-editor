@@ -3,7 +3,7 @@
 // This file is part of Altered Audio Editor.
 
 /**
- * Audio FX Panel (dialogue): four guided looks, each Off, Light, Medium or
+ * Audio FX (dialogue): four guided looks, each Off, Light, Medium or
  * Strong. The panel is a shortcut, never a second engine: choosing looks
  * writes ordinary Voice Chain effects at the front of the chain, tagged
  * with a preset name so the panel can read them back and replace them.
@@ -79,7 +79,7 @@ export function readLooks(chain: EffectChainDoc | null | undefined): Looks {
  * result would hold more than `max` effects.
  */
 export function withLooks(chain: EffectChainDoc, looks: Looks, newId: () => string, max = 16): EffectChainDoc | null {
-  const others = chain.slots.filter((s) => !isPanelSlot(s));
+  const others = chain.slots.filter((s) => !isPanelSlot(s) && !isSoundTypeSlot(s));
   const made: EffectSlotDoc[] = [];
   for (const info of LOOKS) {
     const s = looks[info.id];
@@ -94,6 +94,9 @@ export function withLooks(chain: EffectChainDoc, looks: Looks, newId: () => stri
 
 /** The chain without the panel's slots. */
 export const withoutLooks = (chain: EffectChainDoc): EffectChainDoc => ({ ...chain, slots: chain.slots.filter((s) => !isPanelSlot(s)) });
+
+/** True for slots made by the sibling Sound Types tab, which replaces the looks rather than stacking on them. */
+const isSoundTypeSlot = (s: EffectSlotDoc): boolean => typeof s.preset === "string" && s.preset.startsWith("Sound Types: ");
 
 /** The name of the History entry: "Dialogue: Restoration, Clarity". */
 export function describeLooks(looks: Looks): string {

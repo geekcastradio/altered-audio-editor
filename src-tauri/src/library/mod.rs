@@ -115,6 +115,8 @@ pub struct Collection {
 pub enum LibraryItemKind {
     #[default]
     Audio,
+    /// A JPEG or PNG: artwork, chapter pictures.
+    Image,
 }
 
 /// One asset in a library.
@@ -139,6 +141,11 @@ pub struct LibraryItem {
     pub notes: String,
     pub color: Option<String>,
     pub added: DateTime<Utc>,
+    /// Pixels, for an image item. Zero for audio.
+    #[serde(default)]
+    pub width: u32,
+    #[serde(default)]
+    pub height: u32,
 }
 
 #[cfg(test)]
@@ -160,6 +167,8 @@ mod tests {
             notes: notes.into(),
             color: None,
             added: Utc::now(),
+            width: 0,
+            height: 0,
         }
     }
 

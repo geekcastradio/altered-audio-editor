@@ -100,3 +100,46 @@ pub async fn library_pick_folder(app: AppHandle, title: String) -> Result<Option
     .await
     .map_err(|e| e.to_string())
 }
+
+/// A picture from a library as a data URL, for thumbnails. Only JPEG and PNG files under
+/// 8 MB are read.
+#[tauri::command]
+pub async fn library_image_data(path: PathBuf) -> Result<String, String> {
+    spawn_blocking(move || {
+        let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+        if meta.len() as usize > crate::export::cover::COVER_MAX {
+            return Err("That picture is larger than 8 MB.".to_string());
+        }
+        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        let mime = crate::export::cover::image_mime(&bytes).ok_or("Not a JPEG or PNG picture.")?;
+        Ok(format!(
+            "data:{mime};base64,{}",
+            crate::export::cover::base64(&bytes)
+        ))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Shows the Add Pictures dialog. Returns an empty list on cancel.
+#[tauri::command]
+pub async fn library_pick_pictures(app: AppHandle) -> Result<Vec<PathBuf>, String> {
+    let parent = app.get_webview_window("main");
+    spawn_blocking(move || {
+        let mut d = app
+            .dialog()
+            .file()
+            .set_title("Add Pictures")
+            .add_filter("Pictures", &["jpg", "jpeg", "png"]);
+        if let Some(w) = parent.as_ref() {
+            d = d.set_parent(w);
+        }
+        d.blocking_pick_files()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|f| f.as_path().map(PathBuf::from))
+            .collect()
+    })
+    .await
+    .map_err(|e| e.to_string())
+}

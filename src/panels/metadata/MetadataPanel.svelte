@@ -10,13 +10,16 @@
   audio stay as they are. A file open in the Waveform editor is refused.
 -->
 <script lang="ts">
-  import { coverChoose, coverClear, coverRead, pickMediaFiles, tagsRead, tagsWrite, type FileTags } from "../../app/core";
+  import { coverChoose, coverClear, coverRead, coverSet, pickMediaFiles, tagsRead, tagsWrite, type FileTags } from "../../app/core";
   import { TAGGABLE, TAG_FIELDS, cleanTags } from "../../app/tags";
+  import type { FileDropRouter } from "../../app/filedrop";
   import type { Preferences } from "../../stores/preferences";
   import { addPaths, baseName, filterEntries, overlay, problems, removeSet, sanitizeSets, upsertSet, type Entry, type TagKey, type TagSet } from "./metadata";
 
   interface Props {
     prefs: Preferences;
+    /** Lets a picture dragged from the Libraries panel land on the cover art slot. */
+    router?: FileDropRouter | null;
     /** The path of the file open in the Waveform editor, or null. */
     openPath?: () => string | null;
     ask: (title: string, label: string, initial: string) => Promise<string | null>;
@@ -24,7 +27,7 @@
     onError?: (e: unknown) => void;
   }
 
-  const { prefs, openPath = () => null, ask, onNotice = () => {}, onError = console.error }: Props = $props();
+  const { prefs, router = null, openPath = () => null, ask, onNotice = () => {}, onError = console.error }: Props = $props();
 
   const KEY_SETS = "metadata.sets";
   let entries = $state<Entry[]>([]);
@@ -107,6 +110,32 @@
       onError(e);
     } finally {
       busy = false;
+    }
+  }
+
+  let coverBox = $state<HTMLElement | null>(null);
+  let coverOver = $state(false);
+  $effect(() => {
+    if (!router || !coverBox) return;
+    return router.register({
+      element: coverBox,
+      onDrop: (paths) => void dropCover(paths),
+      onHover: (over) => (coverOver = over),
+    });
+  });
+
+  async function dropCover(paths: string[]) {
+    const pic = paths.find((p) => /\.(jpe?g|png)$/i.test(p));
+    if (!current || guarded(current.path)) return;
+    if (!pic) {
+      onNotice("Drop a JPEG or PNG picture to use it as cover art.");
+      return;
+    }
+    try {
+      cover = await coverSet(current.path, pic);
+      onNotice("Cover art set.");
+    } catch (e) {
+      onError(e);
     }
   }
 
@@ -221,7 +250,7 @@
           <p class="note">Only filled-in fields are written. Clearing a field does not remove it from the file yet.</p>
 
           {#if isMp3}
-            <div class="cover">
+            <div class="cover" class:over={coverOver} bind:this={coverBox}>
               {#if cover}
                 <img src={cover} alt="Cover art" />
               {:else}
@@ -404,6 +433,11 @@
     place-items: center;
     color: var(--text-faint);
   }
+  .cover.over {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
   .coverbtns {
     display: grid;
     gap: 4px;

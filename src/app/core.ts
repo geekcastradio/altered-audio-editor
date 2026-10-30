@@ -18,6 +18,9 @@ export interface AppInfo {
   sessionSchemaVersion: number;
 }
 
+/** Free bytes on the drive that holds `path`, or the Documents drive; null when unknown. */
+export const diskFree = (path?: string | null): Promise<number | null> => invoke<number | null>("disk_free", { path: path ?? null });
+
 export function getAppInfo(): Promise<AppInfo> {
   return invoke<AppInfo>("app_info");
 }
@@ -188,7 +191,7 @@ export interface Library {
 export interface LibraryItem {
   id: string;
   name: string;
-  kind: "audio";
+  kind: "audio" | "image";
   /** Relative to the library folder when copied in, absolute when linked. */
   file: string;
   copied: boolean;
@@ -201,6 +204,9 @@ export interface LibraryItem {
   notes: string;
   color: string | null;
   added: string;
+  /** Pixels, for a picture. */
+  width?: number;
+  height?: number;
 }
 
 /** A bin: a named group of library items. An item can be in several. */
@@ -1338,3 +1344,68 @@ export interface SesxExportReport {
 export function sessionExportSesx(): Promise<{ path: string; report: SesxExportReport } | null> {
   return invoke<{ path: string; report: SesxExportReport } | null>("session_export_sesx");
 }
+
+/** One file held in a settings backup. */
+export interface BackupItem {
+  path: string;
+  category: string;
+  bytes: number;
+}
+
+export interface BackupManifest {
+  format: string;
+  version: number;
+  appVersion: string;
+  created: string;
+  reason: string;
+  signature: string;
+  includesSecrets: boolean;
+  entries: BackupItem[];
+}
+
+export interface BackupSnapshot {
+  path: string;
+  name: string;
+  bytes: number;
+  created: string;
+  reason: string;
+  appVersion: string;
+}
+
+export interface BackupOptions {
+  syncFolder: string | null;
+  keep: number;
+}
+
+export interface BackupInfo {
+  configDir: string;
+  backupsDir: string;
+  portable: boolean;
+  options: BackupOptions;
+  snapshots: BackupSnapshot[];
+}
+
+export interface BackupReport {
+  added: string[];
+  merged: string[];
+  replaced: string[];
+  renamed: string[];
+  unchanged: string[];
+}
+
+export const backupInfo = (): Promise<BackupInfo> => invoke<BackupInfo>("backup_info");
+export const backupPickSave = (): Promise<string | null> => invoke<string | null>("backup_pick_save");
+export const backupPickOpen = (): Promise<string | null> => invoke<string | null>("backup_pick_open");
+export const backupExport = (dest: string, includeSecrets: boolean): Promise<BackupManifest> => invoke<BackupManifest>("backup_export", { dest, includeSecrets });
+export const backupInspect = (path: string): Promise<BackupManifest> => invoke<BackupManifest>("backup_inspect", { path });
+export const backupImport = (path: string, mode: "merge" | "replace", categories: string[] | null): Promise<BackupReport> =>
+  invoke<BackupReport>("backup_import", { path, mode, categories });
+export const backupSnapshotNow = (): Promise<string | null> => invoke<string | null>("backup_snapshot_now");
+export const backupSetOptions = (options: BackupOptions): Promise<void> => invoke<void>("backup_set_options", { options });
+
+/** A library picture as a data URL, for thumbnails. */
+export const libraryImageData = (path: string): Promise<string> => invoke<string>("library_image_data", { path });
+/** Shows the Add Pictures dialog. Empty when cancelled. */
+export const libraryPickPictures = (): Promise<string[]> => invoke<string[]>("library_pick_pictures");
+/** Uses a picture on disk as an MP3's cover art. Returns it as a data URL, or null when the file is not an MP3. */
+export const coverSet = (path: string, picture: string): Promise<string | null> => invoke<string | null>("cover_set", { path, picture });

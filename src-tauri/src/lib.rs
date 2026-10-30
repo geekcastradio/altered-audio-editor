@@ -7,6 +7,7 @@
 //! The interface never touches audio. It sends commands to this core
 //! and renders the state it gets back.
 
+pub mod backup;
 pub mod browse;
 pub mod codecs;
 pub mod commands;
@@ -14,6 +15,7 @@ pub mod dsp;
 pub mod engine;
 pub mod export;
 pub mod library;
+pub mod paths;
 pub mod peaks;
 pub mod plugins;
 pub mod session;
@@ -34,8 +36,13 @@ pub fn run() {
         .manage(commands::wave::Playing::default())
         .manage(commands::update::PendingUpdate::default())
         .setup(|app| {
-            use tauri::Manager;
-            if let Ok(dir) = app.path().app_config_dir() {
+            if let Ok(dir) = paths::config_dir(app.handle()) {
+                // Settings are backed up before anything reads them: one snapshot per
+                // changed launch, and always one before the first launch of a new version.
+                if let Ok(backups) = paths::backups_dir(app.handle()) {
+                    let (config, version) = (dir.clone(), app.package_info().version.to_string());
+                    std::thread::spawn(move || backup::on_launch(&config, &backups, &version));
+                }
                 plugins::load(&dir);
             }
             // Reversed clips read reversed copies kept with the other working files.
@@ -49,6 +56,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             commands::app::app_info,
+            commands::app::disk_free,
             commands::app::app_exit,
             commands::app::app_minimize,
             commands::update::update_check,
@@ -58,6 +66,14 @@ pub fn run() {
             commands::browse::preview_play,
             commands::browse::preview_stop,
             commands::browse::preview_status,
+            commands::backup::backup_info,
+            commands::backup::backup_pick_save,
+            commands::backup::backup_pick_open,
+            commands::backup::backup_export,
+            commands::backup::backup_inspect,
+            commands::backup::backup_import,
+            commands::backup::backup_snapshot_now,
+            commands::backup::backup_set_options,
             commands::keymap::keymap_load,
             commands::keymap::keymap_save,
             commands::library::library_default_root,
@@ -65,6 +81,8 @@ pub fn run() {
             commands::library::library_open,
             commands::library::library_save,
             commands::library::library_import,
+            commands::library::library_image_data,
+            commands::library::library_pick_pictures,
             commands::library::library_clean_up,
             commands::library::library_pick_folder,
             commands::links::open_link,
@@ -164,6 +182,7 @@ pub fn run() {
             commands::export::tags_read,
             commands::export::cover_read,
             commands::export::cover_choose,
+            commands::export::cover_set,
             commands::export::cover_clear,
             commands::export::tags_write,
             commands::export::export_verify,

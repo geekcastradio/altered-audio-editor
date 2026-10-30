@@ -322,6 +322,8 @@ pub fn library_item() -> LibraryItem {
         notes: "Use before the second segment.".into(),
         color: Some("#b8693f".into()),
         added: date(),
+        width: 0,
+        height: 0,
     }
 }
 

@@ -12,6 +12,7 @@
   import { cacheInfo, cacheClearPeaks, cacheSetFolder, libraryPickFolder, openSoundSettings, type CacheInfo } from "../core";
   import { audioDriver, audioInputs, audioOutputs, outputChannels, type AudioDriver, type AudioInput } from "../core";
   import { keepLast } from "./device-cache";
+  import BackupPage from "./BackupPage.svelte";
   import { BROADCAST_REGIONS, targetsFor } from "../loudness";
   import { DEFAULT_SETTINGS, NO_COLORS, TIMECODE_RATES, type AppColors } from "../../stores/settings";
   import { cleanDraft, LATER_PAGES, PAGES, sizeText, type Page, type SettingsDraft } from "./pages";
@@ -131,7 +132,7 @@
   function resetPage() {
     const def = DEFAULT_SETTINGS;
     if (page === "General") Object.assign(d.app, { zoomStep: def.zoomStep, wheelAnchor: def.wheelAnchor, wheelZooms: def.wheelZooms, fadeShape: def.fadeShape, dropMany: def.dropMany });
-    else if (page === "Appearance") d.app.colors = { ...NO_COLORS };
+    else if (page === "Appearance") Object.assign(d.app, { colors: { ...NO_COLORS }, surface: def.surface });
     else if (page === "Autosave") Object.assign(d.app, { autosave: def.autosave, autosaveMinutes: def.autosaveMinutes, backups: def.backups, backupCount: def.backupCount });
     else if (page === "Session Media") Object.assign(d.app, { copyMedia: def.copyMedia, mediaFolder: def.mediaFolder, collectOnSave: def.collectOnSave, leaveLibraryFiles: def.leaveLibraryFiles });
     else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb, meterSpeed: def.meterSpeed });
@@ -198,7 +199,7 @@
               <button type="button" disabled={!d.app.colors[r.key]} onclick={() => (d.app.colors[r.key] = "")}>Theme</button>
             {/each}
           </div>
-          <label class="off"><select disabled><option>Dark</option></select> Theme <span class="why">One dark theme for now; a light theme is planned.</span></label>
+          <label class="off"><select bind:value={d.app.surface}><option value="standard">Standard</option><option value="classic">Classic (darker)</option></select> Panel brightness <span class="why">Standard is closer to Audition's charcoal. Classic is the darker look of earlier versions.</span></label>
         {:else if page === "Audio Devices"}
           <label class="row">
             Play through
@@ -351,6 +352,8 @@
             <button type="button" disabled={busy} onclick={() => void chooseCacheFolder(true)}>Use Default</button>
             <span class="why">The default is Documents\Altered Audio Editor\Cache. If Documents syncs to a cloud service, pick a local folder instead.</span>
           </div>
+        {:else if page === "Backup and Restore"}
+          <BackupPage />
         {:else if page === "Markers"}
           <label class="off"><input type="checkbox" disabled checked /> Marker changes can be undone <span class="why">Always on.</span></label>
           <label class="off"><input type="checkbox" disabled checked /> Markers move with cuts, pastes and crops <span class="why">Always on.</span></label>

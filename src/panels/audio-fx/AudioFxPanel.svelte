@@ -3,16 +3,19 @@
   Copyright (c) The GeekCast Radio Network, LLC.
   This file is part of Altered Audio Editor.
 
-  Audio FX Panel (dialogue): pick how much Restoration, Level, Clarity and
-  Polish a voice gets. It writes ordinary Voice Chain effects at the front
-  of the chain, so everything can be opened and changed there afterward.
+  Audio FX (dialogue): pick how much Restoration, Level, Clarity and Polish
+  a voice gets. Changes apply on their own a moment after you stop clicking,
+  as one undo step. It writes ordinary Voice Chain effects at the front of
+  the chain, so everything can be opened and changed there afterward.
 -->
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import { editor, type EditorState } from "../../stores/editor";
+  import { prefs } from "../../stores/prefs";
   import type { CommandRunner } from "../../stores/media-pool";
   import type { EffectChainDoc, EffectTarget, SessionDoc, SessionStore } from "../../stores/session";
   import { chainOf } from "../voice-chain/chain";
-  import { describeLooks, LOOKS, NO_LOOKS, readLooks, sameLooks, withLooks, withoutLooks, type LookId, type Looks, type Strength } from "./audiofx";
+  import { LOOKS, NO_LOOKS, readLooks, sameLooks, withLooks, withoutLooks, type LookId, type Looks, type Strength } from "./audiofx";
 
   interface Props {
     session: SessionStore;
@@ -77,8 +80,28 @@
   const changed = $derived(!sameLooks(looks, saved));
   const anyOn = $derived(LOOKS.some((l) => looks[l.id] !== 0));
 
+  const AUTO_KEY = "audiofx.auto";
+  let auto = $state(true);
+  void prefs.load().then(() => {
+    auto = prefs.raw(AUTO_KEY) !== false;
+  });
+  function setAuto(on: boolean) {
+    auto = on;
+    prefs.set(AUTO_KEY, on);
+    if (on && changed) queue();
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  /** Applies a moment after the last click, so a few quick changes are one undo step. */
+  function queue() {
+    clearTimeout(timer);
+    timer = setTimeout(() => void apply(), 350);
+  }
+  onDestroy(() => clearTimeout(timer));
+
   function set(id: LookId, s: Strength) {
     looks = { ...looks, [id]: s };
+    if (auto) queue();
   }
 
   async function write(label: string, next: EffectChainDoc | null) {
@@ -97,11 +120,17 @@
     }
   }
 
-  const apply = () => aim && write(describeLooks(looks), withLooks(chainOf(aim.chain), looks, () => crypto.randomUUID()));
+  // One label for every change, so the history merges a run of tweaks into one step.
+  const apply = () => {
+    clearTimeout(timer);
+    if (!aim || sameLooks(looks, readLooks(aim.chain))) return;
+    return write("Audio FX", withLooks(chainOf(aim.chain), looks, () => crypto.randomUUID()));
+  };
   async function clear() {
     if (!aim) return;
+    clearTimeout(timer);
     looks = { ...NO_LOOKS };
-    await write("Dialogue: Off", withoutLooks(chainOf(aim.chain)));
+    await write("Audio FX", withoutLooks(chainOf(aim.chain)));
   }
 
   const labels = ["Off", "Light", "Medium", "Strong"] as const;
@@ -124,11 +153,10 @@
       {#each LOOKS as l (l.id)}
         <section>
           <div class="head">
-            <h3>{l.label}</h3>
-            <span class="hint">{looks[l.id] === 0 ? "Off" : l.strengths[looks[l.id] - 1]}</span>
+            <h3 title={l.about}>{l.label}</h3>
+            <span class="hint">{looks[l.id] === 0 ? "" : l.strengths[looks[l.id] - 1]}</span>
           </div>
-          <p class="about">{l.about}</p>
-          <div class="seg" role="radiogroup" aria-label={l.label}>
+          <div class="seg" role="radiogroup" aria-label={l.label} title={l.about}>
             {#each labels as name, i (name)}
               <button type="button" role="radio" aria-checked={looks[l.id] === i} class:on={looks[l.id] === i} onclick={() => set(l.id, i as Strength)}>{name}</button>
             {/each}
@@ -138,11 +166,15 @@
     </div>
 
     <footer>
-      <button type="button" class="primary" disabled={!changed || (!anyOn && !LOOKS.some((l) => saved[l.id] !== 0))} onclick={() => void apply()}>
-        {inWave ? "Preview" : "Apply"}
-      </button>
+      <label class="auto" title="Apply a moment after each change. Turn off to apply with the button."
+        ><input type="checkbox" checked={auto} onchange={(e) => setAuto(e.currentTarget.checked)} /> Auto</label
+      >
+      {#if !auto}
+        <button type="button" class="primary" disabled={!changed || (!anyOn && !LOOKS.some((l) => saved[l.id] !== 0))} onclick={() => void apply()}>
+          {inWave ? "Preview" : "Apply"}
+        </button>
+      {/if}
       <button type="button" disabled={!LOOKS.some((l) => saved[l.id] !== 0)} onclick={() => void clear()}>Remove</button>
-      <span class="small">One undo step. Edit the result in the Voice Chain.</span>
     </footer>
   {/if}
 </div>
@@ -205,11 +237,6 @@
     color: var(--value, var(--text-dim));
     font-variant-numeric: tabular-nums;
   }
-  .about {
-    margin: 0;
-    color: var(--text-dim);
-    font-size: 0.9em;
-  }
   .seg {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -260,8 +287,10 @@
     opacity: 0.45;
     cursor: default;
   }
-  .small {
+  .auto {
+    display: inline-flex;
+    gap: var(--space-1);
+    align-items: center;
     color: var(--text-dim);
-    font-size: 0.85em;
   }
 </style>

@@ -31,6 +31,7 @@ export const PAGES = [
   "Editing",
   "Effects",
   "Cache and Files",
+  "Backup and Restore",
   "Markers",
   "Multitrack",
   "Clips",

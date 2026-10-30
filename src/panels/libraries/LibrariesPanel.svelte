@@ -19,7 +19,9 @@
   import { binsOf, defaultColor, initials, missingStarterBins, STARTER_BINS } from "./bins";
   import {
     libraryCleanUp,
+    libraryImageData,
     libraryPickFolder,
+    libraryPickPictures,
     pickMediaFiles,
     previewPlay,
     previewStatus,
@@ -34,6 +36,8 @@
   import type { CommandRunner } from "../../stores/media-pool";
   import { clickSelection, stepSelection } from "../files/selection";
   import { formatChannels } from "../files/format";
+  import { prefs } from "../../stores/prefs";
+  import { arrange, DEFAULT_VIEW, flatIds, sanitizeView, toggleCollapsed, type ViewState } from "./arrange";
 
   interface Props {
     store: LibraryStore;
@@ -97,6 +101,39 @@
     });
   });
 
+  const VIEW_KEY = "libraries.view";
+  let view = $state<ViewState>({ ...DEFAULT_VIEW });
+  let viewReady = false;
+  void prefs.load().then(() => {
+    view = sanitizeView(prefs.raw(VIEW_KEY));
+    viewReady = true;
+  });
+  function setView(next: ViewState) {
+    view = next;
+    if (viewReady) prefs.set(VIEW_KEY, next);
+  }
+  let viewMenu = $state<{ x: number; y: number; kind: "filter" | "group" | "sort" } | null>(null);
+  /** Pictures already fetched for thumbnails, by file path. */
+  let thumbs = $state<Record<string, string>>({});
+  const asked = new Set<string>();
+  function thumb(node: HTMLElement, path: string) {
+    const load = (pth: string) => {
+      if (asked.has(pth)) return;
+      asked.add(pth);
+      void libraryImageData(pth).then(
+        (url) => (thumbs = { ...thumbs, [pth]: url }),
+        () => undefined,
+      );
+    };
+    load(path);
+    return { update: load };
+  }
+
+  // The bins are sections of the list now, so the panel always shows the whole library.
+  $effect(() => {
+    if (snap && snap.collection !== null) store.showCollection(null);
+  });
+
   const active = $derived(snap?.active ?? null);
   const shown = $derived.by(() => {
     void snap;
@@ -109,10 +146,59 @@
       ),
     );
   });
-  const shownIds = $derived(shown.map((i) => i.id));
+  const sections = $derived(active ? arrange(active.lib, shown, view) : []);
+  const shownIds = $derived(flatIds(sections, view.collapsed));
   const selectedItems = $derived(shown.filter((i) => snap?.selected.has(i.id)));
   const single = $derived(selectedItems.length === 1 ? selectedItems[0]! : null);
   const currentCollection = $derived(active?.lib.collections.find((c) => c.id === snap?.collection) ?? null);
+
+  const FILTERS = [
+    ["all", "All Items"],
+    ["audio", "Audio Only"],
+    ["image", "Pictures Only"],
+  ] as const;
+  const GROUPS = [
+    ["bin", "Bin"],
+    ["type", "Type"],
+    ["none", "None"],
+  ] as const;
+  const SORTS = [
+    ["custom", "Manual"],
+    ["name", "Name"],
+    ["date", "Date Added"],
+  ] as const;
+  const viewMenuItems = $derived.by((): ContextItem[] => {
+    if (!viewMenu) return [];
+    const k = viewMenu.kind;
+    const table = k === "filter" ? FILTERS : k === "group" ? GROUPS : SORTS;
+    const key = k === "filter" ? "filter" : k === "group" ? "groupBy" : "sortBy";
+    return table.map(([value, label]) => ({
+      kind: "item" as const,
+      label,
+      checked: view[key] === value,
+      run: () => setView({ ...view, [key]: value }),
+    }));
+  });
+  function openViewMenu(e: MouseEvent, kind: "filter" | "group" | "sort") {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    viewMenu = { x: r.left, y: r.bottom, kind };
+  }
+
+  async function addPictures() {
+    try {
+      const p = await libraryPickPictures();
+      if (p.length) await addFiles(p);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  function sectionMenu(e: MouseEvent, bin: string | null) {
+    if (!bin) return;
+    e.preventDefault();
+    e.stopPropagation();
+    binMenu = { x: e.clientX, y: e.clientY, id: bin };
+  }
 
   function pathOf(item: LibraryItem): string {
     return active ? itemPath(active.dir, item) : item.file;
@@ -241,8 +327,6 @@
     if (!c || !active) return [];
     const i = active.lib.collections.indexOf(c);
     return [
-      { kind: "item", label: "Show Bin", run: () => store.showCollection(c.id) },
-      { kind: "sep" },
       { kind: "item", label: "Rename Bin...", run: () => ask("Rename Bin", "Bin name", c.name, "Rename", (n) => void store.renameCollection(c.id, n, runner).catch(fail)) },
       { kind: "item", label: "Bin Color...", run: () => (colorFor = { kind: "bin", id: c.id, current: c.color ?? null }) },
       { kind: "item", label: "Move Left", disabled: i === 0, run: () => void store.moveCollection(c.id, i - 1, runner).catch(fail) },
@@ -458,6 +542,7 @@
         { kind: "item", label: revealLabel(), disabled: !single, run: () => single && void revealMedia(pathOf(single)).catch(fail) },
         { kind: "sep" },
         { kind: "item", label: "Add Files to Library...", run: () => void pickMediaFiles().then((p) => (p.length ? addFiles(p) : undefined)).catch(fail) },
+        { kind: "item", label: "Add Pictures...", run: () => void addPictures() },
         {
           kind: "item",
           label: "New Bin...",
@@ -547,53 +632,39 @@
       </button>
     </header>
 
-    <div class="bins" role="tablist" aria-label="Bins">
-      <button
-        type="button"
-        role="tab"
-        class="bin"
-        class:on={snap.collection === null}
-        data-bin="all"
-        aria-selected={snap.collection === null}
-        onclick={() => store.showCollection(null)}
-      >
-        All <span class="count">{lib?.items.length ?? 0}</span>
-      </button>
-      {#each lib?.collections ?? [] as c (c.id)}
-        <button
-          type="button"
-          role="tab"
-          class="bin"
-          class:on={snap.collection === c.id}
-          class:target={hoverBin === c.id}
-          data-bin={c.id}
-          aria-selected={snap.collection === c.id}
-          onclick={() => store.showCollection(c.id)}
-          oncontextmenu={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            binMenu = { x: e.clientX, y: e.clientY, id: c.id };
-          }}
-        >
-          <i style:background={c.color ? `var(${c.color})` : "var(--text-faint)"}></i>{c.name} <span class="count">{c.items.length}</span>
-        </button>
-      {/each}
-      <button
-        type="button"
-        class="bin add"
-        title="New bin"
-        aria-label="New bin"
-        onclick={() => ask("New Bin", "Bin name", "", "Create", (name) => void store.addCollection(name, runner).catch(fail))}>+</button
-      >
-      {#if lib && lib.collections.length === 0}
-        <button type="button" class="bin starter" onclick={() => void store.addBins(missingStarterBins(lib), runner).catch(fail)}>
-          Add starter bins
-        </button>
-      {/if}
-    </div>
-
     <div class="bar">
       <input type="search" placeholder="Search name, tag, note" aria-label="Search library" bind:value={query} />
+      <button type="button" class="tool" class:on={view.filter !== "all"} title="Filter" aria-label="Filter" onclick={(e) => openViewMenu(e, "filter")}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12l-4.5 5.5V13l-3-1.5V8.5z" /></svg>
+      </button>
+      <button type="button" class="tool" title="Group by" aria-label="Group by" onclick={(e) => openViewMenu(e, "group")}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v2H2zM2 7h12v2H2zM2 11h8v2H2z" /></svg>
+      </button>
+      <button type="button" class="tool" title="Sort by" aria-label="Sort by" onclick={(e) => openViewMenu(e, "sort")}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2v10l-2-2-1 1 4 4 4-4-1-1-2 2V2zM10 3h5v2h-5zM10 7h4v2h-4zM10 11h3v2h-3z" /></svg>
+      </button>
+      <button
+        type="button"
+        class="tool"
+        title={view.view === "list" ? "Show as tiles" : "Show as list"}
+        aria-label={view.view === "list" ? "Show as tiles" : "Show as list"}
+        onclick={() => setView({ ...view, view: view.view === "list" ? "grid" : "list" })}
+      >
+        {#if view.view === "list"}
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h5v5H2zM9 2h5v5H9zM2 9h5v5H2zM9 9h5v5H9z" /></svg>
+        {:else}
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12v2H2zM2 7h12v2H2zM2 11h12v2H2z" /></svg>
+        {/if}
+      </button>
+      <button
+        type="button"
+        class="tool"
+        title="New bin"
+        aria-label="New bin"
+        onclick={() => ask("New Bin", "Bin name", "", "Create", (name) => void store.addCollection(name, runner).catch(fail))}
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2h2v5h5v2H9v5H7V9H2V7h5z" /></svg>
+      </button>
     </div>
 
     <div
@@ -605,54 +676,119 @@
       bind:this={list}
       onkeydown={onListKey}
     >
-      {#each shown as it (it.id)}
-        {@const inBins = active ? binsOf(active.lib, it.id) : []}
-        {@const stripe = it.color ?? inBins.find((b) => b.color)?.color ?? null}
-        <div
-          class="row"
-          role="option"
-          tabindex="-1"
-          aria-selected={snap.selected.has(it.id)}
-          data-id={it.id}
-          title={menu ? undefined : [it.name, inBins.length ? `Bins: ${inBins.map((b) => b.name).join(", ")}` : "", it.tags.length ? `Tags: ${it.tags.join(", ")}` : "", it.notes].filter(Boolean).join("\n")}
-          onpointerdown={(e) => onRowPointer(e, it)}
-          ondblclick={() => onAddToSession([pathOf(it)])}
-        >
-          <span class="stripe" style:background={stripe ? `var(${stripe})` : "transparent"}></span>
+      {#each sections as sec (sec.id)}
+        {@const folded = view.collapsed.includes(sec.id)}
+        <div class="section" class:target={sec.bin !== null && hoverBin === sec.bin}>
           <button
             type="button"
-            class="play"
-            class:on={playingId === it.id}
-            aria-label={playingId === it.id ? "Stop preview" : "Preview"}
-            onpointerdown={(e) => e.stopPropagation()}
-            onclick={(e) => {
-              e.stopPropagation();
-              void previewItem(it);
-            }}
+            class="shead"
+            data-bin={sec.bin ?? undefined}
+            aria-expanded={!folded}
+            onclick={() => setView(toggleCollapsed(view, sec.id))}
+            oncontextmenu={(e) => sectionMenu(e, sec.bin)}
           >
-            {#if playingId === it.id}
-              <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" /></svg>
-            {:else}
-              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>
-            {/if}
+            <svg class="chev" class:folded viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" /></svg>
+            <i style:background={sec.color ? `var(${sec.color})` : "var(--text-faint)"}></i>
+            <span class="sname">{sec.name}</span>
+            <span class="count">{sec.items.length}</span>
           </button>
-          <span class="text">
-            <span class="name" class:playing={playingId === it.id}>{it.name}</span>
-            {#if inBins.length > 0 || it.tags.length > 0}
-              <span class="tags">
-                {#each inBins as b (b.id)}<span class="dot" style:background={b.color ? `var(${b.color})` : "var(--text-faint)"} title={b.name}></span>{/each}
-                {#if it.tags.length}<span class="tag">{it.tags.slice(0, 2).join(" · ")}</span>{/if}
-              </span>
-            {/if}
-          </span>
-          {#if peaks}<canvas class="wave" use:miniWave={pathOf(it)} aria-hidden="true"></canvas>{/if}
-          <span class="dur">{duration(it)}</span>
+          {#if !folded}
+            <div class={view.view === "grid" ? "grid" : "stack"}>
+              {#each sec.items as it (it.id)}
+                {@const inBins = active ? binsOf(active.lib, it.id) : []}
+                {@const stripe = it.color ?? inBins.find((b) => b.color)?.color ?? null}
+                {@const isImg = it.kind === "image"}
+                <div
+                  class={view.view === "grid" ? "tile" : "row"}
+                  role="option"
+                  tabindex="-1"
+                  aria-selected={snap.selected.has(it.id)}
+                  data-id={it.id}
+                  title={menu ? undefined : [it.name, inBins.length ? `Bins: ${inBins.map((b) => b.name).join(", ")}` : "", it.tags.length ? `Tags: ${it.tags.join(", ")}` : "", it.notes].filter(Boolean).join("\n")}
+                  onpointerdown={(e) => onRowPointer(e, it)}
+                  ondblclick={() => onAddToSession([pathOf(it)])}
+                >
+                  <span class="stripe" style:background={stripe ? `var(${stripe})` : "transparent"}></span>
+                  {#if view.view === "grid"}
+                    <span class="art">
+                      {#if isImg}
+                        {#key pathOf(it)}<span class="pic" use:thumb={pathOf(it)}>{#if thumbs[pathOf(it)]}<img src={thumbs[pathOf(it)]} alt="" draggable="false" />{/if}</span>{/key}
+                      {:else}
+                        {#if peaks}<canvas class="wave big" use:miniWave={pathOf(it)} aria-hidden="true"></canvas>{/if}
+                        <button
+                          type="button"
+                          class="play"
+                          class:on={playingId === it.id}
+                          aria-label={playingId === it.id ? "Stop preview" : "Preview"}
+                          onpointerdown={(e) => e.stopPropagation()}
+                          onclick={(e) => {
+                            e.stopPropagation();
+                            void previewItem(it);
+                          }}
+                        >
+                          {#if playingId === it.id}
+                            <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" /></svg>
+                          {:else}
+                            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>
+                          {/if}
+                        </button>
+                      {/if}
+                    </span>
+                    <span class="cap" class:playing={playingId === it.id}>{it.name}</span>
+                  {:else}
+                    {#if isImg}
+                      <span class="pic small" use:thumb={pathOf(it)}>{#if thumbs[pathOf(it)]}<img src={thumbs[pathOf(it)]} alt="" draggable="false" />{/if}</span>
+                    {:else}
+                      <button
+                        type="button"
+                        class="play"
+                        class:on={playingId === it.id}
+                        aria-label={playingId === it.id ? "Stop preview" : "Preview"}
+                        onpointerdown={(e) => e.stopPropagation()}
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          void previewItem(it);
+                        }}
+                      >
+                        {#if playingId === it.id}
+                          <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" /></svg>
+                        {:else}
+                          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>
+                        {/if}
+                      </button>
+                    {/if}
+                    <span class="text">
+                      <span class="name" class:playing={playingId === it.id}>{it.name}</span>
+                      {#if inBins.length > 0 || it.tags.length > 0}
+                        <span class="tags">
+                          {#each inBins as b (b.id)}<span class="dot" style:background={b.color ? `var(${b.color})` : "var(--text-faint)"} title={b.name}></span>{/each}
+                          {#if it.tags.length}<span class="tag">{it.tags.slice(0, 2).join(" · ")}</span>{/if}
+                        </span>
+                      {/if}
+                    </span>
+                    {#if isImg}
+                      <span class="dur">{it.width} × {it.height}</span>
+                    {:else}
+                      {#if peaks}<canvas class="wave" use:miniWave={pathOf(it)} aria-hidden="true"></canvas>{/if}
+                      <span class="dur">{duration(it)}</span>
+                    {/if}
+                  {/if}
+                </div>
+              {/each}
+              {#if sec.items.length === 0}
+                <p class="hint">{sec.bin ? "Empty. Drag items onto this bin's name." : "Nothing here."}</p>
+              {/if}
+            </div>
+          {/if}
         </div>
       {/each}
       {#if shown.length === 0}
         <p class="empty">
-          {#if busy}Adding...{:else if query}Nothing matches.{:else if currentCollection}This bin is empty. Drag items from All onto its name above to add them.{:else}Drop audio files here to copy them into this library.{/if}
+          {#if busy}Adding...{:else if query}Nothing matches.{:else}Drop audio files or pictures here to copy them into this library.{/if}
         </p>
+      {/if}
+      {#if lib && lib.collections.length === 0}
+        <button type="button" class="starter" onclick={() => void store.addBins(missingStarterBins(lib), runner).catch(fail)}>Add starter bins</button>
       {/if}
     </div>
 
@@ -694,7 +830,11 @@
             </div>
           {/if}
           <div class="meta">
-            {single.sample_rate.toLocaleString("en-US")} Hz, {formatChannels(single.channels)}{single.copied ? "" : ", linked"}
+            {#if single.kind === "image"}
+              {single.width} × {single.height} px{single.copied ? "" : ", linked"}
+            {:else}
+              {single.sample_rate.toLocaleString("en-US")} Hz, {formatChannels(single.channels)}{single.copied ? "" : ", linked"}
+            {/if}
           </div>
         </div>
       {/key}
@@ -724,6 +864,10 @@
 
 {#if libMenu}
   <ContextMenu x={libMenu.x} y={libMenu.y} items={libraryItems()} onClose={() => (libMenu = null)} />
+{/if}
+
+{#if viewMenu}
+  <ContextMenu x={viewMenu.x} y={viewMenu.y} items={viewMenuItems} onClose={() => (viewMenu = null)} />
 {/if}
 
 {#if binMenu}
@@ -1040,72 +1184,172 @@
     color: var(--text-dim);
   }
 
-  /* Bin strip: chips that wrap, with a color dot and a count. */
-  .bins {
+  /* Sections: one per bin, folded by its header. */
+  .section {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section.target {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
+  .shead {
     display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    padding: 0 6px 6px;
-  }
-
-  .bin {
-    display: inline-flex;
-    gap: 5px;
+    gap: 6px;
     align-items: center;
+    width: 100%;
     height: 22px;
-    padding: 0 8px;
-    border: 1px solid var(--border);
-    border-radius: 11px;
+    padding: 0 6px;
+    border: 0;
     background: var(--surface-2);
-    color: var(--text-dim);
+    color: var(--text);
     font: inherit;
-    font-size: var(--font-size-small);
-    white-space: nowrap;
-    cursor: pointer;
+    font-weight: 600;
+    text-align: left;
   }
 
-  .bin i {
-    width: 7px;
-    height: 7px;
+  .shead:hover {
+    background: var(--surface-3);
+  }
+
+  .shead i {
+    flex: none;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
   }
 
-  .bin .count {
-    color: var(--text-faint);
-    font-family: var(--font-mono);
-    font-size: 10px;
+  .shead .sname {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .bin:hover {
-    border-color: var(--border-strong);
-    color: var(--text);
+  .shead .count {
+    color: var(--text-dim);
+    font-weight: 400;
   }
 
-  .bin.on {
+  .chev {
+    flex: none;
+    width: 10px;
+    height: 10px;
+  }
+
+  .chev.folded {
+    transform: rotate(-90deg);
+  }
+
+  .hint {
+    margin: 0;
+    padding: 4px 10px;
+    color: var(--text-dim);
+    font-size: 11px;
+  }
+
+  .starter {
+    margin: 8px;
+    height: 22px;
+    border: 1px dashed var(--border-strong);
+    border-radius: 2px;
+    background: none;
+    color: var(--text-dim);
+    font: inherit;
+  }
+
+  .tool.on {
+    color: var(--accent);
+  }
+
+  /* Tiles */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+    gap: 6px;
+    padding: 6px;
+  }
+
+  .tile {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 3px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    cursor: default;
+  }
+
+  .tile:hover {
+    background: var(--surface-2);
+  }
+
+  .tile[aria-selected="true"] {
     border-color: var(--accent);
-    background: var(--accent-dim);
-    color: #fff;
+    background: var(--surface-3);
   }
 
-  .bin.on .count {
-    color: #cfe6fb;
+  .tile .stripe {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
   }
 
-  .bin.target {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent);
-    color: var(--text);
+  .art {
+    position: relative;
+    display: grid;
+    place-items: center;
+    aspect-ratio: 1;
+    overflow: hidden;
+    border-radius: 2px;
+    background: var(--surface-1);
+    color: var(--text-dim);
   }
 
-  .bin.add {
+  .art .wave.big {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .art .play {
+    position: relative;
+  }
+
+  .pic {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    background: repeating-conic-gradient(var(--surface-2) 0% 25%, var(--surface-1) 0% 50%) 0 0 / 10px 10px;
+  }
+
+  .pic img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+  }
+
+  .pic.small {
+    flex: none;
     width: 22px;
-    padding: 0;
-    justify-content: center;
-    font-size: 14px;
+    height: 22px;
+    border-radius: 2px;
   }
 
-  .bin.starter {
-    border-style: dashed;
+  .cap {
+    overflow: hidden;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cap.playing {
+    color: var(--accent);
   }
 
   /* Bin membership toggles in the details area. */

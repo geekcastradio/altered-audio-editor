@@ -40,6 +40,8 @@ export interface AppSettings {
   dropMany: "sequence" | "tracks";
   /** What the space bar does to a playing session. */
   colors: AppColors;
+  /** How light the panels are: Audition-like charcoal, or the darker classic look. */
+  surface: "standard" | "classic";
   /** System name of the output; null is the system default. */
   output: string | null;
   /** Device outputs (from 0) the stereo mix plays on: left, right. */
@@ -162,6 +164,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   fadeShape: "cosine",
   dropMany: "sequence",
   colors: { ...NO_COLORS },
+  surface: "standard",
   output: null,
   outputPair: [0, 1],
   speakerOutputs: {},
@@ -225,6 +228,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       o.fadeShape === "linear" || o.fadeShape === "logarithmic" || o.fadeShape === "exponential" || o.fadeShape === "equal_power"
         ? o.fadeShape
         : "cosine",
+    surface: o.surface === "classic" ? "classic" : "standard",
     colors: {
       wave: color(c.wave),
       playhead: color(c.playhead),

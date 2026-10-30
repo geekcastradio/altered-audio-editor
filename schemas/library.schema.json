@@ -122,6 +122,12 @@
           "description": "Path inside the library folder when copied in, or an absolute\npath when linked.",
           "type": "string"
         },
+        "height": {
+          "type": "integer",
+          "format": "uint32",
+          "default": 0,
+          "minimum": 0
+        },
         "id": {
           "type": "string",
           "format": "uuid"
@@ -158,6 +164,13 @@
           "items": {
             "type": "string"
           }
+        },
+        "width": {
+          "description": "Pixels, for an image item. Zero for audio.",
+          "type": "integer",
+          "format": "uint32",
+          "default": 0,
+          "minimum": 0
         }
       },
       "required": [
@@ -176,9 +189,18 @@
     },
     "LibraryItemKind": {
       "description": "What a library item holds. More kinds can be added without a\nversion bump.",
-      "type": "string",
-      "enum": [
-        "audio"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "audio"
+          ]
+        },
+        {
+          "description": "A JPEG or PNG: artwork, chapter pictures.",
+          "type": "string",
+          "const": "image"
+        }
       ]
     },
     "LibraryScope": {

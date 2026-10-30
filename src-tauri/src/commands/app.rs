@@ -27,6 +27,24 @@ pub fn app_info() -> AppInfo {
     current_app_info()
 }
 
+/// Free space, in bytes, on the drive that holds `path` (or the Documents folder when none is given).
+/// None when the drive cannot be asked, so the status bar just leaves the figure out.
+#[tauri::command]
+pub fn disk_free(app: tauri::AppHandle, path: Option<String>) -> Option<u64> {
+    use tauri::Manager;
+    let mut dir = path
+        .filter(|p| !p.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| app.path().document_dir().ok())?;
+    // A file or a folder that is gone still lives on some drive: walk up to one that exists.
+    while !dir.is_dir() {
+        if !dir.pop() {
+            return None;
+        }
+    }
+    fs4::available_space(&dir).ok()
+}
+
 /// Minimizes the main window. Called from Window > Minimize.
 #[tauri::command]
 pub fn app_minimize(window: tauri::WebviewWindow) -> Result<(), String> {

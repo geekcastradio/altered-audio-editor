@@ -65,9 +65,10 @@
   import { settings } from "../../stores/settings";
   import AmpPanel from "./AmpPanel.svelte";
   import VoxStripPanel from "./VoxStripPanel.svelte";
-  import { applyEffectPreset, bankWith, bankWithout, effectPresetFrom, sanitizeBank, type EffectPresetBank } from "./effect-presets";
+  import { applyEffectPreset, bankWith, builtinPresets, bankWithout, effectPresetFrom, sanitizeBank, type EffectPresetBank } from "./effect-presets";
   import { groupShown, PHASE_CURVE } from "./phase-curve";
   import { GRAPHED } from "./graph";
+  import DynamicsPanel from "./DynamicsPanel.svelte";
   import { clampBox, effectWindowRequest, hideEffectWindows, portal, type WindowBox } from "./effect-window";
   import { dropEdit, effectMenu, ownerKey, slotOver, startSlotDrag, type SlotSpot } from "./slot-drag";
 
@@ -492,7 +493,7 @@
   // Presets for the effect whose window is open.
   function chooseFxPreset(name: string) {
     if (!winSlot || !winInfo) return;
-    const p = (fxBank[winSlot.effect] ?? []).find((x) => x.name === name);
+    const p = (fxBank[winSlot.effect] ?? []).find((x) => x.name === name) ?? builtinPresets(winSlot.effect).find((x) => x.name === name);
     if (p) commit(`${winInfo.name} Preset ${p.name}`, applyEffectPreset(chain, winSlot.id, p, winInfo));
   }
 
@@ -613,7 +614,7 @@
   // or the master has no audio of its own to learn from yet.
   const canLearn = $derived(inWave || target?.kind === "track" || target?.kind === "clip");
   /** Effects whose window draws all of its own controls. */
-  const OWN_CONTROLS = new Set(["altaudio.convolution_reverb", "altaudio.shaped_noise", "altaudio.opto_leveler", "altaudio.tube_preamp", "altaudio.amp_model", "altaudio.vox_strip", "altaudio.speech_leveler"]);
+  const OWN_CONTROLS = new Set(["altaudio.convolution_reverb", "altaudio.shaped_noise", "altaudio.opto_leveler", "altaudio.tube_preamp", "altaudio.amp_model", "altaudio.vox_strip", "altaudio.speech_leveler", "altaudio.dynamics"]);
   const LEARNS = new Set(["altaudio.noise_print", "altaudio.sound_eraser", "altaudio.shaped_noise"]);
   const learnSel = $derived.by(() => {
     const v = inWave ? waveDoc?.view.selection : doc?.view.selection;
@@ -789,8 +790,19 @@
           <div class="line fxpre">
             <span class="plabel">Presets:</span>
             <select class="grow" aria-label="{winInfo.name} presets" value={winSlot.preset ?? ""} onchange={(e) => chooseFxPreset(e.currentTarget.value)}>
-              <option value="" disabled>{saved.length ? "(Choose a preset)" : "(No saved presets yet)"}</option>
-              {#each saved as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
+              <option value="" disabled>{saved.length || builtinPresets(winSlot.effect).length ? "(Choose a preset)" : "(No saved presets yet)"}</option>
+              {#if builtinPresets(winSlot.effect).length}
+                <optgroup label="Built in">
+                  {#each builtinPresets(winSlot.effect) as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
+                </optgroup>
+              {/if}
+              {#if saved.length && builtinPresets(winSlot.effect).length}
+                <optgroup label="Yours">
+                  {#each saved as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
+                </optgroup>
+              {:else}
+                {#each saved as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
+              {/if}
             </select>
             <button type="button" class="ico" title="Save these settings as a preset" aria-label="Save preset" onclick={() => void saveFxPreset()}>
               <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v7M5 6.5 8 9.5l3-3" fill="none" stroke="currentColor" stroke-width="1.5" /><path d="M2.5 10v3.5h11V10" fill="none" stroke="currentColor" stroke-width="1.5" /></svg>
@@ -822,6 +834,8 @@
           />
         {:else if winSlot.effect === "altaudio.opto_leveler" || winSlot.effect === "altaudio.tube_preamp"}
           <TubePanel slot={winSlot} info={winInfo} onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)} />
+        {:else if winSlot.effect === "altaudio.dynamics"}
+          <DynamicsPanel slot={winSlot} info={winInfo} onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)} />
         {:else if winSlot.effect === "altaudio.speech_leveler"}
           <LevelerPanel slot={winSlot} info={winInfo} onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)} />
         {:else if winSlot.effect === "altaudio.vox_strip"}

@@ -7,8 +7,9 @@
   lets the user change, clear, or reset them. Changes save right away.
 -->
 <script lang="ts">
+  import { applyAudition, parseAudition } from "../keymap/audition-import";
   import { chordFromEvent } from "../keymap/chord";
-  import type { Keymap } from "../keymap/keymap";
+  import { DEFAULT_BINDINGS, type Keymap } from "../keymap/keymap";
   import { commandList, type CommandEntry } from "./menus/model";
 
   interface Props {
@@ -113,6 +114,29 @@
     onChange();
   }
 
+  let auditionFile = $state<HTMLInputElement | null>(null);
+
+  /** Reads an Audition shortcut export and gives its commands here the same keys. */
+  async function importAudition(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    try {
+      const parsed = parseAudition(await file.text());
+      const { overrides, takenFrom } = applyAudition(parsed.bindings, keymap.getOverrides(), DEFAULT_BINDINGS);
+      keymap.setOverrides(overrides);
+      onChange();
+      const n = Object.keys(parsed.bindings).length;
+      notice =
+        `Brought in ${n} commands from Audition.` +
+        (takenFrom.length ? ` ${takenFrom.length} of our own shortcuts gave way to them.` : "") +
+        (parsed.unmapped.length ? ` ${parsed.unmapped.length} Audition commands have no match here yet.` : "");
+    } catch (err) {
+      notice = err instanceof Error ? err.message : String(err);
+    }
+  }
+
   function resetAll() {
     keymap.resetAll();
     notice = "All shortcuts are back to their defaults.";
@@ -187,6 +211,8 @@
 
     <footer>
       <button type="button" onclick={resetAll}>Reset All to Defaults</button>
+      <button type="button" onclick={() => auditionFile?.click()}>Import from Audition...</button>
+      <input bind:this={auditionFile} type="file" accept=".xml,text/xml" hidden onchange={importAudition} />
       <span class="spacer"></span>
       <button type="button" class="primary" onclick={onClose}>Close</button>
     </footer>
