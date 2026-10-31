@@ -20,15 +20,18 @@
   import type { MeterLevel, TransportState, TransportStore } from "../../stores/transport";
   import { editor } from "../../stores/editor";
   import { dbToFader, faderToDb, formatDb, formatPan } from "./fader";
+  import type { AutoTake } from "../../app/auto-take";
 
   interface Props {
     session: SessionStore;
     transport: TransportStore;
     runner: CommandRunner;
     onError?: (e: unknown) => void;
+    /** Takes fader and pan moves while a take records automation. */
+    autoTake?: AutoTake;
   }
 
-  const { session, transport, runner, onError = console.error }: Props = $props();
+  const { session, transport, runner, onError = console.error, autoTake }: Props = $props();
 
   let doc = $state<SessionDoc | null>(null);
   /** 3D Space sessions: the master's speaker channel names, in order. */
@@ -76,6 +79,30 @@
   ]);
 
   type StripChanges = Partial<Pick<Strip, "volume_db" | "pan" | "muted" | "solo" | "record_armed" | "name" | "output" | "mono">>;
+  /** Offers a volume or pan move to a recording take; true when it took it. */
+  function auto(st: Strip, type: "volume" | "pan", phase: "grab" | "move" | "release", value: number): boolean {
+    return autoTake?.control(st.id, { type }, phase, value) ?? false;
+  }
+  const volHold = (st: Strip) => ({ grab: () => auto(st, "volume", "grab", st.volume_db), release: () => auto(st, "volume", "release", st.volume_db) });
+  const moveVol = (st: Strip, db: number) => {
+    if (!auto(st, "volume", "move", db)) setStrip(st, { volume_db: db }, "Track Volume");
+  };
+  let wheelTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** A wheel turn is a short touch: it grabs, moves, and lets go a moment after the last notch. */
+  function wheelVol(e: WheelEvent, st: Strip) {
+    const timer = wheelTimers.get(st.id);
+    if (timer === undefined) auto(st, "volume", "grab", st.volume_db);
+    else clearTimeout(timer);
+    wheelFader(e, st.volume_db, (db) => moveVol(st, db));
+    wheelTimers.set(
+      st.id,
+      setTimeout(() => {
+        wheelTimers.delete(st.id);
+        auto(st, "volume", "release", st.volume_db);
+      }, 400),
+    );
+  }
+
   function setStrip(st: Strip, changes: StripChanges, label: string) {
     const what = st.kind === "bus" ? label.replace("Track", "Bus") : label;
     const op = st.kind === "bus" ? busOp(doc, st.id, changes) : trackOp(doc, st.id, changes);
@@ -107,7 +134,7 @@
   }
 
   /** Vertical drag on a fader track. Shift moves in fine steps. */
-  function dragFader(e: PointerEvent, current: number, apply: (db: number) => void) {
+  function dragFader(e: PointerEvent, current: number, apply: (db: number) => void, hold?: { grab: () => void; release: () => void }) {
     if (e.button !== 0) return;
     e.preventDefault();
     const el = e.currentTarget as HTMLElement;
@@ -129,11 +156,13 @@
         apply(db);
       }
     };
+    hold?.grab();
     if (!onCap) set(e);
     const move = (ev: PointerEvent) => set(ev);
     const up = () => {
       el.removeEventListener("pointermove", move);
       el.removeEventListener("pointerup", up);
+      hold?.release();
     };
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
@@ -154,16 +183,18 @@
     const startX = e.clientX;
     const start = t.pan;
     let last = start;
+    auto(t, "pan", "grab", start);
     const move = (ev: PointerEvent) => {
       const v = Math.min(100, Math.max(-100, Math.round(start + (ev.clientX - startX) * (ev.shiftKey ? 0.25 : 1))));
       if (v !== last) {
         last = v;
-        setStrip(t, { pan: v }, "Track Pan");
+        if (!auto(t, "pan", "move", v)) setStrip(t, { pan: v }, "Track Pan");
       }
     };
     const up = () => {
       el.removeEventListener("pointermove", move);
       el.removeEventListener("pointerup", up);
+      auto(t, "pan", "release", last);
     };
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
@@ -238,8 +269,8 @@
             aria-valuemax={12}
             aria-valuenow={t.volume_db}
             title="Volume. Drag, or use the mouse wheel. Shift for fine steps. Double-click for 0 dB."
-            onpointerdown={(e) => dragFader(e, t.volume_db, (db) => setStrip(t, { volume_db: db }, "Track Volume"))}
-            onwheel={(e) => wheelFader(e, t.volume_db, (db) => setStrip(t, { volume_db: db }, "Track Volume"))}
+            onpointerdown={(e) => dragFader(e, t.volume_db, (db) => moveVol(t, db), volHold(t))}
+            onwheel={(e) => wheelVol(e, t)}
             ondblclick={() => setStrip(t, { volume_db: 0 }, "Track Volume")}
           >
             <div class="slot"></div>

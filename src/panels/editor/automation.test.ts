@@ -16,6 +16,8 @@ import {
   nextTarget,
   putLane,
   setMode,
+  modeChange,
+  newLane,
   shownLanes,
   VOLUME_RANGE,
   type AutoOwner,
@@ -71,5 +73,19 @@ describe("automation lanes", () => {
     expect(envs[0]!.id).not.toBe("");
     expect(autoMode({ ...t, envelopes: envs })).toBe("read");
     expect(autoMode({ ...t, envelopes: setMode({ ...t, envelopes: envs }, "off") })).toBe("off");
+  });
+});
+
+describe("recording modes", () => {
+  const t = { volume_db: 0, pan: 0 };
+  it("a record setting is the mode", () => {
+    expect(autoMode({ ...t, record_mode: "latch" })).toBe("latch");
+  });
+  it("modeChange turns lanes on for Write, Latch, Touch and Read, off for Off", () => {
+    const envs = [{ ...newLane({ type: "volume" }), enabled: false }];
+    const owner = { ...t, envelopes: envs };
+    expect(modeChange(owner, "touch")).toMatchObject({ record: "touch", envelopes: [{ enabled: true }] });
+    expect(modeChange(owner, "read")).toMatchObject({ record: "off", envelopes: [{ enabled: true }] });
+    expect(modeChange(owner, "off")).toMatchObject({ record: "off", envelopes: [{ enabled: false }] });
   });
 });

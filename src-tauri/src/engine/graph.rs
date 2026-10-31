@@ -285,6 +285,8 @@ pub fn levels(s: &Session) -> Levels {
 enum Dest {
     Bus(usize),
     Master,
+    /// Plays nowhere (the strip's output is None).
+    Nowhere,
     /// Plain sessions: the track's own output, faded on the audio thread.
     Direct(usize),
 }
@@ -468,7 +470,11 @@ impl Graph {
                     &t.sends,
                     s.sample_rate,
                     rate,
-                ),
+                )
+                .map(|mut a| {
+                    a.strip = t.id;
+                    a
+                }),
                 ..Strip::default()
             })
             .collect();
@@ -484,7 +490,11 @@ impl Graph {
                         &b.sends,
                         s.sample_rate,
                         rate,
-                    ),
+                    )
+                    .map(|mut a| {
+                        a.strip = b.id;
+                        a
+                    }),
                     ..Strip::default()
                 })
                 .collect()
@@ -557,6 +567,9 @@ impl Graph {
                 Node::Track(i) => &s.tracks[i].output,
                 Node::Bus(i) => &s.buses[i].output,
             };
+            if *output == crate::session::model::Output::None {
+                return Dest::Nowhere;
+            }
             match routing::output_bus(s, output) {
                 Some(b) if kept.contains(&(n, Node::Bus(b))) => Dest::Bus(b),
                 _ => Dest::Master,
@@ -621,7 +634,7 @@ impl Graph {
         let lead = master_in + lat(&master);
         let input_time = |d: &Dest| match d {
             Dest::Bus(b) => in_t.get(&Node::Bus(*b)).copied().unwrap_or(0),
-            Dest::Master | Dest::Direct(_) => master_in,
+            Dest::Master | Dest::Nowhere | Dest::Direct(_) => master_in,
         };
 
         for &n in &order {
@@ -979,7 +992,7 @@ impl Graph {
                     Dest::Bus(b) => &mut self.buses[b].input,
                     Dest::Master if r == 0 => &mut self.master.input,
                     // A send whose bus is gone plays nowhere.
-                    Dest::Master => continue,
+                    Dest::Master | Dest::Nowhere => continue,
                     Dest::Direct(t) => &mut out[t],
                 };
                 for (o, v) in into.iter_mut().zip(&scratch) {
@@ -1133,13 +1146,17 @@ fn run_strip_at(st: &mut Strip, pos: u64) {
         return;
     };
     let total = st.pre.len();
+    let held = auto.held();
     let mut at = 0;
     while at < total {
         let end = (at + STEP * 2).min(total);
         let frame = pos + (at / 2) as u64;
         for l in &auto.params {
-            fx.chain
-                .set_param(l.slot, &l.param, f64::from(l.value_at(frame)));
+            fx.chain.set_param(
+                l.slot,
+                &l.param,
+                f64::from(auto.param_value(&held, l, frame)),
+            );
         }
         let keys: Vec<(Id, &[f32])> = st
             .keys
@@ -1435,6 +1452,27 @@ mod tests {
         s.tracks[0].effects = chain("altaudio.gain", &[("gain", -6.0206)]);
         let out = render(&s, false, 5_000, 1_024);
         assert!((peak(&out[0], 0, 1_024) - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_track_with_no_output_is_metered_but_not_in_the_mix() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = click(dir.path());
+        let mut s = Session::new("t", RATE);
+        let heard = track(&mut s, &path, 5_000, 500, 10_000);
+        let quiet = track(&mut s, &path, 5_000, 500, 10_000);
+        s.tracks[quiet].output = Output::None;
+        assert!(crate::session::routing::is_routed(&s));
+        let out = render(&s, true, 0, 12_000);
+        // Only the track that goes to the master is in the mix.
+        let (l, _) = (out[0][5_500 * 2], out[0][5_500 * 2 + 1]);
+        assert!((l - 1.0).abs() < 0.01, "left {l}");
+        let _ = heard;
+        let mut m = mix(&s, true, 5_000);
+        let mut o = vec![Vec::new()];
+        m.render(1_024, &mut o);
+        let meters = m.graph().take_meters();
+        assert!(meters.tracks[1][0] > 0.9, "{meters:?}");
     }
 
     #[test]

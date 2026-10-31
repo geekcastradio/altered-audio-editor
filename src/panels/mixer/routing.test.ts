@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { BusDoc, EffectChainDoc, SessionDoc, TrackDoc } from "../../stores/session";
-import { busChoices, busOp, isRouted, keyChoices, MASTER_ID, newSend, outputName, reaches, removeSend, setSend } from "./routing";
+import { busChoices, busOp, isRouted, keyChoices, MASTER_ID, newSend, NONE_ID, outputName, outputOf, outputValue, reaches, removeSend, setSend } from "./routing";
 
 const chain = (sidechain?: string): EffectChainDoc => ({
   enabled: true,
@@ -59,6 +59,15 @@ describe("routing choices", () => {
     const s = [newSend("mix", "a"), newSend("reverb", "b")];
     expect(setSend(s, "b", { level_db: -6 })[1]!.level_db).toBe(-6);
     expect(removeSend(s, "a").map((x) => x.id)).toEqual(["b"]);
+  });
+
+  it("None is an output of its own", () => {
+    expect(outputName(doc, { type: "none" })).toBe("None");
+    expect(outputOf(NONE_ID)).toEqual({ type: "none" });
+    expect(outputValue({ type: "none" })).toBe(NONE_ID);
+    expect(outputValue({ type: "bus", bus_id: "mix" })).toBe("mix");
+    expect(outputValue(undefined)).toBe(MASTER_ID);
+    expect(isRouted(session([track("a", { output: { type: "none" } })], []))).toBe(true);
   });
 
   it("solos a bus exclusively when asked", () => {

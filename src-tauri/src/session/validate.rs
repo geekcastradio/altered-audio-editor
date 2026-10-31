@@ -139,7 +139,7 @@ fn check_bus_loops(session: &Session, issues: &mut Vec<Issue>) {
         .iter()
         .filter_map(|b| match b.output {
             Output::Bus { bus_id } => Some((b.id, bus_id)),
-            Output::Master => None,
+            Output::Master | Output::None => None,
         })
         .collect();
 

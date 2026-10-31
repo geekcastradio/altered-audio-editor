@@ -110,6 +110,17 @@
           "format": "uint32",
           "minimum": 0
         },
+        "record_mode": {
+          "description": "Records automation moves while playing. None plays the lanes (or not).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RecordMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "sends": {
           "description": "Aux sends to other buses.",
           "type": "array",
@@ -1077,6 +1088,39 @@
             "type",
             "bus_id"
           ]
+        },
+        {
+          "description": "Plays nowhere: out of the mix and the exports. Sends still work.",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "none"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        }
+      ]
+    },
+    "RecordMode": {
+      "description": "How a track's or bus's automation records fader and knob moves while\nplaying. A track with none just plays its lanes (Read) or not (Off).",
+      "oneOf": [
+        {
+          "description": "Writes the control's value from the moment playback starts, over what is there.",
+          "type": "string",
+          "const": "write"
+        },
+        {
+          "description": "Starts writing at the first touch and keeps writing until playback stops.",
+          "type": "string",
+          "const": "latch"
+        },
+        {
+          "description": "Writes while the control is held; the lane takes over again on release.",
+          "type": "string",
+          "const": "touch"
         }
       ]
     },
@@ -1676,6 +1720,17 @@
         "record_armed": {
           "description": "Scaffolding (P4): armed for recording.",
           "type": "boolean"
+        },
+        "record_mode": {
+          "description": "Records automation moves while playing. None plays the lanes (or not).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RecordMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "role": {
           "$ref": "#/$defs/TrackRole"

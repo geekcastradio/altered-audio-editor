@@ -26,6 +26,7 @@
   import { MASTER_CHAIN, meterFraction, type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
   import { keyChoices, MASTER_ID } from "../mixer/routing";
   import type { EffectChainDoc, EffectSlotDoc, EffectTarget, SessionDoc, SessionStore } from "../../stores/session";
+  import type { AutoTake } from "../../app/auto-take";
   import {
     addsOne,
     addSlot,
@@ -90,9 +91,11 @@
     onApplyWave?: (chain: EffectChainDoc) => Promise<void>;
     onNotice?: (m: string) => void;
     onError?: (e: unknown) => void;
+    /** Takes slider moves while a take records automation. */
+    autoTake?: AutoTake;
   }
 
-  const { session, runner, prefs, ask, transport, wave, waveTransport, onApplyWave, onNotice = () => {}, onError = console.error }: Props = $props();
+  const { session, runner, prefs, ask, transport, wave, waveTransport, onApplyWave, onNotice = () => {}, onError = console.error, autoTake }: Props = $props();
   const KEY_PRESETS = "voiceChain.presets";
   const KEY_FX_PRESETS = "voiceChain.effectPresets";
   const KEY_TAB = "voiceChain.tab";
@@ -591,8 +594,16 @@
   function shown(s: EffectSlotDoc, p: EffectParamInfo): number {
     return draft && draft.key === `${s.id}.${p.key}` ? draft.value : paramValue(s, p);
   }
+  /** Offers a built-in effect control's move to a recording take; true when it took it. */
+  function rec(s: EffectSlotDoc, p: EffectParamInfo, phase: "grab" | "move" | "release", v: number): boolean {
+    if (!autoTake || inWave || !target || (target.kind !== "track" && target.kind !== "bus")) return false;
+    if (p.hidden || p.retimes || p.toggle || p.choices) return false;
+    return autoTake.control(target.id, { type: "effect_param", slot_id: s.id, param: p.key }, phase, v);
+  }
   function drag(s: EffectSlotDoc, p: EffectParamInfo, v: number) {
+    if (draft?.key !== `${s.id}.${p.key}`) rec(s, p, "grab", paramValue(s, p));
     draft = { key: `${s.id}.${p.key}`, value: v };
+    if (rec(s, p, "move", v)) return;
     if (p.retimes) return;
     const id = s.id;
     live(() => {
@@ -603,6 +614,10 @@
   function setValue(s: EffectSlotDoc, p: EffectParamInfo, v: number) {
     settle();
     draft = null;
+    if (rec(s, p, "move", v)) {
+      rec(s, p, "release", v);
+      return;
+    }
     const cur = chain.slots.find((x) => x.id === s.id) ?? s;
     if (v === paramValue(cur, p)) return;
     commit(paramLabel(cur, p), setParam(chain, s.id, p, v));

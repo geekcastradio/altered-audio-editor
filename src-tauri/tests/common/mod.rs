@@ -158,6 +158,7 @@ pub fn track() -> Track {
         instrument: None,
         midi_clips: Vec::new(),
         envelopes: vec![envelope()],
+        record_mode: None,
     }
 }
 
@@ -179,6 +180,7 @@ pub fn bus() -> Bus {
         position: None,
         mono: false,
         space: None,
+        record_mode: None,
     }
 }
 

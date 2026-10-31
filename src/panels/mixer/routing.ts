@@ -14,6 +14,18 @@ import { settings } from "../../stores/settings";
 
 /** Id the Mixer and Voice Chain use for the master. */
 export const MASTER_ID = "master";
+/** The output picker's value for "plays nowhere". */
+export const NONE_ID = "none";
+
+/** The output a picker value stands for. */
+export function outputOf(value: string): OutputDoc {
+  return value === MASTER_ID ? { type: "master" } : value === NONE_ID ? { type: "none" } : { type: "bus", bus_id: value };
+}
+
+/** The picker value for an output. */
+export function outputValue(o: OutputDoc | undefined): string {
+  return o?.type === "bus" ? o.bus_id : o?.type === "none" ? NONE_ID : MASTER_ID;
+}
 
 interface Owner {
   id: string;
@@ -87,12 +99,13 @@ export function isRouted(doc: SessionDoc | null): boolean {
   if (!doc) return false;
   return (
     chainActive(doc.master?.effects) ||
-    doc.tracks.some((t) => t.output?.type === "bus" || (t.sends ?? []).some((s) => s.enabled) || keySources(t.effects).length > 0)
+    doc.tracks.some((t) => t.output?.type === "bus" || t.output?.type === "none" || (t.sends ?? []).some((s) => s.enabled) || keySources(t.effects).length > 0)
   );
 }
 
 /** Where `output` goes, as a label. */
 export function outputName(doc: SessionDoc, output: OutputDoc | undefined): string {
+  if (output?.type === "none") return "None";
   if (output?.type !== "bus") return "Master";
   return doc.buses?.find((b) => b.id === output.bus_id)?.name ?? "Master";
 }

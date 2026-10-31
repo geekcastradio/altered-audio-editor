@@ -1248,6 +1248,16 @@ export function pluginsSetFolder(path: string, on: boolean): Promise<PluginRegis
   return invoke<PluginRegistry>("plugins_set_folder", { path, on });
 }
 
+/** Holds a track's or bus's setting over its automation lane while a take plays (null gives it back). */
+export function automationLive(strip: string, target: import("../stores/session").EnvelopeDoc["target"], value: number | null): Promise<void> {
+  return invoke<void>("automation_live", { strip, target, value });
+}
+
+/** A take ended: every held setting goes back to its lane. */
+export function automationLiveClear(): Promise<void> {
+  return invoke<void>("automation_live_clear");
+}
+
 const windowsOpen = new Set<string>();
 /** Slots whose own plug-in window was opened and not closed since. */
 export const pluginWindowsOpen = (): string[] => [...windowsOpen];

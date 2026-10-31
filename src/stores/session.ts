@@ -65,7 +65,7 @@ export type EffectTarget =
   | { kind: "master" };
 
 /** Where a track or bus sends its sound after its fader. */
-export type OutputDoc = { type: "master" } | { type: "bus"; bus_id: string };
+export type OutputDoc = { type: "master" } | { type: "bus"; bus_id: string } | { type: "none" };
 
 /** An aux send: a copy of the sound sent on to a bus at its own level. */
 export interface SendDoc {
@@ -99,6 +99,8 @@ export interface BusDoc {
   mono?: boolean;
   /** 3D Space sessions: where it sits in the room. */
   space?: SpacePosDoc | null;
+  /** Records fader and pan moves into its automation while playing. Missing plays the lanes. */
+  record_mode?: "write" | "latch" | "touch";
   [key: string]: unknown;
 }
 
@@ -230,6 +232,8 @@ export interface TrackDoc {
   collapsed?: boolean;
   /** Its automation lanes show under it. */
   show_automation?: boolean;
+  /** Records fader and pan moves into its automation while playing. Missing plays the lanes. */
+  record_mode?: "write" | "latch" | "touch";
   /** Automation lanes: volume, pan and effect settings over the session's time. */
   envelopes?: EnvelopeDoc[];
   /** Hidden from the Editor and Mixer lists. Missing in files where it is off. */
@@ -468,6 +472,8 @@ export interface TrackChanges {
   instrument?: EffectSlotDoc;
   /** MIDI tracks: takes the instrument out. */
   clear_instrument?: boolean;
+  /** Automation recording: "off" stops it. */
+  record_mode?: "off" | "write" | "latch" | "touch";
 }
 
 export interface BusChanges {
@@ -486,6 +492,8 @@ export interface BusChanges {
   mono?: boolean;
   /** 3D Space sessions: where it sits in the room. */
   space?: SpacePosDoc | null;
+  /** Automation recording: "off" stops it. */
+  record_mode?: "off" | "write" | "latch" | "touch";
 }
 
 /** An edit the core understands. */

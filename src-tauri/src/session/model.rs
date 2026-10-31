@@ -434,6 +434,8 @@ pub enum Output {
     Bus {
         bus_id: Id,
     },
+    /// Plays nowhere: out of the mix and the exports. Sends still work.
+    None,
 }
 
 /// An aux send: a copy of a track's or bus's sound sent on to a bus at
@@ -546,6 +548,9 @@ pub struct Track {
     pub midi_clips: Vec<MidiClip>,
     /// Track automation lanes.
     pub envelopes: Vec<Envelope>,
+    /// Records automation moves while playing. None plays the lanes (or not).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub record_mode: Option<RecordMode>,
 }
 
 impl Track {
@@ -580,6 +585,7 @@ impl Track {
             instrument: None,
             midi_clips: Vec::new(),
             envelopes: Vec::new(),
+            record_mode: None,
         }
     }
 
@@ -590,6 +596,19 @@ impl Track {
             ..Self::new(name, ChannelLayout::Stereo)
         }
     }
+}
+
+/// How a track's or bus's automation records fader and knob moves while
+/// playing. A track with none just plays its lanes (Read) or not (Off).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RecordMode {
+    /// Writes the control's value from the moment playback starts, over what is there.
+    Write,
+    /// Starts writing at the first touch and keeps writing until playback stops.
+    Latch,
+    /// Writes while the control is held; the lane takes over again on release.
+    Touch,
 }
 
 /// A bus track. Tracks and other buses output or send to it; it runs
@@ -624,6 +643,9 @@ pub struct Bus {
     /// the master (in place of its pan).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub space: Option<SpacePos>,
+    /// Records automation moves while playing. None plays the lanes (or not).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub record_mode: Option<RecordMode>,
 }
 
 impl Bus {
@@ -646,6 +668,7 @@ impl Bus {
             position: None,
             mono: false,
             space: None,
+            record_mode: None,
         }
     }
 }

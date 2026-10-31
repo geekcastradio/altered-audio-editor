@@ -20,9 +20,12 @@
     icon?: "volume" | "pan";
     format: (v: number) => string;
     onChange: (v: number) => void;
+    /** The dial was grabbed / let go (automation recording follows touches). */
+    onGrab?: () => void;
+    onRelease?: () => void;
   }
 
-  const { value, min, max, step, origin, label, icon, format, onChange }: Props = $props();
+  const { value, min, max, step, origin, label, icon, format, onChange, onGrab, onRelease }: Props = $props();
 
   // The origin (0 dB, or center for pan) sits at 12 o'clock; the ends sweep 135 degrees either way.
   const angle = (v: number) => {
@@ -58,6 +61,7 @@
     const sy = e.clientY;
     const start = value;
     let last = start;
+    onGrab?.();
     const move = (ev: PointerEvent) => {
       const s = ev.shiftKey ? step / 5 : step;
       const d = ev.clientX - sx - (ev.clientY - sy);
@@ -72,6 +76,7 @@
     const up = () => {
       el.removeEventListener("pointermove", move);
       el.removeEventListener("pointerup", up);
+      onRelease?.();
     };
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);

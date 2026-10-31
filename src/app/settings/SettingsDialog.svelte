@@ -135,7 +135,7 @@
     else if (page === "Appearance") Object.assign(d.app, { colors: { ...NO_COLORS }, surface: def.surface });
     else if (page === "Autosave") Object.assign(d.app, { autosave: def.autosave, autosaveMinutes: def.autosaveMinutes, backups: def.backups, backupCount: def.backupCount });
     else if (page === "Session Media") Object.assign(d.app, { copyMedia: def.copyMedia, mediaFolder: def.mediaFolder, collectOnSave: def.collectOnSave, leaveLibraryFiles: def.leaveLibraryFiles });
-    else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb, meterSpeed: def.meterSpeed });
+    else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb, meterSpeed: def.meterSpeed, autoThinPercent: def.autoThinPercent });
   }
   const resettable = $derived(["General", "Appearance", "Autosave", "Session Media", "Playback and Recording"].includes(page));
 </script>
@@ -390,6 +390,11 @@
               <option value="medium">Medium</option>
               <option value="slow">Slow (steady, easier to read)</option>
             </select>
+          </label>
+          <label class="row" title="When a track or bus records automation (Write, Latch or Touch), points that sit on the line between their neighbors are dropped, so a long pass does not leave hundreds of points. Higher keeps fewer points; 0 keeps every one.">
+            Recorded automation: thin points
+            <input type="range" min="0" max="2" step="0.05" bind:value={d.app.autoThinPercent} />
+            <span>{d.app.autoThinPercent === 0 ? "Keep every point" : `${d.app.autoThinPercent.toFixed(2)}% of the range`}</span>
           </label>
           <fieldset>
             <legend>Recording</legend>

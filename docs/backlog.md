@@ -376,7 +376,7 @@ Feature checks and requests from testers, grouped by area, with status. Behavior
 - Parameter parity for the repair scans: declip (gain with auto, tolerance, minimum clip size, cubic or FFT fill, FFT size) and declick (threshold, complexity). Our Clip Repair and Click Repair cover the job; their settings pages need the same controls. Mark Audio is built.
 
 ### Multitrack headers
-- **Output selector** (the MIX box): None, Mix, Bus (add a mono or stereo bus), hardware outputs by channel, Audio Hardware. Missing. It depends on the master track and bus decision below.
+- **Output selector** (the MIX box): Master, Bus and None are built (0.10.0). Hardware outputs by channel and Audio Hardware: planned for 0.11.0. It depends on the master track and bus decision below.
 - **Input default** should read None, not a device, until the user picks one (check).
 - **Automation mode** (Off, Read, Write, Latch, Touch): the box shows Read and the others are greyed out. Read plays automation today; the other modes need track-level automation. Make the Read item behave as a visible state, not a dead control, until then.
 - **Master track and buses:** the open design call stays open: the chain lags the faders by half a second (recommended), or chains run before their own fader. Needed by the output selector and by pre-fader and post-fader effect placement.
@@ -446,7 +446,7 @@ Every effect family with the controls testers expect, then multitrack, clips, au
 
 ### Automation
 - Track envelopes for volume, pan and effect settings, and clip envelopes. Clip envelopes built; track-level automation not built.
-- Automation modes: Read, Write, Latch, Touch (record fader moves while playing, with keyframe thinning settings to avoid too many points), plus Off. Not built.
+- Automation modes: Read, Write, Latch, Touch (record fader moves while playing, with keyframe thinning settings to avoid too many points), plus Off. Volume and pan built in 0.10.0; effect settings and master pending.
 - Spline (curved) segments, per keyframe or for a whole envelope, and numeric keyframe entry. Not built.
 
 ### Video and surround (not started, one later phase)
