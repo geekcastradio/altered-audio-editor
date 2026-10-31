@@ -10,11 +10,63 @@
 //! as clip effect automation does. Values hold flat before the first
 //! point and after the last, and move in straight lines between points.
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use super::graph::Place;
 use super::plan::{to_out, ParamLane};
-use crate::session::model::{Envelope, EnvelopeTarget, Send, SpaceParam};
+use crate::session::model::{Envelope, EnvelopeTarget, Id, Send, SpaceParam};
+
+/// A setting that can be taken over by hand while its lane plays.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum LiveKey {
+    Volume,
+    Pan,
+    Param(Id, String),
+}
+
+type LiveMap = HashMap<(Id, LiveKey), f32>;
+
+fn live_map() -> &'static Mutex<LiveMap> {
+    static M: OnceLock<Mutex<LiveMap>> = OnceLock::new();
+    M.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// While recording automation, the setting a hand holds (a fader, a pan or
+/// an effect control) replaces its lane's value, so the take is heard as it
+/// is played. `None` gives the setting back to its lane.
+pub fn set_live(strip: Id, key: LiveKey, value: Option<f32>) {
+    if let Ok(mut m) = live_map().lock() {
+        match value {
+            Some(v) => {
+                m.insert((strip, key), v);
+            }
+            None => {
+                m.remove(&(strip, key));
+            }
+        }
+    }
+}
+
+/// Gives every setting back to its lane (a take ended).
+pub fn clear_live() {
+    if let Ok(mut m) = live_map().lock() {
+        m.clear();
+    }
+}
+
+/// The held settings of one strip. Read once a block on the render thread;
+/// a busy table counts as nothing held for that block.
+fn live_of(strip: Id) -> Vec<(LiveKey, f32)> {
+    match live_map().try_lock() {
+        Ok(m) if !m.is_empty() => m
+            .iter()
+            .filter(|((s, _), _)| *s == strip)
+            .map(|((_, k), v)| (k.clone(), *v))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
 
 /// Lowest volume a lane reaches: at or below it is silence.
 const SILENT_DB: f32 = -59.9;
@@ -58,6 +110,8 @@ fn lane(e: &Envelope, session_rate: u32, out_rate: u32) -> ParamLane {
 /// A strip's automation, ready to play, with its scratch.
 #[derive(Default)]
 pub struct StripAuto {
+    /// The track or bus this is for (for hand-held settings).
+    pub strip: Id,
     volume: Option<ParamLane>,
     pan: Option<ParamLane>,
     pub params: Vec<ParamLane>,
@@ -115,6 +169,19 @@ impl StripAuto {
         Some(Arc::new(Place::at(base.layout, &spot, base.stereo)))
     }
 
+    /// An effect setting's value at timeline frame `frame`: the one held by
+    /// hand when there is one, otherwise its lane's.
+    pub fn param_value(&self, held: &[(LiveKey, f32)], lane: &ParamLane, frame: u64) -> f32 {
+        held.iter()
+            .find(|(k, _)| matches!(k, LiveKey::Param(s, p) if *s == lane.slot && *p == lane.param))
+            .map_or_else(|| lane.value_at(frame), |(_, v)| *v)
+    }
+
+    /// The settings of this strip held by hand right now.
+    pub fn held(&self) -> Vec<(LiveKey, f32)> {
+        live_of(self.strip)
+    }
+
     pub fn moves_level(&self) -> bool {
         self.volume.is_some() || self.pan.is_some()
     }
@@ -123,11 +190,20 @@ impl StripAuto {
     pub fn fill(&mut self, pos: u64, frames: usize) {
         self.vol.clear();
         self.pan_lr.clear();
+        let held = live_of(self.strip);
+        let held_vol = held
+            .iter()
+            .find(|(k, _)| *k == LiveKey::Volume)
+            .map(|(_, v)| *v);
+        let held_pan = held
+            .iter()
+            .find(|(k, _)| *k == LiveKey::Pan)
+            .map(|(_, v)| *v);
         for f in 0..frames {
             let at = pos + f as u64;
             let v = match &self.volume {
                 Some(l) => {
-                    let db = l.value_at(at);
+                    let db = held_vol.unwrap_or_else(|| l.value_at(at));
                     if db <= SILENT_DB {
                         0.0
                     } else {
@@ -138,7 +214,9 @@ impl StripAuto {
             };
             self.vol.push(v);
             let p = match &self.pan {
-                Some(l) => super::graph::balance(f64::from(l.value_at(at))),
+                Some(l) => {
+                    super::graph::balance(f64::from(held_pan.unwrap_or_else(|| l.value_at(at))))
+                }
                 None => [1.0, 1.0],
             };
             self.pan_lr.push(p);
@@ -207,6 +285,50 @@ mod tests {
         let mut off = env(EnvelopeTarget::Volume, &[(0, -20.0)]);
         off.enabled = false;
         assert!(StripAuto::new(&[off, env(EnvelopeTarget::Pan, &[])], &[], 1_000, 1_000).is_none());
+    }
+
+    #[test]
+    fn a_held_setting_replaces_its_lane() {
+        let strip = new_id();
+        let envs = vec![
+            env(EnvelopeTarget::Volume, &[(0, 0.0), (1_000, -6.0206)]),
+            env(EnvelopeTarget::Pan, &[(0, -100.0)]),
+        ];
+        let mut a = StripAuto::new(&envs, &[], 1_000, 1_000).unwrap();
+        a.strip = strip;
+        set_live(strip, LiveKey::Volume, Some(-20.0));
+        a.fill(1_000, 1);
+        assert!((a.vol[0] - 0.1).abs() < 1e-3, "{}", a.vol[0]);
+        // Pan was not held: its lane still plays.
+        assert_eq!(a.pan_lr[0], [1.0, 0.0]);
+        set_live(strip, LiveKey::Volume, None);
+        a.fill(1_000, 1);
+        assert!((a.vol[0] - 0.5).abs() < 1e-3);
+        // Another strip's hold does nothing here.
+        set_live(new_id(), LiveKey::Volume, Some(-60.0));
+        a.fill(1_000, 1);
+        assert!((a.vol[0] - 0.5).abs() < 1e-3);
+        clear_live();
+    }
+
+    #[test]
+    fn a_held_effect_setting_replaces_its_lane() {
+        let strip = new_id();
+        let slot = new_id();
+        let envs = vec![env(
+            EnvelopeTarget::EffectParam {
+                slot_id: slot,
+                param: "gain".into(),
+            },
+            &[(0, 1.0), (1_000, 3.0)],
+        )];
+        let mut a = StripAuto::new(&envs, &[], 1_000, 1_000).unwrap();
+        a.strip = strip;
+        let lane = a.params[0].clone();
+        assert_eq!(a.param_value(&a.held(), &lane, 500), 2.0);
+        set_live(strip, LiveKey::Param(slot, "gain".into()), Some(9.0));
+        assert_eq!(a.param_value(&a.held(), &lane, 500), 9.0);
+        clear_live();
     }
 
     #[test]

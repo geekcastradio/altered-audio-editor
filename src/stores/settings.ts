@@ -67,6 +67,8 @@ export interface AppSettings {
   openChainOnAdd: boolean;
   /** Soloing a track unsolos the others. */
   soloExclusive: boolean;
+  /** Recorded automation drops points within this percent of a lane's range of the line between their neighbors (0 keeps every point). */
+  autoThinPercent: number;
   /** Meter color changes, dBFS. */
   meterYellowDb: number;
   meterRedDb: number;
@@ -99,6 +101,8 @@ export interface AppSettings {
   updateCheck: boolean;
   /** When the last update check ran, in milliseconds since 1970. 0 means never. */
   lastUpdateCheck: number;
+  /** The first-run welcome was shown. */
+  welcomeSeen: boolean;
   /** 3D Space: dots snap to speakers, the center lines and a grid; turns snap to 15 degrees. */
   spaceSnap: boolean;
 }
@@ -179,6 +183,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   openChainOnAdd: true,
   realtimePlugins: false,
   soloExclusive: false,
+  autoThinPercent: 0.3,
   meterYellowDb: -12,
   meterRedDb: -3,
   backups: false,
@@ -195,6 +200,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ampModelAlways: false,
   updateCheck: false,
   lastUpdateCheck: 0,
+  welcomeSeen: false,
   spaceSnap: true,
   metronome: { on: false, muted: false, when: "always", levelDb: -6, sound: "tick", accent: true, subdivide: "none" },
 };
@@ -268,6 +274,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
     openChainOnAdd: bool(o.openChainOnAdd, d.openChainOnAdd),
     realtimePlugins: bool(o.realtimePlugins, d.realtimePlugins),
     soloExclusive: bool(o.soloExclusive, d.soloExclusive),
+    autoThinPercent: Math.round(num(o.autoThinPercent, 0, 2, d.autoThinPercent) * 100) / 100,
     meterYellowDb: yellow,
     // Red sits above yellow.
     meterRedDb: num(
@@ -299,6 +306,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
         ? Math.floor(o.lastUpdateCheck)
         : d.lastUpdateCheck,
     metronome: metronomePrefs(o.metronome),
+    welcomeSeen: bool(o.welcomeSeen, d.welcomeSeen),
     spaceSnap: bool(o.spaceSnap, d.spaceSnap),
   };
 }

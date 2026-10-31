@@ -153,6 +153,8 @@ pub fn run() {
             commands::session::session_get,
             commands::session::session_apply,
             commands::session::session_set_view,
+            commands::session::automation_live,
+            commands::session::automation_live_clear,
             commands::session::session_new,
             commands::session::session_park,
             commands::session::session_resume,

@@ -41,7 +41,7 @@ fn index(s: &Session) -> HashMap<Id, Node> {
 pub fn output_bus(s: &Session, output: &Output) -> Option<usize> {
     match output {
         Output::Bus { bus_id } => s.buses.iter().position(|b| b.id == *bus_id),
-        Output::Master => None,
+        Output::Master | Output::None => None,
     }
 }
 

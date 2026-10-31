@@ -41,6 +41,9 @@
   import MenuBar, { type PopupList } from "./menus/MenuBar.svelte";
   import type { ContextItem } from "./ContextMenu.svelte";
   import AboutDialog from "./AboutDialog.svelte";
+  import GuideDialog from "./GuideDialog.svelte";
+  import WelcomeDialog from "./WelcomeDialog.svelte";
+  import { welcomeDue } from "./guide/guide";
   import UpdateDialog from "./UpdateDialog.svelte";
   import { updateCheck, updateDue, updateInstall, type UpdateInfo } from "./update";
   import HistoryPanel from "../panels/history/HistoryPanel.svelte";
@@ -221,7 +224,10 @@
     waveStretch,
     wavePitchEdit,
     waveReverseInvert,
+    automationLive,
+    automationLiveClear,
   } from "./core";
+  import { AutoTake } from "./auto-take";
   import { isTauri } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import type { EffectChainDoc, EffectTarget, MediaRefDoc, SessionDoc } from "../stores/session";
@@ -2163,7 +2169,7 @@
       case "mixer":
         return {
           component: asComponent(MixerPanel),
-          props: { session, transport, runner: sessionHistory, onError: showError },
+          props: { session, transport, runner: sessionHistory, onError: showError, autoTake },
         };
       case "time-info":
         return { component: asComponent(TimeInfoPanel), props: { session, transport, wave, waveTransport } };
@@ -2181,7 +2187,7 @@
       case "voice-chain":
         return {
           component: asComponent(VoiceChainPanel),
-          props: { session, runner: sessionHistory, prefs, ask: promptText, transport, wave, waveTransport, onApplyWave: applyWaveChain, onNotice: showNotice, onError: showError },
+          props: { session, runner: sessionHistory, prefs, ask: promptText, transport, wave, waveTransport, onApplyWave: applyWaveChain, onNotice: showNotice, onError: showError, autoTake },
         };
       case "audio-fx":
         return { component: asComponent(AudioFxPanel), props: { session, runner: sessionHistory, wave, onNotice: showNotice, onError: showError } };
@@ -2228,6 +2234,7 @@
           component: asComponent(EditorPanel),
           props: {
             onShowChain: () => dock.show("voice-chain"),
+            autoTake,
             session,
             runner: sessionHistory,
             peaks,
@@ -2269,6 +2276,12 @@
   });
 
   let aboutOpen = $state(false);
+  let guideOpen = $state(false);
+  function closeWelcome() {
+    welcomeOpen = false;
+    settings.set({ ...settings.current, welcomeSeen: true });
+  }
+  let welcomeOpen = $state(false);
   let updateInfo = $state<UpdateInfo | null>(null);
   let updateOpen = $state(false);
   let updateBusy = $state(false);
@@ -2733,6 +2746,27 @@
    * a file the session uses: the session plays files as saved on disk, so
    * offer to save them now.
    */
+  // Recording automation: a take runs from Play to Stop, taking the moves of tracks and buses in Write, Latch or Touch.
+  const autoTake = new AutoTake({
+    doc: () => session.current,
+    position: () => transport.current.position,
+    thin: () => settings.current.autoThinPercent / 100,
+    applyDirect: (op) => session.apply(op),
+    commit: (label, op) => session.edit(label, op, sessionHistory),
+    live: (owner, target, value) => void automationLive(owner, target, value).catch(() => {}),
+    clearLive: () => void automationLiveClear().catch(() => {}),
+    catalog: () => fxCatalog ?? [],
+  });
+  let wasPlaying = false;
+  $effect(() =>
+    transport.subscribe((t) => {
+      if (t.playing === wasPlaying) return;
+      wasPlaying = t.playing;
+      if (t.playing) autoTake.start();
+      else void autoTake.stop().catch(showError);
+    }),
+  );
+
   let lastMode = editor.current().mode;
   $effect(() =>
     editor.subscribe((e) => {
@@ -3901,6 +3935,7 @@
         },
       }),
       actions.register({ id: "help.about", run: () => void (aboutOpen = true) }),
+      actions.register({ id: "help.guide", run: () => void (guideOpen = true) }),
       actions.register({
         id: "file.import-files",
         run: async () => importPaths(await pickMediaFiles()),
@@ -5342,8 +5377,11 @@
       .then(() => {
         // Editor settings (snapping, crossfades, time format) carry over between runs.
         restoreSettings(prefs.raw(KEY_EDITOR));
-        settings.set(sanitizeSettings(prefs.raw(KEY_SETTINGS)));
+        const savedSettings = prefs.raw(KEY_SETTINGS);
+        settings.set(sanitizeSettings(savedSettings));
         applyAppSettings(settings.current, false);
+        // First run only: a short welcome. Later runs, and people who had settings saved before it existed, never see it.
+        if (welcomeDue(savedSettings)) welcomeOpen = true;
         offs.push(startMetronome());
         // The weekly update check is off unless turned on in Settings > Privacy.
         const c = settings.current;
@@ -5773,6 +5811,18 @@
   />
 {/if}
 
+{#if guideOpen}
+  <GuideDialog onClose={() => (guideOpen = false)} />
+{/if}
+{#if welcomeOpen}
+  <WelcomeDialog
+    onGuide={() => {
+      closeWelcome();
+      guideOpen = true;
+    }}
+    onClose={closeWelcome}
+  />
+{/if}
 {#if aboutOpen}
   <AboutDialog version={info?.version ?? null} onClose={() => (aboutOpen = false)} />
 {/if}

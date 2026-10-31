@@ -755,6 +755,7 @@ fn routing_hash(session: &Session) -> u64 {
     }
     let output = |o: &crate::session::model::Output| match o {
         crate::session::model::Output::Master => 0,
+        crate::session::model::Output::None => u128::MAX,
         crate::session::model::Output::Bus { bus_id } => bus_id.as_u128(),
     };
     let chain = |c: &EffectChain, mix: &mut dyn FnMut(u128)| {

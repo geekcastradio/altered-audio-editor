@@ -9,7 +9,7 @@
   fader, on and off, and remove. Choices that would loop are left out.
 -->
 <script lang="ts">
-  import { busChoices, busOp, MASTER_ID, newSend, removeSend, setSend } from "./routing";
+  import { busChoices, busOp, MASTER_ID, NONE_ID, newSend, outputOf, outputValue, removeSend, setSend } from "./routing";
   import { dbToFader, formatDb } from "./fader";
   import type { CommandRunner } from "../../stores/media-pool";
   import type { Op, OutputDoc, SendDoc, SessionDoc, SessionStore } from "../../stores/session";
@@ -43,7 +43,7 @@
   }
 
   function setOutput(value: string) {
-    const o: OutputDoc = value === MASTER_ID ? { type: "master" } : { type: "bus", bus_id: value };
+    const o: OutputDoc = outputOf(value);
     const changes = { output: o };
     const label = kind === "bus" ? "Route Bus Output" : "Route Track Output";
     edit(label, kind === "bus" ? busOp(doc, id, changes) : trackOp(doc, id, changes));
@@ -79,8 +79,9 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="routing" onclick={stop} onpointerdown={stop}>
   {#if !noOutput}
-    <select class="out" aria-label="{name} output" title="Where this {kind}'s sound goes after its fader" value={output.type === "bus" ? output.bus_id : MASTER_ID} onchange={(e) => setOutput(e.currentTarget.value)}>
+    <select class="out" aria-label="{name} output" title="Where this {kind}'s sound goes after its fader" value={outputValue(output)} onchange={(e) => setOutput(e.currentTarget.value)}>
       <option value={MASTER_ID}>To Master</option>
+      <option value={NONE_ID}>To None (not in the mix)</option>
       {#each choices as b (b.id)}<option value={b.id}>To {b.name}</option>{/each}
       {#if output.type === "bus" && !choices.some((b) => output.type === "bus" && b.id === output.bus_id)}
         <option value={output.bus_id}>To {busName(output.bus_id)}</option>

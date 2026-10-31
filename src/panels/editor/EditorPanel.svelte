@@ -10,7 +10,7 @@
 <script lang="ts">
   import { settings, wheelAnchorX, zoomRatios } from "../../stores/settings";
   import { trackOp } from "../mixer/solo";
-  import { busChoices, busOp, MASTER_ID, newSend } from "../mixer/routing";
+  import { busChoices, busOp, MASTER_ID, NONE_ID, newSend, outputOf, outputValue } from "../mixer/routing";
   import SendList from "../mixer/SendList.svelte";
   import { onDestroy, tick as nextFrame } from "svelte";
   import type { ActionRegistry } from "../../app/actions";
@@ -29,6 +29,7 @@
   import { pluginMenuGroups, type MenuPlugin } from "../voice-chain/chain";
   import { effectWindowRequest } from "../voice-chain/effect-window";
   import type { EffectSlotDoc, EnvelopeDoc, Op } from "../../stores/session";
+  import type { AutoTake } from "../../app/auto-take";
   import { pluginsVersion } from "../../stores/plugins";
   import { stretchTo } from "./stretch";
   import { timeDisplayItems } from "./time-menu";
@@ -55,7 +56,7 @@
   import TempoStrip from "./TempoStrip.svelte";
   import MetronomeRow from "./MetronomeRow.svelte";
   import AutoLane from "./AutoLane.svelte";
-  import { laneHeight, autoAt, autoChoices, autoMode, autoName, autoRange, autoRest, dropLane, isOrphan, newLane, nextTarget, putLane, setMode, shownLanes, targetKey, type AutoTarget } from "./automation";
+  import { laneHeight, autoAt, autoChoices, autoMode, modeChange, type AutoModeName, autoName, autoRange, autoRest, dropLane, isOrphan, newLane, nextTarget, putLane, setMode, shownLanes, targetKey, type AutoTarget } from "./automation";
   import { setMetronomePrefs } from "../../stores/metronome";
   import { addChange, nearestBar, secondsToBeats } from "../../stores/tempo";
   import type { Readable } from "svelte/store";
@@ -87,6 +88,8 @@
     onWaveLevel?: (db: number) => void;
     /** Brings the Voice Chain panel forward. */
     onShowChain?: () => void;
+    /** Takes dial moves while a take records automation. */
+    autoTake?: AutoTake;
   }
 
   const {
@@ -105,6 +108,7 @@
     waveTransport,
     onWaveLevel = () => {},
     onShowChain = () => {},
+    autoTake,
   }: Props = $props();
 
   let wf = $state<WaveFile | null>(null);
@@ -280,10 +284,10 @@
   }
   /** Where a track's or bus's sound goes: the master or a bus. */
   function setOutput(kind: "track" | "bus", id: string, value: string) {
-    const o = value === MASTER_ID ? { type: "master" as const } : { type: "bus" as const, bus_id: value };
+    const o = outputOf(value);
     headerEdit(kind === "bus" ? "Route Bus Output" : "Route Track Output", kind === "bus" ? busOp(doc, id, { output: o }) : trackOp(doc, id, { output: o }));
   }
-  const outName = (o: { type: string; bus_id?: string } | undefined) => (o?.type === "bus" ? (doc?.buses?.find((b) => b.id === o.bus_id)?.name ?? "Missing bus") : "Master");
+  const outName = (o: { type: string; bus_id?: string } | undefined) => (o?.type === "bus" ? (doc?.buses?.find((b) => b.id === o.bus_id)?.name ?? "Missing bus") : o?.type === "none" ? "None" : "Master");
   let pianoRoll = $state<{ trackId: string; clipId: string } | null>(null);
   const tempo = $derived(doc ? tempoOf(doc) : { bpm: 120, beats_per_bar: 4 });
 
@@ -1809,6 +1813,7 @@
         label: "Output To",
         items: [
           { kind: "item", label: "Master", checked: out.type === "master", run: () => setTrack(track, { output: { type: "master" } }, "Route Track Output") },
+          { kind: "item", label: "None", checked: out.type === "none", run: () => setTrack(track, { output: { type: "none" } }, "Route Track Output") },
           ...choices.map((b): ContextItem => ({ kind: "item", label: b.name, checked: out.type === "bus" && out.bus_id === b.id, run: () => setTrack(track, { output: { type: "bus", bus_id: b.id } }, "Route Track Output") })),
         ],
       },
@@ -1842,7 +1847,29 @@
     ];
   }
 
+  /** Grab and release for a dial, so a take knows when a control is held. */
+  const holdOf = (id: string, type: "volume" | "pan", value: () => number) => ({
+    onGrab: () => void autoTake?.control(id, { type }, "grab", value()),
+    onRelease: () => void autoTake?.control(id, { type }, "release", value()),
+  });
+
+  /** Picks an automation mode: the lanes and the record setting change together, as one undo step. */
+  function pickMode(owner: TrackDoc | BusDoc, kind: "track" | "bus", mode: AutoModeName) {
+    const m = modeChange(owner, mode);
+    const ops: Op[] = [];
+    if (m.envelopes.length > 0) ops.push({ op: "set_envelopes", owner: owner.id, envelopes: m.envelopes });
+    ops.push({ op: kind === "bus" ? "set_bus" : "set_track", id: owner.id, changes: { record_mode: m.record } } as Op);
+    void session.edit("Automation Mode", ops.length === 1 ? ops[0]! : { op: "batch", ops }, runner).catch(onError);
+  }
+
+  const MODE_TIP =
+    "Automation mode. Off plays no lanes. Read plays them. While playing, Write records the fader, pan and effect moves you make from the first moment on, Latch from your first touch on, and Touch only while you hold the control. Everything recorded is one undo step when you stop.";
+
   function setBus(b: BusDoc, changes: Record<string, unknown>, label: string) {
+    if (autoTake && ("volume_db" in changes || "pan" in changes)) {
+      const type = "volume_db" in changes ? "volume" : "pan";
+      if (autoTake.control(b.id, { type }, "move", Number(changes[type === "volume" ? "volume_db" : "pan"]))) return;
+    }
     void session.edit(label, busOp(doc, b.id, changes), runner).catch(onError);
   }
 
@@ -1968,6 +1995,7 @@
   const formatPan = (p: number) => (Math.round(p) === 0 ? "C" : p < 0 ? `L${Math.round(-p)}` : `R${Math.round(p)}`);
 
   function setValue(track: TrackDoc, key: "volume_db" | "pan", value: number) {
+    if (autoTake?.control(track.id, { type: key === "volume_db" ? "volume" : "pan" }, "move", value)) return;
     const label = key === "volume_db" ? "Track Volume" : "Track Pan";
     void session.edit(label, { op: "set_track", id: track.id, changes: { [key]: value } }, runner).catch(onError);
   }
@@ -2493,6 +2521,7 @@
                 icon="volume"
                 format={(v) => `${formatDb(v)}`}
                 onChange={(v) => setValue(track, "volume_db", v)}
+                {...holdOf(track.id, "volume", () => track.volume_db)}
               />
               {#if doc?.space}
                 <button
@@ -2505,7 +2534,7 @@
                   }}>3D</button
                 >
               {:else}
-                <Dial value={track.pan} min={-100} max={100} step={1} origin={0} label="Pan" icon="pan" format={formatPan} onChange={(v) => setValue(track, "pan", v)} />
+                <Dial value={track.pan} min={-100} max={100} step={1} origin={0} label="Pan" icon="pan" format={formatPan} onChange={(v) => setValue(track, "pan", v)} {...holdOf(track.id, "pan", () => track.pan)} />
               {/if}
               <button
                 type="button"
@@ -2549,8 +2578,9 @@
               <div class="line">
                 <label class="pick outpick" title="Where this track's sound goes after its fader: the master or a bus">
                   <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M14.5 8h-9M8.5 5l-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M3 3v10" stroke="currentColor" stroke-width="1.4" /></svg>
-                  <select aria-label="{track.name} output" value={out.type === "bus" ? out.bus_id : MASTER_ID} onchange={(e) => setOutput("track", track.id, e.currentTarget.value)}>
+                  <select aria-label="{track.name} output" value={outputValue(out)} onchange={(e) => setOutput("track", track.id, e.currentTarget.value)}>
                     <option value={MASTER_ID}>Master</option>
+                    <option value={NONE_ID}>None</option>
                     {#each busChoices(doc, track.id) as bc (bc.id)}<option value={bc.id}>{bc.name}</option>{/each}
                     {#if out.type === "bus" && !busChoices(doc, track.id).some((bc) => out.type === "bus" && bc.id === out.bus_id)}<option value={out.bus_id}>{outName(out)}</option>{/if}
                   </select>
@@ -2563,14 +2593,14 @@
                 <select
                   class="auto"
                   value={autoMode(track)}
-                  title="Automation mode. Read plays the track's automation lanes; Off plays none of them (the fader, pan and effects hold still). Write, Latch and Touch (recording moves while playing) are not built yet."
-                  onchange={(e) => setLanes(track, setMode(track, e.currentTarget.value === "off" ? "off" : "read"), "Automation Mode")}
+                  title={MODE_TIP}
+                  onchange={(e) => pickMode(track, "track", e.currentTarget.value as AutoModeName)}
                 >
                   <option value="off" disabled={(track.envelopes?.length ?? 0) === 0}>Off</option>
                   <option value="read">Read</option>
-                  <option value="write" disabled>Write (not built yet)</option>
-                  <option value="latch" disabled>Latch (not built yet)</option>
-                  <option value="touch" disabled>Touch (not built yet)</option>
+                  <option value="write">Write</option>
+                  <option value="latch">Latch</option>
+                  <option value="touch">Touch</option>
                 </select>
                 {@render lanesToggle(track)}
               </div>
@@ -2670,16 +2700,24 @@
             </div>
             {#if headerView === "mix"}
               <div class="line">
-                <Dial value={b.volume_db} min={-60} max={12} step={0.1} origin={0} label="Volume" icon="volume" format={(v) => `${formatDb(v)}`} onChange={(v) => setBus(b, { volume_db: v }, "Bus Volume")} />
-                <Dial value={b.pan} min={-100} max={100} step={1} origin={0} label="Pan" icon="pan" format={formatPan} onChange={(v) => setBus(b, { pan: v }, "Bus Pan")} />
+                <Dial value={b.volume_db} min={-60} max={12} step={0.1} origin={0} label="Volume" icon="volume" format={(v) => `${formatDb(v)}`} onChange={(v) => setBus(b, { volume_db: v }, "Bus Volume")} {...holdOf(b.id, "volume", () => b.volume_db)} />
+                <Dial value={b.pan} min={-100} max={100} step={1} origin={0} label="Pan" icon="pan" format={formatPan} onChange={(v) => setBus(b, { pan: v }, "Bus Pan")} {...holdOf(b.id, "pan", () => b.pan)} />
+                <select class="auto" aria-label="{b.name} automation mode" value={autoMode(b)} title={MODE_TIP} onchange={(e) => pickMode(b, "bus", e.currentTarget.value as AutoModeName)}>
+                  <option value="off">Off</option>
+                  <option value="read">Read</option>
+                  <option value="write">Write</option>
+                  <option value="latch">Latch</option>
+                  <option value="touch">Touch</option>
+                </select>
                 <button type="button" class="ms mono" class:on={!!b.mono} title="Mono: folds this bus's left and right into one centered signal, after its effects and before its fader and pan. Part of the mix, so exports hear it too." aria-pressed={!!b.mono} onclick={() => setBus(b, { mono: !b.mono }, b.mono ? "Bus Stereo" : "Bus Mono")}>MONO</button>
               </div>
               {#if busHeight(b) >= ROW_OUTPUT - 8 && doc}
                 <div class="line">
                   <label class="pick outpick" title="Where this bus's sound goes after its fader: the master or another bus">
                     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M14.5 8h-9M8.5 5l-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M3 3v10" stroke="currentColor" stroke-width="1.4" /></svg>
-                    <select aria-label="{b.name} output" value={b.output.type === "bus" ? b.output.bus_id : MASTER_ID} onchange={(e) => setOutput("bus", b.id, e.currentTarget.value)}>
+                    <select aria-label="{b.name} output" value={outputValue(b.output)} onchange={(e) => setOutput("bus", b.id, e.currentTarget.value)}>
                       <option value={MASTER_ID}>Master</option>
+                      <option value={NONE_ID}>None</option>
                       {#each busChoices(doc, b.id) as bc (bc.id)}<option value={bc.id}>{bc.name}</option>{/each}
                     </select>
                   </label>

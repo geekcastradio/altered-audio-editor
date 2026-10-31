@@ -325,6 +325,7 @@ describe("menu model", () => {
       "fx.capture-noise-print",
       "fx.add.echo",
       "fx.hide-windows",
+      "help.guide",
     ]);
     for (const m of MENUS) {
       for (const it of allItems(m.items)) {

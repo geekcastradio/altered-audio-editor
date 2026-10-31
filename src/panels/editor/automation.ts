@@ -30,6 +30,8 @@ export interface AutoOwner {
   space?: SpacePosDoc | null;
   channels?: "mono" | "stereo";
   mono?: boolean;
+  /** Write, Latch or Touch: moves made while playing are recorded into the lanes. */
+  record_mode?: "write" | "latch" | "touch";
 }
 
 /** The spot settings a lane can move, in the order the picker lists them. */
@@ -254,9 +256,18 @@ export function autoMove(points: readonly EnvelopePointDoc[], i: number, pos: nu
 }
 
 /** The track's automation mode as its header shows it: Read while any lane plays, Off when every lane is off. */
-export function autoMode(owner: AutoOwner): "read" | "off" {
+export type AutoModeName = "off" | "read" | "write" | "latch" | "touch";
+
+export function autoMode(owner: AutoOwner): AutoModeName {
+  if (owner.record_mode) return owner.record_mode;
   const envs = owner.envelopes ?? [];
   return envs.length === 0 || envs.some((e) => e.enabled) ? "read" : "off";
+}
+
+/** The lanes and record setting a mode choice leaves: every mode but Off plays the lanes; only the last three record. */
+export function modeChange(owner: AutoOwner, mode: AutoModeName): { envelopes: EnvelopeDoc[]; record: "off" | "write" | "latch" | "touch" } {
+  const on = mode !== "off";
+  return { envelopes: (owner.envelopes ?? []).map((e) => ({ ...e, enabled: on })), record: mode === "write" || mode === "latch" || mode === "touch" ? mode : "off" };
 }
 
 /** Every lane on (Read) or off. */

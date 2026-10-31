@@ -17,8 +17,8 @@ use uuid::Uuid;
 use super::model::{
     AudioType, Bus, ChannelLayout, ChannelMix, ChapterInfo, Clip, ClipLoop, ClipStretch,
     EffectChain, EffectSlot, Envelope, EnvelopePoint, EnvelopeTarget, Fade, Id, Marker, MarkerKind,
-    MediaRef, MidiClip, Output, Send, Session, SessionView, Space, SpacePos, Tempo, Track,
-    TrackKind, TrackRole, STRETCH_MAX, STRETCH_MIN,
+    MediaRef, MidiClip, Output, RecordMode, Send, Session, SessionView, Space, SpacePos, Tempo,
+    Track, TrackKind, TrackRole, STRETCH_MAX, STRETCH_MIN,
 };
 
 /// Points for one effect setting's envelope on a clip.
@@ -68,6 +68,36 @@ impl ClipSpec {
     }
 }
 
+/// A record mode as an edit: `off` clears it (JSON null could not say "clear" next to "leave alone").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RecordChoice {
+    Off,
+    Write,
+    Latch,
+    Touch,
+}
+
+impl RecordChoice {
+    fn mode(self) -> Option<RecordMode> {
+        match self {
+            Self::Off => None,
+            Self::Write => Some(RecordMode::Write),
+            Self::Latch => Some(RecordMode::Latch),
+            Self::Touch => Some(RecordMode::Touch),
+        }
+    }
+
+    fn of(mode: Option<RecordMode>) -> Self {
+        match mode {
+            None => Self::Off,
+            Some(RecordMode::Write) => Self::Write,
+            Some(RecordMode::Latch) => Self::Latch,
+            Some(RecordMode::Touch) => Self::Touch,
+        }
+    }
+}
+
 /// Track settings to change. Fields left out stay as they are.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct TrackChanges {
@@ -100,6 +130,9 @@ pub struct TrackChanges {
     /// Shows or hides its automation lanes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub show_automation: Option<bool>,
+    /// How automation records moves while playing; `off` plays the lanes only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub record_mode: Option<RecordChoice>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hidden: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -156,6 +189,9 @@ pub struct BusChanges {
     /// Folds the bus to mono after its Voice Chain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mono: Option<bool>,
+    /// How automation records moves while playing; `off` plays the lanes only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub record_mode: Option<RecordChoice>,
 }
 
 /// Changes to one clip. Fields left out are unchanged. `track_id` moves
@@ -488,7 +524,7 @@ fn bus_index(s: &Session, id: Id) -> Result<usize, OpError> {
 
 fn check_output(s: &Session, output: &Output) -> Result<(), OpError> {
     match output {
-        Output::Master => Ok(()),
+        Output::Master | Output::None => Ok(()),
         Output::Bus { bus_id } => bus_index(s, *bus_id).map(|_| ()),
     }
 }
@@ -661,6 +697,12 @@ fn apply_one(s: &mut Session, op: &Op) -> Result<Op, OpError> {
             }
             if let Some(v) = changes.show_automation {
                 old.show_automation = Some(std::mem::replace(&mut t.show_automation, v));
+            }
+            if let Some(v) = changes.record_mode {
+                old.record_mode = Some(RecordChoice::of(std::mem::replace(
+                    &mut t.record_mode,
+                    v.mode(),
+                )));
             }
             if let Some(v) = changes.hidden {
                 old.hidden = Some(std::mem::replace(&mut t.hidden, v));
@@ -1045,6 +1087,12 @@ fn apply_one(s: &mut Session, op: &Op) -> Result<Op, OpError> {
             }
             if let Some(v) = changes.mono {
                 old.mono = Some(std::mem::replace(&mut b.mono, v));
+            }
+            if let Some(v) = changes.record_mode {
+                old.record_mode = Some(RecordChoice::of(std::mem::replace(
+                    &mut b.record_mode,
+                    v.mode(),
+                )));
             }
             if let Some(v) = changes.output {
                 old.output = Some(std::mem::replace(&mut b.output, v));

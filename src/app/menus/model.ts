@@ -555,7 +555,7 @@ export const MENUS: readonly Menu[] = [
     label: "Help",
     mnemonic: "H",
     items: [
-      item("help.guide", "User Guide", { pending: LATER }),
+      item("help.guide", "User Guide"),
       item("help.shortcuts", "Keyboard Shortcuts"),
       sep,
       item("help.website", "The GCRN Website"),

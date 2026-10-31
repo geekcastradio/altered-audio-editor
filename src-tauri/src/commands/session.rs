@@ -216,6 +216,33 @@ pub fn session_apply(
     })
 }
 
+/// While recording automation: the setting a hand holds (a fader, a pan or
+/// an effect control of a track or bus) replaces its lane while playback
+/// runs. `value` None gives it back to its lane. Not an edit.
+#[tauri::command]
+pub fn automation_live(
+    strip: crate::session::model::Id,
+    target: crate::session::model::EnvelopeTarget,
+    value: Option<f64>,
+) -> Result<(), String> {
+    use crate::engine::automation::{set_live, LiveKey};
+    use crate::session::model::EnvelopeTarget;
+    let key = match target {
+        EnvelopeTarget::Volume => LiveKey::Volume,
+        EnvelopeTarget::Pan => LiveKey::Pan,
+        EnvelopeTarget::EffectParam { slot_id, param } => LiveKey::Param(slot_id, param),
+        EnvelopeTarget::Space { .. } => return Err("A spot setting cannot be recorded yet.".into()),
+    };
+    set_live(strip, key, value.map(|v| v as f32));
+    Ok(())
+}
+
+/// A take ended: every held setting goes back to its lane.
+#[tauri::command]
+pub fn automation_live_clear() {
+    crate::engine::automation::clear_live();
+}
+
 /// Zoom, scroll and playhead. Not an edit.
 #[tauri::command]
 pub fn session_set_view(open: State<'_, OpenSession>, view: SessionView) -> Result<(), String> {
