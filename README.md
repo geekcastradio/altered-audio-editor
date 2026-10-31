@@ -161,6 +161,6 @@ Copyright (c) The GeekCast Radio Network, LLC.
 
 Licensed under the GNU General Public License v3.0 or later. See [LICENSE](LICENSE).
 
-"Altered Audio Editor" and its logo are trademarks of The GeekCast Radio Network, LLC and are not covered by the GPL. Forks are welcome under a different name; see [TRADEMARKS.md](TRADEMARKS.md).
+"Altered Audio Editor" and its logo are trademarks of The GeekCast Radio Network, LLC and are not covered by the GPL. Forks are welcome under a different name. Launchers and app catalogs may list the unmodified official builds under the name, on the terms in [TRADEMARKS.md](TRADEMARKS.md).
 
 All icons and artwork are original. This project is independent and not affiliated with or endorsed by any other software company.
