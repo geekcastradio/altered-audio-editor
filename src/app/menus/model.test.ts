@@ -86,6 +86,7 @@ describe("menu model", () => {
       "help.update",
       "help.github",
       "help.report",
+      "help.bug-info",
       "help.about",
       "file.import-files",
       "file.import-folder",
