@@ -250,6 +250,7 @@
   import { get, writable } from "svelte/store";
   import { startScreen } from "../stores/start";
   import type { SessionRow } from "../panels/files/session-row";
+  import { bugInfoText, recordError } from "./bug-info";
   import { waveRows, type WaveRow } from "../panels/files/wave-rows";
   import { rasterize } from "../panels/editor/spectrum";
   import { inputLevels, liveTakes, LiveWave, recordControl, recording } from "../stores/record";
@@ -268,6 +269,7 @@
   let errorTimer: ReturnType<typeof setTimeout> | undefined;
 
   function showError(e: unknown) {
+    recordError(e);
     lastError = e instanceof Error ? e.message : String(e);
     console.error(e);
     clearTimeout(errorTimer);
@@ -3878,6 +3880,26 @@
       actions.register({ id: "help.update", run: () => void checkUpdate(true) }),
       actions.register({ id: "help.github", run: () => openLink(LINKS.github) }),
       actions.register({ id: "help.report", run: () => openLink(LINKS.report) }),
+      actions.register({
+        id: "help.bug-info",
+        run: async () => {
+          const doc = session.current;
+          const w = wave.current;
+          const plugins = [...new Set([...(doc ? pluginSlots(doc) : []), ...(w ? pluginSlots(w) : [])].map((s) => s.effect))];
+          const text = bugInfoText({
+            appVersion: info?.version ?? "unknown",
+            system: navigator.userAgent,
+            state: [`Editor: ${inWave() ? "Waveform" : "Multitrack"}`, `Playing: ${transport.current.playing || waveTransport.current.playing ? "yes" : "no"}`],
+            plugins,
+          });
+          try {
+            await navigator.clipboard.writeText(text);
+            showNotice("Details copied. Paste them into your bug report.");
+          } catch {
+            showError("Could not copy to the clipboard.");
+          }
+        },
+      }),
       actions.register({ id: "help.about", run: () => void (aboutOpen = true) }),
       actions.register({
         id: "file.import-files",
