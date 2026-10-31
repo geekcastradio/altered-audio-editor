@@ -4,7 +4,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import type { SessionDoc } from "../stores/session";
-import { PluginSync, syncOps } from "./plugin-sync";
+import { POLL_EVERY, PluginSync, syncOps } from "./plugin-sync";
 import type { PluginEvents } from "./core";
 
 const chain = (slots: object[]) => ({ enabled: true, input_gain_db: 0, output_gain_db: 0, mix: 1, slots });
@@ -57,5 +57,45 @@ describe("plug-in sync", () => {
     expect(commit).toHaveBeenCalledTimes(1);
     const ops = (commit.mock.calls[0] as unknown as [{ chain: { slots: { plugin_state?: string }[] } }[]])[0];
     expect(ops[0]!.chain.slots[0]!.plugin_state).toBe("NEW");
+  });
+
+  it("keeps the Waveform editor's plug-ins in step too", async () => {
+    const waveDoc = { ...doc, tracks: [{ id: "w", kind: "audio", clips: [], effects: chain([plug("w1")]) }] } as unknown as SessionDoc;
+    const commit = vi.fn(async () => {});
+    const waveCommit = vi.fn(async () => {});
+    const sync = new PluginSync({
+      doc: () => doc,
+      events: async () => [ev("w1", { edits: [["p0", 0.25]] })],
+      state: async () => "WAVE",
+      commit,
+      more: () => [{ doc: waveDoc, commit: waveCommit }],
+      onStopped: vi.fn(),
+      onLatency: vi.fn(),
+    });
+    await sync.tick();
+    expect(commit).not.toHaveBeenCalled();
+    expect(waveCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads an open window's settings now and then, but not while playing", async () => {
+    const state = vi.fn(async () => "CHANGED");
+    let playing = true;
+    const commit = vi.fn(async () => {});
+    const sync = new PluginSync({
+      doc: () => doc,
+      events: async () => [],
+      state,
+      commit,
+      openWindows: () => ["s1"],
+      playing: () => playing,
+      onStopped: vi.fn(),
+      onLatency: vi.fn(),
+    });
+    for (let i = 0; i < POLL_EVERY; i++) await sync.tick();
+    expect(state).not.toHaveBeenCalled();
+    playing = false;
+    for (let i = 0; i < POLL_EVERY; i++) await sync.tick();
+    expect(state).toHaveBeenCalledWith("s1");
+    expect(commit).toHaveBeenCalledTimes(1);
   });
 });

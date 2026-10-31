@@ -92,6 +92,13 @@ export function syncOps(doc: SessionDoc, events: PluginEvents[], states: Readonl
   return ops;
 }
 
+/** One document whose plug-in slots are kept in step: the session, or the Waveform editor's file. */
+export interface SyncTarget {
+  doc: SessionDoc | null;
+  /** Applies the edits as one undoable step in that document. */
+  commit: (ops: Op[]) => Promise<void>;
+}
+
 export interface PluginSyncDeps {
   doc: () => SessionDoc | null;
   events: () => Promise<PluginEvents[]>;
@@ -102,11 +109,23 @@ export interface PluginSyncDeps {
   onStopped: (slot: EffectSlotDoc, why: string) => void;
   /** A plug-in's look-ahead changed: playback must re-align. */
   onLatency: () => void;
+  /** Other documents with plug-ins in them (the Waveform editor's file). */
+  more?: () => SyncTarget[];
+  /** Slots whose plug-in window is open now. Their settings are read now and then, because many plug-ins never say they changed. */
+  openWindows?: () => readonly string[];
+  /** True while audio plays: reading settings then could stall the sound. */
+  playing?: () => boolean;
+  /** A plug-in's window was closed. */
+  onWindowClosed?: (slotId: string) => void;
 }
+
+/** A settings read for each open plug-in window every this many rounds. */
+export const POLL_EVERY = 5;
 
 export class PluginSync {
   private timer: ReturnType<typeof setInterval> | null = null;
   private busy = false;
+  private rounds = 0;
 
   constructor(private readonly deps: PluginSyncDeps) {}
 
@@ -120,46 +139,66 @@ export class PluginSync {
     this.timer = null;
   }
 
+  private targets(): SyncTarget[] {
+    return [{ doc: this.deps.doc(), commit: this.deps.commit }, ...(this.deps.more?.() ?? [])];
+  }
+
   /** One round: events in, settings fetched where they changed, edits out. */
   async tick(): Promise<void> {
-    const doc = this.deps.doc();
-    if (this.busy || !doc || pluginSlots(doc).length === 0) return;
+    if (this.busy || this.targets().every((t) => !t.doc || pluginSlots(t.doc).length === 0)) return;
     this.busy = true;
     try {
       const events = await this.deps.events();
-      if (events.length === 0) return;
       const states = new Map<string, string>();
       for (const e of events) {
         if (e.dirty || e.windowClosed || e.edits.length > 0) {
           const s = await this.deps.state(e.slotId);
           if (s) states.set(e.slotId, s);
         }
+        if (e.windowClosed) this.deps.onWindowClosed?.(e.slotId);
         if (e.stopped) {
-          const slot = pluginSlots(doc).find((s) => s.id === e.slotId);
+          const slot = this.targets()
+            .flatMap((t) => (t.doc ? pluginSlots(t.doc) : []))
+            .find((s) => s.id === e.slotId);
           if (slot) this.deps.onStopped(slot, e.stopped);
         }
       }
+      // A plug-in with its own window may change its settings without saying so.
+      this.rounds += 1;
+      if (this.rounds % POLL_EVERY === 0 && !this.deps.playing?.()) {
+        for (const id of this.deps.openWindows?.() ?? []) {
+          if (states.has(id)) continue;
+          const s = await this.deps.state(id).catch(() => null);
+          if (s) states.set(id, s);
+        }
+      }
       if (events.some((e) => e.latencyChanged)) this.deps.onLatency();
-      const now = this.deps.doc();
-      if (!now) return;
-      const ops = syncOps(now, events, states);
-      if (ops.length) await this.deps.commit(ops);
+      await this.commitAll(events, states);
     } finally {
       this.busy = false;
     }
   }
 
-  /** Fetches every running plug-in's settings into the session (before a save or an export). */
-  async captureAll(): Promise<void> {
-    const doc = this.deps.doc();
-    if (!doc) return;
-    const states = new Map<string, string>();
-    for (const slot of pluginSlots(doc)) {
-      const s = await this.deps.state(slot.id).catch(() => null);
-      if (s && s !== slot.plugin_state) states.set(slot.id, s);
+  private async commitAll(events: PluginEvents[], states: ReadonlyMap<string, string>): Promise<void> {
+    for (const t of this.targets()) {
+      if (!t.doc) continue;
+      const ops = syncOps(t.doc, events, states);
+      if (ops.length) await t.commit(ops);
     }
-    if (states.size === 0) return;
-    const ops = syncOps(doc, [], states);
-    if (ops.length) await this.deps.commit(ops);
+  }
+
+  /** Fetches every running plug-in's settings into the session and the open file (before a save, an export or an apply). */
+  async captureAll(): Promise<void> {
+    for (const t of this.targets()) {
+      if (!t.doc) continue;
+      const states = new Map<string, string>();
+      for (const slot of pluginSlots(t.doc)) {
+        const s = await this.deps.state(slot.id).catch(() => null);
+        if (s && s !== slot.plugin_state) states.set(slot.id, s);
+      }
+      if (states.size === 0) continue;
+      const ops = syncOps(t.doc, [], states);
+      if (ops.length) await t.commit(ops);
+    }
   }
 }

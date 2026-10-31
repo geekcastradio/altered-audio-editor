@@ -30,6 +30,7 @@
   import { onDestroy, untrack } from "svelte";
   import type { Readable } from "svelte/store";
   import { sessionDuration, type SessionRow } from "./session-row";
+  import type { WaveRow } from "./wave-rows";
 
   interface Props {
     pool: MediaPool;
@@ -46,9 +47,30 @@
     onOpenSession?: (id: string) => void;
     /** Close a session (asks to save first). */
     onCloseSession?: (id: string) => void;
+    /** Audio files open in the Waveform editor that the list does not hold (new, pasted or mixed-down ones). */
+    waves?: Readable<WaveRow[]>;
+    /** Double-click on one of them: show it in the Waveform editor. */
+    onOpenWave?: (path: string) => void;
+    /** Close it (asks to save first). */
+    onCloseWave?: (path: string) => void;
   }
 
-  const { pool, actions, drop, onDropPaths, onOpen = () => {}, shortcutFor = () => undefined, sessions, onOpenSession = () => {}, onCloseSession = () => {} }: Props = $props();
+  const { pool, actions, drop, onDropPaths, onOpen = () => {}, shortcutFor = () => undefined, sessions, onOpenSession = () => {}, onCloseSession = () => {}, waves, onOpenWave = () => {}, onCloseWave = () => {} }: Props = $props();
+
+  let waveList = $state<WaveRow[]>([]);
+  $effect(() =>
+    waves?.subscribe((r) => {
+      waveList = r;
+    }),
+  );
+  /** An open-audio row picked with a click, for Delete. */
+  let pickedWave = $state<string | null>(null);
+  $effect(() => {
+    if (pickedWave && !waveList.some((r) => r.path === pickedWave)) pickedWave = null;
+  });
+  $effect(() => {
+    if (snap?.selected.size) pickedWave = null;
+  });
 
   let sessionRows = $state<SessionRow[]>([]);
   $effect(() =>
@@ -191,6 +213,12 @@
 
   function onListKey(e: KeyboardEvent) {
     // Plain Delete or Backspace only: chords such as Ctrl+Alt+Backspace (Delete Track) pass on.
+    if (pickedWave && (e.key === "Delete" || e.key === "Backspace") && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      onCloseWave(pickedWave);
+      return;
+    }
     if (pickedSession && (e.key === "Delete" || e.key === "Backspace") && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
       e.preventDefault();
       e.stopPropagation();
@@ -557,6 +585,48 @@
             onclick={(e) => {
               e.stopPropagation();
               onCloseSession(sr.id);
+            }}>×</button
+          >
+        </span>
+      </div>
+    {/each}
+    {#each waveList as wr (wr.path)}
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <div
+        class="row session"
+        class:active={wr.front}
+        class:behind={!wr.front}
+        role="option"
+        tabindex="-1"
+        aria-selected={pickedWave === wr.path}
+        title={wr.untitled ? "A new audio file, not saved yet. Double-click to show it in the Waveform editor; Delete closes it." : "An audio file open in the Waveform editor. Double-click to show it; Delete closes it."}
+        onclick={() => {
+          pickedWave = wr.path;
+          pickedSession = null;
+          pool.setSelection([]);
+          list?.focus();
+        }}
+        ondblclick={() => onOpenWave(wr.path)}
+        onmousedown={(e) => e.button === 1 && e.preventDefault()}
+        onauxclick={(e) => {
+          if (e.button !== 1) return;
+          e.preventDefault();
+          onCloseWave(wr.path);
+        }}
+      >
+        <span class="col name"><span class="sicon" aria-hidden="true">♪</span>{wr.name}{wr.dirty ? " *" : ""}</span>
+        <span class="col status ready"><span class="dot" aria-hidden="true"></span>{wr.untitled ? "New" : "Open"}</span>
+        <span class="col num duration"></span>
+        <span class="col num rate"></span>
+        <span class="col channels">
+          <button
+            type="button"
+            class="sclose"
+            title="Close {wr.name} (asks to save first)"
+            aria-label="Close {wr.name}"
+            onclick={(e) => {
+              e.stopPropagation();
+              onCloseWave(wr.path);
             }}>×</button
           >
         </span>
