@@ -42,6 +42,28 @@ pub fn plugin_slots(s: &Session) -> HashSet<Id> {
     out
 }
 
+/// [`plugin_slots`] for the session plus the Waveform editor's open file and
+/// the files set aside, so a change to the session never stops plug-ins
+/// that belong to an audio file.
+pub fn kept_plugin_slots(
+    s: &Session,
+    wave: &super::wave::OpenWave,
+    parked: &super::wave::ParkedWaves,
+) -> HashSet<Id> {
+    let mut out = plugin_slots(s);
+    if let Ok(w) = wave.0.lock() {
+        if let Some(w) = w.as_ref() {
+            out.extend(plugin_slots(&w.session));
+        }
+    }
+    if let Ok(p) = parked.0.lock() {
+        for w in p.iter() {
+            out.extend(plugin_slots(&w.session));
+        }
+    }
+    out
+}
+
 /// Every plug-in slot in the session that plays: enabled chain slots on
 /// tracks, clips, buses and the master, and MIDI tracks' instruments.
 pub fn playing_plugin_slots(s: &Session) -> Vec<EffectSlot> {

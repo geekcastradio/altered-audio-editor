@@ -1248,11 +1248,18 @@ export function pluginsSetFolder(path: string, on: boolean): Promise<PluginRegis
   return invoke<PluginRegistry>("plugins_set_folder", { path, on });
 }
 
+const windowsOpen = new Set<string>();
+/** Slots whose own plug-in window was opened and not closed since. */
+export const pluginWindowsOpen = (): string[] => [...windowsOpen];
+/** Forgets a plug-in window the plug-in reported closed. */
+export const pluginWindowClosed = (slotId: string): void => void windowsOpen.delete(slotId);
+
 export function pluginOpenWindow(slot: import("../stores/session").EffectSlotDoc, title: string): Promise<void> {
-  return invoke<void>("plugin_open_window", { slot, title });
+  return invoke<void>("plugin_open_window", { slot, title }).then(() => void windowsOpen.add(slot.id));
 }
 
 export function pluginCloseWindow(slotId: string): Promise<void> {
+  windowsOpen.delete(slotId);
   return invoke<void>("plugin_close_window", { slotId });
 }
 

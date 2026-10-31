@@ -190,12 +190,14 @@ pub fn session_apply(
     open: State<'_, OpenSession>,
     transport: State<'_, crate::engine::Transport>,
     playing: State<'_, super::wave::Playing>,
+    wave: State<'_, super::wave::OpenWave>,
+    parked: State<'_, super::wave::ParkedWaves>,
     op: Op,
 ) -> Result<Applied, String> {
     let mut s = open.0.lock().map_err(|e| e.to_string())?;
     let inverse = ops::apply(&mut s.session, &op).map_err(|e| e.to_string())?;
-    // Plug-ins taken out of the session stop running.
-    crate::plugins::instance::retain(&crate::commands::plugins::plugin_slots(&s.session));
+    // Plug-ins taken out of the session stop running (those of the Waveform editor's files keep running).
+    crate::plugins::instance::retain(&crate::commands::plugins::kept_plugin_slots(&s.session, &wave, &parked));
     // New plug-ins and instruments start loading now, not when Play is pressed.
     crate::plugins::instance::warm(crate::commands::plugins::playing_plugin_slots(&s.session));
     // Playback follows edits: gains at once, timing changes by restarting.
@@ -423,7 +425,11 @@ pub async fn session_open(app: AppHandle, path: PathBuf) -> Result<SessionWithPa
     }
     s.session = opened.session.clone();
     s.path = Some(path.clone());
-    crate::plugins::instance::retain(&crate::commands::plugins::plugin_slots(&s.session));
+    crate::plugins::instance::retain(&crate::commands::plugins::kept_plugin_slots(
+        &s.session,
+        &app.state::<super::wave::OpenWave>(),
+        &app.state::<super::wave::ParkedWaves>(),
+    ));
     crate::plugins::instance::warm(crate::commands::plugins::playing_plugin_slots(&s.session));
     Ok(SessionWithPath {
         session: opened.session,

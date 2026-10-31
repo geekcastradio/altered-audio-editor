@@ -17,6 +17,7 @@ import { transportStatus, transportStop, waveApply, waveClose, waveForget, waveN
 import { SessionStore, type ClipDoc, type MediaRefDoc, type Op, type SessionDoc, type ViewDoc } from "./session";
 import { TransportStore } from "./transport";
 import type { SpectralShape } from "../panels/editor/spectrum";
+import type { ParkedFile } from "../panels/files/wave-rows";
 
 export interface WaveFile {
   /** The file being edited. */
@@ -68,6 +69,23 @@ function adopt(doc: WaveDocRaw<SessionDoc>): void {
  */
 const parked = new Map<string, { history: StashedHistory; dirty: boolean; format: string; bitDepth: number | null; untitled: boolean }>();
 
+/** Ticks whenever a file is set aside, brought back or dropped, so lists of open files redraw. */
+const parkedTick = writable(0);
+const bumpParked = () => parkedTick.update((n) => n + 1);
+export const waveParkedChanged: Readable<number> = { subscribe: parkedTick.subscribe };
+
+/** The set-aside files, for the Files panel. */
+export function parkedFiles(): ParkedFile[] {
+  return [...parked.entries()].map(([path, v]) => ({ path, format: v.format, untitled: v.untitled, dirty: v.dirty }));
+}
+
+/** Drops one set-aside file and its edits (after the user chose to discard them). */
+export async function discardParked(path: string): Promise<void> {
+  parked.delete(path);
+  await waveForget(path);
+  bumpParked();
+}
+
 /** Names of set-aside files with unsaved edits. */
 export function parkedUnsaved(): string[] {
   return [...parked.entries()].filter(([, v]) => v.dirty).map(([p]) => p.split(/[\\/]/).pop() ?? p);
@@ -82,6 +100,7 @@ async function parkCurrent(): Promise<void> {
   await wavePark();
   parked.set(f.path, { history, dirty, format: f.format, bitDepth: f.bitDepth, untitled: f.untitled });
   fileState.set(null);
+  bumpParked();
 }
 
 /** Opens a file. The one open now is set aside with its edits, not closed. */
@@ -94,11 +113,13 @@ export async function openWaveFile(path: string): Promise<void> {
   const kept = back ? await waveResume<SessionDoc>(path) : null;
   if (back && kept) {
     parked.delete(path);
+    bumpParked();
     adopt(kept);
     await waveHistory.restore(back.history);
     return;
   }
   parked.delete(path);
+  bumpParked();
   const doc = await waveOpen<SessionDoc>(path);
   adopt(doc);
   await waveHistory.clear("Open");
@@ -110,6 +131,7 @@ export async function forgetParked(): Promise<void> {
     parked.delete(p);
     await waveForget(p);
   }
+  bumpParked();
 }
 
 let untitledCount = 0;

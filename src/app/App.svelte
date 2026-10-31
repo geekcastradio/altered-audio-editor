@@ -206,6 +206,8 @@
     learnNoisePrint,
     type LearnSource,
     pluginCloseWindow,
+    pluginWindowsOpen,
+    pluginWindowClosed,
     pluginsRegistry,
     musicFit,
     quickpassRepairCopy,
@@ -244,10 +246,11 @@
   import ToolStrip from "./ToolStrip.svelte";
   import NewAudioFileDialog, { type NewAudioSettings } from "./NewAudioFileDialog.svelte";
   import NewSessionDialog, { type NewSessionSettings } from "./NewSessionDialog.svelte";
-  import { closeWaveFile, forgetParked, newEmptyWaveFile, parkedUnsaved, newWaveFromClips, newWaveFromMix, openWaveFile, saveWaveFile, savesInPlace, spectralSelection, wave, waveFile, waveHistory, waveTransport, waveZoom } from "../stores/wave";
+  import { closeWaveFile, discardParked, forgetParked, parkedFiles, waveParkedChanged, newEmptyWaveFile, parkedUnsaved, newWaveFromClips, newWaveFromMix, openWaveFile, saveWaveFile, savesInPlace, spectralSelection, wave, waveFile, waveHistory, waveTransport, waveZoom } from "../stores/wave";
   import { get, writable } from "svelte/store";
   import { startScreen } from "../stores/start";
   import type { SessionRow } from "../panels/files/session-row";
+  import { waveRows, type WaveRow } from "../panels/files/wave-rows";
   import { rasterize } from "../panels/editor/spectrum";
   import { inputLevels, liveTakes, LiveWave, recordControl, recording } from "../stores/record";
   import { stretchRange, amplifyRange, clampRange, copyRange, crossfadeSeams, cropTo, deleteRange, fadeRange, insertFile, mixPasteAt, pasteAt, replaceRange, silenceRange, type WaveBoard } from "../panels/editor/wave-edit";
@@ -770,6 +773,18 @@
     commit: async (ops) => {
       await session.edit("Plug-in Settings", ops.length === 1 ? ops[0]! : { op: "batch", ops }, sessionHistory);
     },
+    // The Waveform editor's file has its own chain, so its plug-ins are kept in step too.
+    more: () => [
+      {
+        doc: wave.current,
+        commit: async (ops) => {
+          await wave.edit("Plug-in Settings", ops.length === 1 ? ops[0]! : { op: "batch", ops }, waveHistory);
+        },
+      },
+    ],
+    openWindows: () => pluginWindowsOpen(),
+    onWindowClosed: (id) => pluginWindowClosed(id),
+    playing: () => transport.current.playing || waveTransport.current.playing,
     onStopped: (slot, why) => {
       markStopped(slot.id, why);
       showNotice(`A plug-in stopped: ${why} Restart it from its effect window.`);
@@ -2020,6 +2035,33 @@
     const cur = get(sessionRows);
     if (JSON.stringify(cur) !== JSON.stringify(rows)) sessionRows.set(rows);
   }
+  /** Audio files open in the Waveform editor that the Files list does not show, as rows at its top. */
+  const waveRowStore = writable<WaveRow[]>([]);
+  function updateWaveRows() {
+    const f = waveFile.current();
+    const rows = waveRows(f, waveHistory.current.dirty, parkedFiles(), mediaPool.current.items.map((it) => it.path));
+    if (JSON.stringify(get(waveRowStore)) !== JSON.stringify(rows)) waveRowStore.set(rows);
+  }
+  /** Closes an audio file shown in the Files panel, asking first if it has unsaved edits. */
+  async function closeWaveRow(path: string) {
+    const f = waveFile.current();
+    if (f && f.path === path) {
+      if (await confirmWaveDiscard()) {
+        await closeWaveFile();
+        actions.invalidate();
+      }
+      return;
+    }
+    const row = get(waveRowStore).find((r) => r.path === path);
+    if (row?.dirty) {
+      const v = await ask("Unsaved changes", `Discard the changes to ${row.name}? Open it to save them first.`, [
+        { label: "Discard", value: "discard" },
+        { label: "Cancel", value: "cancel", primary: true },
+      ]);
+      if (v !== "discard") return;
+    }
+    await discardParked(path).catch(showError);
+  }
   function updateTitle() {
     updateSessionRow();
     updateEditorTitle();
@@ -2101,6 +2143,9 @@
                 .then(() => actions.run("view.editor.multitrack"))
                 .catch(showError),
             onCloseSession: (id: string) => void files.closeSession(id).catch(showError),
+            waves: waveRowStore,
+            onOpenWave: (path: string) => void openInWaveform(path),
+            onCloseWave: (path: string) => void closeWaveRow(path).catch(showError),
           },
         };
       case "drive-manager":
@@ -2855,6 +2900,9 @@
 
   /** Writes the Waveform preview chain into the selection (or the whole file), then clears the preview. */
   async function applyWaveChain(chain: EffectChainDoc, wholeFile = false) {
+    // What was set in a plug-in's own window goes into the chain first, or the apply would use the old settings.
+    await pluginSync.captureAll().catch(showError);
+    chain = wave.current?.tracks[0]?.effects ?? chain;
     const d = wave.current;
     const r = wholeFile && d ? clampRange(d, 0, sessionEnd(d)) : waveAll();
     const t = d?.tracks[0];
@@ -3794,8 +3842,10 @@
       ov(waveIsOpen, { id: "view.zoom-out", run: () => waveZoom.run?.("out") }),
       ov(waveIsOpen, { id: "view.zoom-session", run: () => waveZoom.run?.("full") }),
       ov(waveIsOpen, { id: "view.zoom-selection", run: () => waveZoom.run?.("selection"), enabled: () => waveSel() !== null }),
-      waveHistory.subscribe(() => actions.invalidate()),
-      waveFile.subscribe(() => actions.invalidate()),
+      waveHistory.subscribe(() => (actions.invalidate(), updateWaveRows())),
+      waveFile.subscribe(() => (actions.invalidate(), updateWaveRows())),
+      waveParkedChanged.subscribe(() => updateWaveRows()),
+      mediaPool.subscribe(() => updateWaveRows()),
       editor.subscribe(() => actions.invalidate()),
       wave.subscribe(() => actions.invalidate()),
     ];
