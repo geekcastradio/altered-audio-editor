@@ -1441,3 +1441,13 @@ export const libraryImageData = (path: string): Promise<string> => invoke<string
 export const libraryPickPictures = (): Promise<string[]> => invoke<string[]>("library_pick_pictures");
 /** Uses a picture on disk as an MP3's cover art. Returns it as a data URL, or null when the file is not an MP3. */
 export const coverSet = (path: string, picture: string): Promise<string | null> => invoke<string | null>("cover_set", { path, picture });
+
+/** Files the app was started with (File Explorer's Open or Open with); empty after the first call. */
+export function launchPaths(): Promise<string[]> {
+  return invoke<string[]>("launch_paths");
+}
+
+/** Calls `fn` with files opened from File Explorer while the app runs. Returns the stop function. */
+export function onOpenPaths(fn: (paths: string[]) => void): Promise<() => void> {
+  return listen<string[]>("open-paths", (e) => fn(e.payload));
+}

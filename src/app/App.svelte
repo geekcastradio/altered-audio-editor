@@ -201,6 +201,8 @@
     setAudioOutput,
     setOutputMap,
     setAudioDriver,
+    launchPaths,
+    onOpenPaths,
     recordStart,
     recordStatus,
     recordStop,
@@ -5457,8 +5459,21 @@
         );
       })
       .then(() => files.checkRecovery())
+      // A session or audio file the app was started with, from File Explorer.
+      .then(() => (isTauri() ? launchPaths() : []))
+      .then((paths) => (paths.length ? openPaths(paths) : undefined))
       .catch(showError)
       .finally(() => restartAutosave());
+    if (isTauri()) {
+      // Opened from File Explorer while running: the core brings this window forward and hands the files here.
+      let gone = false;
+      let stopOpen: (() => void) | null = null;
+      void onOpenPaths((paths) => void openPaths(paths).catch(showError)).then((off) => (gone ? off() : (stopOpen = off)));
+      offs.push(() => {
+        gone = true;
+        stopOpen?.();
+      });
+    }
     offs.push(() => files.stopAutosave());
     offs.push(sessionHistory.subscribe(updateTitle));
     offs.push(session.subscribe(updateTitle));
