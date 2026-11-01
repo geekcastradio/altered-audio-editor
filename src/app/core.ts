@@ -523,6 +523,7 @@ export interface SesxReport {
   stretched?: number;
   /** The other editor's built-in effects brought in as ours (its per-frequency phase shifter as Phase Curve). */
   converted?: number;
+  approximate?: string[];
   missingFiles: string[];
 }
 
