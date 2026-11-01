@@ -63,6 +63,8 @@ pub struct ImportReport {
     /// The other editor's built-in effects brought in as ours (its
     /// per-frequency phase shifter as Phase Curve).
     pub converted: usize,
+    /// Converted effects whose settings are partly estimated, each once.
+    pub approximate: Vec<String>,
     /// Media files that could not be found. Their clips are still placed.
     pub missing_files: Vec<PathBuf>,
 }
@@ -196,6 +198,28 @@ fn read_rack(rack: roxmltree::Node<'_, '_>, report: &mut ImportReport) -> Effect
                 continue;
             }
         }
+        // The other editor's limiter comes across as our Limiter. Its ceiling is exact;
+        // the other settings are estimates, so the notice says to check it by ear.
+        if c.attribute("componentID") == Some(HARD_LIMITER_ID) && chain.slots.len() < MAX_SLOTS {
+            chain.slots.push(EffectSlot {
+                id: new_id(),
+                effect: "altaudio.limiter".into(),
+                enabled: slot.attribute("powered") != Some("false"),
+                params: hard_limiter_params(c),
+                preset: None,
+                sidechain: None,
+                plugin_state: None,
+                data: None,
+                position: u32::try_from(index)
+                    .ok()
+                    .filter(|i| (*i as usize) < MAX_SLOTS),
+            });
+            report.converted += 1;
+            if !report.approximate.contains(&name) {
+                report.approximate.push(name);
+            }
+            continue;
+        }
         let plugin = c
             .attribute("componentID")
             .and_then(vst3_effect)
@@ -299,6 +323,40 @@ fn channel_map(
         }
     }
     Some(ChannelMix { sends })
+}
+
+/// The component id of the other editor's limiter.
+const HARD_LIMITER_ID: &str = "e0b23f05-f1a7-4ef7-9b50-7ec3e3002058";
+
+/// Limiter settings from the other editor's limiter (knobs 0 to 1).
+/// The ceiling is exact: 1 is 0 dB and each 0.01 below it is 1 dB (its own
+/// "Limit to -6dB" preset reads 0.94). The input boost is an estimate (2/3
+/// is none, over a 30 dB span). Look-ahead and release are left at our
+/// defaults until their scales are known.
+fn hard_limiter_params(c: roxmltree::Node<'_, '_>) -> std::collections::BTreeMap<String, f64> {
+    let knob = |name: &str| {
+        c.children()
+            .find(|p| p.has_tag_name("parameter") && p.attribute("name") == Some(name))
+            .and_then(|p| p.attribute("parameterValue"))
+            .and_then(|v| v.trim().parse::<f64>().ok())
+    };
+    let mut out = std::collections::BTreeMap::new();
+    if let Some(v) = knob("Maximum Amplitude") {
+        out.insert(
+            "ceiling".to_string(),
+            (((v - 1.0) * 100.0).clamp(-24.0, 0.0) * 10.0).round() / 10.0,
+        );
+    }
+    if let Some(v) = knob("Input Boost") {
+        out.insert(
+            "input_boost".to_string(),
+            (((v - 2.0 / 3.0) * 30.0).clamp(0.0, 24.0) * 10.0).round() / 10.0,
+        );
+    }
+    if let Some(v) = knob("Link Channels") {
+        out.insert("linked".to_string(), if v >= 0.5 { 1.0 } else { 0.0 });
+    }
+    out
 }
 
 /// The component id of the other editor's Parametric Equalizer.
@@ -500,14 +558,51 @@ fn phase_curve_params(text: &str) -> Option<std::collections::BTreeMap<String, f
 /// Reads every effect rack directly inside `n` into one chain.
 fn racks(n: roxmltree::Node<'_, '_>, report: &mut ImportReport) -> EffectChain {
     let mut chain = EffectChain::default();
+    let mut levels_read = false;
     for r in n.children().filter(|c| c.has_tag_name("effectsRack")) {
         chain.slots.extend(read_rack(r, report).slots);
+        if !levels_read {
+            levels_read = true;
+            rack_levels(r, &mut chain);
+        }
     }
     if chain.slots.len() > MAX_SLOTS {
         report.skipped_effects += chain.slots.len() - MAX_SLOTS;
         chain.slots.truncate(MAX_SLOTS);
     }
     chain
+}
+
+/// The rack's input and output levels and its mix. They are stored as
+/// components `rackInput` and `rackOutput` whose first parameter is a
+/// gain factor (1 is 0 dB), and `rackMix`, whose first parameter is 0 at
+/// fully wet, read here as the dry share. A part switched off counts as
+/// unchanged.
+fn rack_levels(rack: roxmltree::Node<'_, '_>, chain: &mut EffectChain) {
+    let first = |id: &str| -> Option<f64> {
+        let c = rack
+            .children()
+            .find(|c| c.has_tag_name("component") && c.attribute("id") == Some(id))?;
+        if c.attribute("powered") == Some("false") {
+            return None;
+        }
+        c.children()
+            .find(|p| p.has_tag_name("parameter") && p.attribute("index") == Some("0"))?
+            .attribute("parameterValue")?
+            .parse::<f64>()
+            .ok()
+            .filter(|v| v.is_finite())
+    };
+    let db = |g: f64| ((20.0 * g.max(1e-6).log10()) * 10.0).round() / 10.0;
+    if let Some(g) = first("rackInput") {
+        chain.input_gain_db = db(g);
+    }
+    if let Some(g) = first("rackOutput") {
+        chain.output_gain_db = db(g);
+    }
+    if let Some(dry) = first("rackMix") {
+        chain.mix = (1.0 - dry).clamp(0.0, 1.0);
+    }
 }
 
 /// A VST3 component id in a `.sesx` ("3:" then four groups of eight hex
@@ -1450,5 +1545,42 @@ mod tests {
                 right: 0.0
             }
         );
+    }
+
+    #[test]
+    fn the_hard_limiter_comes_across_with_its_exact_ceiling() {
+        // The other editor's own "Limit to -6dB" and "Limit to -3dB" presets.
+        let one = |ceiling: &str| {
+            let xml = format!(
+                r#"<component componentID="e0b23f05-f1a7-4ef7-9b50-7ec3e3002058" name="Limiter">
+                <parameter index="0" name="Maximum Amplitude" parameterValue="{ceiling}"/>
+                <parameter index="1" name="Input Boost" parameterValue="0.6666667"/>
+                <parameter index="4" name="Link Channels" parameterValue="0"/>
+            </component>"#
+            );
+            let doc = roxmltree::Document::parse(&xml).unwrap();
+            hard_limiter_params(doc.root_element())
+        };
+        assert_eq!(one("0.94")["ceiling"], -6.0);
+        assert_eq!(one("0.97")["ceiling"], -3.0);
+        assert_eq!(one("0.999")["ceiling"], -0.1);
+        let p = one("0.94");
+        assert_eq!(p["input_boost"], 0.0);
+        assert_eq!(p["linked"], 0.0);
+    }
+
+    #[test]
+    fn rack_levels_come_across() {
+        let xml = r#"<effectsRack>
+            <component id="rackInput" powered="true"><parameter index="0" parameterValue="0.5"/></component>
+            <component id="rackOutput" powered="false"><parameter index="0" parameterValue="2"/></component>
+            <component id="rackMix" powered="true"><parameter index="0" parameterValue="0.25"/></component>
+        </effectsRack>"#;
+        let doc = roxmltree::Document::parse(xml).unwrap();
+        let mut chain = EffectChain::default();
+        rack_levels(doc.root_element(), &mut chain);
+        assert_eq!(chain.input_gain_db, -6.0);
+        assert_eq!(chain.output_gain_db, 0.0);
+        assert_eq!(chain.mix, 0.75);
     }
 }
