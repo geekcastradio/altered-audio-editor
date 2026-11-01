@@ -9,6 +9,8 @@
  * wherever they apply, so a change takes effect on the next action.
  */
 
+import { cleanBindings, type Binding } from "../app/controller/map";
+
 /** A fade curve, as the session stores it. */
 export type FadeShape = "linear" | "logarithmic" | "cosine" | "exponential" | "equal_power";
 export type WheelAnchor = "mouse" | "between" | "playhead";
@@ -101,6 +103,10 @@ export interface AppSettings {
   updateCheck: boolean;
   /** When the last update check ran, in milliseconds since 1970. 0 means never. */
   lastUpdateCheck: number;
+  /** MIDI inputs listened to as controllers (by name). */
+  controllerPorts: string[];
+  /** What each control on them does. */
+  controllerBindings: Binding[];
   /** The first-run welcome was shown. */
   welcomeSeen: boolean;
   /** 3D Space: dots snap to speakers, the center lines and a grid; turns snap to 15 degrees. */
@@ -200,6 +206,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ampModelAlways: false,
   updateCheck: false,
   lastUpdateCheck: 0,
+  controllerPorts: [],
+  controllerBindings: [],
   welcomeSeen: false,
   spaceSnap: true,
   metronome: { on: false, muted: false, when: "always", levelDb: -6, sound: "tick", accent: true, subdivide: "none" },
@@ -306,6 +314,8 @@ export function sanitizeSettings(raw: unknown): AppSettings {
         ? Math.floor(o.lastUpdateCheck)
         : d.lastUpdateCheck,
     metronome: metronomePrefs(o.metronome),
+    controllerPorts: Array.isArray(o.controllerPorts) ? o.controllerPorts.filter((p): p is string => typeof p === "string" && p.length > 0 && p.length < 200).slice(0, 16) : d.controllerPorts,
+    controllerBindings: cleanBindings(o.controllerBindings),
     welcomeSeen: bool(o.welcomeSeen, d.welcomeSeen),
     spaceSnap: bool(o.spaceSnap, d.spaceSnap),
   };
