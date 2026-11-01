@@ -11,6 +11,7 @@ pub mod backup;
 pub mod browse;
 pub mod codecs;
 pub mod commands;
+pub mod controllers;
 pub mod dsp;
 pub mod engine;
 pub mod export;
@@ -24,6 +25,7 @@ pub mod sesx;
 /// Starts the desktop app.
 pub fn run() {
     tauri::Builder::default()
+        .manage(controllers::Controllers::default())
         .manage(engine::PreviewPlayer::default())
         .manage(engine::Transport::default())
         .manage(engine::Recorder::default())
@@ -123,6 +125,9 @@ pub fn run() {
             commands::plugins::plugin_events,
             commands::plugins::plugin_state,
             commands::plugins::plugin_restart,
+            commands::controllers::controller_ports,
+            commands::controllers::controller_open,
+            commands::controllers::controller_events,
             commands::devices::audio_inputs,
             commands::devices::audio_outputs,
             commands::devices::set_audio_output,

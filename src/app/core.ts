@@ -1258,6 +1258,21 @@ export function automationLiveClear(): Promise<void> {
   return invoke<void>("automation_live_clear");
 }
 
+/** The MIDI inputs connected now (fader boxes, control surfaces, keyboards). */
+export function controllerPorts(): Promise<string[]> {
+  return invoke<string[]>("controller_ports");
+}
+
+/** Listens to exactly these inputs; resolves to the ones that opened. */
+export function controllerOpen(names: string[]): Promise<string[]> {
+  return invoke<string[]>("controller_open", { names });
+}
+
+/** What the controllers sent since the last call, oldest first. */
+export function controllerEvents(): Promise<import("./controller/map").Message[]> {
+  return invoke<import("./controller/map").Message[]>("controller_events");
+}
+
 const windowsOpen = new Set<string>();
 /** Slots whose own plug-in window was opened and not closed since. */
 export const pluginWindowsOpen = (): string[] => [...windowsOpen];

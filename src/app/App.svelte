@@ -226,7 +226,11 @@
     waveReverseInvert,
     automationLive,
     automationLiveClear,
+    controllerEvents,
+    controllerOpen,
   } from "./core";
+  import { Controller } from "./controller/controller";
+  import ControllersDialog from "./ControllersDialog.svelte";
   import { AutoTake } from "./auto-take";
   import { isTauri } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -2757,6 +2761,51 @@
     clearLive: () => void automationLiveClear().catch(() => {}),
     catalog: () => fxCatalog ?? [],
   });
+  // Hardware controllers (MIDI fader boxes and surfaces) run the same edits the mouse does.
+  const controller = new Controller({
+    doc: () => session.current,
+    edit: (label, op) => session.edit(label, op, sessionHistory),
+    autoTake,
+    runAction: (id) => void actions.run(id),
+  });
+  let controllersOpen = $state(false);
+  $effect(() =>
+    settings.subscribe((s) => {
+      controller.setBindings(s.controllerBindings);
+    }),
+  );
+  // Listen to the chosen devices, and look at what they sent many times a second while any are open.
+  $effect(() => {
+    let names: string[] = [];
+    let timer: ReturnType<typeof setInterval> | null = null;
+    let busy = false;
+    const poll = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        for (const m of await controllerEvents()) controller.handle(m);
+      } catch {
+        // The device went away; the next refresh in the dialog shows it.
+      } finally {
+        busy = false;
+      }
+    };
+    const stop = settings.subscribe((s) => {
+      const want = s.controllerPorts;
+      if (want.join("\n") === names.join("\n")) return;
+      names = [...want];
+      void controllerOpen(names).catch(() => []);
+      if (names.length > 0 && !timer) timer = setInterval(() => void poll(), 25);
+      if (names.length === 0 && timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    });
+    return () => {
+      stop();
+      if (timer) clearInterval(timer);
+    };
+  });
   let wasPlaying = false;
   $effect(() =>
     transport.subscribe((t) => {
@@ -3907,6 +3956,7 @@
       actions.register({ id: "window.minimize", run: () => minimizeWindow() }),
       actions.register({ id: "edit.keyboard-shortcuts", run: () => void (shortcutsOpen = true) }),
       actions.register({ id: "edit.settings", run: () => openSettings() }),
+      actions.register({ id: "edit.controllers", run: () => void (controllersOpen = true) }),
       actions.register({ id: "help.shortcuts", run: () => void (shortcutsOpen = true) }),
       actions.register({ id: "help.website", run: () => openLink(LINKS.website) }),
       actions.register({ id: "help.book", run: () => openLink(LINKS.book) }),
@@ -5811,6 +5861,9 @@
   />
 {/if}
 
+{#if controllersOpen}
+  <ControllersDialog {controller} tracks={session.current?.tracks.length ?? 8} onClose={() => (controllersOpen = false)} />
+{/if}
 {#if guideOpen}
   <GuideDialog onClose={() => (guideOpen = false)} />
 {/if}

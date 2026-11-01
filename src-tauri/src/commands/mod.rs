@@ -12,6 +12,7 @@ pub mod backup;
 pub mod batch;
 pub mod browse;
 pub mod cache;
+pub mod controllers;
 pub mod devices;
 pub mod effects;
 pub mod export;

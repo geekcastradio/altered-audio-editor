@@ -83,6 +83,18 @@ Recorded moves are thinned so lanes are not flooded with points. Settings > Play
 
 Buses have the same mode box. Plug-in controls and the master strip cannot be recorded yet.
 
+## Hardware controllers
+
+A MIDI fader box or control surface can run the faders, pans, mute, solo, arm and transport. Connect it, then open Edit > Controllers.
+
+1. Tick your device in the list. Press Refresh if it is not there. The line "Last message" shows what the program hears, so you can check the device is working.
+2. For a Behringer BCF2000 or any Mackie Control, set the device to its Mackie Control mode and press Use Mackie Control Layout. Eight faders run tracks 1 to 8, the ninth runs the master, the knobs set pan, and the buttons arm, solo and mute. The bank buttons move to the next eight tracks, and the transport buttons play, stop and record.
+3. For anything else, pick what you want to run (for example Track 3 Volume), press Learn and move the control. Check Endless knob for a knob that sends how far it turned.
+
+Faders recorded in Write, Latch or Touch mode work with a real fader. A Mackie fader with a touch sensor grabs the moment you touch it. Other faders count as let go a moment after they stop moving.
+
+Motorized faders do not follow the screen yet, so after you change tracks the faders sit where your hands left them. Connecting a device sends nothing to it.
+
 ## Plug-ins
 
 The program loads VST3 plug-ins. Open Effects > Plug-in Manager to see what was found and to add folders to scan. Plug-ins appear in the effect menus next to the built-in ones.

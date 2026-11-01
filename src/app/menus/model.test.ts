@@ -326,6 +326,7 @@ describe("menu model", () => {
       "fx.add.echo",
       "fx.hide-windows",
       "help.guide",
+      "edit.controllers",
     ]);
     for (const m of MENUS) {
       for (const it of allItems(m.items)) {

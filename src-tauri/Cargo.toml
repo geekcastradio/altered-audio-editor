@@ -40,6 +40,8 @@ tauri-plugin-dialog = "2"
 # Help > Check for Updates. Talks to GitHub only when asked (see commands/update.rs).
 tauri-plugin-updater = "2"
 cpal = "0.18.2"
+# Hardware controllers (MIDI in): faders, buttons, knobs. Local only (see controllers.rs).
+midir = "0.11"
 rubato = "5.0.1"
 rtrb = "0.4"
 audioadapter-buffers = "5.2"

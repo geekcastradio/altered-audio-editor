@@ -208,6 +208,7 @@ export const MENUS: readonly Menu[] = [
       ]),
       sep,
       item("edit.keyboard-shortcuts", "Keyboard Shortcuts..."),
+      item("edit.controllers", "Controllers..."),
       item("edit.settings", "Settings..."),
     ],
   },
