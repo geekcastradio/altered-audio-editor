@@ -1755,3 +1755,16 @@ Effect settings windows open in the middle of the screen and have a light title 
 - `welcomeSeen` (a flag) became `welcomeRev` (the newest page revision seen). Pages live in `src/app/welcome.ts` with a `rev`; `WELCOME_REV` is the highest. A fresh install shows all pages; rev 0 is install-only. An upgrade shows only pages newer than the saved revision, then records the new revision. Old `welcomeSeen: true` and settings saved before the welcome existed both count as revision 1.
 - Rule for adding a page: only for a change worth stopping the person for (a new way of working, not a fix). Pictures are optional PNGs in `src/assets/welcome/`, matched by name; a missing file shows text only.
 
+
+## 0.12.0: tag clearing, FLAC and M4A cover art
+
+- A tag field sent as an empty string means "remove it"; a field left out (None) means "leave it". Only the tag editors send empty strings (`saveTags`). Batch overlay still treats blank as keep-old, so batch convert is unchanged.
+- WAV and M4A tag writers already rebuild the whole list, so cleared fields drop there; MP3 and FLAC remove the matching frame or comment.
+- Cover art is dispatched by extension in `export/cover.rs`. FLAC uses a PICTURE block placed after STREAMINFO; M4A keeps the `covr` item across text-tag writes, and cover writes keep every other item. Width and height in the FLAC block are read from the PNG or JPEG header, zero when unknown.
+- CI: upload-artifact v6 and download-artifact v7 are the first majors on the Node 24 runtime; checkout v5, setup-node v5 and rust-cache v2 already were.
+
+## 0.12.0: welcome dialog on install and big upgrades only
+
+- `welcomeSeen` (a flag) became `welcomeRev` (the newest page revision seen). Pages live in `src/app/welcome.ts` with a `rev`; `WELCOME_REV` is the highest. A fresh install shows all pages; rev 0 is install-only. An upgrade shows only pages newer than the saved revision, then records the new revision. Old `welcomeSeen: true` and settings saved before the welcome existed both count as revision 1.
+- Rule for adding a page: only for a change worth stopping the person for (a new way of working, not a fix). Pictures are optional PNGs in `src/assets/welcome/`, matched by name; a missing file shows text only.
+
