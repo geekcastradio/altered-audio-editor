@@ -24,7 +24,25 @@ pub mod sesx;
 
 /// Starts the desktop app.
 pub fn run() {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let launch = commands::app::file_args(std::env::args().skip(1), &cwd);
     tauri::Builder::default()
+        // Opening a session or audio file from File Explorer while the app
+        // runs hands it to the running window, which comes to the front,
+        // instead of starting a second, empty copy.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            use tauri::{Emitter, Manager};
+            let paths =
+                commands::app::file_args(argv.into_iter().skip(1), std::path::Path::new(&cwd));
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+            }
+            if !paths.is_empty() {
+                let _ = app.emit("open-paths", paths);
+            }
+        }))
+        .manage(commands::app::LaunchPaths(std::sync::Mutex::new(launch)))
         .manage(controllers::Controllers::default())
         .manage(engine::PreviewPlayer::default())
         .manage(engine::Transport::default())
@@ -58,6 +76,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             commands::app::app_info,
+            commands::app::launch_paths,
             commands::app::disk_free,
             commands::app::app_exit,
             commands::app::app_minimize,

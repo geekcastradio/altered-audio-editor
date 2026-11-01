@@ -9,7 +9,7 @@
 -->
 <script lang="ts">
   import { settings, wheelAnchorX, zoomRatios } from "../../stores/settings";
-  import { trackOp } from "../mixer/solo";
+  import { silentTracks, trackOp } from "../mixer/solo";
   import { busChoices, busOp, MASTER_ID, NONE_ID, newSend, outputOf, outputValue } from "../mixer/routing";
   import SendList from "../mixer/SendList.svelte";
   import { onDestroy, tick as nextFrame } from "svelte";
@@ -203,6 +203,8 @@
   const headerRows = $derived(showStart ? [] : laneList);
   /** Bus tracks, listed after the audio tracks. They hold no clips. */
   const buses = $derived(showStart ? [] : (doc?.buses ?? []));
+  /** Tracks not heard (muted, or others soloed): their clips are greyed out. */
+  const silent = $derived(silentTracks(doc));
   /** What the track headers show: the mix controls, or the output and sends. */
   /** What the headers show: mix controls (with input, output and sends as room allows) or the effects. */
   let headerView = $state<"mix" | "fx">("mix");
@@ -1361,6 +1363,28 @@
    * drag as on empty track space, so a selection can start anywhere (a
    * box with the Move tool, a time range otherwise) and sweep over tracks.
    */
+  /**
+   * While a drag holds the pointer near the top or bottom of the tracks,
+   * scrolls them that way (faster the closer to the edge) and runs `again`
+   * with the last pointer event so the drag follows. Returns the stop.
+   */
+  function edgeScrollY(last: () => PointerEvent | null, again: (ev: PointerEvent) => void): () => void {
+    const timer = window.setInterval(() => {
+      const ev = last();
+      if (!ev || !scroller) return;
+      const r = scroller.getBoundingClientRect();
+      const band = 36;
+      let dy = 0;
+      if (ev.clientY < r.top + band) dy = -Math.min(30, 3 + (r.top + band - ev.clientY) / 2);
+      else if (ev.clientY > r.bottom - band) dy = Math.min(30, 3 + (ev.clientY - (r.bottom - band)) / 2);
+      if (dy === 0) return;
+      const before = scroller.scrollTop;
+      scroller.scrollTop += dy;
+      if (scroller.scrollTop !== before) again(ev);
+    }, 30);
+    return () => window.clearInterval(timer);
+  }
+
   function startSelectFromLane(e: PointerEvent) {
     if (e.button !== 0) return;
     if (ed.tool === "move") startBoxSelect(e);
@@ -1412,7 +1436,9 @@
     const box = lanesEl.getBoundingClientRect();
     const v = view;
     const x0 = e.clientX - box.left;
+    // Heights count from the top of the lanes, which move as they scroll.
     const y0 = e.clientY - box.top;
+    let lastEv: PointerEvent | null = null;
     const keep = e.shiftKey ? new Set(editor.current().selectedClips) : new Set<string>();
     let moved = false;
     const pick = (x1: number, y1: number) => {
@@ -1435,13 +1461,16 @@
       editor.selectClips(ids);
     };
     const move = (ev: PointerEvent) => {
+      lastEv = ev;
       const x1 = ev.clientX - box.left;
-      const y1 = ev.clientY - box.top;
+      const y1 = ev.clientY - (lanesEl?.getBoundingClientRect().top ?? box.top);
       if (!moved && Math.abs(x1 - x0) < 3 && Math.abs(y1 - y0) < 3) return;
       moved = true;
       pick(x1, y1);
     };
+    const stopScroll = edgeScrollY(() => (moved ? lastEv : null), move);
     const up = (ev: PointerEvent) => {
+      stopScroll();
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", up, true);
       selBox = null;
@@ -1511,13 +1540,21 @@
         const c = trimClip(d0, clip, side, dx, targets, tol);
         changes = c ? [c] : [];
         if (c && ids.length > 1) {
-          // The grabbed clip snaps; the rest follow by the same amount, each within its own limits.
+          // The grabbed clip snaps; the others meet it. Dragging an end back, a clip that ends later
+          // comes back to the grabbed edge and then moves with it, while one that ends earlier stays put
+          // until the edge reaches it (dragging an end out, the shorter ones are pulled out to meet it).
+          // Start edges work the same way round. Each stays within its own limits.
           const moved = { ...clip, ...c } as ClipDoc;
-          const by = side === "left" ? moved.start - clip.start : moved.start + clipLength(moved, mediaMap.get(clip.media_id), rate) - end;
+          const edge = side === "left" ? moved.start : moved.start + clipLength(moved, mediaMap.get(clip.media_id), rate);
+          const by = side === "left" ? moved.start - clip.start : edge - end;
           for (const t of d0.tracks)
             for (const other of t.clips) {
               if (other.id === clip.id || !ids.includes(other.id)) continue;
-              const o = trimClip(d0, other, side, by);
+              const own = side === "left" ? other.start : other.start + clipLength(other, mediaMap.get(other.media_id), rate);
+              // Shortening (an end back, a start forward) takes the nearer of its own edge and the grabbed one.
+              const shorten = side === "left" ? by > 0 : by < 0;
+              const want = shorten === (side === "right") ? Math.min(own, edge) : Math.max(own, edge);
+              const o = want !== own ? trimClip(d0, other, side, want - own) : null;
               if (o) changes.push(o);
             }
         }
@@ -1551,7 +1588,9 @@
       setView({ scroll: next });
       move(lastEv);
     }, 30);
+    const stopScroll = edgeScrollY(() => (moved && kind === "move" ? lastEv : null), (ev) => move(ev));
     const up = () => {
+      stopScroll();
       window.clearInterval(timer);
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", up, true);
@@ -2023,7 +2062,9 @@
     let moved = false;
     const list = () => [...(scroller?.querySelectorAll<HTMLElement>("[data-row]") ?? [])];
     let beforeId: string | null = null;
+    let lastEv: PointerEvent | null = null;
     const move = (ev: PointerEvent) => {
+      lastEv = ev;
       if (!moved && Math.abs(ev.clientY - startY) < 5) return;
       moved = true;
       const rows = list();
@@ -2041,7 +2082,9 @@
       const y = ref ? (over < rows.length ? ref.getBoundingClientRect().top : ref.getBoundingClientRect().bottom) - sb.top + scroller!.scrollTop : 0;
       dragTrack = { id, overIndex: over, y };
     };
+    const stopScroll = edgeScrollY(() => (moved ? lastEv : null), move);
     const up = () => {
+      stopScroll();
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", up, true);
       const d = dragTrack;
@@ -2859,6 +2902,7 @@
                 showFx={ed.showFx}
                 fxLanes={ed.fxLanes}
                 stretchHandles={ed.stretchHandles}
+                silent={silent.has(track.id)}
               />
             </div>
             {@render autoLanes(track, i)}

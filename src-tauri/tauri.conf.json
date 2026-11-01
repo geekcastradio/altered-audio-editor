@@ -45,6 +45,14 @@
     "publisher": "The GeekCast Radio Network, LLC",
     "copyright": "Copyright (c) The GeekCast Radio Network, LLC. Licensed under GPL-3.0-or-later.",
     "category": "Music",
+    "fileAssociations": [
+      {
+        "ext": ["altaudio"],
+        "name": "Altered Audio Editor Session",
+        "description": "Altered Audio Editor multitrack session",
+        "role": "Editor"
+      }
+    ],
     "shortDescription": "Multitrack audio editor for podcasters and voiceover",
     "icon": [
       "icons/32x32.png",
