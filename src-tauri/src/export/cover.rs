@@ -2,14 +2,20 @@
 // Copyright (c) The GeekCast Radio Network, LLC.
 // This file is part of Altered Audio Editor.
 
-//! Cover art inside an MP3's ID3v2.3 tag (the APIC frame): read it,
-//! replace it, remove it. Every other frame, chapters included, is kept.
-//! Other formats are left alone; this editor only writes MP3 cover art.
+//! Cover art: read it, replace it, remove it. Everything else in the tag is kept.
+//!
+//! - MP3: the APIC frame in the ID3v2.3 tag. Chapters stay.
+//! - FLAC: a PICTURE metadata block.
+//! - M4A: the `covr` item (see [`super::m4a_tags`]).
+//!
+//! Other formats are left alone.
 
 use std::fs;
 use std::path::Path;
 
-use super::chapters::{empty_id3, existing_id3, frame, id3_frames, replace, with_frames};
+use super::chapters::{
+    empty_id3, existing_id3, frame, id3_frames, replace, rewrite_flac, with_frames,
+};
 
 /// Pictures larger than this are refused; a tag is not the place for them.
 pub const COVER_MAX: usize = 8 * 1024 * 1024;
@@ -63,8 +69,11 @@ fn parse_apic(body: &[u8]) -> Option<(String, Vec<u8>)> {
 
 /// The cover art in an MP3 file, if it has any: its MIME type and bytes.
 pub fn read_cover(path: &Path) -> Option<(String, Vec<u8>)> {
-    if !is_mp3(path) {
-        return None;
+    match kind(path) {
+        Kind::Flac => return read_flac_cover(path),
+        Kind::M4a => return super::m4a_tags::read_cover_m4a(path),
+        Kind::Mp3 => {}
+        Kind::Other => return None,
     }
     let data = fs::read(path).ok()?;
     let n = existing_id3(&data);
@@ -75,28 +84,141 @@ pub fn read_cover(path: &Path) -> Option<(String, Vec<u8>)> {
         .filter(|(_, img)| !img.is_empty())
 }
 
-fn is_mp3(path: &Path) -> bool {
-    path.extension()
+enum Kind {
+    Mp3,
+    Flac,
+    M4a,
+    Other,
+}
+
+fn kind(path: &Path) -> Kind {
+    let ext = path
+        .extension()
         .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case("mp3"))
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    match ext.as_str() {
+        "mp3" => Kind::Mp3,
+        "flac" => Kind::Flac,
+        "m4a" | "mp4" | "m4b" => Kind::M4a,
+        _ => Kind::Other,
+    }
+}
+
+/// Width and height of a PNG or JPEG, or zeros when they can't be found.
+fn dimensions(img: &[u8]) -> (u32, u32) {
+    if img.starts_with(&[0x89, b'P', b'N', b'G']) && img.len() >= 24 {
+        let w = u32::from_be_bytes([img[16], img[17], img[18], img[19]]);
+        let h = u32::from_be_bytes([img[20], img[21], img[22], img[23]]);
+        return (w, h);
+    }
+    let mut at = 2;
+    while at + 9 < img.len() {
+        if img[at] != 0xff {
+            at += 1;
+            continue;
+        }
+        let marker = img[at + 1];
+        if marker == 0xff {
+            at += 1;
+            continue;
+        }
+        let len = u16::from_be_bytes([img[at + 2], img[at + 3]]) as usize;
+        // Start-of-frame markers carry the size.
+        if (0xc0..=0xcf).contains(&marker) && ![0xc4, 0xc8, 0xcc].contains(&marker) {
+            let h = u16::from_be_bytes([img[at + 5], img[at + 6]]) as u32;
+            let w = u16::from_be_bytes([img[at + 7], img[at + 8]]) as u32;
+            return (w, h);
+        }
+        at += 2 + len.max(2);
+    }
+    (0, 0)
+}
+
+/// A FLAC PICTURE block body: front cover, the MIME type, no description.
+fn picture_block(mime: &str, img: &[u8]) -> Vec<u8> {
+    let (w, h) = dimensions(img);
+    let mut b = Vec::new();
+    b.extend_from_slice(&3u32.to_be_bytes());
+    b.extend_from_slice(&(mime.len() as u32).to_be_bytes());
+    b.extend_from_slice(mime.as_bytes());
+    b.extend_from_slice(&0u32.to_be_bytes());
+    b.extend_from_slice(&w.to_be_bytes());
+    b.extend_from_slice(&h.to_be_bytes());
+    b.extend_from_slice(&0u32.to_be_bytes()); // colour depth: unknown
+    b.extend_from_slice(&0u32.to_be_bytes()); // colours: not indexed
+    b.extend_from_slice(&(img.len() as u32).to_be_bytes());
+    b.extend_from_slice(img);
+    b
+}
+
+/// The MIME type and picture bytes in a PICTURE block body.
+fn parse_picture(body: &[u8]) -> Option<(String, Vec<u8>)> {
+    let num = |at: usize| -> Option<usize> {
+        let b = body.get(at..at + 4)?;
+        Some(u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as usize)
+    };
+    let mlen = num(4)?;
+    let mime = String::from_utf8_lossy(body.get(8..8 + mlen)?).into_owned();
+    let dlen = num(8 + mlen)?;
+    let at = 8 + mlen + 4 + dlen + 16;
+    let n = num(at)?;
+    Some((mime, body.get(at + 4..at + 4 + n)?.to_vec()))
+}
+
+fn read_flac_cover(path: &Path) -> Option<(String, Vec<u8>)> {
+    let mut found = None;
+    // Blocks are read through the same reader the writer uses; nothing is changed.
+    let _ = rewrite_flac(path, |blocks| {
+        found = blocks
+            .iter()
+            .filter(|(k, _)| *k == 6)
+            .find_map(|(_, b)| parse_picture(b))
+            .filter(|(_, img)| !img.is_empty());
+        Err(std::io::Error::other("read only"))
+    });
+    found
 }
 
 /// Replaces the cover art of an MP3 with `image` (JPEG or PNG), or removes it when `image`
 /// is None. False when the file is not an MP3.
 pub fn write_cover(path: &Path, image: Option<&[u8]>) -> std::io::Result<bool> {
-    if !is_mp3(path) {
+    let which = kind(path);
+    if matches!(which, Kind::Other) {
         return Ok(false);
     }
-    let mut new_frame = Vec::new();
+    let mut mime = "";
     if let Some(img) = image {
-        let Some(mime) = image_mime(img) else {
+        let Some(m) = image_mime(img) else {
             return Err(std::io::Error::other("The picture must be a JPEG or PNG."));
         };
         if img.len() > COVER_MAX {
             return Err(std::io::Error::other("The picture is larger than 8 MB."));
         }
-        new_frame = frame(b"APIC", &apic_body(mime, img));
+        mime = m;
     }
+    match which {
+        Kind::Flac => {
+            rewrite_flac(path, |mut blocks| {
+                blocks.retain(|(k, _)| *k != 6);
+                if let Some(img) = image {
+                    let at = 1.min(blocks.len());
+                    blocks.insert(at, (6, picture_block(mime, img)));
+                }
+                Ok(blocks)
+            })?;
+            return Ok(true);
+        }
+        Kind::M4a => {
+            super::m4a_tags::write_cover_m4a(path, image.map(|i| (mime, i)))?;
+            return Ok(true);
+        }
+        _ => {}
+    }
+    let new_frame = match image {
+        Some(img) => frame(b"APIC", &apic_body(mime, img)),
+        None => Vec::new(),
+    };
     let data = fs::read(path)?;
     let n = existing_id3(&data);
     let mut frames = new_frame;
@@ -259,5 +381,66 @@ mod tests {
             parse_apic(&body),
             Some(("image/png".to_string(), vec![1, 2, 3]))
         );
+    }
+
+    #[test]
+    fn flac_cover_round_trips_and_keeps_tags_and_audio() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.flac");
+        let mut f = b"fLaC".to_vec();
+        f.extend_from_slice(&[0x80, 0, 0, 34]);
+        f.extend_from_slice(&[0; 34]);
+        f.extend_from_slice(b"audio");
+        fs::write(&p, &f).unwrap();
+        write_tags(
+            &p,
+            &Tags {
+                title: Some("Episode 1".into()),
+                ..Tags::default()
+            },
+        )
+        .unwrap();
+        assert!(read_cover(&p).is_none());
+        let img = jpeg();
+        assert!(write_cover(&p, Some(&img)).unwrap());
+        let (mime, back) = read_cover(&p).unwrap();
+        assert_eq!(
+            (mime.as_str(), back.as_slice()),
+            ("image/jpeg", img.as_slice())
+        );
+        // Tags written afterwards leave the picture; a new picture replaces it.
+        write_tags(
+            &p,
+            &Tags {
+                artist: Some("GCRN".into()),
+                ..Tags::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(read_cover(&p).unwrap().1, img);
+        let mut other = img.clone();
+        other.push(9);
+        write_cover(&p, Some(&other)).unwrap();
+        assert_eq!(read_cover(&p).unwrap().1, other);
+        write_cover(&p, None).unwrap();
+        assert!(read_cover(&p).is_none());
+        let data = fs::read(&p).unwrap();
+        let text = String::from_utf8_lossy(&data);
+        assert!(text.contains("TITLE=Episode 1") && text.contains("ARTIST=GCRN"));
+        assert!(data.ends_with(b"audio"));
+    }
+
+    #[test]
+    fn picture_sizes_are_read_from_png_and_jpeg() {
+        let mut png = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13];
+        png.extend_from_slice(b"IHDR");
+        png.extend_from_slice(&640u32.to_be_bytes());
+        png.extend_from_slice(&480u32.to_be_bytes());
+        png.extend_from_slice(&[8, 2, 0, 0, 0]);
+        assert_eq!(dimensions(&png), (640, 480));
+        let jpg = [
+            0xff, 0xd8, 0xff, 0xc0, 0, 17, 8, 0x01, 0xe0, 0x02, 0x80, 3, 1, 0x22, 0, 2, 0x11, 1,
+        ];
+        assert_eq!(dimensions(&jpg), (640, 480));
     }
 }

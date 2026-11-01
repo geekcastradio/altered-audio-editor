@@ -82,8 +82,13 @@ fn track_item(text: &str) -> Option<Vec<u8>> {
     Some(make_box(b"trkn", &make_box(b"data", &data)))
 }
 
-/// The `meta` box holding the tags.
+/// The `meta` box holding the tags, with `keep` (items already in the file that
+/// are not tags, such as the cover) added to the list.
 pub fn meta_box(tags: &Tags) -> Vec<u8> {
+    meta_box_keeping(tags, &[])
+}
+
+fn meta_box_keeping(tags: &Tags, keep: &[u8]) -> Vec<u8> {
     fn field(v: &Option<String>) -> Option<&str> {
         v.as_deref().map(str::trim).filter(|s| !s.is_empty())
     }
@@ -103,6 +108,12 @@ pub fn meta_box(tags: &Tags) -> Vec<u8> {
     if let Some(item) = field(&tags.track).and_then(track_item) {
         items.extend(item);
     }
+    items.extend_from_slice(keep);
+    meta_from_items(&items)
+}
+
+/// A `meta` box around an item list.
+fn meta_from_items(items: &[u8]) -> Vec<u8> {
     // meta is a full box: version and flags first.
     let mut body = vec![0, 0, 0, 0];
     let mut hdlr = vec![0u8; 8];
@@ -110,8 +121,93 @@ pub fn meta_box(tags: &Tags) -> Vec<u8> {
     hdlr.extend_from_slice(b"appl");
     hdlr.extend_from_slice(&[0; 9]);
     body.extend(make_box(b"hdlr", &hdlr));
-    body.extend(make_box(b"ilst", &items));
+    body.extend(make_box(b"ilst", items));
     make_box(b"meta", &body)
+}
+
+/// The items in the file's tag list, each whole: its type and its bytes.
+fn ilst_items(data: &[u8]) -> Vec<([u8; 4], Vec<u8>)> {
+    fn inner(data: &[u8]) -> std::io::Result<Vec<([u8; 4], Vec<u8>)>> {
+        let top = boxes(data)?;
+        let Some(&(m_at, m_head, m_len, _)) = top.iter().find(|b| &b.3 == b"moov") else {
+            return Ok(Vec::new());
+        };
+        let moov = &data[m_at + m_head..m_at + m_len];
+        for (at, head, len, kind) in boxes(moov)? {
+            if &kind != b"udta" {
+                continue;
+            }
+            let udta = &moov[at + head..at + len];
+            for (u_at, u_head, u_len, u_kind) in boxes(udta)? {
+                if &u_kind != b"meta" {
+                    continue;
+                }
+                // Skip the full box's version and flags.
+                let meta = &udta[u_at + u_head + 4..u_at + u_len];
+                for (l_at, l_head, l_len, l_kind) in boxes(meta)? {
+                    if &l_kind != b"ilst" {
+                        continue;
+                    }
+                    let list = &meta[l_at + l_head..l_at + l_len];
+                    return Ok(boxes(list)?
+                        .into_iter()
+                        .map(|(i_at, _, i_len, i_kind)| (i_kind, list[i_at..i_at + i_len].to_vec()))
+                        .collect());
+                }
+            }
+        }
+        Ok(Vec::new())
+    }
+    inner(data).unwrap_or_default()
+}
+
+/// The cover item (`covr`) of the file, whole, if it has one.
+fn cover_item(data: &[u8]) -> Vec<u8> {
+    ilst_items(data)
+        .into_iter()
+        .find(|(k, _)| k == b"covr")
+        .map(|(_, b)| b)
+        .unwrap_or_default()
+}
+
+/// The cover art in an M4A: its MIME type and bytes.
+pub fn read_cover_m4a(path: &Path) -> Option<(String, Vec<u8>)> {
+    let data = fs::read(path).ok()?;
+    let item = cover_item(&data);
+    let inner = item.get(8..)?;
+    let (at, head, len, _) = boxes(inner).ok()?.into_iter().find(|b| &b.3 == b"data")?;
+    let body = &inner[at + head..at + len];
+    let img = body.get(8..)?;
+    let mime = super::cover::image_mime(img)?;
+    Some((mime.to_string(), img.to_vec()))
+}
+
+/// Replaces the cover of an M4A with `image` (type already checked), or removes it. The text
+/// tags and everything else in the item list stay.
+pub fn write_cover_m4a(path: &Path, image: Option<(&str, &[u8])>) -> std::io::Result<()> {
+    let data = fs::read(path)?;
+    let mut items: Vec<u8> = Vec::new();
+    for (kind, bytes) in ilst_items(&data) {
+        if &kind != b"covr" {
+            items.extend(bytes);
+        }
+    }
+    if let Some((mime, img)) = image {
+        // Data type 13 is JPEG, 14 is PNG.
+        let mut d = vec![
+            0,
+            0,
+            0,
+            if mime == "image/png" { 14 } else { 13 },
+            0,
+            0,
+            0,
+            0,
+        ];
+        d.extend_from_slice(img);
+        items.extend(make_box(b"covr", &make_box(b"data", &d)));
+    }
+    rewrite_udta(path, b"meta", &meta_from_items(&items))
 }
 
 /// Boxes inside which chunk offset tables can sit.
@@ -159,7 +255,8 @@ fn shift_offsets(moov: &mut [u8], from: u64, delta: i64) -> std::io::Result<()> 
 
 /// Writes `tags` into an M4A file, replacing any tags already there.
 pub fn write_m4a(path: &Path, tags: &Tags) -> std::io::Result<()> {
-    rewrite_udta(path, b"meta", &meta_box(tags))
+    let keep = cover_item(&fs::read(path)?);
+    rewrite_udta(path, b"meta", &meta_box_keeping(tags, &keep))
 }
 
 /// Rebuilds the movie header's `udta`: every box in it is kept except the
@@ -454,5 +551,40 @@ mod tests {
         write_m4a_chapters(&q, &ch).unwrap();
         assert_eq!(read_m4a_chapters(&q), ch);
         assert_eq!(chunk(&fs::read(&q).unwrap()).1, b"AUDIODAT");
+    }
+
+    #[test]
+    fn a_cover_goes_in_survives_tag_writes_and_comes_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.m4a");
+        fs::write(&p, sample(true)).unwrap();
+        write_m4a(&p, &tags()).unwrap();
+        let mut img = vec![0xff, 0xd8, 0xff, 0xe0];
+        img.extend(0..100u8);
+        write_cover_m4a(&p, Some(("image/jpeg", &img))).unwrap();
+        let (mime, back) = read_cover_m4a(&p).unwrap();
+        assert_eq!(
+            (mime.as_str(), back.as_slice()),
+            ("image/jpeg", img.as_slice())
+        );
+        let data = fs::read(&p).unwrap();
+        assert_eq!(chunk(&data).1, b"AUDIODAT");
+        assert!(data.windows(4).any(|w| w == b"\xa9nam"), "text tags kept");
+
+        // Writing tags again keeps the cover; a second cover replaces it.
+        write_m4a(&p, &tags()).unwrap();
+        assert_eq!(read_cover_m4a(&p).unwrap().1, img);
+        let mut other = img.clone();
+        other.push(7);
+        write_cover_m4a(&p, Some(("image/jpeg", &other))).unwrap();
+        let data = fs::read(&p).unwrap();
+        assert_eq!(data.windows(4).filter(|w| *w == b"covr").count(), 1);
+        assert_eq!(read_cover_m4a(&p).unwrap().1, other);
+
+        write_cover_m4a(&p, None).unwrap();
+        assert!(read_cover_m4a(&p).is_none());
+        let data = fs::read(&p).unwrap();
+        assert_eq!(chunk(&data).1, b"AUDIODAT");
+        assert!(data.windows(4).any(|w| w == b"\xa9nam"));
     }
 }

@@ -278,7 +278,7 @@ pub(crate) fn set_flac_comments(
 /// Reads a FLAC file's metadata blocks, lets `edit` change the list, and writes the file
 /// again with the audio untouched. Written beside the file, then swapped in, so a failure
 /// never leaves half a file.
-fn rewrite_flac(
+pub(crate) fn rewrite_flac(
     path: &Path,
     edit: impl FnOnce(Vec<(u8, Vec<u8>)>) -> std::io::Result<Vec<(u8, Vec<u8>)>>,
 ) -> std::io::Result<()> {

@@ -78,8 +78,18 @@ impl Tags {
         })
     }
 
+    /// Fields sent as an empty string: the caller wants the tag gone from the file.
+    /// (`None` means "leave it alone", which batch convert relies on.)
+    fn cleared(&self) -> impl Iterator<Item = usize> + '_ {
+        self.values()
+            .into_iter()
+            .enumerate()
+            .filter_map(|(i, v)| v.as_deref().filter(|s| s.trim().is_empty()).map(|_| i))
+    }
+
+    /// Nothing to write and nothing to remove.
     pub fn is_empty(&self) -> bool {
-        self.set().next().is_none()
+        self.set().next().is_none() && self.cleared().next().is_none()
     }
 
     /// These tags with every field `over` sets written on top.
@@ -245,7 +255,12 @@ fn comment_frame(text: &str) -> Vec<u8> {
 fn write_mp3(path: &Path, tags: &Tags) -> std::io::Result<()> {
     let data = fs::read(path)?;
     let n = existing_id3(&data);
-    let ours: Vec<&[u8; 4]> = tags.set().map(|(i, _)| FIELDS[i].0).collect();
+    let ours: Vec<&[u8; 4]> = tags
+        .set()
+        .map(|(i, _)| i)
+        .chain(tags.cleared())
+        .map(|i| FIELDS[i].0)
+        .collect();
     let mut frames: Vec<u8> = Vec::new();
     for (i, v) in tags.set() {
         let id = FIELDS[i].0;
@@ -266,7 +281,12 @@ fn write_mp3(path: &Path, tags: &Tags) -> std::io::Result<()> {
 }
 
 fn write_flac(path: &Path, tags: &Tags) -> std::io::Result<()> {
-    let keys: Vec<&str> = tags.set().map(|(i, _)| FIELDS[i].1).collect();
+    let keys: Vec<&str> = tags
+        .set()
+        .map(|(i, _)| i)
+        .chain(tags.cleared())
+        .map(|i| FIELDS[i].1)
+        .collect();
     let lines: Vec<String> = tags
         .set()
         .map(|(i, v)| format!("{}={v}", FIELDS[i].1))
@@ -287,6 +307,9 @@ fn write_flac(path: &Path, tags: &Tags) -> std::io::Result<()> {
 /// The `LIST`/`INFO` chunk for the tags. Text is UTF-8, which current
 /// players read; each entry ends with a zero and pads to an even size.
 pub fn info_chunk(tags: &Tags) -> Vec<u8> {
+    if tags.set().next().is_none() {
+        return Vec::new();
+    }
     let mut body = b"INFO".to_vec();
     for (i, v) in tags.set() {
         let mut text = v.as_bytes().to_vec();
@@ -461,5 +484,53 @@ mod tests {
         let text = String::from_utf8_lossy(&data);
         assert!(text.contains("CHAPTER001NAME=Intro") && text.contains("TITLE=Episode 12"));
         assert!(data.ends_with(b"audio"));
+    }
+
+    #[test]
+    fn blank_fields_remove_tags_and_none_leaves_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.flac");
+        let mut f = b"fLaC".to_vec();
+        f.extend_from_slice(&[0x80, 0, 0, 34]);
+        f.extend_from_slice(&[0; 34]);
+        f.extend_from_slice(b"audio");
+        fs::write(&p, &f).unwrap();
+        write_tags(&p, &sample()).unwrap();
+        // None leaves the artist alone; the empty string removes the title.
+        let clear = Tags {
+            title: Some(String::new()),
+            ..Tags::default()
+        };
+        assert!(!clear.is_empty());
+        assert!(write_tags(&p, &clear).unwrap());
+        let text = String::from_utf8_lossy(&fs::read(&p).unwrap()).to_string();
+        assert!(!text.contains("TITLE=") && text.contains("ARTIST="));
+
+        let q = dir.path().join("a.mp3");
+        fs::write(&q, b"\xff\xfb\x90\x00audio").unwrap();
+        write_tags(&q, &sample()).unwrap();
+        write_tags(&q, &clear).unwrap();
+        // The stand-in audio is too short to decode, so look at the frames themselves.
+        let data = fs::read(&q).unwrap();
+        let ids: Vec<[u8; 4]> = id3_frames(&data[..existing_id3(&data)])
+            .into_iter()
+            .map(|(i, _)| i)
+            .collect();
+        assert!(!ids.contains(b"TIT2") && ids.contains(b"TPE1"));
+
+        let w = dir.path().join("a.wav");
+        wav(&w);
+        write_tags(&w, &sample()).unwrap();
+        let all = Tags {
+            title: Some(" ".into()),
+            artist: Some(String::new()),
+            album: Some(String::new()),
+            year: Some(String::new()),
+            genre: Some(String::new()),
+            comment: Some(String::new()),
+            track: Some(String::new()),
+        };
+        assert!(write_tags(&w, &all).unwrap());
+        assert!(read_tags(&w).title.is_none());
     }
 }
