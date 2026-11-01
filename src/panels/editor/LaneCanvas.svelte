@@ -43,9 +43,11 @@
     fxLanes?: Record<string, FxLane>;
     /** Draw stretch handles in each clip's top corners. */
     stretchHandles?: boolean;
+    /** Not heard (the track is muted, or others are soloed): every clip greyed out. */
+    silent?: boolean;
   }
 
-  const { track, media, sessionRate, view, width, playhead, selectedClips, trackSelected, index = 0, ampZoom = 1, liveTake = null, peaks, peakTick, showVolume = false, showPan = false, showFx = false, fxLanes = {}, stretchHandles = false }: Props = $props();
+  const { track, media, sessionRate, view, width, playhead, selectedClips, trackSelected, index = 0, ampZoom = 1, liveTake = null, peaks, peakTick, showVolume = false, showPan = false, showFx = false, fxLanes = {}, stretchHandles = false, silent = false }: Props = $props();
 
   let canvas = $state<HTMLCanvasElement | null>(null);
 
@@ -64,6 +66,16 @@
     return u;
   }
 
+  /** The clip's fade gain `tl` session frames into a clip `len` long, so the drawn waveform follows its fades. */
+  function fadeAt(clip: ClipDoc, tl: number, len: number): number {
+    let g = 1;
+    const fi = clip.fade_in.length;
+    const fo = clip.fade_out.length;
+    if (fi > 0 && tl < fi) g *= fadeGain(clip.fade_in.shape, Math.max(0, tl) / fi, clip.fade_in.curve);
+    if (fo > 0 && tl > len - fo) g *= fadeGain(clip.fade_out.shape, Math.max(0, len - tl) / fo, clip.fade_out.curve);
+    return g;
+  }
+
   /** Shades the silent side of a fade and draws its curve. */
   function drawFade(g: CanvasRenderingContext2D, fade: FadeDoc, from: number, to: number, top: number, height: number, rising: boolean) {
     if (fade.length <= 0 || to - from < 1) return;
@@ -79,7 +91,7 @@
     }
     g.lineTo(to, top);
     g.closePath();
-    g.fillStyle = "rgba(0, 0, 0, 0.38)";
+    g.fillStyle = "rgba(0, 0, 0, 0.2)";
     g.fill();
     g.beginPath();
     for (let i = 0; i <= steps; i++) {
@@ -270,8 +282,9 @@
             const mid = body.top + laneH * (k + 0.5);
             const hc = Math.min(k, exact.channels - 1);
             const at = (f: number): [number, number] => {
-              const v = Math.max(-1, Math.min(1, (exact.data[(f - exact.start) * exact.channels + hc] ?? 0) * ampZoom * clipLevel));
-              return [xOf(clip.start + ((f - clip.source_in) * sessionRate) / srcRate, view), mid - v * (laneH / 2 - 1)];
+              const tl = ((f - clip.source_in) * sessionRate) / srcRate;
+              const v = Math.max(-1, Math.min(1, (exact.data[(f - exact.start) * exact.channels + hc] ?? 0) * ampZoom * clipLevel * fadeAt(clip, tl, len)));
+              return [xOf(clip.start + tl, view), mid - v * (laneH / 2 - 1)];
             };
             g.beginPath();
             for (let f = fA; f < fB; f++) {
@@ -306,6 +319,7 @@
             const s0 = clip.source_in + into;
             const s1 = s0 + framesPerPx;
             if (s1 < clip.source_in || s0 >= clip.source_out) continue;
+            const faded = fadeAt(clip, tl0 + view.spp / 2, len);
             for (let k = 0; k < ch; k++) {
               // Reversed: positions count from the file's end.
               const fileLen = m?.length ?? clip.source_out;
@@ -314,7 +328,7 @@
               // Inverted: drawn upside down.
               const [lo, hi] = clip.inverted ? [-hi0, -lo0] : [lo0, hi0];
               const mid = body.top + laneH * (k + 0.5);
-              const amp = (v: number) => Math.max(-1, Math.min(1, v * ampZoom * clipLevel));
+              const amp = (v: number) => Math.max(-1, Math.min(1, v * ampZoom * clipLevel * faded));
               const y0 = mid - amp(hi) * (laneH / 2 - 1);
               const y1 = mid - amp(lo) * (laneH / 2 - 1);
               g.fillRect(px, y0, 1, Math.max(1, y1 - y0));
@@ -545,9 +559,13 @@
   });
 </script>
 
-<canvas bind:this={canvas} aria-hidden="true"></canvas>
+<canvas bind:this={canvas} class:silent aria-hidden="true"></canvas>
 
 <style>
+  /* A track not heard: its clips are greyed out. */
+  canvas.silent {
+    filter: grayscale(1) brightness(0.8);
+  }
   canvas {
     display: block;
   }
