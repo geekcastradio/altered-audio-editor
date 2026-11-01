@@ -132,13 +132,18 @@
     }
     // The view never runs past the end of the file.
     const maxScroll = Math.max(0, total - width * (v.spp ?? view.spp));
-    wave.setView({
+    const next = {
       ...doc.view,
       samples_per_pixel: v.spp ?? doc.view.samples_per_pixel,
       scroll: Math.max(0, Math.min(maxScroll, Math.round(v.scroll ?? doc.view.scroll))),
       playhead: Math.max(0, Math.round(v.playhead ?? doc.view.playhead)),
       selection: v.selection === undefined ? doc.view.selection : v.selection,
-    });
+    };
+    // Nothing changed (the view is already clamped at the file's end): do not
+    // publish a new document, or the follow effect below re-runs on it forever.
+    const cur = doc.view;
+    if (next.samples_per_pixel === cur.samples_per_pixel && next.scroll === cur.scroll && next.playhead === cur.playhead && next.selection === cur.selection) return;
+    wave.setView(next);
   }
 
   // A newly opened file fits the window. The panel can still be growing
