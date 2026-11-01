@@ -103,10 +103,3 @@ export function searchGuide(sections: readonly GuideSection[], query: string): G
   if (words.length === 0) return [...sections];
   return sections.filter((s) => words.every((w) => s.text.includes(w)));
 }
-
-/** True when the first-run welcome should show: nothing was ever saved, or it was saved as not yet seen. */
-export function welcomeDue(saved: unknown): boolean {
-  if (saved === null || saved === undefined) return true;
-  if (typeof saved !== "object") return false;
-  return (saved as { welcomeSeen?: unknown }).welcomeSeen === false;
-}

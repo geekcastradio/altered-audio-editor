@@ -9,7 +9,7 @@
 -->
 <script lang="ts">
   import type { FileTags } from "./core";
-  import { TAG_FIELDS, cleanTags } from "./tags";
+  import { TAG_FIELDS, saveTags } from "./tags";
 
   interface Props {
     /** The file's name, shown in the title. */
@@ -50,10 +50,10 @@
         {/if}
       </label>
     {/each}
-    <p class="note">Only the fields you fill in are written. Clearing a field here does not remove it from the file yet.</p>
+    <p class="note">Fields you fill in are written; fields you empty are removed from the file.</p>
     <div class="buttons">
       <button type="button" onclick={onClose}>Cancel</button>
-      <button type="button" class="primary" disabled={unsupported} onclick={() => onSave(cleanTags(draft))}>Save Tags</button>
+      <button type="button" class="primary" disabled={unsupported} onclick={() => onSave(saveTags(draft))}>Save Tags</button>
     </div>
   </div>
 </div>

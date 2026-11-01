@@ -43,7 +43,7 @@
   import AboutDialog from "./AboutDialog.svelte";
   import GuideDialog from "./GuideDialog.svelte";
   import WelcomeDialog from "./WelcomeDialog.svelte";
-  import { welcomeDue } from "./guide/guide";
+  import { WELCOME_REV, welcomePlan, type WelcomePlan } from "./welcome";
   import UpdateDialog from "./UpdateDialog.svelte";
   import { updateCheck, updateDue, updateInstall, type UpdateInfo } from "./update";
   import HistoryPanel from "../panels/history/HistoryPanel.svelte";
@@ -2282,10 +2282,10 @@
   let aboutOpen = $state(false);
   let guideOpen = $state(false);
   function closeWelcome() {
-    welcomeOpen = false;
-    settings.set({ ...settings.current, welcomeSeen: true });
+    welcomeOpen = null;
+    settings.set({ ...settings.current, welcomeRev: WELCOME_REV });
   }
-  let welcomeOpen = $state(false);
+  let welcomeOpen = $state<WelcomePlan | null>(null);
   let updateInfo = $state<UpdateInfo | null>(null);
   let updateOpen = $state(false);
   let updateBusy = $state(false);
@@ -5430,8 +5430,8 @@
         const savedSettings = prefs.raw(KEY_SETTINGS);
         settings.set(sanitizeSettings(savedSettings));
         applyAppSettings(settings.current, false);
-        // First run only: a short welcome. Later runs, and people who had settings saved before it existed, never see it.
-        if (welcomeDue(savedSettings)) welcomeOpen = true;
+        // A welcome on a fresh install, and the new pages only after a release that adds some. Nothing otherwise.
+        welcomeOpen = welcomePlan(savedSettings);
         offs.push(startMetronome());
         // The weekly update check is off unless turned on in Settings > Privacy.
         const c = settings.current;
@@ -5869,6 +5869,8 @@
 {/if}
 {#if welcomeOpen}
   <WelcomeDialog
+    kind={welcomeOpen.kind}
+    pages={welcomeOpen.pages}
     onGuide={() => {
       closeWelcome();
       guideOpen = true;

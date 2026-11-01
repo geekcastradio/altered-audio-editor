@@ -4,14 +4,14 @@
   This file is part of Altered Audio Editor.
 
   Metadata panel: the tags inside audio files (WAV, FLAC, MP3, M4A). Add
-  files, search the list, edit one file's fields, set MP3 cover art, and
+  files, search the list, edit one file's fields, set cover art, and
   keep named tag sets (a show's artist, album and genre) to put on many
   files at once. Only filled-in fields are written, so chapters and the
   audio stay as they are. A file open in the Waveform editor is refused.
 -->
 <script lang="ts">
   import { coverChoose, coverClear, coverRead, coverSet, pickMediaFiles, tagsRead, tagsWrite, type FileTags } from "../../app/core";
-  import { TAGGABLE, TAG_FIELDS, cleanTags } from "../../app/tags";
+  import { TAGGABLE, TAG_FIELDS, cleanTags, saveTags } from "../../app/tags";
   import type { FileDropRouter } from "../../app/filedrop";
   import type { Preferences } from "../../stores/preferences";
   import { addPaths, baseName, filterEntries, overlay, problems, removeSet, sanitizeSets, upsertSet, type Entry, type TagKey, type TagSet } from "./metadata";
@@ -52,7 +52,7 @@
   const shown = $derived(filterEntries(entries, query));
   const current = $derived(entries.find((e) => e.path === selected) ?? null);
   const unsupported = $derived(current ? !TAGGABLE.test(current.path) : false);
-  const isMp3 = $derived(current ? /\.mp3$/i.test(current.path) : false);
+  const isMp3 = $derived(current ? /\.(mp3|flac|m4a|mp4|m4b)$/i.test(current.path) : false);
   const issues = $derived(problems(draft as Partial<Record<TagKey, string>>));
   const chosenSet = $derived(sets.find((s) => s.name === setName) ?? null);
 
@@ -83,7 +83,7 @@
     const e = entries.find((x) => x.path === path);
     draft = Object.fromEntries(TAG_FIELDS.map((f) => [f.key, e?.tags[f.key] ?? ""]));
     cover = null;
-    if (/\.mp3$/i.test(path)) cover = await coverRead(path).catch(() => null);
+    if (/\.(mp3|flac|m4a|mp4|m4b)$/i.test(path)) cover = await coverRead(path).catch(() => null);
   }
 
   function clear() {
@@ -102,8 +102,8 @@
     if (!current || issues.length || guarded(current.path)) return;
     busy = true;
     try {
-      const ok = await tagsWrite(current.path, cleanTags(draft));
-      if (!ok) onNotice("Nothing was written: no field is filled in, or this format can't take tags here.");
+      const ok = await tagsWrite(current.path, saveTags(draft));
+      if (!ok) onNotice("Nothing was written: this format can't take tags here.");
       else onNotice(`Tags saved to ${baseName(current.path)}.`);
       await reload(current.path);
     } catch (e) {
@@ -213,7 +213,7 @@
   </div>
 
   {#if !entries.length}
-    <p class="empty">Add audio files to see and edit their tags. WAV, FLAC, MP3 and M4A files take tags; MP3 files can also hold cover art.</p>
+    <p class="empty">Add audio files to see and edit their tags. WAV, FLAC, MP3 and M4A files take tags; MP3, FLAC and M4A files can also hold cover art.</p>
   {:else}
     <div class="body">
       <ul class="files" aria-label="Files">
@@ -247,7 +247,7 @@
           {#each issues as m (m)}
             <p class="issue" role="alert">{m}</p>
           {/each}
-          <p class="note">Only filled-in fields are written. Clearing a field does not remove it from the file yet.</p>
+          <p class="note">Filled-in fields are written; fields you empty are removed from the file.</p>
 
           {#if isMp3}
             <div class="cover" class:over={coverOver} bind:this={coverBox}>

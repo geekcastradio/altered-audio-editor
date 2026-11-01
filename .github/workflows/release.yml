@@ -97,7 +97,7 @@ jobs:
           Compress-Archive -Path (Join-Path $portable "*") -DestinationPath (Join-Path $out "Altered-Audio-Editor-$tag-portable.zip")
           if ("${{ steps.asio.outcome }}" -ne "success") { "ASIO build failed; this installer has no ASIO." | Set-Content (Join-Path $out "NO-ASIO.txt") }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: windows
           path: ${{ runner.temp }}/release/*
@@ -151,7 +151,7 @@ jobs:
           cp src-tauri/target/release/bundle/appimage/*.AppImage "$out/Altered-Audio-Editor-$tag-x86_64.AppImage"
           cp src-tauri/target/release/bundle/deb/*.deb "$out/Altered-Audio-Editor-$tag-linux-amd64.deb"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: linux
           path: ${{ runner.temp }}/release/*
@@ -196,7 +196,7 @@ jobs:
           mkdir -p "$out"
           cp src-tauri/target/release/bundle/dmg/*.dmg "$out/Altered-Audio-Editor-$tag-macos-arm64.dmg"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: macos
           path: ${{ runner.temp }}/release/*
@@ -215,7 +215,7 @@ jobs:
         with:
           path: src
           sparse-checkout: docs
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: files
           merge-multiple: true

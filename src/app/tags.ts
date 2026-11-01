@@ -27,3 +27,13 @@ export function cleanTags(draft: Record<string, string>): FileTags {
   }
   return out;
 }
+
+/**
+ * The tags to save from the editor: filled fields trimmed, blank ones as "" so the file loses
+ * those tags. (Unlike cleanTags, which leaves blanks out so they don't touch anything.)
+ */
+export function saveTags(draft: Record<string, string>): FileTags {
+  const out: FileTags = {};
+  for (const f of TAG_FIELDS) out[f.key] = (draft[f.key] ?? "").trim();
+  return out;
+}

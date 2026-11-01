@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import guideSource from "./guide.md?raw";
-import { parseGuide, searchGuide, spans, welcomeDue } from "./guide";
+import { parseGuide, searchGuide, spans } from "./guide";
 
 describe("guide parsing", () => {
   it("splits bold and code runs", () => {
@@ -34,15 +34,5 @@ describe("guide parsing", () => {
     for (const x of s) expect(x.blocks.length, x.title).toBeGreaterThan(0);
     expect(guideSource).not.toContain("—");
     expect(new Set(s.map((x) => x.id)).size).toBe(s.length);
-  });
-});
-
-describe("welcomeDue", () => {
-  it("shows for a fresh install, once", () => {
-    expect(welcomeDue(undefined)).toBe(true);
-    expect(welcomeDue(null)).toBe(true);
-    expect(welcomeDue({ welcomeSeen: false })).toBe(true);
-    expect(welcomeDue({ welcomeSeen: true })).toBe(false);
-    expect(welcomeDue({ musicMode: true })).toBe(false);
   });
 });
