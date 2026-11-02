@@ -85,7 +85,11 @@ pub fn process_range_with(
 /// throwaway copy first, and the answer is read after they are done.
 fn settled_latency(chain: &EffectChain, rate: u32) -> Option<usize> {
     let mut c = ChainProcessor::new(chain, rate)?;
-    if chain.slots.iter().any(|s| s.enabled && crate::plugins::is_plugin(&s.effect)) {
+    if chain
+        .slots
+        .iter()
+        .any(|s| s.enabled && crate::plugins::is_plugin(&s.effect))
+    {
         let mut silence = vec![0f32; 4096 * 2];
         for _ in 0..4 {
             silence.fill(0.0);

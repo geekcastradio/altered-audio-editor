@@ -839,7 +839,11 @@ pub fn processor(slot: &EffectSlot, rate: u32) -> Option<PluginProcessor> {
     let host = host_for(slot, rate)?;
     let (latency, pending, live) = {
         let h = host.lock().ok()?;
-        (h.latency(), h.differing(&slot_params(slot)), h.latency.clone())
+        (
+            h.latency(),
+            h.differing(&slot_params(slot)),
+            h.latency.clone(),
+        )
     };
     Some(PluginProcessor {
         host,
