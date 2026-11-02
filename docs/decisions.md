@@ -1354,7 +1354,7 @@ Several requests compared behavior to another editor; per the guardrails they ar
 
 - **Clip level handle.** Every clip has a small handle in its bottom-left corner (an up-and-down arrow, our own glyph). Drag it up or to the right to raise the clip's level, down or to the left to lower it (0.1 dB a pixel; Shift for 0.02). The level shows beside the handle while it is not 0, and while dragging. One undoable step ("Clip Level"). The level was already a clip setting; it no longer repeats in the title bar.
 - **MIDI clips** get a level too (`gain_db` on MIDI clips, saved only when not 0). It makes the clip's notes play harder or softer by that much (their velocity is scaled), up to the hardest a note can play, since an instrument's sound follows how hard it is played.
-- **Files panel.** Right-click a session row for Switch to This Session (or Show in Multitrack), Save, Close Session and Close All Sessions.
+- **Files panel.** Right-click a session row for Switch to This Session (or Show in Multitrack), Save, Close Session and Close All (sessions and audio files).
 
 ## 2026-10-25: Bars and beats, more time formats, ruler menu
 

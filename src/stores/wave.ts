@@ -13,7 +13,7 @@ import { editor } from "./editor";
 import { writable, type Readable } from "svelte/store";
 import { UndoStack } from "../commands";
 import type { StashedHistory } from "../commands/undo-stack";
-import { transportStatus, transportStop, waveApply, waveClose, waveForget, waveNew, waveNewFromClips, waveNewFromMix, type MixdownResult, waveOpen, wavePark, wavePlay, waveResume, waveSave, waveSetView, type WaveDocRaw } from "../app/core";
+import { transportStatus, transportStop, waveApply, waveClose, waveForget, waveNew, waveNewFromClips, waveNewFromMix, type MixdownResult, waveOpen, wavePark, wavePlay, waveRenderCopy, waveResume, waveSave, waveSetView, type WaveDocRaw } from "../app/core";
 import { SessionStore, type ClipDoc, type MediaRefDoc, type Op, type SessionDoc, type ViewDoc } from "./session";
 import { TransportStore } from "./transport";
 import type { SpectralShape } from "../panels/editor/spectrum";
@@ -123,6 +123,25 @@ export async function openWaveFile(path: string): Promise<void> {
   const doc = await waveOpen<SessionDoc>(path);
   adopt(doc);
   await waveHistory.clear("Open");
+}
+
+/** True when `path` is the open file or a set-aside one. */
+function isOpenWave(path: string): boolean {
+  return fileValue?.path === path || parked.has(path);
+}
+
+/**
+ * Paths about to be placed in a multitrack session. A file open in the
+ * Waveform editor that is new or has unsaved edits is replaced by a
+ * rendered copy that holds what the editor shows; every other path stays.
+ */
+export async function resolveForPlacing(paths: string[]): Promise<string[]> {
+  const out: string[] = [];
+  for (const p of paths) {
+    const dirty = fileValue?.path === p ? waveHistory.current.dirty : parked.get(p)?.dirty;
+    out.push(isOpenWave(p) && dirty ? await waveRenderCopy(p) : p);
+  }
+  return out;
 }
 
 /** Drops every set-aside file and its edits (after the user chose to discard them). */

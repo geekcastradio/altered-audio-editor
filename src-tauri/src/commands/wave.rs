@@ -750,6 +750,65 @@ pub async fn wave_save(
     Ok(doc_of(w.as_ref().expect("just set")))
 }
 
+/// Renders a file open (or set aside) in the Waveform editor, edits
+/// included, to a new WAV in the app's cache folder and returns its path.
+/// Used when such a file is dragged into a multitrack session: the file on
+/// disk does not hold its unsaved edits, and a new file has none yet.
+/// The open file and its edit list are left as they are.
+#[tauri::command]
+pub async fn wave_render_copy(
+    app: AppHandle,
+    wave: State<'_, OpenWave>,
+    parked: State<'_, ParkedWaves>,
+    path: PathBuf,
+) -> Result<PathBuf, String> {
+    let found = {
+        let open = wave.0.lock().map_err(|e| e.to_string())?;
+        match open.as_ref().filter(|w| w.path == path) {
+            Some(w) => Some(without_effects(w.session.clone())),
+            None => parked
+                .0
+                .lock()
+                .map_err(|e| e.to_string())?
+                .iter()
+                .find(|w| w.path == path)
+                .map(|w| without_effects(w.session.clone())),
+        }
+    };
+    let session = found.ok_or("That file is not open in the Waveform editor.")?;
+    let dir = crate::commands::cache::cache_root(&app)?.join("untitled");
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "audio".into());
+    spawn_blocking(move || -> Result<PathBuf, String> {
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let out = mixdown::unique_path(&dir, &stem, "wav");
+        let all_channels = super::spectral::file_channels(&session);
+        let r = if all_channels > 2 {
+            save_multichannel(&session, &out, 32, &mut |_, _| {})
+        } else {
+            let channels = all_channels.max(1) as u16;
+            let request = MixdownRequest {
+                clip_only: true,
+                channels: Some(channels),
+                bit_depth: Some(32),
+                ..Default::default()
+            };
+            mixdown::mixdown(&session, &request, &out, &AtomicBool::new(false), |_, _| {})
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        };
+        if let Err(e) = r {
+            let _ = std::fs::remove_file(&out);
+            return Err(e);
+        }
+        Ok(out)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Writes a multichannel file's edit list to a WAV with every channel,
 /// a few seconds at a time, at `depth` bits (32 is float).
 fn save_multichannel(

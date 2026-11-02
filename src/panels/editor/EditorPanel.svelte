@@ -60,7 +60,7 @@
   import { setMetronomePrefs } from "../../stores/metronome";
   import { addChange, nearestBar, secondsToBeats } from "../../stores/tempo";
   import type { Readable } from "svelte/store";
-  import type { WaveFile } from "../../stores/wave";
+  import { resolveForPlacing, type WaveFile } from "../../stores/wave";
   import OverviewStrip from "./OverviewStrip.svelte";
   import { KIND_COLORS, markerAt, markerCss } from "../markers/markers";
   import { quiet, type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
@@ -509,7 +509,9 @@
       onMove: (paths, at) => showDropGhost(paths, at),
       onDrop: (paths, at) => {
         const { trackId, sample } = hitLanes(at.x, at.y);
-        onPlaceFiles(paths, trackId, dropSample(sample));
+        const at2 = dropSample(sample);
+        // An audio file open in the Waveform editor with edits (or never saved) is placed as a rendered copy.
+        void resolveForPlacing(paths).then((p) => onPlaceFiles(p, trackId, at2)).catch((e: unknown) => console.warn('Could not place the dropped files:', e));
       },
     });
   });

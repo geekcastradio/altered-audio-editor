@@ -207,7 +207,7 @@
       { kind: "item", label: "Save", disabled: !row?.front, reason: "Switch to the session first.", run: () => run("file.save"), shortcut: shortcutFor("file.save") },
       { kind: "sep" },
       { kind: "item", label: row?.dirty ? "Close Session..." : "Close Session", shortcut: "Delete", run: () => onCloseSession(id) },
-      { kind: "item", label: "Close All Sessions...", run: () => run("file.close-all") },
+      { kind: "item", label: "Close All...", run: () => run("file.close-all") },
     ];
   }
 
@@ -607,6 +607,10 @@
           list?.focus();
         }}
         ondblclick={() => onOpenWave(wr.path)}
+        onpointerdown={(e) => {
+          // Drag an open audio file into a multitrack session; a new or edited one is rendered when dropped.
+          if (e.button === 0 && !(e.target as HTMLElement).closest("button")) beginPathDrag(e, drop, () => [wr.path], undefined, root ?? undefined);
+        }}
         onmousedown={(e) => e.button === 1 && e.preventDefault()}
         onauxclick={(e) => {
           if (e.button !== 1) return;

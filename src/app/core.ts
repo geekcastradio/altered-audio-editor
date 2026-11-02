@@ -396,6 +396,11 @@ export function waveForget(path: string): Promise<void> {
   return invoke<void>("wave_forget", { path });
 }
 
+/** Renders an open or set-aside Waveform file, edits included, to a new WAV in the cache; returns its path. */
+export function waveRenderCopy(path: string): Promise<string> {
+  return invoke<string>("wave_render_copy", { path });
+}
+
 export function waveApply<O, T>(op: O): Promise<{ session: T; inverse: O }> {
   return invoke<{ session: T; inverse: O }>("wave_apply", { op });
 }

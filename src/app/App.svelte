@@ -2057,14 +2057,15 @@
     if (JSON.stringify(get(waveRowStore)) !== JSON.stringify(rows)) waveRowStore.set(rows);
   }
   /** Closes an audio file shown in the Files panel, asking first if it has unsaved edits. */
-  async function closeWaveRow(path: string) {
+  async function closeWaveRow(path: string): Promise<boolean> {
     const f = waveFile.current();
     if (f && f.path === path) {
       if (await confirmWaveDiscard()) {
         await closeWaveFile();
         actions.invalidate();
+        return true;
       }
-      return;
+      return false;
     }
     const row = get(waveRowStore).find((r) => r.path === path);
     if (row?.dirty) {
@@ -2072,9 +2073,15 @@
         { label: "Discard", value: "discard" },
         { label: "Cancel", value: "cancel", primary: true },
       ]);
-      if (v !== "discard") return;
+      if (v !== "discard") return false;
     }
     await discardParked(path).catch(showError);
+    return true;
+  }
+  /** File > Close All: every session, then every audio file open in the Waveform editor. Stops if one is cancelled. */
+  async function closeEverything(): Promise<void> {
+    if (!(await files.closeAll())) return;
+    for (const r of [...get(waveRowStore)]) if (!(await closeWaveRow(r.path))) return;
   }
   function updateTitle() {
     updateSessionRow();
@@ -2159,7 +2166,7 @@
             onCloseSession: (id: string) => void files.closeSession(id).catch(showError),
             waves: waveRowStore,
             onOpenWave: (path: string) => void openInWaveform(path),
-            onCloseWave: (path: string) => void closeWaveRow(path).catch(showError),
+            onCloseWave: (path: string) => void closeWaveRow(path).then(() => undefined).catch(showError),
           },
         };
       case "drive-manager":
@@ -5313,7 +5320,7 @@
       actions.register({ id: "file.save-all", run: () => files.save().then(() => undefined) }),
       actions.register({ id: "file.close", run: () => files.close().then(() => undefined) }),
       actions.register({ id: "file.import-sesx", run: () => files.importSesx().then(() => undefined) }),
-      actions.register({ id: "file.close-all", run: () => files.closeAll().then(() => undefined) }),
+      actions.register({ id: "file.close-all", run: () => closeEverything() }),
       actions.register({
         id: "file.recent.none",
         run: () => {},

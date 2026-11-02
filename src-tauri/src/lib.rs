@@ -230,6 +230,7 @@ pub fn run() {
             commands::wave::wave_park,
             commands::wave::wave_resume,
             commands::wave::wave_forget,
+            commands::wave::wave_render_copy,
             commands::wave::wave_apply,
             commands::wave::wave_set_view,
             commands::wave::wave_play,
