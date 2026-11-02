@@ -18,7 +18,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
@@ -83,6 +83,8 @@ struct Route {
     replies: mpsc::Sender<Message>,
     events: Arc<Mutex<Events>>,
     known: Arc<Mutex<HashMap<u32, f64>>>,
+    /// The plug-in's look-ahead now: it can change after loading.
+    latency: Arc<AtomicUsize>,
 }
 
 impl Conn {
@@ -141,7 +143,10 @@ impl Conn {
                                     e.window_closed = true;
                                     e.dirty = true;
                                 }
-                                Message::LatencyChanged { .. } => e.latency_changed = true,
+                                Message::LatencyChanged { latency } => {
+                                    r.latency.store(latency as usize, Ordering::SeqCst);
+                                    e.latency_changed = true;
+                                }
                                 reply => {
                                     drop(e);
                                     let _ = r.replies.send(reply);
@@ -318,7 +323,7 @@ pub struct Host {
     dead: Arc<AtomicBool>,
     /// The control values the plug-in has: sent from here or moved in its window.
     known: Arc<Mutex<HashMap<u32, f64>>>,
-    pub latency: usize,
+    latency: Arc<AtomicUsize>,
     pub params: Vec<ParamInfo>,
     pub has_editor: bool,
     buf: Vec<u8>,
@@ -340,6 +345,7 @@ impl Host {
         let (atx, arx) = mpsc::channel();
         let (rtx, rrx) = mpsc::channel();
         let events = Arc::new(Mutex::new(Events::default()));
+        let latency_now = Arc::new(AtomicUsize::new(0));
         let known = Arc::new(Mutex::new(
             params.iter().copied().collect::<HashMap<u32, f64>>(),
         ));
@@ -350,6 +356,7 @@ impl Host {
                 replies: rtx,
                 events: events.clone(),
                 known: known.clone(),
+                latency: latency_now.clone(),
             },
         );
         let mut host = Host {
@@ -360,7 +367,7 @@ impl Host {
             replies: rrx,
             events,
             known,
-            latency: 0,
+            latency: latency_now,
             params: Vec::new(),
             has_editor: false,
             buf: Vec::new(),
@@ -381,7 +388,7 @@ impl Host {
                 has_editor,
                 ..
             }) => {
-                host.latency = latency as usize;
+                host.latency.store(latency as usize, Ordering::SeqCst);
                 host.params = params;
                 host.has_editor = has_editor;
                 Ok(host)
@@ -470,6 +477,11 @@ impl Host {
             .filter(|(id, v)| k.get(id) != Some(v))
             .copied()
             .collect()
+    }
+
+    /// The plug-in's look-ahead in frames, as it last reported it.
+    pub fn latency(&self) -> usize {
+        self.latency.load(Ordering::SeqCst)
     }
 
     pub fn take_events(&self) -> Events {
@@ -735,7 +747,7 @@ pub fn running(slot: Id) -> Option<Arc<Mutex<Host>>> {
 pub fn latency(slot: &EffectSlot) -> usize {
     if let Some(h) = running(slot.id) {
         if let Ok(h) = h.lock() {
-            return h.latency;
+            return h.latency();
         }
     }
     super::scanned_latency(&slot.effect)
@@ -813,7 +825,8 @@ pub fn take_events() -> Vec<(Id, Events)> {
 /// share one running host; each sends only the values it lacks.
 pub struct PluginProcessor {
     host: Arc<Mutex<Host>>,
-    latency: usize,
+    /// The plug-in's look-ahead as it reports it now (it can change after loading).
+    live: Arc<AtomicUsize>,
     pending: Vec<(u32, f64)>,
     /// When the plug-in has stopped, the dry sound still arrives as late
     /// as the plug-in's would have, so the track stays in time.
@@ -824,13 +837,13 @@ pub struct PluginProcessor {
 /// would not start (the chain then skips it).
 pub fn processor(slot: &EffectSlot, rate: u32) -> Option<PluginProcessor> {
     let host = host_for(slot, rate)?;
-    let (latency, pending) = {
+    let (latency, pending, live) = {
         let h = host.lock().ok()?;
-        (h.latency, h.differing(&slot_params(slot)))
+        (h.latency(), h.differing(&slot_params(slot)), h.latency.clone())
     };
     Some(PluginProcessor {
         host,
-        latency,
+        live,
         pending,
         bypass: crate::dsp::effects::Delay::new(latency),
     })
@@ -850,7 +863,7 @@ impl Processor for PluginProcessor {
     }
 
     fn latency(&self) -> usize {
-        self.latency
+        self.live.load(Ordering::SeqCst)
     }
 
     fn reset(&mut self) {
@@ -895,7 +908,7 @@ impl Instrument {
             Some(mut h) => {
                 h.reset();
                 h.set_tempo(tempo);
-                (h.latency, h.differing(&slot_params(slot)))
+                (h.latency(), h.differing(&slot_params(slot)))
             }
             None => (0, Vec::new()),
         };
