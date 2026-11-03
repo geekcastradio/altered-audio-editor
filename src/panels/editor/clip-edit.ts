@@ -690,6 +690,8 @@ export function trimToRange(doc: SessionDoc, ids: Iterable<string>, a: number, b
 export interface ClipBoard {
   /** Row offset from the topmost copied track, and the clip with `start` relative to the first clip. */
   items: { row: number; clip: ClipDoc }[];
+  /** The files the copied clips use, so they can be pasted into another session. */
+  media: MediaRefDoc[];
 }
 
 export function copyClips(doc: SessionDoc, ids: Iterable<string>): ClipBoard | null {
@@ -697,28 +699,61 @@ export function copyClips(doc: SessionDoc, ids: Iterable<string>): ClipBoard | n
   if (found.length === 0) return null;
   const top = Math.min(...found.map((f) => f.trackIndex));
   const first = Math.min(...found.map((f) => f.clip.start));
-  return { items: found.map((f) => ({ row: f.trackIndex - top, clip: { ...f.clip, start: f.clip.start - first, locked: false } })) };
+  const used = new Set(found.map((f) => f.clip.media_id));
+  return {
+    items: found.map((f) => ({ row: f.trackIndex - top, clip: { ...f.clip, start: f.clip.start - first, locked: false } })),
+    media: doc.media.filter((m) => used.has(m.id)).map((m) => ({ ...m })),
+  };
 }
 
 /**
  * Pastes copied clips at `at` with the topmost one on track `row`.
- * Rows past the last track land on the last track.
+ * Rows past the last track land on the last track. Clips copied from
+ * another session bring their files along: a file this session already
+ * lists (by path) is reused, any other is added to the session.
  */
 export function pasteClips(doc: SessionDoc, board: ClipBoard, at: number, row: number, newId: () => string): { op: Op; ids: string[] } | null {
   if (doc.tracks.length === 0 || board.items.length === 0) return null;
-  const media = new Set(doc.media.map((m) => m.id));
+  const key = (p: string) => p.replace(/\\/g, "/").toLowerCase();
+  const own = new Map(doc.media.map((m) => [m.id, m]));
+  const byPath = new Map(doc.media.map((m) => [key(m.path), m.id]));
+  const refs = new Map(board.media.map((m) => [m.id, m]));
+  // Each copied file's id in this session, and the files this paste adds to it.
+  const idOf = new Map<string, string | null>();
+  const added: MediaRefDoc[] = [];
+  const mediaFor = (id: string): string | null => {
+    if (idOf.has(id)) return idOf.get(id) ?? null;
+    const here = own.get(id);
+    const ref = refs.get(id);
+    let out: string | null = null;
+    if (here && (!ref || key(here.path) === key(ref.path))) out = id;
+    else if (ref) {
+      const same = byPath.get(key(ref.path));
+      if (same) out = same;
+      else {
+        out = here ? newId() : ref.id;
+        added.push({ ...ref, id: out, relative_path: null });
+        byPath.set(key(ref.path), out);
+      }
+    }
+    idOf.set(id, out);
+    return out;
+  };
   const clips: [string, ClipDoc][] = [];
   // Pasted copies keep their grouping among themselves, apart from the originals.
   const groups = new Map<string, string>();
   for (const it of board.items) {
-    if (!media.has(it.clip.media_id)) continue;
+    const mediaId = mediaFor(it.clip.media_id);
+    if (mediaId === null) continue;
     const t = doc.tracks[Math.min(doc.tracks.length - 1, Math.max(0, row + it.row))]!;
     const g = it.clip.group;
     if (g && !groups.has(g)) groups.set(g, newId());
-    clips.push([t.id, { ...it.clip, id: newId(), start: Math.max(0, Math.round(at + it.clip.start)), group: g ? groups.get(g)! : null }]);
+    clips.push([t.id, { ...it.clip, id: newId(), media_id: mediaId, start: Math.max(0, Math.round(at + it.clip.start)), group: g ? groups.get(g)! : null }]);
   }
   if (clips.length === 0) return null;
-  return { op: { op: "restore_clips", clips }, ids: clips.map(([, c]) => c.id) };
+  const restore: Op = { op: "restore_clips", clips };
+  const op: Op = added.length ? { op: "batch", ops: [...added.map((media): Op => ({ op: "add_media", media })), restore] } : restore;
+  return { op, ids: clips.map(([, c]) => c.id) };
 }
 
 /**

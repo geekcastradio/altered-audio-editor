@@ -180,7 +180,7 @@ Next batches, in order:
 3. Waveform editor: apply an effect or a chain to the selection or file (destructive, undoable), with preview.
 4. Pitch and Time: pitch shift with formant keeping, speed change.
 5. Master chain and buses (moves the master mix to the render thread), sends.
-6. Speaker Balance, host profiles, Guest track mode, Audio FX Panel.
+6. Speaker Balance, host profiles, Guest track mode, Audio FX.
 7. VST3 hosting in a helper process.
 
 ## Effects to build, renamed (planned 2026-10-18)
@@ -397,7 +397,7 @@ Feature checks and requests from testers, grouped by area, with status. Behavior
 
 ### Recording and editing behavior
 - Punch-in with pre-roll and post-roll lengths, overwrite and insert modes while recording, take files named after the track. Punch-in and recording offset are built; the pre-roll length setting and insert mode are not.
-- Audio FX Panel by clip type (dialogue, music, sound effects, ambience), each with its own options; saved presets; limits on each control that a preset author can set; auto-ducking with Monitor Clip Changes and Reanalyze. Types and a basic panel are built; the rest is not.
+- Audio FX by clip type (dialogue, music, sound effects, ambience), each with its own options; saved presets; limits on each control that a preset author can set; auto-ducking with Monitor Clip Changes and Reanalyze. Types and a basic panel are built; the rest is not.
 - Paste with a crossfade at the seams, adjust a selection to zero crossings, more fade shapes. Not built.
 - Sample rate and bit depth conversion with dither and noise shaping choices, and saved conversion presets. Dither exists on export; the choices and presets do not.
 - Control surfaces: see MIDI above.

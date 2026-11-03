@@ -45,9 +45,11 @@
     stretchHandles?: boolean;
     /** Not heard (the track is muted, or others are soloed): every clip greyed out. */
     silent?: boolean;
+    /** Envelope points picked with Shift or Ctrl, drawn with a bright rim. */
+    envSelected?: { clip: string; env: EnvKind; idx: number[] } | null;
   }
 
-  const { track, media, sessionRate, view, width, playhead, selectedClips, trackSelected, index = 0, ampZoom = 1, liveTake = null, peaks, peakTick, showVolume = false, showPan = false, showFx = false, fxLanes = {}, stretchHandles = false, silent = false }: Props = $props();
+  const { track, media, sessionRate, view, width, playhead, selectedClips, trackSelected, index = 0, ampZoom = 1, liveTake = null, peaks, peakTick, showVolume = false, showPan = false, showFx = false, fxLanes = {}, stretchHandles = false, silent = false, envSelected = null }: Props = $props();
 
   let canvas = $state<HTMLCanvasElement | null>(null);
 
@@ -507,11 +509,23 @@
           g.lineTo(x1, yAt(pts[pts.length - 1]!.value));
         }
         g.stroke();
-        g.fillStyle = `rgb(${rgb})`;
-        for (const p of pts) {
-          const px = xOf(clip.start + p.position, view);
-          g.fillRect(Math.round(px) - 3, Math.round(yAt(p.value)) - 3, 6, 6);
-        }
+        const picked = envSelected && envSelected.clip === clip.id && envSelected.env === kind ? envSelected.idx : [];
+        pts.forEach((p, k) => {
+          const px = Math.round(xOf(clip.start + p.position, view));
+          const py = Math.round(yAt(p.value));
+          if (picked.includes(k)) {
+            // Picked: a larger handle with a dark outline and a bright rim.
+            g.fillStyle = "rgba(0, 0, 0, 0.8)";
+            g.fillRect(px - 5, py - 5, 10, 10);
+            g.fillStyle = "#ffffff";
+            g.fillRect(px - 4, py - 4, 8, 8);
+            g.fillStyle = `rgb(${rgb})`;
+            g.fillRect(px - 2, py - 2, 4, 4);
+          } else {
+            g.fillStyle = `rgb(${rgb})`;
+            g.fillRect(px - 3, py - 3, 6, 6);
+          }
+        });
         g.restore();
       }
 

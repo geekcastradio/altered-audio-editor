@@ -8,10 +8,13 @@
   add a point and drag to place it; drag a point to move it; double-click
   a point to remove it. Volume snaps to 0 dB and pan to center when close
   (hold Alt to place freely). Each finished change is one undoable step.
+  Shift-click or Ctrl-click a point to select several; drag any selected
+  point to move them all together, and press Delete to remove them.
+  Selected points are drawn filled with a bright rim.
 -->
 <script lang="ts">
   import type { EnvelopeDoc, EnvelopePointDoc } from "../../stores/session";
-  import { autoAdd, autoAt, autoFormat, autoMove, autoSnap, autoValue, autoY, type AutoRange } from "./automation";
+  import { autoAdd, autoAt, autoFormat, autoMove, autoMoveMany, autoSnap, autoValue, autoY, type AutoRange } from "./automation";
   import { sampleAt, xOf, TRACK_GAP, type Viewport } from "./timeline";
 
   interface Props {
@@ -37,6 +40,9 @@
   let draft = $state<EnvelopePointDoc[] | null>(null);
   let tip = $state<{ x: number; y: number; text: string } | null>(null);
   let hover = $state(-1);
+  /** Indexes of the selected points, in the lane's own list. */
+  let sel = $state<number[]>([]);
+  let root = $state<HTMLElement | null>(null);
   const pts = $derived(draft ?? lane.points);
 
   const top = 5;
@@ -98,7 +104,16 @@
       list = added.points;
       i = added.index;
       label = "Add Automation Point";
+      sel = [i];
+    } else if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      // Shift or Ctrl adds the point to the selection or takes it out; a point still selected can be dragged.
+      sel = sel.includes(i) ? sel.filter((k) => k !== i) : [...sel, i];
+      if (!sel.includes(i)) return;
+    } else if (!sel.includes(i)) {
+      sel = [i];
     }
+    const group = sel.length > 1 && sel.includes(i) ? new Set(sel) : null;
+    if (group) label = "Move Automation Points";
     draft = list;
     showTip(px, py, list[i]!.value);
     const rect = el.getBoundingClientRect();
@@ -113,6 +128,13 @@
       const qy = ev.clientY - rect.top;
       // Shift keeps the time and moves only the value.
       const pos = ev.shiftKey ? p0.position : Math.max(0, sampleAt(qx, view));
+      if (group) {
+        const dy = qy - py;
+        const dPos = ev.shiftKey ? 0 : sampleAt(qx, view) - sampleAt(px, view);
+        draft = autoMoveMany(list, group, dPos, (p) => autoValue(y(p.value) + dy, range, top, h));
+        showTip(qx, qy, draft[i]!.value);
+        return;
+      }
       const v = valueAt(qy, ev.altKey);
       draft = autoMove(list, i, pos, v);
       showTip(qx, qy, v);
@@ -142,11 +164,49 @@
     const i = hit(px, py);
     if (i < 0) return;
     e.stopPropagation();
+    sel = [];
     onPoints(
       lane.points.filter((_, k) => k !== i),
       "Delete Automation Point",
     );
   }
+
+  // With points selected: Delete removes them, Escape or a click elsewhere lets go.
+  $effect(() => {
+    if (sel.length === 0) return;
+    const key = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        sel = [];
+      } else if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        e.stopPropagation();
+        const gone = new Set(sel);
+        sel = [];
+        onPoints(
+          lane.points.filter((_, k) => !gone.has(k)),
+          gone.size > 1 ? "Delete Automation Points" : "Delete Automation Point",
+        );
+      }
+    };
+    const away = (e: PointerEvent) => {
+      if (!(e.target instanceof Node && root?.contains(e.target))) sel = [];
+    };
+    window.addEventListener("keydown", key, true);
+    window.addEventListener("pointerdown", away, true);
+    return () => {
+      window.removeEventListener("keydown", key, true);
+      window.removeEventListener("pointerdown", away, true);
+    };
+  });
+
+  // Undo or a removal elsewhere can leave the selection pointing past the end.
+  $effect(() => {
+    const n = lane.points.length;
+    if (sel.some((k) => k >= n)) sel = sel.filter((k) => k < n);
+  });
 
   function onContext(e: MouseEvent) {
     e.preventDefault();
@@ -159,6 +219,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="auto-lane"
+  bind:this={root}
   class:off={!lane.enabled}
   style:height="{height}px"
   style:--c={color}
@@ -178,7 +239,7 @@
     <path class="fill" d="{path} L{width} {top + h} L0 {top + h} Z" />
     <path class="line" d={path} />
     {#each visible as p (p.i)}
-      <circle class="pt" class:hot={p.i === hover} cx={p.x} cy={p.y} r={p.i === hover ? 4.5 : 3.5} />
+      <circle class="pt" class:hot={p.i === hover} class:sel={sel.includes(p.i)} cx={p.x} cy={p.y} r={p.i === hover || sel.includes(p.i) ? 4.5 : 3.5} />
     {/each}
     {#if playX >= 0 && playX <= width}<line class="play" x1={playX} x2={playX} y1="0" y2={height} />{/if}
   </svg>
@@ -228,6 +289,12 @@
 
   .pt.hot {
     fill: var(--c);
+  }
+
+  .pt.sel {
+    fill: var(--c);
+    stroke: var(--text, #fff);
+    stroke-width: 2;
   }
 
   .play {

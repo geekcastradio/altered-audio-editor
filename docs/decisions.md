@@ -543,7 +543,7 @@ Reason: CLAUDE.md bans other products' panel and feature names in the UI. The re
 
 ## 2026-10-13: Default layout v2
 
-Decision: right column is Audio FX Panel over Libraries. The selection readout (now Time Info) moves to the right end of the bottom strip, beside Levels. Saved layouts now record which Default they came from (`defaultVersion`); a layout from an older Default is replaced on next launch.
+Decision: right column is Audio FX over Libraries. The selection readout (now Time Info) moves to the right end of the bottom strip, beside Levels. Saved layouts now record which Default they came from (`defaultVersion`); a layout from an older Default is replaced on next launch.
 
 Reason: Libraries needed a home in Default, and pre-release it is better to roll everyone onto the new Default than keep stale arrangements.
 
@@ -577,7 +577,7 @@ Reason: density, framing, and color for editable values are common to pro audio 
 
 Decision:
 - Use the `dockview` package, not `dockview-core` directly. In version 8, `dockview-core` is marked internal and ships no stylesheet; `dockview` re-exports it with the CSS.
-- Default layout: left column 250px (Files on top; Voice Chain, Batch Convert, QuickPass tabbed below), center Editor and Mixer tabs, right column 200px (Audio FX Panel over the selection readout, now Time Info), Levels across the full bottom.
+- Default layout: left column 250px (Files on top; Voice Chain, Batch Convert, QuickPass tabbed below), center Editor and Mixer tabs, right column 200px (Audio FX over the selection readout, now Time Info), Levels across the full bottom.
 - Markers and History are not in Default and can be turned on. The saved-commands panel is dropped.
 - One Default layout, no named presets. The user's arrangement saves itself to `workspace.alworkspace` in the app config folder (never browser storage), 400 ms after the last change. Reset to Default deletes it and rebuilds.
 - A damaged or unreadable saved layout falls back to Default with a message instead of blocking startup.
@@ -781,7 +781,7 @@ Approved by the project lead. Holding Alt while grabbing a clip's left or right 
 ## 2026-10-18: editing batch (silence over a selection, audio types, Add Tracks, ad and social markers, embedded chapters, Playlist)
 
 - **Insert Silence over a time selection.** With a time selection, Insert Silence offers to silence that range in place: clips are split at both edges and the audio inside removed, nothing moves. Without a selection it inserts new silence and pushes audio later, as before.
-- **Audio types on clips.** Clips can be marked Dialogue, Music, Sound Effects or Ambience (Clip > Audio Type, and the clip right-click menu). Edit > Select > Clips of Audio Type selects every clip of a type. The Audio FX Panel will use the same field when effects arrive. New optional field `audio_type`; old files open unchanged.
+- **Audio types on clips.** Clips can be marked Dialogue, Music, Sound Effects or Ambience (Clip > Audio Type, and the clip right-click menu). Edit > Select > Clips of Audio Type selects every clip of a type. The Audio FX will use the same field when effects arrive. New optional field `audio_type`; old files open unchanged.
 - **Add Tracks dialog.** Several mono or stereo tracks at once, with an optional base name ("Guest" gives Guest, Guest 2, Guest 3), placed after the selected track. Bus tracks wait for effects (they route audio through effect chains), and 5.1 surround tracks stay out of scope for podcast work; both show in the dialog as unavailable with the reason.
 - **Ad slot and social clip markers.** Add Ad Slot asks for the contracted read length; the Markers panel shows the duration in red when the slot is off by more than 5 seconds. Add Social Clip marks the time selection. Both types can be picked in the Markers panel.
 - **Chapters inside exported files.** Export Mixdown writes chapter markers into MP3 (ID3v2.3 CHAP and CTOC frames) and FLAC (Vorbis comment CHAPTERnnn tags), on by default when the session has chapter markers. A time-selection export carries only the chapters inside it, starting at 0. Our own writer, no new dependency; FFmpeg reads the chapters back from both formats in testing. AAC files do not get chapters yet; Windows' writer has no chapter support.
@@ -808,7 +808,7 @@ The project lead asked to start the effects phase, with three pages of public he
 - **The first eight effects**, all original code: Parametric EQ (high-pass and low-pass at 12, 24 or 48 dB per octave, two shelves, three bands), Hum Cut (60 or 50 Hz and overtones), Dynamics (a compressor with soft knee), Limiter (look-ahead that never passes the ceiling, -6 dB by default per the loudness defaults), Breath Gate, De-Esser (a high shelf that dips only when S sounds flare), Speech Leveler (rides speech toward a target and holds still in pauses so room noise is not pumped up), and Gain. Filter coefficients follow the published audio EQ cookbook formulas, credited in `ATTRIBUTION.md`.
 - **Voice Chain panel.** Clip Effects and Track Effects tabs, 16 numbered slots with colored badges, bypass, reorder and remove per slot, chain power, input and output gain, and Mix (dry/wet). Presets: the Voice chain presets replace the chain; Breath gate and EQ presets add one effect. Built-in presets are our own starting points for the names listed in CLAUDE.md; Noise Reducer is left out of them until it exists. Users can save and delete their own presets (stored in the app's settings).
 - **Effects menu.** Dynamics and EQ and Filters list the effects; picking one adds it to the selected clip's chain (one clip selected) or the selected track's, and shows the panel.
-- **Not yet:** Noise Reducer and Click Repair (next batch), chain meters, master chain (the master is mixed in the audio callback today; it moves to the render thread with buses), Pitch and Time effects, applying effects destructively in the Waveform editor, and the Audio FX Panel.
+- **Not yet:** Noise Reducer and Click Repair (next batch), chain meters, master chain (the master is mixed in the audio callback today; it moves to the render thread with buses), Pitch and Time effects, applying effects destructively in the Waveform editor, and the Audio FX.
 
 ## 2026-10-18: effects, second batch (restoration), and the look of QuickPass and Batch Convert
 
@@ -1497,10 +1497,10 @@ Several requests compared behavior to another editor; per the guardrails they ar
 - **Publish Package writes files only.** No upload: the privacy guard forbids network code. The RSS.com API step stays a separate, opt-in decision.
 - **Deferred past 0.6.0:** FX Panel analysis suggestions, A/B compare and Separate Speakers (large, untuned); VST3 shared-folder presets.
 
-## 2026-10-28: Duck, Audio FX Panel v1, package additions (toward 0.7.0)
+## 2026-10-28: Duck, Audio FX v1, package additions (toward 0.7.0)
 
 - **Auto-duck is plain effects.** Multitrack > Duck Music Under Voice adds one keyed Dynamics slot per voice track to the music track's Voice Chain (threshold -45 dB, attack 30 ms, release 500 ms, ratio from the chosen depth against a voice about 25 dB over the threshold). Running it again replaces its own slots; Remove Ducking takes them out. With two voices talking at once the reductions add up; a bus key is the alternative if that proves too strong. A Rust test checks that "Medium" drops the music about 10 dB.
-- **Audio FX Panel is a front end, not an engine.** Four dialogue looks (Restoration, Level, Clarity, Polish), each Off, Light, Medium or Strong, write ordinary slots at the front of the chain, tagged `Audio FX: <look>/<strength>` so the panel can read them back and replace them. It aims at the selected clip, else the selected track, else the Waveform editor's preview chain. One undo step, named after the looks. Left for 0.8.0: suggested settings from analysis, loudness-matched A/B, before and after readout, other audio types, host profile auto-load.
+- **Audio FX is a front end, not an engine.** Four dialogue looks (Restoration, Level, Clarity, Polish), each Off, Light, Medium or Strong, write ordinary slots at the front of the chain, tagged `Audio FX: <look>/<strength>` so the panel can read them back and replace them. It aims at the selected clip, else the selected track, else the Waveform editor's preview chain. One undo step, named after the looks. Left for 0.8.0: suggested settings from analysis, loudness-matched A/B, before and after readout, other audio types, host profile auto-load.
 - **Publish Package** also writes chapters.vtt (WebVTT, each chapter ending where the next starts) and midrolls.json.
 
 ## 2026-10-28: Multiband Compressor, Amp Model setting, roadmap order
@@ -1517,7 +1517,7 @@ Several requests compared behavior to another editor; per the guardrails they ar
 
 ## 2026-10-28: Release 0.7.0
 
-- 0.7.0 ships duck music, the Audio FX Panel v1, the Multiband Compressor, the Amp Model setting, WebVTT and midroll files in the package, and the Record-with-nothing-open fix.
+- 0.7.0 ships duck music, the Audio FX v1, the Multiband Compressor, the Amp Model setting, WebVTT and midroll files in the package, and the Record-with-nothing-open fix.
 - The metadata panel and a click, clip and hum report, first planned for 0.7.0, move to 0.8.0 with the effect families so this release is not held up. Modulation effects, determinism tests and the "Under the hood" README section also wait for 0.8.0.
 ## 2026-10-28: Modulation family (0.8.0 pre-build)
 

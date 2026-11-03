@@ -104,6 +104,7 @@ export const MENUS: readonly Menu[] = [
       item("files.next-open", "Next Session or File"),
       item("files.prev-open", "Previous Session or File"),
       item("file.close-all", "Close All"),
+      item("file.close-session-media", "Close Session and its Media"),
       item("file.close-unused", "Close Unused Media"),
       item("file.collect-media", "Collect Session Media"),
       sep,

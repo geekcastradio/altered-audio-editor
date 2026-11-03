@@ -2084,6 +2084,21 @@
     if (!(await files.closeAll())) return;
     for (const r of [...get(waveRowStore)]) if (!(await closeWaveRow(r.path))) return;
   }
+  /**
+   * File > Close Session and its Media: closes the session in front (asking to save first), then
+   * takes the files that session lists out of the Files panel. Files it does not list stay open,
+   * as do files the session that comes to the front lists.
+   */
+  async function closeSessionAndMedia(): Promise<void> {
+    const doc = session.current;
+    if (!doc) return;
+    const key = (p: string) => p.replace(/\\/g, "/").toLowerCase();
+    const mine = new Set(doc.media.map((m) => key(m.path)));
+    if (!(await files.close())) return;
+    const kept = new Set((session.current?.media ?? []).map((m) => key(m.path)));
+    const ids = mediaPool.current.items.filter((it) => mine.has(key(it.path)) && !kept.has(key(it.path))).map((it) => it.id);
+    if (ids.length) await closeWaveIfRemoved(ids, () => mediaPool.remove(ids, sessionHistory));
+  }
   function updateTitle() {
     updateSessionRow();
     updateEditorTitle();
@@ -5322,6 +5337,12 @@
       actions.register({ id: "file.close", run: () => files.close().then(() => undefined) }),
       actions.register({ id: "file.import-sesx", run: () => files.importSesx().then(() => undefined) }),
       actions.register({ id: "file.close-all", run: () => closeEverything() }),
+      actions.register({
+        id: "file.close-session-media",
+        run: () => closeSessionAndMedia().catch(showError),
+        enabled: () => !!session.path || (session.current?.media.length ?? 0) > 0,
+        reason: () => "Open or save a session first.",
+      }),
       actions.register({
         id: "file.recent.none",
         run: () => {},

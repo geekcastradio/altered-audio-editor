@@ -188,8 +188,9 @@ describe("bars and beats", () => {
 });
 
 describe("track height", () => {
-  it("never shows an open track shorter than its full header", () => {
-    expect(trackHeight({ height: 60 })).toBe(MIN_TRACK_H);
+  it("never shows an open track shorter than the minimum", () => {
+    expect(trackHeight({ height: 20 })).toBe(MIN_TRACK_H);
+    expect(trackHeight({ height: MIN_TRACK_H })).toBe(MIN_TRACK_H);
     expect(trackHeight({ height: 200 })).toBe(200);
   });
 

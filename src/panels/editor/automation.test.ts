@@ -10,6 +10,7 @@ import {
   autoChoices,
   autoMode,
   autoMove,
+  autoMoveMany,
   autoRange,
   autoValue,
   autoY,
@@ -87,5 +88,27 @@ describe("recording modes", () => {
     expect(modeChange(owner, "touch")).toMatchObject({ record: "touch", envelopes: [{ enabled: true }] });
     expect(modeChange(owner, "read")).toMatchObject({ record: "off", envelopes: [{ enabled: true }] });
     expect(modeChange(owner, "off")).toMatchObject({ record: "off", envelopes: [{ enabled: false }] });
+  });
+});
+
+describe("moving several points", () => {
+  const pt = (position: number, value = 0) => ({ position, value, curve: "linear" as const });
+  const keep = (p: { value: number }) => p.value;
+  it("shifts every selected point by the same distance", () => {
+    const out = autoMoveMany([pt(100), pt(200), pt(300), pt(900)], new Set([1, 2]), 50, keep);
+    expect(out.map((p) => p.position)).toEqual([100, 250, 350, 900]);
+  });
+  it("stops at the unselected neighbors", () => {
+    const out = autoMoveMany([pt(100), pt(200), pt(300), pt(400)], new Set([1, 2]), 500, keep);
+    // The last selected point (300) can move 99 before it meets the one at 400.
+    expect(out.map((p) => p.position)).toEqual([100, 299, 399, 400]);
+  });
+  it("does not go before the start", () => {
+    const out = autoMoveMany([pt(10), pt(60)], new Set([0, 1]), -500, keep);
+    expect(out.map((p) => p.position)).toEqual([0, 50]);
+  });
+  it("sets each selected point's value from the callback and leaves the others", () => {
+    const out = autoMoveMany([pt(10, -6), pt(20, -12), pt(30, 0)], new Set([0, 1]), 0, (p) => p.value + 3);
+    expect(out.map((p) => p.value)).toEqual([-3, -9, 0]);
   });
 });

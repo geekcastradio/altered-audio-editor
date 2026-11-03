@@ -140,6 +140,7 @@ describe("menu model", () => {
       "files.next-open",
       "files.prev-open",
       "file.close-all",
+      "file.close-session-media",
       "file.import-sesx",
       "multitrack.play-pause",
       "multitrack.stop",

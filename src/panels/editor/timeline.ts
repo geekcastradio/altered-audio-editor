@@ -405,8 +405,11 @@ export function defaultTrackColor(row: number): string {
 /** Height of a folded track: its name row. */
 export const COLLAPSED_H = 30;
 
-/** The shortest an open track gets, so its header always shows every control (volume, pan, input, output, automation). */
-export const MIN_TRACK_H = 120;
+/**
+ * The shortest an open track gets. Short tracks show fewer header rows (the name row first, then
+ * volume and pan, input, output, automation as there is room), so a whole session fits on screen.
+ */
+export const MIN_TRACK_H = 48;
 
 /** A track's height on screen: folded tracks show only their name row; open ones are never shorter than MIN_TRACK_H. */
 export function trackHeight(t: {

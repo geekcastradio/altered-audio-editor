@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { ClipDoc, EnvelopePointDoc } from "../../stores/session";
-import { addPoint, dbToY, envChange, formatValue, fxChoices, fxLaneOf, levelAt, movePoint, pointsOf, rangeOf, restValue, setFxCatalog, snapValue, sliceVolume, valueToY, yToDb, yToValue } from "./envelope";
+import { addPoint, dbToY, envChange, formatValue, fxChoices, fxLaneOf, levelAt, movePoint, movePoints, pointsOf, rangeOf, restValue, setFxCatalog, snapValue, sliceVolume, valueToY, yToDb, yToValue } from "./envelope";
 
 const pt = (position: number, value: number): EnvelopePointDoc => ({ position, value, curve: "linear" });
 
@@ -109,5 +109,23 @@ describe("snapping", () => {
     expect(snapValue("pan", -3)).toBe(0);
     expect(snapValue("pan", 10)).toBe(10);
     expect(snapValue("fx", 0.1)).toBe(0.1);
+  });
+});
+
+describe("moving several envelope points", () => {
+  const keep = (p: EnvelopePointDoc) => p.value;
+  it("shifts the selected points together and leaves the rest", () => {
+    const out = movePoints([pt(100, 0), pt(200, -6), pt(300, -12), pt(900, 0)], new Set([1, 2]), 40, keep, 1_000);
+    expect(out.map((p) => p.position)).toEqual([100, 240, 340, 900]);
+  });
+  it("holds the group between its neighbors and inside the clip", () => {
+    const pts = [pt(100, 0), pt(200, -6), pt(300, -12), pt(400, 0)];
+    expect(movePoints(pts, new Set([1, 2]), 500, keep, 1_000).map((p) => p.position)).toEqual([100, 299, 399, 400]);
+    expect(movePoints([pt(500, 0), pt(900, 0)], new Set([0, 1]), 500, keep, 1_000).map((p) => p.position)).toEqual([600, 1_000]);
+    expect(movePoints([pt(10, 0), pt(60, 0)], new Set([0, 1]), -500, keep, 1_000).map((p) => p.position)).toEqual([0, 50]);
+  });
+  it("keeps each value inside the range", () => {
+    const out = movePoints([pt(10, 0), pt(20, -30)], new Set([0, 1]), 0, (p) => p.value + 100, 1_000);
+    expect(out.map((p) => p.value)).toEqual([12, 12]);
   });
 });

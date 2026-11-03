@@ -37,7 +37,7 @@
   import { clipsAt, copyMoved, fadeClip, LockedError, MIN_CLIP, moveClips, nearest, previewTracks, snapTargets, splitClips, trimClip, withCrossfades,
     withLayers, withGroups } from "./clip-edit";
   import { shownTracks as listedTracks } from "./visibility";
-  import { addPoint, chipBox, chipLabel, envChange, envName, formatValue, fxChoices, fxLaneOf, fxParam, levelAt, movePoint, pointsOf, rangeOf, restValue, snapValue, valueToY, yToValue, type EnvKind } from "./envelope";
+  import { addPoint, chipBox, chipLabel, envChange, envName, formatValue, fxChoices, fxLaneOf, fxParam, levelAt, movePoint, movePoints, pointsOf, rangeOf, restValue, snapValue, valueToY, yToValue, type EnvKind } from "./envelope";
   import LaneCanvas from "./LaneCanvas.svelte";
   import ClipColorDialog from "../../app/ClipColorDialog.svelte";
   import { laneRows, moveRowOps } from "./rows";
@@ -1257,6 +1257,7 @@
       return;
     }
     if (!z) {
+      envSel = null;
       editor.selectTrack(track.id);
       if (e.button === 0) {
         if (ed.tool === "move") startBoxSelect(e);
@@ -1266,6 +1267,16 @@
     }
     const clip = z.clip;
     if (e.button === 2 && ed.selectedClips.has(clip.id)) return;
+    if (e.button === 0 && (e.ctrlKey || e.metaKey || e.shiftKey) && z.kind === "env-point" && z.index !== undefined) {
+      // Shift or Ctrl on an envelope point picks it along with the others (not the clip).
+      const env = z.env ?? "volume";
+      const have = envSel && envSel.clip === clip.id && envSel.env === env ? envSel.idx : [];
+      const next = have.includes(z.index) ? have.filter((k) => k !== z.index) : [...have, z.index];
+      envSel = next.length ? { clip: clip.id, env, idx: next } : null;
+      e.preventDefault();
+      return;
+    }
+    if (z.kind !== "env-point" && z.kind !== "env-line") envSel = null;
     if (e.ctrlKey || e.metaKey) {
       const next = new Set(ed.selectedClips);
       const members = doc ? withGroups(doc, [clip.id]) : [clip.id];
@@ -1300,6 +1311,44 @@
     }
   }
 
+  /** The envelope points picked with Shift or Ctrl, on one clip's one envelope. Dragging one moves them all. */
+  let envSel = $state<{ clip: string; env: EnvKind; idx: number[] } | null>(null);
+
+  // With envelope points picked: Delete removes them, Escape or a press outside the tracks lets go.
+  $effect(() => {
+    const sel = envSel;
+    if (!sel) return;
+    const key = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        envSel = null;
+        return;
+      }
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const clip = doc?.tracks.flatMap((tr) => tr.clips).find((c) => c.id === sel.clip);
+      e.preventDefault();
+      e.stopPropagation();
+      envSel = null;
+      if (!clip) return;
+      const fxLane = sel.env === "fx" ? fxLaneOf(clip, ed.fxLanes) : null;
+      const keep = pointsOf(clip, sel.env, fxLane).filter((_, k) => !sel.idx.includes(k));
+      void session
+        .edit(`Delete ${envName(sel.env, clip, fxLane)} Points`, { op: "set_clips", changes: [envChange(clip, sel.env, keep, fxLane)] }, runner)
+        .catch(onError);
+    };
+    const away = (e: PointerEvent) => {
+      if (!(e.target instanceof Node && scroller?.contains(e.target))) envSel = null;
+    };
+    window.addEventListener("keydown", key, true);
+    window.addEventListener("pointerdown", away, true);
+    return () => {
+      window.removeEventListener("keydown", key, true);
+      window.removeEventListener("pointerdown", away, true);
+    };
+  });
+
   /**
    * Volume or pan envelope: pressing on the line adds a point there;
    * dragging moves the point in time (between its neighbors) and value.
@@ -1332,11 +1381,21 @@
     }
     const at = i;
     const startPos = points[at]!.position;
+    // Several points picked and this one among them: they all move.
+    const group = !added && envSel && envSel.clip === clip.id && envSel.env === env && envSel.idx.length > 1 && envSel.idx.includes(at) ? new Set(envSel.idx) : null;
+    if (!group) envSel = { clip: clip.id, env, idx: [at] };
+    const base = points;
     let moved = false;
     const move = (ev: PointerEvent) => {
       moved = true;
-      const pos = ev.shiftKey ? startPos : posAt(ev.clientX);
-      points = movePoint(points, at, pos, valAt(ev.clientY, ev.altKey), len, env, range);
+      if (group) {
+        const dy = ev.clientY - e.clientY;
+        const dPos = ev.shiftKey ? 0 : posAt(ev.clientX) - posAt(e.clientX);
+        points = movePoints(base, group, dPos, (p) => yToValue(env, valueToY(env, p.value, box.top, box.height, range) + dy, box.top, box.height, range), len, env, range);
+      } else {
+        const pos = ev.shiftKey ? startPos : posAt(ev.clientX);
+        points = movePoint(points, at, pos, valAt(ev.clientY, ev.altKey), len, env, range);
+      }
       preview = [change(points)];
       const shown = formatValue(env, points[at]!.value, unit);
       envTip = { x: ev.clientX, y: ev.clientY, text: env === "volume" ? (shown.startsWith("-") ? shown : shown.startsWith("+") ? shown : `+${shown}`) : `${name} ${shown}` };
@@ -1347,7 +1406,7 @@
       preview = [];
       envTip = null;
       if (!moved && !added) return;
-      void session.edit(added ? `Add ${name} Point` : `Move ${name} Point`, { op: "set_clips", changes: [change(points)] }, runner).catch(onError);
+      void session.edit(added ? `Add ${name} Point` : group ? `Move ${name} Points` : `Move ${name} Point`, { op: "set_clips", changes: [change(points)] }, runner).catch(onError);
     };
     window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerup", up, true);
@@ -2905,6 +2964,7 @@
                 fxLanes={ed.fxLanes}
                 stretchHandles={ed.stretchHandles}
                 silent={silent.has(track.id)}
+                envSelected={envSel}
               />
             </div>
             {@render autoLanes(track, i)}

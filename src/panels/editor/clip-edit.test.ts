@@ -229,6 +229,43 @@ describe("gaps, ranges and the clipboard", () => {
   });
 });
 
+describe("pasting into another session", () => {
+  const src = session([track("A", [clip("a", 0, 0, 48_000, "m48"), clip("b", 60_000, 0, 44_100, "m44")])]);
+  const board = copyClips(src, ["a", "b"])!;
+  const noMedia = (d: SessionDoc): SessionDoc => ({ ...d, media: [] });
+
+  it("carries the files the copied clips use", () => {
+    expect(board.media.map((m) => m.id).sort()).toEqual(["m44", "m48"]);
+  });
+  it("adds the files a session does not have, with the clips in one step", () => {
+    let n = 0;
+    const r = pasteClips(noMedia(src), board, 0, 0, () => `p${++n}`)!;
+    expect(r.op).toMatchObject({
+      op: "batch",
+      ops: [
+        { op: "add_media", media: { id: "m48", path: "a.wav", relative_path: null } },
+        { op: "add_media", media: { id: "m44", path: "b.wav" } },
+        { op: "restore_clips" },
+      ],
+    });
+    expect(r.ids).toHaveLength(2);
+  });
+  it("reuses a file the session lists under another id, by path", () => {
+    const other = { ...src, media: src.media.map((m) => ({ ...m, id: `x-${m.id}`, path: m.path.toUpperCase() })) };
+    let n = 0;
+    const r = pasteClips(other, board, 0, 0, () => `p${++n}`)!;
+    expect(r.op).toMatchObject({ op: "restore_clips", clips: [["A", { media_id: "x-m48" }], ["A", { media_id: "x-m44" }]] });
+  });
+  it("gives a new id to a file whose id is taken by a different file", () => {
+    const clash = { ...src, media: [{ ...src.media[0]!, path: "other.wav" }] };
+    let n = 0;
+    const r = pasteClips(clash, board, 0, 0, () => `p${++n}`)!;
+    const batch = r.op as { op: "batch"; ops: { op: string; media?: { id: string; path: string } }[] };
+    const added = batch.ops.filter((o) => o.op === "add_media").map((o) => o.media!);
+    expect(added.find((m) => m.path === "a.wav")!.id).not.toBe("m48");
+  });
+});
+
 describe("rippleDeleteRange edges", () => {
   it("deletes clips inside and pulls in clips crossing the right edge", () => {
     const doc = session([track("A", [clip("inside", 21_000, 0, 5_000), clip("right", 25_000)])]);

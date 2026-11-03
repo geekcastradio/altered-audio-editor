@@ -241,6 +241,32 @@ export function movePoint(
   return next;
 }
 
+/**
+ * Moves the points in `selected` together: `dPos` along (held so the group stays in order, between
+ * its unselected neighbors, from 0 to the clip's length), each to the value `valueFor` gives it.
+ */
+export function movePoints(
+  points: readonly EnvelopePointDoc[],
+  selected: ReadonlySet<number>,
+  dPos: number,
+  valueFor: (p: EnvelopePointDoc) => number,
+  len: number,
+  kind: EnvKind = "volume",
+  range: EnvRange = rangeOf(kind),
+): EnvelopePointDoc[] {
+  let lo = Number.NEGATIVE_INFINITY;
+  let hi = Number.POSITIVE_INFINITY;
+  points.forEach((p, k) => {
+    if (!selected.has(k)) return;
+    const prev = points[k - 1];
+    const next = points[k + 1];
+    lo = Math.max(lo, (prev && !selected.has(k - 1) ? prev.position + 1 : 0) - p.position);
+    hi = Math.min(hi, (next && !selected.has(k + 1) ? next.position - 1 : len) - p.position);
+  });
+  const d = Math.round(Math.max(lo, Math.min(hi, dPos)));
+  return points.map((p, k) => (selected.has(k) ? { ...p, position: p.position + d, value: clampValue(kind, valueFor(p), range) } : { ...p }));
+}
+
 /** Label of the envelope chip in a clip's title bar. */
 export function chipLabel(showVolume: boolean, showPan: boolean, showFx = false): string {
   const on = [showVolume && "Vol", showPan && "Pan", showFx && "FX"].filter(Boolean) as string[];
