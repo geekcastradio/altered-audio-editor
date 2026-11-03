@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import type { EffectInfo, EffectParamInfo } from "../../app/core";
 import type { EffectChainDoc, EffectSlotDoc } from "../../stores/session";
-import { applyEffectPreset, bankWith, bankWithout, effectPresetFrom, MAX_PRESET_DATA, sanitizeBank } from "./effect-presets";
+import { applyEffectPreset, bankWith, bankWithout, BUILTIN_EFFECT_PRESETS, effectPresetFrom, MAX_PRESET_DATA, sanitizeBank } from "./effect-presets";
 
 const param = (key: string, over: Partial<EffectParamInfo> = {}): EffectParamInfo => ({ key, name: key, unit: "", min: 0, max: 100, default: 50, step: 1, log: false, toggle: false, ...over });
 const info: EffectInfo = { id: "altaudio.test", name: "Test", category: "Dynamics", description: "", params: [param("a"), param("b", { min: -12, max: 12, default: 0, step: 0.5 })] };
@@ -72,5 +72,48 @@ describe("Effect presets", () => {
     expect(bank).toEqual({ e: [{ name: "Ok", params: { a: 1 } }] });
     expect(sanitizeBank(null)).toEqual({});
     expect(sanitizeBank([1])).toEqual({});
+  });
+
+  describe("built-in presets", () => {
+    // The real ranges from the Rust effect catalog (src-tauri/src/dsp/effects). Keep in step with it.
+    const band = (n: number): Record<string, [number, number]> => ({ [`b${n}_freq`]: [20, 20000], [`b${n}_gain`]: [-24, 24], [`b${n}_q`]: [0.1, 12] });
+    const ranges: Record<string, Record<string, [number, number]>> = {
+      "altaudio.dynamics": { threshold: [-60, 0], ratio: [1, 20], attack: [0.1, 200], release: [5, 2000], knee: [0, 24], makeup: [0, 24] },
+      "altaudio.limiter": { ceiling: [-24, 0], input_boost: [0, 24], lookahead: [0, 20], release: [10, 1000], linked: [0, 1] },
+      "altaudio.speech_leveler": { target: [-40, -6], amount: [0, 100], range: [0, 60], boost_low: [0, 1], comp_on: [0, 1], comp_thr: [-9, -1], gate_on: [0, 1], gate_off: [0, 25] },
+      "altaudio.parametric_eq": {
+        hp_on: [0, 1], hp_freq: [10, 2000], hp_slope: [0, 2], ls_freq: [20, 2000], ls_gain: [-24, 24],
+        ...band(1), ...band(2), ...band(3),
+        hs_freq: [1000, 20000], hs_gain: [-24, 24], lp_on: [0, 1], lp_freq: [1000, 22000], lp_slope: [0, 2],
+      },
+    };
+
+    it("keeps every value inside the effect's real range, with no stray keys", () => {
+      for (const [effect, presets] of Object.entries(BUILTIN_EFFECT_PRESETS)) {
+        const r = ranges[effect];
+        expect(r, `no range table for ${effect}`).toBeDefined();
+        for (const pr of presets) {
+          for (const [k, v] of Object.entries(pr.params)) {
+            const range = r![k];
+            expect(range, `${effect} / ${pr.name}: unknown key ${k}`).toBeDefined();
+            expect(v, `${effect} / ${pr.name} / ${k}`).toBeGreaterThanOrEqual(range![0]);
+            expect(v, `${effect} / ${pr.name} / ${k}`).toBeLessThanOrEqual(range![1]);
+          }
+        }
+      }
+    });
+
+    it("names each preset once per effect", () => {
+      for (const [effect, presets] of Object.entries(BUILTIN_EFFECT_PRESETS)) {
+        const names = presets.map((p) => p.name.toLowerCase());
+        expect(new Set(names).size, effect).toBe(names.length);
+        expect(names.every((n) => n.trim().length > 0 && n.length <= 60), effect).toBe(true);
+      }
+    });
+
+    it("lists every setting of a Parametric EQ preset, so one fully replaces another", () => {
+      const keys = Object.keys(ranges["altaudio.parametric_eq"]!).sort();
+      for (const pr of BUILTIN_EFFECT_PRESETS["altaudio.parametric_eq"]!) expect(Object.keys(pr.params).sort(), pr.name).toEqual(keys);
+    });
   });
 });

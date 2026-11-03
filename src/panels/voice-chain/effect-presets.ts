@@ -99,6 +99,48 @@ export function sanitizeBank(raw: unknown): EffectPresetBank {
  * Presets that ship with an effect, listed apart from the user's own and never edited or
  * deleted. Named for the job, not for any other product's presets.
  */
+/** A compressor preset: threshold and ratio carry the idea, attack and release follow speech-friendly defaults. */
+const comp = (name: string, threshold: number, ratio: number, makeup = 0, knee = 6, attack = 5, release = 150): EffectPreset => ({
+  name,
+  params: { threshold, ratio, attack, release, knee, makeup },
+});
+
+/** A limiter preset. Input boost tops out at 24 dB here, so the extreme ones sit at the top of the range. */
+const lim = (name: string, ceiling: number, input_boost: number, lookahead: number, release: number): EffectPreset => ({
+  name,
+  params: { ceiling, input_boost, lookahead, release, linked: 1 },
+});
+
+/** A Speech Leveler preset: the five settings that matter, the rest keep their values. */
+const lev = (name: string, target: number, amount: number, range: number, comp: number | null, gate: number | null): EffectPreset => ({
+  name,
+  params: {
+    target,
+    amount,
+    range,
+    boost_low: 0,
+    comp_on: comp === null ? 0 : 1,
+    comp_thr: comp ?? -6,
+    gate_on: gate === null ? 0 : 1,
+    gate_off: gate ?? 15,
+  },
+});
+
+/** A Parametric EQ preset. Every setting is listed, so applying one fully replaces what was there; bands left out are flat and the filters off. */
+const eq = (name: string, p: Record<string, number>): EffectPreset => ({
+  name,
+  params: {
+    hp_on: 0, hp_freq: 80, hp_slope: 1,
+    ls_freq: 120, ls_gain: 0,
+    b1_freq: 250, b1_gain: 0, b1_q: 1,
+    b2_freq: 1000, b2_gain: 0, b2_q: 1,
+    b3_freq: 4000, b3_gain: 0, b3_q: 1,
+    hs_freq: 8000, hs_gain: 0,
+    lp_on: 0, lp_freq: 18000, lp_slope: 1,
+    ...p,
+  },
+});
+
 export const BUILTIN_EFFECT_PRESETS: Readonly<Record<string, readonly EffectPreset[]>> = {
   "altaudio.dynamics": [
     { name: "Voice, Gentle", params: { threshold: -18, ratio: 2, attack: 12, release: 180, knee: 8, makeup: 2 } },
@@ -107,6 +149,51 @@ export const BUILTIN_EFFECT_PRESETS: Readonly<Record<string, readonly EffectPres
     { name: "Peak Catcher", params: { threshold: -10, ratio: 12, attack: 1, release: 80, knee: 2, makeup: 0 } },
     { name: "Music Glue", params: { threshold: -16, ratio: 2, attack: 30, release: 250, knee: 10, makeup: 1.5 } },
     { name: "Drum Punch", params: { threshold: -20, ratio: 4, attack: 25, release: 100, knee: 3, makeup: 3 } },
+    comp("Sibilance, Light", -24, 1.5, 0, 6, 1, 120),
+    comp("Sibilance, Medium", -30, 2, 0, 6, 1, 120),
+    comp("Sibilance, Hard", -35, 4, 0, 4, 1, 120),
+    comp("Vocal, Even", -20, 2),
+    comp("Vocal, Driven", -24, 3.5, 2),
+    comp("Vocal, Peak Guard", -8, 6, 0, 2, 1),
+    comp("Narration, Even", -15, 2.5),
+    comp("Ceiling, -12 dB", -12, 20, 0, 0, 0.5, 100),
+    comp("Ceiling, -24 dB", -24, 20, 0, 0, 0.5, 100),
+    comp("Bass, Dense", -30, 6, 12, 6, 10, 200),
+    comp("Mix Bus, Gentle", -10, 2, 2, 8, 20, 250),
+  ],
+  "altaudio.limiter": [
+    lim("Stop at -0.1 dB", -0.1, 0, 7, 100),
+    lim("Lift, Stop at -0.1 dB", -0.1, 6, 7, 100),
+    lim("Lift, Stop at -3 dB", -3, 6, 7, 100),
+    lim("Lift, Stop at -6 dB", -6, 3, 7, 100),
+    lim("Squeeze, Light", -3, 3, 7, 100),
+    lim("Squeeze, Medium", -2, 6, 7, 100),
+    lim("Squeeze, Heavy", -1, 15, 7, 100),
+    lim("Squeeze, Crushed", -1, 24, 5, 40),
+    lim("Wall of Loud", -1, 24, 10, 40),
+    lim("Streaming Ceiling, -1 dB", -1, 0, 12, 200),
+  ],
+  "altaudio.speech_leveler": [
+    lev("Even Out, Full", -12, 100, 45, null, null),
+    lev("Even Out, Light Touch", -18, 50, 60, -1, null),
+    lev("Even Out, Balanced", -18, 80, 45, -3, 15),
+    lev("Even Out, Soft", -18, 50, 45, -1, 15),
+    lev("Even Out, Tight", -18, 100, 45, -9, 15),
+  ],
+  "altaudio.parametric_eq": [
+    eq("Flat", {}),
+    eq("Voice, Clean and Present", { hp_on: 1, hp_freq: 80, ls_freq: 110, ls_gain: 3, b1_freq: 290, b1_gain: -3, b1_q: 1.5, b2_freq: 3200, b2_gain: 2, b2_q: 2, hs_freq: 12000, hs_gain: 3 }),
+    eq("Voice, Forward", { hp_on: 1, hp_freq: 80, ls_freq: 110, ls_gain: 4, b1_freq: 290, b1_gain: -3, b1_q: 1.5, b2_freq: 1440, b2_gain: 5, b2_q: 2, hs_freq: 12000, hs_gain: 4 }),
+    eq("Voice, Mud Cut", { hp_on: 1, hp_freq: 70, hp_slope: 0, b1_freq: 280, b1_gain: -4, b1_q: 1.2 }),
+    eq("Cut Rumble", { hp_on: 1, hp_freq: 80, hp_slope: 1 }),
+    eq("Cut Hiss", { lp_on: 1, lp_freq: 9000, lp_slope: 1 }),
+    eq("Telephone Band", { hp_on: 1, hp_freq: 300, lp_on: 1, lp_freq: 3400 }),
+    eq("Vintage Broadcast", { hp_on: 1, hp_freq: 300, hp_slope: 2, b1_freq: 700, b1_gain: 9, b1_q: 2, b2_freq: 2000, b2_gain: -8, b2_q: 2, lp_on: 1, lp_freq: 4000 }),
+    eq("Loudness Lift", { ls_freq: 120, ls_gain: 3, hs_freq: 6000, hs_gain: 6 }),
+    eq("Acoustic Guitar, Open", { ls_freq: 60, ls_gain: -6, b1_freq: 200, b1_gain: -3, b2_freq: 2000, b2_gain: -2, b3_freq: 5000, b3_gain: 2, hs_freq: 15000, hs_gain: 2 }),
+    eq("Guitar, Tight and Heavy", { ls_freq: 40, ls_gain: -12, b1_freq: 120, b1_gain: -3, b2_freq: 450, b2_gain: 4, b2_q: 4, b3_freq: 2900, b3_gain: -3, hs_freq: 18000, hs_gain: -12 }),
+    eq("Kick, Thump and Click", { b1_freq: 80, b1_gain: 3, b1_q: 2, b2_freq: 300, b2_gain: -3, b2_q: 3, b3_freq: 2500, b3_gain: 4, b3_q: 2, hs_freq: 18000, hs_gain: -12 }),
+    eq("Snare, Fat Body", { ls_freq: 30, ls_gain: -12, b2_freq: 270, b2_gain: 6, b2_q: 3, b3_freq: 5700, b3_gain: -6, hs_freq: 16000, hs_gain: -6 }),
   ],
 };
 
