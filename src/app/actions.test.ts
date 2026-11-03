@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import { get } from "svelte/store";
-import { ActionRegistry } from "./actions";
+import { ActionRegistry, isRepeatable } from "./actions";
 
 describe("ActionRegistry", () => {
   it("treats unregistered ids as disabled", async () => {
@@ -40,6 +40,24 @@ describe("ActionRegistry", () => {
     off();
     expect(get(reg.changed)).toBe(start + 3);
     expect(reg.has("a")).toBe(false);
+  });
+
+  it("remembers the last repeatable command only", async () => {
+    const reg = new ActionRegistry();
+    reg.register({ id: "clip.split", run: () => {} });
+    reg.register({ id: "fx.amplify", run: () => {} });
+    reg.register({ id: "file.save", run: () => {} });
+    reg.register({ id: "clip.merge", run: () => {}, enabled: () => false });
+    expect(reg.repeatTarget()).toBeNull();
+    await reg.run("clip.split");
+    await reg.run("file.save");
+    expect(reg.repeatTarget()).toBe("clip.split");
+    await reg.run("clip.merge");
+    expect(reg.repeatTarget()).toBe("clip.split");
+    await reg.run("fx.amplify");
+    expect(reg.repeatTarget()).toBe("fx.amplify");
+    expect(isRepeatable("edit.repeat-last")).toBe(false);
+    expect(isRepeatable("view.zoom-session")).toBe(false);
   });
 
   it("an overlay stands in while its condition holds", async () => {

@@ -293,6 +293,45 @@ export const BUILTIN_PRESETS: readonly Preset[] = [
       keepMs: 0,
     },
   },
+  // Keep the loud parts, drop the rest: a highlight pass over a long recording.
+  {
+    name: "Keep Only the Loud Parts",
+    settings: {
+      ...DEFAULTS,
+      quietDb: -9,
+      minQuietSec: 0.14,
+      contentDb: -6,
+      minContentSec: 0.025,
+      action: "split",
+      keepMs: 0,
+    },
+  },
+  // Quiet room tone between lines on a shared mic: split where only bleed is left.
+  {
+    name: "Split Out Mic Bleed",
+    settings: {
+      ...DEFAULTS,
+      quietDb: -36,
+      minQuietSec: 0.5,
+      contentDb: -35,
+      minContentSec: 0.025,
+      action: "split",
+      keepMs: 0,
+    },
+  },
+  // Short pauses cut from a talk, so a lecture plays faster without speeding the voice up.
+  {
+    name: "Shorten a Lecture",
+    settings: {
+      ...DEFAULTS,
+      quietDb: -32,
+      minQuietSec: 0.14,
+      contentDb: -27,
+      minContentSec: 0.025,
+      action: "split",
+      keepMs: 0,
+    },
+  },
   {
     name: "Mark Non-Silent Areas",
     settings: {

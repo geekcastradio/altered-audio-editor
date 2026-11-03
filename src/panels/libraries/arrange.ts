@@ -19,11 +19,11 @@ export interface ViewState {
   sortBy: SortBy;
   filter: KindFilter;
   view: ViewMode;
-  /** Section ids folded shut. */
-  collapsed: string[];
+  /** Section ids the user opened. Every other section starts folded shut. */
+  open: string[];
 }
 
-export const DEFAULT_VIEW: ViewState = { groupBy: "bin", sortBy: "custom", filter: "all", view: "list", collapsed: [] };
+export const DEFAULT_VIEW: ViewState = { groupBy: "bin", sortBy: "custom", filter: "all", view: "list", open: [] };
 
 /** A saved view, with anything unreadable put back to its default. */
 export function sanitizeView(raw: unknown): ViewState {
@@ -34,7 +34,7 @@ export function sanitizeView(raw: unknown): ViewState {
     sortBy: pick(o.sortBy, ["custom", "name", "date"], DEFAULT_VIEW.sortBy),
     filter: pick(o.filter, ["all", "audio", "image"], DEFAULT_VIEW.filter),
     view: pick(o.view, ["list", "grid"], DEFAULT_VIEW.view),
-    collapsed: Array.isArray(o.collapsed) ? o.collapsed.filter((x): x is string => typeof x === "string").slice(0, 200) : [],
+    open: Array.isArray(o.open) ? o.open.filter((x): x is string => typeof x === "string").slice(0, 200) : [],
   };
 }
 
@@ -97,6 +97,17 @@ export function flatIds(sections: readonly Section[], collapsed: readonly string
   return out;
 }
 
-export function toggleCollapsed(v: ViewState, id: string): ViewState {
-  return { ...v, collapsed: v.collapsed.includes(id) ? v.collapsed.filter((x) => x !== id) : [...v.collapsed, id] };
+/**
+ * The sections drawn folded shut. Sections start folded and stay open once the user opens
+ * them. A search opens every section so its matches show, and a list with only one section
+ * (a library with no bins, or grouping off) is never folded, since it would show nothing.
+ */
+export function foldedIds(sections: readonly Section[], v: ViewState, searching: boolean): string[] {
+  if (searching || sections.length <= 1) return [];
+  return sections.filter((s) => !v.open.includes(s.id)).map((s) => s.id);
+}
+
+/** Opens a folded section, or folds an open one. `folded` is whether it is drawn folded now. */
+export function toggleSection(v: ViewState, id: string, folded: boolean): ViewState {
+  return { ...v, open: folded ? (v.open.includes(id) ? v.open : [...v.open, id]) : v.open.filter((x) => x !== id) };
 }

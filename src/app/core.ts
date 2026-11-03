@@ -186,6 +186,8 @@ export interface Library {
   collections: LibraryCollection[];
   /** Show badge color (palette token or #rrggbb). */
   color?: string | null;
+  /** Cover picture: the id of an image item in this library, shown in place of the badge. */
+  cover?: string | null;
 }
 
 export interface LibraryItem {

@@ -18,6 +18,14 @@
         "null"
       ]
     },
+    "cover": {
+      "description": "Cover picture: the id of an image item in this library, shown in place of the badge.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
     "created": {
       "type": "string",
       "format": "date-time"

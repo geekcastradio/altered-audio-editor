@@ -345,6 +345,7 @@ pub fn library() -> Library {
             color: None,
         }],
         color: None,
+        cover: None,
     }
 }
 

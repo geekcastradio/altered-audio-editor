@@ -4916,6 +4916,18 @@
           reason: () => (editor.current().selectedClips.size === 0 ? "Select clips first." : dir < 0 ? "The clips are already on the top track, or one is locked." : "The clips are already on the bottom track, or one is locked."),
         }),
       ),
+      actions.register({
+        id: "edit.repeat-last",
+        run: async () => {
+          const id = actions.repeatTarget();
+          if (id) await actions.run(id);
+        },
+        enabled: () => {
+          const id = actions.repeatTarget();
+          return id !== null && actions.isEnabled(id);
+        },
+        reason: () => (actions.repeatTarget() === null ? "Run an edit or an effect first." : "That command is not available right now."),
+      }),
       actions.register({ id: "clip.split", run: () => split(false), enabled: () => (session.current?.tracks.some((t) => t.clips.length > 0) ?? false) }),
       actions.register({ id: "clip.split-all", run: () => split(true), enabled: () => (session.current?.tracks.some((t) => t.clips.length > 0) ?? false) }),
       actions.register({

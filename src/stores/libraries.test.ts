@@ -124,6 +124,25 @@ describe("LibraryStore", () => {
     expect(store.current.active!.lib.collections[0]?.name).toBe("Cold Opens");
   });
 
+  it("sets a cover from a picture only, clears it on request, and drops it when the picture is removed", async () => {
+    const { store, stack, disk } = setup();
+    const o = await store.create("Show");
+    await store.edit("add", (lib) => void lib.items.push(item("song"), { ...item("art", "art.png"), kind: "image" }), stack);
+    await store.setLibraryCover("song", stack);
+    expect(store.current.active!.lib.cover ?? null).toBeNull();
+    await store.setLibraryCover("art", stack);
+    expect(store.current.active!.lib.cover).toBe("art");
+    expect(disk.get(o.dir)!.cover).toBe("art");
+    await stack.undo();
+    expect(store.current.active!.lib.cover ?? null).toBeNull();
+    await stack.redo();
+    await store.setLibraryCover(null, stack);
+    expect(store.current.active!.lib.cover).toBeNull();
+    await store.setLibraryCover("art", stack);
+    await store.removeItems(["art"], stack);
+    expect(store.current.active!.lib.cover).toBeNull();
+  });
+
   it("restores open libraries and skips missing ones", async () => {
     const first = setup();
     const a = await first.store.create("A");

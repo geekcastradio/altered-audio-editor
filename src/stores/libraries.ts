@@ -237,6 +237,7 @@ export class LibraryStore {
       (lib) => {
         lib.items = lib.items.filter((i) => !drop.has(i.id));
         for (const c of lib.collections) c.items = c.items.filter((id) => !drop.has(id));
+        if (lib.cover && drop.has(lib.cover)) lib.cover = null;
       },
       runner,
     );
@@ -297,6 +298,14 @@ export class LibraryStore {
 
   setLibraryColor(color: string | null, runner: CommandRunner): Promise<void> {
     return this.edit("Show Color", (lib) => void (lib.color = color), runner);
+  }
+
+  /** Sets the library's cover to one of its pictures, or clears it with null. */
+  setLibraryCover(itemId: string | null, runner: CommandRunner): Promise<void> {
+    return this.edit(itemId ? "Set Library Cover" : "Remove Library Cover", (lib) => {
+      if (itemId === null) lib.cover = null;
+      else if (lib.items.some((i) => i.id === itemId && i.kind === "image")) lib.cover = itemId;
+    }, runner);
   }
 
   renameCollection(id: string, name: string, runner: CommandRunner): Promise<void> {

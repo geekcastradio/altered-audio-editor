@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { LibraryItem } from "../../app/core";
-import { arrange, DEFAULT_VIEW, flatIds, sanitizeView, toggleCollapsed } from "./arrange";
+import { arrange, DEFAULT_VIEW, flatIds, foldedIds, sanitizeView, toggleSection } from "./arrange";
 
 const item = (id: string, name: string, kind: "audio" | "image" = "audio", added = "2026-01-01T00:00:00Z"): LibraryItem => ({
   id, name, kind, file: `${name}.wav`, copied: true, original_path: null, sample_rate: 48000, channels: 2, length: 1, tags: [], notes: "", color: null, added,
@@ -52,13 +52,28 @@ describe("Libraries arrangement", () => {
     expect(s[0]?.name).toBe("All");
     const grouped = arrange(lib, items, DEFAULT_VIEW);
     expect(flatIds(grouped, ["k1"])).toEqual(["c", "d"]);
+    expect(flatIds(grouped, foldedIds(grouped, DEFAULT_VIEW, false))).toEqual([]);
   });
 
-  it("toggles folding and repairs a damaged saved view", () => {
-    const v = toggleCollapsed(DEFAULT_VIEW, "k1");
-    expect(v.collapsed).toEqual(["k1"]);
-    expect(toggleCollapsed(v, "k1").collapsed).toEqual([]);
-    expect(sanitizeView({ groupBy: "nonsense", view: "grid", collapsed: [1, "a"] })).toEqual({ ...DEFAULT_VIEW, view: "grid", collapsed: ["a"] });
+  it("opens and folds sections, and repairs a damaged saved view", () => {
+    const v = toggleSection(DEFAULT_VIEW, "k1", true);
+    expect(v.open).toEqual(["k1"]);
+    expect(toggleSection(v, "k1", false).open).toEqual([]);
+    expect(toggleSection(v, "k1", true).open).toEqual(["k1"]);
+    expect(sanitizeView({ groupBy: "nonsense", view: "grid", open: [1, "a"] })).toEqual({ ...DEFAULT_VIEW, view: "grid", open: ["a"] });
+    expect(sanitizeView({ collapsed: ["old"] })).toEqual(DEFAULT_VIEW);
     expect(sanitizeView(null)).toEqual(DEFAULT_VIEW);
+  });
+
+  it("starts every bin folded, keeps the ones the user opened, and opens all while searching", () => {
+    const s = arrange(lib, items, DEFAULT_VIEW);
+    expect(foldedIds(s, DEFAULT_VIEW, false)).toEqual(["k1", "k2", "unsorted"]);
+    expect(foldedIds(s, { ...DEFAULT_VIEW, open: ["k2"] }, false)).toEqual(["k1", "unsorted"]);
+    expect(foldedIds(s, DEFAULT_VIEW, true)).toEqual([]);
+  });
+
+  it("never folds a library that has a single section", () => {
+    const one = arrange({ collections: [] }, items, DEFAULT_VIEW);
+    expect(foldedIds(one, DEFAULT_VIEW, false)).toEqual([]);
   });
 });

@@ -37,7 +37,7 @@
   import { clickSelection, stepSelection } from "../files/selection";
   import { formatChannels } from "../files/format";
   import { prefs } from "../../stores/prefs";
-  import { arrange, DEFAULT_VIEW, flatIds, sanitizeView, toggleCollapsed, type ViewState } from "./arrange";
+  import { arrange, DEFAULT_VIEW, flatIds, foldedIds, sanitizeView, toggleSection, type ViewState } from "./arrange";
 
   interface Props {
     store: LibraryStore;
@@ -147,7 +147,9 @@
     );
   });
   const sections = $derived(active ? arrange(active.lib, shown, view) : []);
-  const shownIds = $derived(flatIds(sections, view.collapsed));
+  /** Bins start folded; the ones opened, and every bin while searching, show their items. */
+  const folds = $derived(foldedIds(sections, view, query.trim() !== ""));
+  const shownIds = $derived(flatIds(sections, folds));
   const selectedItems = $derived(shown.filter((i) => snap?.selected.has(i.id)));
   const single = $derived(selectedItems.length === 1 ? selectedItems[0]! : null);
   const currentCollection = $derived(active?.lib.collections.find((c) => c.id === snap?.collection) ?? null);
@@ -569,6 +571,14 @@
         { kind: "item", label: "Show Color...", run: () => (colorFor = { kind: "show", current: a.lib.color ?? null }) },
         {
           kind: "item",
+          label: "Use Selected Picture as Library Cover",
+          disabled: !(single && single.kind === "image"),
+          reason: "Select one picture in this library first.",
+          run: () => single && void store.setLibraryCover(single.id, runner).catch(fail),
+        },
+        { kind: "item", label: "Remove Library Cover", disabled: !a.lib.cover, run: () => void store.setLibraryCover(null, runner).catch(fail) },
+        {
+          kind: "item",
           label: "Add Starter Bins",
           disabled: missingStarterBins(a.lib).length === 0,
           run: () => void store.addBins(missingStarterBins(a.lib), runner).catch(fail),
@@ -602,14 +612,17 @@
   {:else}
     {@const lib = active?.lib}
     {@const badge = lib?.color ?? (lib ? defaultColor(lib.name) : "--clip-2")}
+    {@const coverItem = lib?.cover ? (lib.items.find((i) => i.id === lib.cover && i.kind === "image") ?? null) : null}
     <header class="show">
       <button
         type="button"
         class="badge"
+        class:has-cover={coverItem !== null}
         style:background="var({badge})"
         title="Show color"
         aria-label="Show color"
-        onclick={() => lib && (colorFor = { kind: "show", current: lib.color ?? null })}>{initials(lib?.name ?? "")}</button
+        onclick={() => lib && (colorFor = { kind: "show", current: lib.color ?? null })}
+        >{#if coverItem}{#key pathOf(coverItem)}<span class="cover" use:thumb={pathOf(coverItem)}>{#if thumbs[pathOf(coverItem)]}<img src={thumbs[pathOf(coverItem)]} alt="" draggable="false" />{/if}</span>{/key}{:else}{initials(lib?.name ?? "")}{/if}</button
       >
       <button
         type="button"
@@ -677,14 +690,14 @@
       onkeydown={onListKey}
     >
       {#each sections as sec (sec.id)}
-        {@const folded = view.collapsed.includes(sec.id)}
+        {@const folded = folds.includes(sec.id)}
         <div class="section" class:target={sec.bin !== null && hoverBin === sec.bin}>
           <button
             type="button"
             class="shead"
             data-bin={sec.bin ?? undefined}
             aria-expanded={!folded}
-            onclick={() => setView(toggleCollapsed(view, sec.id))}
+            onclick={() => setView(toggleSection(view, sec.id, folded))}
             oncontextmenu={(e) => sectionMenu(e, sec.bin)}
           >
             <svg class="chev" class:folded viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" /></svg>
@@ -1144,6 +1157,23 @@
     font-weight: 700;
     letter-spacing: 0.03em;
     cursor: pointer;
+  }
+
+  .badge.has-cover {
+    width: 40px;
+    height: 40px;
+    overflow: hidden;
+  }
+
+  .badge .cover,
+  .badge .cover img {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .badge .cover img {
+    object-fit: cover;
   }
 
   .title {

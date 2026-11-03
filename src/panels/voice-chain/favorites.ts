@@ -22,5 +22,24 @@ export function toggleFavorite(list: readonly string[], id: string): string[] {
   return list.includes(id) ? list.filter((x) => x !== id) : [...list, id].slice(-MAX_FAVORITES);
 }
 
-/** The saved favorites right now. */
-export const favoriteIds = (): string[] => sanitizeFavorites(prefs.raw(KEY_FAVORITES));
+/**
+ * What a fresh install starts with: the effects a podcast edit reaches for most. Used only
+ * until the user stars or unstars something, after which their own list (even an empty one) wins.
+ */
+export const STARTER_FAVORITES: readonly string[] = [
+  "altaudio.hum_cut",
+  "altaudio.noise_reducer",
+  "altaudio.dc_offset",
+  "altaudio.deesser",
+  "altaudio.dynamics",
+  "altaudio.speech_leveler",
+  "altaudio.parametric_eq",
+  "altaudio.limiter",
+  "altaudio.pitch_shift",
+];
+
+/** The saved favorites right now, or the starter set when none were ever saved. */
+export const favoriteIds = (): string[] => {
+  const raw = prefs.raw(KEY_FAVORITES);
+  return raw === undefined || raw === null ? [...STARTER_FAVORITES] : sanitizeFavorites(raw);
+};

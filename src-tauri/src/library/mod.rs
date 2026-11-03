@@ -44,6 +44,9 @@ pub struct Library {
     /// Show color for the library's badge, as a palette token or `#rrggbb`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    /// Cover picture: the id of an image item in this library, shown in place of the badge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover: Option<Id>,
 }
 
 impl Document for Library {
@@ -64,6 +67,7 @@ impl Library {
             items: Vec::new(),
             collections: Vec::new(),
             color: None,
+            cover: None,
         }
     }
 

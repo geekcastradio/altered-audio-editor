@@ -3,7 +3,7 @@
 // This file is part of Altered Audio Editor.
 
 import { describe, expect, it } from "vitest";
-import { MAX_FAVORITES, sanitizeFavorites, toggleFavorite } from "./favorites";
+import { MAX_FAVORITES, sanitizeFavorites, STARTER_FAVORITES, toggleFavorite } from "./favorites";
 
 describe("effect favorites", () => {
   it("drops anything that is not a short string, and repeats", () => {
@@ -13,6 +13,11 @@ describe("effect favorites", () => {
   it("toggles an effect on and off", () => {
     expect(toggleFavorite(["a"], "b")).toEqual(["a", "b"]);
     expect(toggleFavorite(["a", "b"], "a")).toEqual(["b"]);
+  });
+  it("ships a starter set of distinct effects that fits in the list", () => {
+    expect(new Set(STARTER_FAVORITES).size).toBe(STARTER_FAVORITES.length);
+    expect(STARTER_FAVORITES.length).toBeLessThanOrEqual(MAX_FAVORITES);
+    expect(sanitizeFavorites([...STARTER_FAVORITES])).toEqual([...STARTER_FAVORITES]);
   });
   it("keeps the newest when the list is full", () => {
     const full = Array.from({ length: MAX_FAVORITES }, (_, i) => `e${i}`);

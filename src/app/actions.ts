@@ -25,11 +25,27 @@ export interface Action {
   visible?: () => boolean;
 }
 
+/**
+ * Commands Repeat Last Command can run again: the edits and effects that change audio or clips.
+ * Views, panels, saving and transport are left out, so repeating never reopens a window or saves.
+ */
+const REPEATABLE = new Set([
+  "fx.invert", "fx.reverse", "fx.silence", "fx.fade-in", "fx.fade-out", "fx.amplify", "fx.normalize",
+  "fx.pitch-tune", "fx.pitch-curve", "fx.gen.tone", "fx.gen.noise", "fx.gen.silence",
+  "edit.crop", "edit.mix-paste",
+  "clip.split", "clip.split-all", "clip.merge", "clip.fade-in", "clip.fade-out", "clip.nudge-left", "clip.nudge-right",
+  "clip.trim.selection", "clip.trim.start", "clip.trim.end", "clip.gain", "clip.mute", "clip.lock", "clip.loop",
+  "clip.stretch-reset", "clip.phase-align", "clip.to-track-above", "clip.to-track-below",
+]);
+
+export const isRepeatable = (id: string): boolean => REPEATABLE.has(id);
+
 export class ActionRegistry {
   private readonly actions = new Map<string, Action>();
   private readonly overlays = new Map<string, { when: () => boolean; action: Action }[]>();
   private readonly tick = writable(0);
   private n = 0;
+  private lastRepeat: string | null = null;
 
   /** Changes whenever any action's state may have changed. Menus re-read on change. */
   readonly changed: Readable<number> = this.tick;
@@ -103,8 +119,14 @@ export class ActionRegistry {
     const a = this.get(id);
     if (!a || !(a.enabled?.() ?? true)) return false;
     await a.run();
+    if (isRepeatable(id)) this.lastRepeat = id;
     this.invalidate();
     return true;
+  }
+
+  /** The command Repeat Last Command would run: the last repeatable one that ran. */
+  repeatTarget(): string | null {
+    return this.lastRepeat;
   }
 
   /** Tells menus to re-read enabled, checked and label state. */
