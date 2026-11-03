@@ -281,6 +281,9 @@ const hasPanels = (d: unknown) =>
   d !== null &&
   Object.keys((d as { panels?: object }).panels ?? {}).length > 0;
 
+/** Titles panels used to have, by panel, for layouts saved before the rename. */
+const RETIRED_TITLES: readonly [PanelId, string][] = [["audio-fx", "Audio FX Panel"]];
+
 export class DockController {
   private api: DockviewApi | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -357,6 +360,19 @@ export class DockController {
     this.api = null;
   }
 
+  /**
+   * A saved layout keeps the tab titles it was saved with, so a panel that was renamed would keep
+   * its old name there. Panels whose old title is listed here get the current one back.
+   */
+  private freshenTitles(): void {
+    if (!this.api) return;
+    for (const [id, old] of RETIRED_TITLES) {
+      const p = this.api.getPanel(id);
+      const def = panelDef(id);
+      if (p && def && p.title === old) p.api.setTitle(def.title);
+    }
+  }
+
   /** Changes a panel's tab title, for example to name the open file. */
   setTitle(id: PanelId, title: string): void {
     const p = this.api?.getPanel(id);
@@ -427,6 +443,7 @@ export class DockController {
       this.suppressSave = true;
       try {
         this.api.fromJSON(this.base);
+        this.freshenTitles();
       } finally {
         this.suppressSave = false;
       }
@@ -573,6 +590,7 @@ export class DockController {
       try {
         this.suppressSave = true;
         api.fromJSON(stored.dockview);
+        this.freshenTitles();
         this.syncOpen();
         return;
       } catch (e) {
@@ -588,6 +606,7 @@ export class DockController {
       this.suppressSave = true;
       try {
         api.fromJSON(this.base);
+        this.freshenTitles();
       } finally {
         this.suppressSave = false;
       }

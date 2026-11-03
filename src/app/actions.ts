@@ -32,10 +32,10 @@ export interface Action {
 const REPEATABLE = new Set([
   "fx.invert", "fx.reverse", "fx.silence", "fx.fade-in", "fx.fade-out", "fx.amplify", "fx.normalize",
   "fx.pitch-tune", "fx.pitch-curve", "fx.gen.tone", "fx.gen.noise", "fx.gen.silence",
-  "edit.crop", "edit.mix-paste",
+  "edit.crop", "edit.mix-paste", "edit.silence-time-clips",
   "clip.split", "clip.split-all", "clip.merge", "clip.fade-in", "clip.fade-out", "clip.nudge-left", "clip.nudge-right",
   "clip.trim.selection", "clip.trim.start", "clip.trim.end", "clip.gain", "clip.mute", "clip.lock", "clip.loop",
-  "clip.stretch-reset", "clip.phase-align", "clip.to-track-above", "clip.to-track-below",
+  "clip.stretch-reset", "clip.phase-align", "clip.to-track-above", "clip.to-track-below", "clip.bring-front", "clip.send-back",
 ]);
 
 export const isRepeatable = (id: string): boolean => REPEATABLE.has(id);

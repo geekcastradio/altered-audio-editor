@@ -130,6 +130,8 @@
     fadeShapeChanges,
     type ClipBoard,
   } from "../panels/editor/clip-edit";
+  import { silenceChanges } from "../panels/editor/silence-span";
+  import { stackChanges } from "../panels/editor/clip-order";
   import { AUDIO_TYPES, type ClipChange, type MarkerDoc } from "../stores/session";
   import { propertiesOp, type SessionProperties } from "./session-properties";
   import { splitChannelsOp, splittable } from "../panels/properties/split-channels";
@@ -1105,6 +1107,21 @@
 
   // Clipboard for clips. Lives for the app session; not the system clipboard.
   let clipBoard: ClipBoard | null = null;
+  // Five clipboards. Edit > Set Current Clipboard picks which one Copy, Cut and Paste use, so a
+  // few pieces can be kept at once. The live values above are the current slot; the others wait here.
+  const BOARDS = 5;
+  let boardNow = 0;
+  const clipSlots: (ClipBoard | null)[] = Array.from({ length: BOARDS }, () => null);
+  const waveSlots: (WaveBoard | null)[] = Array.from({ length: BOARDS }, () => null);
+  function setBoard(n: number) {
+    if (n === boardNow) return;
+    clipSlots[boardNow] = clipBoard;
+    waveSlots[boardNow] = waveBoard;
+    boardNow = n;
+    clipBoard = clipSlots[n] ?? null;
+    waveBoard = waveSlots[n] ?? null;
+    actions.invalidate();
+  }
   const inEditor = () => currentArea() === "multitrack";
   const timeSel = () => session.current?.view.selection ?? null;
 
@@ -2509,6 +2526,8 @@
     "pitch_shift",
     "echo",
     "center_remover",
+    "center_extract",
+    "dynamics_curve",
     "phase_rotate",
     "convolution_reverb",
     "multiband",
@@ -4810,6 +4829,19 @@
         reason: () => "Select clips first.",
       }),
       actions.register({
+        id: "edit.silence-time-clips",
+        run: async () => {
+          const doc = session.current;
+          const r = timeSel();
+          if (!doc || !r) return;
+          const changes = silenceChanges(doc, editor.current().selectedClips, r.start, r.end);
+          if (changes.length === 0) return showNotice("The time selection does not reach any selected clip that is not locked.");
+          await editClips(changes.length === 1 ? "Silence Time Selection" : `Silence Time Selection in ${changes.length} Clips`, changes);
+        },
+        enabled: () => timeSel() !== null && editor.current().selectedClips.size > 0,
+        reason: () => (timeSel() ? "Select clips first." : "Drag across empty space in the Editor to select a time range."),
+      }),
+      actions.register({
         id: "edit.ripple.time-track",
         run: () => {
           const r = timeSel();
@@ -4914,6 +4946,27 @@
           run: () => moveClipsToTrack(dir),
           enabled: () => clipsTrackMove(dir) !== null,
           reason: () => (editor.current().selectedClips.size === 0 ? "Select clips first." : dir < 0 ? "The clips are already on the top track, or one is locked." : "The clips are already on the bottom track, or one is locked."),
+        }),
+      ),
+      ...(["front", "back"] as const).map((move) =>
+        actions.register({
+          id: move === "front" ? "clip.bring-front" : "clip.send-back",
+          run: async () => {
+            const doc = session.current;
+            if (!doc) return;
+            const changes = stackChanges(doc, editor.current().selectedClips, move);
+            if (changes.length === 0) return showNotice(move === "front" ? "The selected clips are already in front, or locked." : "The selected clips are already at the back, or locked.");
+            await editClips(move === "front" ? "Bring Clip to Front" : "Send Clip to Back", changes);
+          },
+          enabled: () => editor.current().selectedClips.size > 0,
+          reason: () => "Select a clip first.",
+        }),
+      ),
+      ...Array.from({ length: BOARDS }, (_, n) =>
+        actions.register({
+          id: `edit.clipboard.${n + 1}`,
+          run: () => setBoard(n),
+          checked: () => boardNow === n,
         }),
       ),
       actions.register({

@@ -18,6 +18,7 @@
   import type { MediaPool } from "../../stores/media-pool";
   import type { Preferences } from "../../stores/preferences";
   import { batchPresets, BUILTIN_PRESETS, presetChain, sanitizePresets, type ChainPreset } from "../voice-chain/chain";
+  import { BATCH_RECIPES, RECIPE_ONLY_GROUPS } from "../voice-chain/batch-recipes";
   import { addRows, batchRows, conflicts, destFor, effectiveTemplate, fileName, sanitizeBatch, sanitizeLevel, shapingFor, tagsFor, type BatchRow, type BatchSettings } from "./batch";
   import BatchOutputDialog from "./BatchOutputDialog.svelte";
 
@@ -80,9 +81,9 @@
   void effectsCatalog()
     .then((c) => (known = new Set(c.map((e) => e.id))))
     .catch(() => (known = null));
-  const allPresets = $derived([...userPresets, ...BUILTIN_PRESETS]);
-  const GROUPS = ["Voice chains", "Processing", "Breath gates", "Repair", "EQ"];
-  const BATCH_PRESETS = batchPresets(BUILTIN_PRESETS);
+  const allPresets = $derived([...userPresets, ...BUILTIN_PRESETS, ...BATCH_RECIPES]);
+  const GROUPS = ["Voice chains", "Processing", "Breath gates", "Repair", "EQ", ...RECIPE_ONLY_GROUPS];
+  const BATCH_PRESETS = [...batchPresets(BUILTIN_PRESETS), ...BATCH_RECIPES];
   let outputOpen = $state(false);
   const problems = $derived(conflicts(rows, dests, s.overwrite));
   const waiting = $derived(rows.filter((r) => r.status !== "done" && !problems.has(r.id)));

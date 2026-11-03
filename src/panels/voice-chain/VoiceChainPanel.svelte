@@ -59,6 +59,8 @@
   import ReverbPanel from "./ReverbPanel.svelte";
   import EqGraph from "./EqGraph.svelte";
   import PhaseCurveGraph from "./PhaseCurveGraph.svelte";
+  import DynamicsCurveGraph from "./DynamicsCurveGraph.svelte";
+  import { curveGroupShown, DYNAMICS_CURVE } from "./dynamics-curve";
   import EffectControls from "./EffectControls.svelte";
   import NoiseShapeGraph from "./NoiseShapeGraph.svelte";
   import TubePanel from "./TubePanel.svelte";
@@ -915,6 +917,8 @@
           />
         {:else if winSlot.effect === PHASE_CURVE}
           <PhaseCurveGraph slot={winSlot} info={winInfo} onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)} />
+        {:else if winSlot.effect === DYNAMICS_CURVE}
+          <DynamicsCurveGraph slot={winSlot} info={winInfo} onParams={(changes, label, done) => dragParams(winSlot, changes, label, done)} />
         {:else if GRAPHED.has(winSlot.effect)}
           <ResponseGraph slot={winSlot} info={winInfo} onPoint={(pf, f, pg, g, done) => dragPoint(winSlot, pf, f, pg, g, done)} />
         {/if}
@@ -956,7 +960,7 @@
         {#if !OWN_CONTROLS.has(winSlot.effect)}<EffectControls
           info={winInfo}
           value={(p) => shown(winSlot, p)}
-          shown={(g) => groupShown(winSlot.effect, winSlot, g)}
+          shown={(g) => groupShown(winSlot.effect, winSlot, g) && curveGroupShown(winSlot.effect, winSlot, g)}
           oninput={(p, v) => drag(winSlot, p, v)}
           oncommit={(p, v) => setValue(winSlot, p, v)}
         />{/if}

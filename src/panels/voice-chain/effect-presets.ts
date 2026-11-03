@@ -12,6 +12,7 @@
 import type { EffectInfo } from "../../app/core";
 import type { EffectChainDoc, EffectSlotDoc } from "../../stores/session";
 import { clampParam, paramValue, setSlot } from "./chain";
+import { DYNAMICS_CURVE_PRESETS } from "./curve-presets";
 
 /** One saved preset: every setting of the effect, and its own data when it is small. */
 export interface EffectPreset {
@@ -111,6 +112,12 @@ const lim = (name: string, ceiling: number, input_boost: number, lookahead: numb
   params: { ceiling, input_boost, lookahead, release, linked: 1 },
 });
 
+/** A gate preset (Breath Gate): threshold, attack, hold and release; the closed level keeps its value. */
+const gate = (name: string, threshold: number, attack: number, hold: number, release: number): EffectPreset => ({
+  name,
+  params: { threshold, attack, hold, release },
+});
+
 /** A Speech Leveler preset: the five settings that matter, the rest keep their values. */
 const lev = (name: string, target: number, amount: number, range: number, comp: number | null, gate: number | null): EffectPreset => ({
   name,
@@ -160,6 +167,42 @@ export const BUILTIN_EFFECT_PRESETS: Readonly<Record<string, readonly EffectPres
     comp("Ceiling, -24 dB", -24, 20, 0, 0, 0.5, 100),
     comp("Bass, Dense", -30, 6, 12, 6, 10, 200),
     comp("Mix Bus, Gentle", -10, 2, 2, 8, 20, 250),
+    comp("Leveling, Strong", -48.7, 3, 19.1, 6, 0.7, 50),
+    comp("Leveling, Medium", -48.2, 2.2, 11.7, 6, 1, 50),
+    comp("Leveling, Soft", -12.3, 1.9, 3.3, 6, 1, 50),
+  ],
+  "altaudio.dynamics_curve": DYNAMICS_CURVE_PRESETS,
+  "altaudio.breath_gate": [
+    gate("Gate, Quiet Room", -20, 2, 50, 200),
+    gate("Gate, Spoken Word", -14, 2, 50, 200),
+    gate("Gate, Room Noise Only", -23.1, 4.3, 1, 87),
+    gate("Gate, Hard Close", -11.2, 1, 1, 87),
+  ],
+  "altaudio.expander": [
+    { name: "Quiet Parts Down, Gentle", params: { threshold: -20, ratio: 2.5 } },
+    { name: "Quiet Parts Down, Firm", params: { threshold: -20, ratio: 5 } },
+  ],
+  "altaudio.noise_reducer": [
+    // Reduction follows the strengths in the readouts (20, 40 and 80 percent) at 0.3 dB per percent. Check by ear.
+    { name: "Noise, Light", params: { reduction: 6 } },
+    { name: "Noise, Medium", params: { reduction: 12 } },
+    { name: "Noise, Heavy", params: { reduction: 24 } },
+  ],
+  "altaudio.precision_filter": [
+    // design 0 is Butterworth; mode 0 low-pass, 1 high-pass, 2 band-pass, 3 band-stop; order 0 to 3 is 12 to 48 dB per octave.
+    { name: "Notch Out 60 Hz Hum", params: { design: 0, mode: 3, order: 1, freq: 58, freq2: 62 } },
+    { name: "Low Cut, 100 Hz Steep", params: { design: 0, mode: 1, order: 3, freq: 100 } },
+    { name: "Low Cut, 250 Hz", params: { design: 0, mode: 1, order: 1, freq: 250 } },
+    { name: "Low Cut, Subsonic", params: { design: 0, mode: 1, order: 1, freq: 25 } },
+    { name: "High Cut, 10 kHz", params: { design: 0, mode: 0, order: 1, freq: 10000 } },
+    { name: "Bass Only, 10 to 400 Hz", params: { design: 0, mode: 2, order: 1, freq: 10, freq2: 400 } },
+    { name: "Narrow Band, Around 1 kHz", params: { design: 0, mode: 2, order: 1, freq: 900, freq2: 1100 } },
+  ],
+  "altaudio.click_repair": [
+    // Estimated from another editor's three strengths, so check them by ear.
+    { name: "Clicks, Light", params: { sensitivity: 25, width: 0.6 } },
+    { name: "Clicks, Medium", params: { sensitivity: 50, width: 1.2 } },
+    { name: "Clicks, Heavy", params: { sensitivity: 85, width: 2.5 } },
   ],
   "altaudio.limiter": [
     lim("Stop at -0.1 dB", -0.1, 0, 7, 100),
@@ -172,6 +215,8 @@ export const BUILTIN_EFFECT_PRESETS: Readonly<Record<string, readonly EffectPres
     lim("Squeeze, Crushed", -1, 24, 5, 40),
     lim("Wall of Loud", -1, 24, 10, 40),
     lim("Streaming Ceiling, -1 dB", -1, 0, 12, 200),
+    lim("Limit, Soft Touch", -11.6, 0, 5, 74),
+    lim("Limit, Tight Ceiling", -24, 0, 5, 173),
   ],
   "altaudio.speech_leveler": [
     lev("Even Out, Full", -12, 100, 45, null, null),

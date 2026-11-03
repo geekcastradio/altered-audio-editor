@@ -77,9 +77,26 @@ describe("Effect presets", () => {
   describe("built-in presets", () => {
     // The real ranges from the Rust effect catalog (src-tauri/src/dsp/effects). Keep in step with it.
     const band = (n: number): Record<string, [number, number]> => ({ [`b${n}_freq`]: [20, 20000], [`b${n}_gain`]: [-24, 24], [`b${n}_q`]: [0.1, 12] });
+    const curvePoints = (): Record<string, [number, number]> => {
+      const r: Record<string, [number, number]> = {};
+      for (let i = 1; i <= 8; i++) {
+        r[`p${i}_in`] = [-120, 0];
+        r[`p${i}_out`] = [-120, 12];
+      }
+      return r;
+    };
     const ranges: Record<string, Record<string, [number, number]>> = {
+      "altaudio.dynamics_curve": {
+        points: [2, 8], knee: [0, 24], makeup: [-24, 24], detect_attack: [0.1, 200], detect_release: [5, 2000], rms: [0, 1],
+        gain_attack: [0.1, 200], gain_release: [5, 2000], lookahead: [0, 20], ...curvePoints(),
+      },
       "altaudio.dynamics": { threshold: [-60, 0], ratio: [1, 20], attack: [0.1, 200], release: [5, 2000], knee: [0, 24], makeup: [0, 24] },
       "altaudio.limiter": { ceiling: [-24, 0], input_boost: [0, 24], lookahead: [0, 20], release: [10, 1000], linked: [0, 1] },
+      "altaudio.breath_gate": { threshold: [-80, 0], attack: [0.1, 100], hold: [0, 1000], release: [5, 2000] },
+      "altaudio.noise_reducer": { reduction: [0, 40] },
+      "altaudio.precision_filter": { design: [0, 3], mode: [0, 3], order: [0, 3], freq: [10, 20000], freq2: [20, 20000] },
+      "altaudio.expander": { threshold: [-80, 0], ratio: [1, 20] },
+      "altaudio.click_repair": { sensitivity: [0, 100], width: [0.1, 3] },
       "altaudio.speech_leveler": { target: [-40, -6], amount: [0, 100], range: [0, 60], boost_low: [0, 1], comp_on: [0, 1], comp_thr: [-9, -1], gate_on: [0, 1], gate_off: [0, 25] },
       "altaudio.parametric_eq": {
         hp_on: [0, 1], hp_freq: [10, 2000], hp_slope: [0, 2], ls_freq: [20, 2000], ls_gain: [-24, 24],

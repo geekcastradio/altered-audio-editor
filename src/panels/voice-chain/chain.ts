@@ -264,7 +264,11 @@ export interface ChainPreset {
 /** Where a built-in voice chain sits in the Presets menu, and what it is for. */
 export const PRESET_INFO: Record<string, { category: "Podcast Voices" | "Character Types" | "Cleanup" | "Voice Over"; blurb: string }> = {
   "Podcast Voice": { category: "Podcast Voices", blurb: "All-round: noise, level, compress, EQ, de-ess, limit -6 dB" },
-  "Podcast Voice 2": { category: "Podcast Voices", blurb: "Noisier rooms: heavier noise cut and squeeze, gate -45 dB" },
+  "Podcast Voice - Host": { category: "Podcast Voices", blurb: "The host's chain: leveler, bright voice EQ, limit -6 dB, gate -14 dB" },
+  "Podcast Voice - Co-Host": { category: "Podcast Voices", blurb: "The co-host's chain: same as Host, gate -20 dB" },
+  "Podcast Voice - Guest": { category: "Podcast Voices", blurb: "Noisier rooms: heavier noise cut and squeeze, gate -45 dB" },
+  "Podcast Voice - Rumble Cut": { category: "Podcast Voices", blurb: "Podcast Voice with a steep 100 Hz low cut first" },
+  "Podcast Voice - Quick Level": { category: "Podcast Voices", blurb: "Leveler and limit -6 dB only, for clean audio" },
   "Podcast Voice 3": { category: "Podcast Voices", blurb: "Clean takes: light compress, EQ, limit -6 dB" },
   "Podcast Voice 3 -3 dB": { category: "Podcast Voices", blurb: "Same as Voice 3, limit -3 dB" },
   "Podcast Voice 4 -3 dB": { category: "Podcast Voices", blurb: "Uneven speakers: leveler, firmer squeeze, limit -3 dB" },
@@ -357,6 +361,42 @@ const gate = (threshold: number) =>
 /** The building blocks the built-in chains are made of, for guided panels that write plain effects. */
 export const BLOCKS = { fx, voiceEq, leveler, comp, limit, cleanNoise, gate };
 
+/**
+ * The host chains: the leveler and EQ the project's own hosts use, a -6 dB limiter with 3 dB of
+ * boost, and a gate whose threshold is the one thing that differs between mics.
+ */
+const hostChain = (gateThreshold: number) => [
+  cleanNoise(10),
+  fx("speech_leveler", {
+    target: -19.2,
+    amount: 50,
+    range: 45,
+    boost_low: 1,
+    comp_on: 0,
+    comp_thr: -1,
+    gate_on: 0,
+    gate_off: 15,
+    max_gain: 8,
+    max_cut: 8,
+    speed: 2000,
+    floor: -50,
+  }),
+  fx("parametric_eq", {
+    hp_on: 1,
+    hp_freq: 80,
+    hp_slope: 1,
+    ls_freq: 110,
+    ls_gain: 6,
+    b1_freq: 291,
+    b1_gain: -3,
+    b1_q: 1.5,
+    hs_freq: 17458,
+    hs_gain: 13.9,
+  }),
+  fx("limiter", { ceiling: -6, input_boost: 3, lookahead: 7, release: 100 }),
+  fx("breath_gate", { threshold: gateThreshold, attack: 2, hold: 50, release: 200, range: -30 }),
+];
+
 export const BUILTIN_PRESETS: ChainPreset[] = [
   trackOnly(
     chainP("Podcast Voice", "Voice chains", [
@@ -369,7 +409,7 @@ export const BUILTIN_PRESETS: ChainPreset[] = [
     ]),
   ),
   trackOnly(
-    chainP("Podcast Voice 2", "Voice chains", [
+    chainP("Podcast Voice - Guest", "Voice chains", [
       cleanNoise(12),
       leveler,
       comp(-24, 4, 6),
@@ -379,6 +419,20 @@ export const BUILTIN_PRESETS: ChainPreset[] = [
       gate(-45),
     ]),
   ),
+  trackOnly(chainP("Podcast Voice - Host", "Voice chains", hostChain(-14))),
+  trackOnly(chainP("Podcast Voice - Co-Host", "Voice chains", hostChain(-20))),
+  trackOnly(
+    chainP("Podcast Voice - Rumble Cut", "Voice chains", [
+      fx("precision_filter", { design: 0, mode: 1, order: 3, freq: 100 }),
+      cleanNoise(10),
+      leveler,
+      comp(-22, 3, 4),
+      voiceEq,
+      fx("deesser", { freq: 6500, threshold: -32, reduction: 6 }),
+      limit(-6),
+    ]),
+  ),
+  trackOnly(chainP("Podcast Voice - Quick Level", "Voice chains", [leveler, limit(-6)])),
   trackOnly(
     chainP("Podcast Voice 3", "Voice chains", [
       comp(-20, 2.5, 3),

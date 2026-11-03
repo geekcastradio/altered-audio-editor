@@ -147,6 +147,19 @@ describe("voice chain", () => {
     expect(lim("Podcast Voice 3 -3 dB")).toBe(-3);
   });
 
+  it("ships the host, co-host and guest podcast chains with their own gates", () => {
+    const gateOf = (name: string) =>
+      BUILTIN_PRESETS.find((x) => x.name === name)!.chain.slots.find((s) => s.effect === "altaudio.breath_gate")!.params.threshold;
+    expect(gateOf("Podcast Voice - Host")).toBe(-14);
+    expect(gateOf("Podcast Voice - Co-Host")).toBe(-20);
+    expect(gateOf("Podcast Voice - Guest")).toBe(-45);
+    expect(BUILTIN_PRESETS.some((x) => x.name === "Podcast Voice 2")).toBe(false);
+    const quick = BUILTIN_PRESETS.find((x) => x.name === "Podcast Voice - Quick Level")!;
+    expect(quick.chain.slots.map((s) => s.effect)).toEqual(["altaudio.speech_leveler", "altaudio.limiter"]);
+    const names = BUILTIN_PRESETS.map((x) => x.name);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
   it("voice chain presets replace; one-effect presets add", () => {
     let c = addSlot(chainOf(null), newSlot(gain, "keep"))!;
     const hum = BUILTIN_PRESETS.find((x) => x.name === "Hum Cut 60 Hz (US)")!;

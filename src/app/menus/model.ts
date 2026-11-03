@@ -137,6 +137,7 @@ export const MENUS: readonly Menu[] = [
       item("edit.paste-new", "Paste to New File"),
       item("edit.mix-paste", "Mix Paste..."),
       item("edit.paste-crossfade", "Paste with Crossfade..."),
+      sub("Set Current Clipboard", [1, 2, 3, 4, 5].map((n) => item(`edit.clipboard.${n}`, `Clipboard ${n}`))),
       item("edit.delete", "Delete"),
       item("edit.crop", "Crop"),
       item("edit.snap-zero", "Snap Selection to Zero Crossings"),
@@ -159,6 +160,7 @@ export const MENUS: readonly Menu[] = [
         item("edit.ripple.time-all", "Time Selection in All Tracks"),
         item("edit.ripple.gap", "Gap Between Clips"),
       ]),
+      item("edit.silence-time-clips", "Silence Time Selection in Selected Clips"),
       sep,
       sub("Select", [
         item("edit.select-all", "Select All"),
@@ -371,6 +373,8 @@ export const MENUS: readonly Menu[] = [
       sep,
       item("clip.to-track-above", "Move to Track Above"),
       item("clip.to-track-below", "Move to Track Below"),
+      item("clip.bring-front", "Bring Clip to Front"),
+      item("clip.send-back", "Send Clip to Back"),
       sep,
       item("clip.remove-music", "Remove Music...", { pending: P7 }),
       item("clip.reveal", "Show in Files Panel"),
@@ -425,6 +429,7 @@ export const MENUS: readonly Menu[] = [
       sortedSub("Special", [item("fx.add.distortion", "Distortion")]),
       sortedSub("Dynamics", [
         item("fx.add.dynamics", "Dynamics"),
+        item("fx.add.dynamics_curve", "Dynamics Curve"),
         item("fx.add.dynamics_suite", "Dynamics (Gate, Compressor, Expander, Limiter)"),
         item("fx.add.limiter", "Limiter"),
         item("fx.add.breath_gate", "Breath Gate"),
@@ -468,6 +473,7 @@ export const MENUS: readonly Menu[] = [
       ]),
       sortedSub("Stereo and Channels", [
         item("fx.add.center_remover", "Center Remover (remove vocals)"),
+        item("fx.add.center_extract", "Center Channel Extractor (keep or remove the middle)"),
         item("fx.add.phase_rotate", "Phase Rotate"),
         item("fx.add.stereo-expander", "Stereo Expander"),
       ]),

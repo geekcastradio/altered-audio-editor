@@ -15,6 +15,8 @@
 //! report a latency, which the renderer compensates for.
 
 pub mod amp;
+pub mod center_extract;
+pub mod curve_dynamics;
 mod dynamics;
 mod echo;
 mod eq;
@@ -188,6 +190,7 @@ pub fn catalog() -> Vec<EffectInfo> {
         phase::phase_info(),
         phase_curve::phase_curve_info(),
         dynamics::compressor_info(),
+        curve_dynamics::info(),
         dynamics::multiband_info(),
         dynamics::limiter_info(),
         dynamics::gate_info(),
@@ -199,6 +202,7 @@ pub fn catalog() -> Vec<EffectInfo> {
         tube::preamp_info(),
         vocal::vocal_info(),
         filters::center_info(),
+        center_extract::info(),
         reverb::reverb_info(),
         pitch::pitch_info(),
         echo::echo_info(),
@@ -475,6 +479,7 @@ pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
         "altaudio.precision_filter" => Box::new(filters::Precision::new(&p, rate)),
         "altaudio.curve_eq" => Box::new(filters::CurveEq::new(&p, rate)),
         "altaudio.center_remover" => Box::new(filters::CenterRemover::new(&p, rate)),
+        "altaudio.center_extract" => Box::new(center_extract::CenterExtract::new(&p, rate)),
         "altaudio.pitch_shift" => Box::new(pitch::PitchShift::new(&p, rate)),
         "altaudio.echo" => Box::new(echo::Echo::new(&p, rate)),
         "altaudio.chorus" => Box::new(modulation::Chorus::new(&p, rate)),
@@ -487,6 +492,7 @@ pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
         "altaudio.distortion" => Box::new(stereo::Distortion::new(&p, rate)),
         "altaudio.phase_rotate" => Box::new(phase::PhaseRotate::new(&p, rate)),
         "altaudio.phase_curve" => Box::new(phase_curve::PhaseCurve::new(&p, rate)),
+        "altaudio.dynamics_curve" => Box::new(curve_dynamics::DynamicsCurve::new(&p, rate)),
         reverb::ID => Box::new(reverb::ConvolutionReverb::new(
             &p,
             rate,
