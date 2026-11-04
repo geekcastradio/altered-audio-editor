@@ -469,6 +469,15 @@ export function sessionSave<T, M>(path: string | null, media: M[], libraries: st
   return invoke<SessionResult<T>>("session_save", { path, media, libraries, backups });
 }
 
+/**
+ * The version number of the open session's file on disk when it was made by an
+ * older version of the app (so the next Save upgrades it), otherwise null.
+ * Asked before a Save; reads the file's header only.
+ */
+export function sessionUpgradeNotice(): Promise<number | null> {
+  return invoke<number | null>("session_upgrade_notice");
+}
+
 export function sessionOpen<T>(path: string): Promise<SessionResult<T>> {
   return invoke<SessionResult<T>>("session_open", { path });
 }

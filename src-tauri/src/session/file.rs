@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::document::{self, DocumentError};
+use super::document::{self, Document, DocumentError};
 use super::model::{Id, MediaRef, Session};
 
 /// Session file extension, without the dot.
@@ -33,6 +33,38 @@ pub fn save(
     path: &Path,
     extra_media: &[MediaRef],
 ) -> Result<Session, DocumentError> {
+    save_with(session, path, extra_media, false)
+}
+
+/// Like [`save`], but checks the new file reads back the same before it
+/// replaces the old one. Used when saving over a file made by an older
+/// version, which is being upgraded in place.
+pub fn save_verified(
+    session: &Session,
+    path: &Path,
+    extra_media: &[MediaRef],
+) -> Result<Session, DocumentError> {
+    save_with(session, path, extra_media, true)
+}
+
+/// The version number of the session file at `path` when it is older than
+/// the one this build writes. None when there is no file, it is current,
+/// or it cannot be read (a newer or damaged file is reported on open, not here).
+pub fn older_than_current(path: &Path) -> Option<u32> {
+    if !path.is_file() {
+        return None;
+    }
+    document::peek_version::<Session>(path)
+        .ok()
+        .filter(|v| *v < Session::CURRENT_VERSION)
+}
+
+fn save_with(
+    session: &Session,
+    path: &Path,
+    extra_media: &[MediaRef],
+    verify: bool,
+) -> Result<Session, DocumentError> {
     let mut s = session.clone();
     for m in extra_media {
         if !s.media.iter().any(|x| x.id == m.id) {
@@ -44,7 +76,11 @@ pub fn save(
         m.relative_path = relative_to(&m.path, base);
     }
     s.modified = Utc::now();
-    document::save(&s, path)?;
+    if verify {
+        document::save_verified(&s, path)?;
+    } else {
+        document::save(&s, path)?;
+    }
     Ok(s)
 }
 
@@ -294,6 +330,30 @@ mod tests {
         let b = media(new_id(), dir.path().join("b.wav"));
         let saved = save(&s, &dir.path().join("x.altaudio"), &[a, b]).unwrap();
         assert_eq!(saved.media.len(), 2);
+    }
+
+    #[test]
+    fn opening_and_looking_never_change_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = Session::new("Ep 5", 48_000);
+        let file = dir.path().join("ep5.altaudio");
+        save(&s, &file, &[]).unwrap();
+        let before = fs::read(&file).unwrap();
+        // A current file is not "older", and looking at it writes nothing.
+        assert_eq!(older_than_current(&file), None);
+        assert_eq!(older_than_current(&dir.path().join("none.altaudio")), None);
+        open(&file).unwrap();
+        autosave(dir.path(), &s, Some(&file), &[]).unwrap();
+        assert_eq!(fs::read(&file).unwrap(), before);
+    }
+
+    #[test]
+    fn a_verified_save_writes_a_file_that_opens() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = Session::new("Ep 6", 48_000);
+        let file = dir.path().join("ep6.altaudio");
+        let saved = save_verified(&s, &file, &[]).unwrap();
+        assert_eq!(open(&file).unwrap().session.id, saved.id);
     }
 
     #[test]

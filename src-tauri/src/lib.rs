@@ -185,6 +185,7 @@ pub fn run() {
             commands::session::session_resume,
             commands::session::session_forget,
             commands::session::session_save,
+            commands::session::session_upgrade_notice,
             commands::session::session_open,
             commands::session::session_autosave,
             commands::session::session_clear_autosave,

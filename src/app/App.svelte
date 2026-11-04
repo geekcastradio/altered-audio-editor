@@ -199,6 +199,7 @@
     sessionRecover,
     sessionRecoverable,
     sessionSave,
+    sessionUpgradeNotice,
     setWindowTitle,
     waveSpectralEdit,
     waveApplyChain,
@@ -2051,7 +2052,14 @@
   const files = new SessionFiles({
     backend: {
       create: (options) => sessionNew<SessionDoc>(options),
-      save: (path, media, libs) => sessionSave<SessionDoc, MediaRefDoc>(path, media, libs, settings.current.backups ? settings.current.backupCount : 0),
+      save: async (path, media, libs) => {
+        // Saving over a file made by an older version upgrades it in place. The core
+        // keeps a copy of the original first; say so afterward, once, in plain words.
+        const older = path === null ? await sessionUpgradeNotice().catch(() => null) : null;
+        const saved = await sessionSave<SessionDoc, MediaRefDoc>(path, media, libs, settings.current.backups ? settings.current.backupCount : 0);
+        if (older !== null) showNotice("Upgraded from an older version. The original is kept in the Backups folder. Older versions of Altered Audio can't open this session.");
+        return saved;
+      },
       open: (path) => sessionOpen<SessionDoc>(path),
       autosave: (media) => sessionAutosave(media),
       clearAutosave: () => sessionClearAutosave(),

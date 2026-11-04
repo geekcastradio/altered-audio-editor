@@ -186,6 +186,30 @@ pub fn load<T: Document>(path: &Path) -> Result<T, DocumentError> {
 /// then renames it over the target. A crash mid-save leaves the old
 /// file intact.
 pub fn save<T: Document>(doc: &T, path: &Path) -> Result<(), DocumentError> {
+    save_with(doc, path, false)
+}
+
+/// Like [`save`], but reads the temporary file back and checks it holds
+/// the same document before it replaces the target. Used when the target
+/// is an older file that is about to be upgraded, so a bad write can never
+/// take the only copy of the session with it.
+pub fn save_verified<T: Document>(doc: &T, path: &Path) -> Result<(), DocumentError> {
+    save_with(doc, path, true)
+}
+
+/// Version number a document file on disk was written with, read from its
+/// header only. Nothing is migrated or written.
+pub fn peek_version<T: Document>(path: &Path) -> Result<u32, DocumentError> {
+    let text = fs::read_to_string(path).map_err(|source| DocumentError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    let value: Value = serde_json::from_str(&text)?;
+    // The header check also refuses other formats and newer versions.
+    read_header::<T>(&value)
+}
+
+fn save_with<T: Document>(doc: &T, path: &Path, verify: bool) -> Result<(), DocumentError> {
     let text = to_json(doc)?;
     let io_err = |source| DocumentError::Io {
         path: path.to_path_buf(),
@@ -204,6 +228,19 @@ pub fn save<T: Document>(doc: &T, path: &Path) -> Result<(), DocumentError> {
         file.write_all(text.as_bytes()).map_err(io_err)?;
         file.sync_all().map_err(io_err)?;
     }
+    if verify {
+        let same = fs::read_to_string(&tmp_path)
+            .ok()
+            .and_then(|written| from_json::<T>(&written).ok())
+            .and_then(|back| to_json(&back).ok())
+            .is_some_and(|again| again == text);
+        if !same {
+            let _ = fs::remove_file(&tmp_path);
+            return Err(io_err(std::io::Error::other(
+                "the saved copy did not read back the same, so the original was left alone",
+            )));
+        }
+    }
     fs::rename(&tmp_path, path).map_err(|source| {
         let _ = fs::remove_file(&tmp_path);
         io_err(source)
@@ -216,4 +253,89 @@ pub fn schema_json<T: Document>() -> String {
     let mut text = serde_json::to_string_pretty(&schema).expect("schemas always serialize");
     text.push('\n');
     text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use schemars::JsonSchema;
+    use serde::Deserialize;
+
+    /// A made-up format with two versions, so the upgrade path is
+    /// exercised before the real session format needs its first bump.
+    #[derive(Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+    struct Note {
+        format: String,
+        schema_version: u32,
+        text: String,
+        #[serde(default)]
+        stars: u32,
+    }
+
+    impl Document for Note {
+        const FORMAT: &'static str = "test.note";
+        const CURRENT_VERSION: u32 = 2;
+        const SCHEMA_FILE: &'static str = "note.schema.json";
+
+        fn migrate_step(mut value: Value, from: u32) -> Result<Value, DocumentError> {
+            assert_eq!(from, 1);
+            // Version 1 called the field `body`.
+            let obj = value.as_object_mut().expect("object");
+            if let Some(body) = obj.remove("body") {
+                obj.insert("text".into(), body);
+            }
+            Ok(value)
+        }
+    }
+
+    const V1: &str = r#"{"format":"test.note","schema_version":1,"body":"hello"}"#;
+
+    #[test]
+    fn an_older_file_reports_its_version_and_is_not_touched_by_looking() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("a.note");
+        fs::write(&p, V1).unwrap();
+        assert_eq!(peek_version::<Note>(&p).unwrap(), 1);
+        let loaded: Note = load(&p).unwrap();
+        assert_eq!(loaded.text, "hello");
+        assert_eq!(loaded.schema_version, 2);
+        // Peeking and loading read only; the file is byte for byte as it was.
+        assert_eq!(fs::read_to_string(&p).unwrap(), V1);
+    }
+
+    #[test]
+    fn a_verified_save_replaces_the_old_file_with_the_current_version() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("a.note");
+        fs::write(&p, V1).unwrap();
+        let doc: Note = load(&p).unwrap();
+        save_verified(&doc, &p).unwrap();
+        assert_eq!(peek_version::<Note>(&p).unwrap(), 2);
+        let back: Note = load(&p).unwrap();
+        assert_eq!(back, doc);
+        assert!(!d.path().join("a.note.tmp").exists());
+    }
+
+    #[test]
+    fn a_failed_write_leaves_the_original_in_place() {
+        let d = tempfile::tempdir().unwrap();
+        // A folder where the temporary file should go makes the write fail.
+        let p = d.path().join("a.note");
+        fs::write(&p, V1).unwrap();
+        fs::create_dir(d.path().join("a.note.tmp")).unwrap();
+        let doc: Note = load(&p).unwrap();
+        assert!(save_verified(&doc, &p).is_err());
+        assert_eq!(fs::read_to_string(&p).unwrap(), V1);
+    }
+
+    #[test]
+    fn a_newer_file_is_refused_not_peeked_past() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("a.note");
+        fs::write(&p, r#"{"format":"test.note","schema_version":9}"#).unwrap();
+        assert!(matches!(
+            peek_version::<Note>(&p),
+            Err(DocumentError::TooNew { .. })
+        ));
+    }
 }
