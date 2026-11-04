@@ -39,6 +39,15 @@ describe("propertiesOp", () => {
     expect(propertiesOp(doc, { name: "EP 440", sampleRate: 48_000, bitDepth: 32 })).toBeNull();
   });
 
+  it("sets and clears the session's loudness target, and a file without one uses the Settings choice", () => {
+    expect(currentProperties(doc).loudnessTarget).toBe("");
+    expect(propertiesOp(doc, { ...currentProperties(doc), loudnessTarget: "podcast-stereo" })).toEqual({ op: "set_loudness_target", target: "podcast-stereo" });
+    const set = { ...doc, loudness_target: "podcast-stereo" } as SessionDoc;
+    expect(propertiesOp(set, currentProperties(set))).toBeNull();
+    expect(propertiesOp(set, { ...currentProperties(set), loudnessTarget: "" })).toEqual({ op: "set_loudness_target", target: null });
+    expect(propertiesOp(doc, { name: "EP 440", sampleRate: 48_000, bitDepth: 32 })).toBeNull();
+  });
+
   it("sizes a mixdown", () => {
     expect(mixdownBytes(48_000, 24)).toBe(288_000);
   });

@@ -100,7 +100,7 @@
   import { naturalLength, stretchTo, unstretch } from "../panels/editor/stretch";
   import { CHAPTER_FORMATS, embedList, markerList, type ChapterFormat } from "../panels/markers/chapters";
   import { BASIS_LEVEL, levelRow, matchChanges, matchItems, matchRow, type MatchBasis, type MatchItem, type MatchRow } from "./loudness-match";
-  import { DEFAULT_REGION, DEFAULT_TARGET, setCustomTarget, targetById, targetsFor, type LoudnessReport } from "./loudness";
+  import { DEFAULT_TARGET, guessRegion, setCustomTarget, targetById, targetsFor, type LoudnessReport } from "./loudness";
   import ClipColorDialog from "./ClipColorDialog.svelte";
   import MarkersPanel from "../panels/markers/MarkersPanel.svelte";
   import MetadataPanel from "../panels/metadata/MetadataPanel.svelte";
@@ -1921,7 +1921,7 @@
     if (items.length === 0) return showNotice("There are no clips to match.");
     const basis = ((b) => (b === "peak" || b === "rms" ? b : "loudness"))(prefs.string(KEY_MATCH_BASIS, "loudness")) as MatchBasis;
     const level = basis === "loudness" ? BASIS_LEVEL.peak : BASIS_LEVEL[basis];
-    lm = { mode, items, rows: null, progress: null, target: prefs.string(KEY_MATCH_TARGET, DEFAULT_TARGET), region: prefs.string(KEY_LOUD_REGION, DEFAULT_REGION), basis, level };
+    lm = { mode, items, rows: null, progress: null, target: prefs.string(KEY_MATCH_TARGET, DEFAULT_TARGET), region: prefs.string(KEY_LOUD_REGION, guessRegion()), basis, level };
     void measureMatch();
   }
 
@@ -3234,7 +3234,7 @@
       app: structuredClone(settings.current),
       editor: { followPlayhead: ed.followPlayhead, autoCrossfade: ed.autoCrossfade, timeFormat: ed.timeFormat },
       record: recordOptions(),
-      loudness: { region: prefs.string(KEY_LOUD_REGION, DEFAULT_REGION), target: prefs.string(KEY_LOUD_TARGET, DEFAULT_TARGET) },
+      loudness: { region: prefs.string(KEY_LOUD_REGION, guessRegion()), target: prefs.string(KEY_LOUD_TARGET, DEFAULT_TARGET) },
     };
   }
   function applySettingsDraft(d: SettingsDraft) {
@@ -4756,7 +4756,7 @@
       actions.register({
         id: "file.check-loudness",
         run: () => {
-          loud = { report: null, progress: null, target: prefs.string(KEY_LOUD_TARGET, DEFAULT_TARGET), region: prefs.string(KEY_LOUD_REGION, DEFAULT_REGION), scope: "" };
+          loud = { report: null, progress: null, target: session.current?.loudness_target || prefs.string(KEY_LOUD_TARGET, DEFAULT_TARGET), region: prefs.string(KEY_LOUD_REGION, guessRegion()), scope: "" };
           return measureLoudness();
         },
         enabled: () => exporting === null && contentEnd() > 0,
@@ -5933,7 +5933,8 @@
     }}
     scope={loud.scope}
     onTarget={(id) => {
-      prefs.set(KEY_LOUD_TARGET, id);
+      // A session with its own target keeps it for next time; picking another here is for this check only.
+      if (!session.current?.loudness_target) prefs.set(KEY_LOUD_TARGET, id);
       if (loud) loud = { ...loud, target: id };
     }}
     onMeasure={() => void measureLoudness()}

@@ -3,7 +3,7 @@
 // This file is part of Altered Audio Editor.
 
 import { describe, expect, it } from "vitest";
-import { evaluate, predictExport, targetById, type LoudnessReport } from "./loudness";
+import { evaluate, guessRegion, predictExport, regionForZone, targetById, type LoudnessReport } from "./loudness";
 
 const report = (integrated: number, truePeak: number, integratedMono = integrated - 3): LoudnessReport => ({
   integrated,
@@ -13,6 +13,26 @@ const report = (integrated: number, truePeak: number, integratedMono = integrate
   samplePeak: truePeak - 0.2,
   seconds: 60,
   cancelled: false,
+});
+
+describe("region from the time zone", () => {
+  it("maps zones to the regions we list and falls back to the United States", () => {
+    expect(regionForZone("America/Denver")).toBe("us");
+    expect(regionForZone("America/Toronto")).toBe("canada");
+    expect(regionForZone("Europe/London")).toBe("uk");
+    expect(regionForZone("Europe/Berlin")).toBe("europe");
+    expect(regionForZone("Australia/Sydney")).toBe("australia");
+    expect(regionForZone("Pacific/Auckland")).toBe("australia");
+    expect(regionForZone("Asia/Tokyo")).toBe("japan");
+    expect(regionForZone("America/Sao_Paulo")).toBe("us");
+    expect(regionForZone("Asia/Kolkata")).toBe("us");
+    expect(regionForZone("")).toBe("us");
+    expect(regionForZone(null)).toBe("us");
+  });
+
+  it("always returns a region the program knows", () => {
+    expect(["us", "canada", "europe", "uk", "australia", "japan"]).toContain(guessRegion());
+  });
 });
 
 describe("loudness verdicts", () => {

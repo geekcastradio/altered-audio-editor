@@ -14,6 +14,7 @@
     BIT_DEPTHS,
     currentProperties,
     mixdownBytes,
+    LOUDNESS_CHOICES,
     PAN_LAWS,
     SAMPLE_RATES,
     type SessionProperties,
@@ -33,6 +34,7 @@
   let sampleRate = $state(start.sampleRate);
   let bitDepth = $state(start.bitDepth);
   let panLaw = $state(start.panLaw ?? "balance");
+  let loudnessTarget = $state(start.loudnessTarget ?? "");
   let input = $state<HTMLInputElement | null>(null);
 
   const rates = $derived(
@@ -51,7 +53,7 @@
   });
 
   function done() {
-    if (name.trim()) onDone({ name: name.trim(), sampleRate, bitDepth, panLaw });
+    if (name.trim()) onDone({ name: name.trim(), sampleRate, bitDepth, panLaw, loudnessTarget });
   }
 
   function key(e: KeyboardEvent) {
@@ -109,6 +111,15 @@
       </select>
     </label>
     <p class="note">{PAN_LAWS.find((l) => l.value === panLaw)?.hint}{panLaw !== start.panLaw ? " Changing it changes how every panned track sounds in the mix." : ""}</p>
+    <label>
+      <span>Loudness target</span>
+      <select bind:value={loudnessTarget}>
+        {#each LOUDNESS_CHOICES as c (c.id)}
+          <option value={c.id}>{c.label}</option>
+        {/each}
+      </select>
+    </label>
+    <p class="note">What File &gt; Check Loudness measures this session against. It is saved with the session and with a template made from it.</p>
     {#if rateChanged}
       <p class="note">
         Clips keep their place in time. Files at a different rate are converted as they play, so nothing on disk

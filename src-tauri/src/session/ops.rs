@@ -420,6 +420,12 @@ pub enum Op {
     SetPanLaw {
         pan_law: PanLaw,
     },
+    /// The loudness target this session is checked against, by id. None goes
+    /// back to the choice in Settings. An id that is not a plain short name is
+    /// treated as None.
+    SetLoudnessTarget {
+        target: Option<String>,
+    },
     /// Master output level in dB.
     SetMasterVolume {
         volume_db: f64,
@@ -1035,6 +1041,16 @@ fn apply_one(s: &mut Session, op: &Op) -> Result<Op, OpError> {
         Op::SetPanLaw { pan_law } => {
             let old = std::mem::replace(&mut s.pan_law, *pan_law);
             Ok(Op::SetPanLaw { pan_law: old })
+        }
+        Op::SetLoudnessTarget { target } => {
+            let clean = target.as_deref().map(str::trim).filter(|t| {
+                !t.is_empty()
+                    && t.len() <= 40
+                    && t.chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            });
+            let old = std::mem::replace(&mut s.loudness_target, clean.map(str::to_string));
+            Ok(Op::SetLoudnessTarget { target: old })
         }
         Op::SetMasterVolume { volume_db } => {
             let old = std::mem::replace(&mut s.master.volume_db, volume_db.clamp(-96.0, 24.0));
@@ -2372,6 +2388,34 @@ mod tests {
         assert!(json.contains("\"mix_role\":\"background\""));
         let back: Session = serde_json::from_str(&json).unwrap();
         assert_eq!(back.tracks[0].mix_role, MixRole::Background);
+    }
+
+    #[test]
+    fn a_loudness_target_sets_undoes_and_stays_out_of_files_when_unset() {
+        let mut s = Session::new("Test", 48_000);
+        assert!(!serde_json::to_string(&s)
+            .unwrap()
+            .contains("loudness_target"));
+        roundtrip(
+            &mut s,
+            Op::SetLoudnessTarget {
+                target: Some("podcast-stereo".into()),
+            },
+        );
+        assert_eq!(s.loudness_target.as_deref(), Some("podcast-stereo"));
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(json.contains("\"loudness_target\":\"podcast-stereo\""));
+        let back: Session = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.loudness_target.as_deref(), Some("podcast-stereo"));
+        // A bad id is the same as clearing it.
+        apply(
+            &mut s,
+            &Op::SetLoudnessTarget {
+                target: Some("Not A Target!".into()),
+            },
+        )
+        .unwrap();
+        assert_eq!(s.loudness_target, None);
     }
 
     #[test]

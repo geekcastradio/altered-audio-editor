@@ -60,6 +60,37 @@ export const BROADCAST_REGIONS: readonly BroadcastRegion[] = [
 
 export const DEFAULT_REGION = "us";
 
+const CANADIAN_ZONES = new Set([
+  "Toronto", "Vancouver", "Edmonton", "Winnipeg", "Halifax", "St_Johns", "Regina", "Montreal", "Moncton", "Glace_Bay",
+  "Goose_Bay", "Iqaluit", "Whitehorse", "Yellowknife", "Dawson", "Dawson_Creek", "Fort_Nelson", "Cambridge_Bay", "Inuvik",
+  "Rankin_Inlet", "Resolute", "Swift_Current", "Thunder_Bay", "Nipigon", "Rainy_River", "Atikokan", "Blanc-Sablon",
+  "Pangnirtung", "Creston", "Coral_Harbour",
+]);
+
+/**
+ * The broadcast region a time zone suggests, for when none has been chosen. It is only
+ * a starting point: a time zone says where a computer is, not where the listeners are.
+ * Zones with no region in the list fall back to the United States.
+ */
+export function regionForZone(zone: string | null | undefined): string {
+  const z = zone ?? "";
+  const [area, place = ""] = z.split("/");
+  if (area === "America") return CANADIAN_ZONES.has(place) ? "canada" : DEFAULT_REGION;
+  if (area === "Europe") return ["London", "Belfast", "Jersey", "Guernsey", "Isle_of_Man"].includes(place) ? "uk" : "europe";
+  if (area === "Australia" || z === "Pacific/Auckland" || z === "Pacific/Chatham") return "australia";
+  if (z === "Asia/Tokyo") return "japan";
+  return DEFAULT_REGION;
+}
+
+/** The region for this computer's time zone. Read locally; nothing is sent anywhere. */
+export function guessRegion(): string {
+  try {
+    return regionForZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  } catch {
+    return DEFAULT_REGION;
+  }
+}
+
 export function regionById(id: string | null | undefined): BroadcastRegion {
   return BROADCAST_REGIONS.find((r) => r.id === id) ?? BROADCAST_REGIONS[0]!;
 }
