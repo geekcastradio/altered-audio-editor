@@ -73,7 +73,7 @@ impl LevelStats {
 
     /// Adds interleaved stereo frames.
     pub(crate) fn add(&mut self, block: &[f32]) {
-        for f in block.chunks_exact(2) {
+        for f in block.as_chunks::<2>().0 {
             let p = (f64::from(f[0]).powi(2) + f64::from(f[1]).powi(2)) * 0.5;
             self.total_sum += p;
             self.win_sum += p;
