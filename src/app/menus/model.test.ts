@@ -316,6 +316,7 @@ describe("menu model", () => {
       "edit.copy",
       "edit.paste",
       "edit.ripple.clips",
+      "edit.ripple.time-clips",
       "edit.ripple.time-track",
       "edit.ripple.time-all",
       "edit.ripple.gap",
