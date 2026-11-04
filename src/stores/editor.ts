@@ -33,6 +33,8 @@ export interface EditorState {
   selectedClips: ReadonlySet<string>;
   /** The gap picked by a click on empty track space, or null. Picking clips or another track clears it. */
   selectedGap: GapPick | null;
+  /** Markers picked in the Markers panel, by id. Independent of the clip selection. */
+  selectedMarkers: ReadonlySet<string>;
   timeFormat: TimeFormat;
   /** Width of the lanes in pixels, for zoom commands. */
   width: number;
@@ -91,6 +93,7 @@ const initial: EditorState = {
   selectedTrack: null,
   selectedClips: new Set(),
   selectedGap: null,
+  selectedMarkers: new Set(),
   timeFormat: "time",
   width: 800,
   snap: { on: true, clips: true, playhead: true, markers: true, ruler: true },
@@ -120,6 +123,8 @@ export const editor: Readable<EditorState> & {
   selectClips(ids: Iterable<string>, track?: string | null): void;
   /** Picks a gap (and its track), or clears the pick. Clips are deselected. */
   selectGap(gap: GapPick | null): void;
+  /** Picks markers in the Markers panel (replacing the pick), or clears it with an empty list. */
+  selectMarkers(ids: Iterable<string>): void;
   setTimeFormat(f: TimeFormat): void;
   setWidth(w: number): void;
   setSnap(patch: Partial<SnapSettings>): void;
@@ -146,6 +151,7 @@ export const editor: Readable<EditorState> & {
   selectClips: (ids, track) =>
     state.update((s) => ({ ...s, selectedClips: new Set(ids), selectedGap: null, selectedTrack: track === undefined ? s.selectedTrack : track })),
   selectGap: (gap) => state.update((s) => ({ ...s, selectedGap: gap, selectedClips: new Set(), selectedTrack: gap ? gap.trackId : s.selectedTrack })),
+  selectMarkers: (ids) => state.update((s) => ({ ...s, selectedMarkers: new Set(ids) })),
   setTimeFormat: (f) => state.update((s) => ({ ...s, timeFormat: f })),
   setAutoCrossfade: (on) => state.update((s) => ({ ...s, autoCrossfade: on })),
   setSnapZero: (on) => state.update((s) => ({ ...s, snapZero: on })),

@@ -627,6 +627,12 @@ pub struct Track {
     pub record_mode: Option<RecordMode>,
 }
 
+/// The height a new track starts with, in pixels: tall enough that the
+/// header shows every row (name, volume and pan, input, output, automation
+/// mode), as Audition's does. Tracks already in a session keep the height
+/// they were saved with.
+pub const DEFAULT_TRACK_HEIGHT: u32 = 124;
+
 impl Track {
     /// Creates an empty track with default settings.
     pub fn new(name: impl Into<String>, channels: ChannelLayout) -> Self {
@@ -638,7 +644,7 @@ impl Track {
             host_profile_id: None,
             channels,
             color: None,
-            height: 96,
+            height: DEFAULT_TRACK_HEIGHT,
             collapsed: false,
             show_automation: false,
             hidden: false,

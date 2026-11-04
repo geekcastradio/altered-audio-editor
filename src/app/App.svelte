@@ -106,7 +106,7 @@
   import MetadataPanel from "../panels/metadata/MetadataPanel.svelte";
   import PlaylistPanel from "../panels/playlist/PlaylistPanel.svelte";
   import { exportNames } from "../panels/playlist/playlist";
-  import { newMarker, nextMarkerName } from "../panels/markers/markers";
+  import { deleteLabel, newMarker, nextMarkerName, pickedMarkers } from "../panels/markers/markers";
   import { listen } from "@tauri-apps/api/event";
   import {
     clipEnd,
@@ -918,7 +918,7 @@
   const playheadNow = () => (transport.current.playing ? transport.current.position : (session.current?.view.playhead ?? 0));
 
   /** Track height a new track starts with; Zoom Reset (All Axes) puts every open track back to it. */
-  const DEFAULT_TRACK_HEIGHT = 96;
+  const DEFAULT_TRACK_HEIGHT = 124;
 
   /** Vertical zoom: resize every open track, kept inside what the Editor allows. One undoable step. */
   async function resizeAllTracks(next: (height: number) => number) {
@@ -4946,6 +4946,58 @@
         },
         enabled: () => timeSel() !== null,
         reason: () => "Drag across empty space or the ruler to select a time range.",
+      }),
+      // Markers the Markers panel has picked: Rename and Delete act on the Waveform editor's file when it is in front, else the session.
+      actions.register({
+        id: "edit.marker.rename",
+        run: async () => {
+          const doc = markerDoc();
+          if (!doc) return;
+          const picked = pickedMarkers(doc.markers, editor.current().selectedMarkers);
+          const m = picked.length === 1 ? picked[0]! : null;
+          if (!m) return;
+          const name = (await promptText("Rename Marker", "Marker name", m.name))?.trim();
+          if (!name || name === m.name) return;
+          const op = { op: "set_markers" as const, changes: [{ id: m.id, name }] };
+          if (inWave()) await waveEdit("Rename Marker", op);
+          else await session.edit("Rename Marker", op, sessionHistory);
+        },
+        enabled: () => {
+          const doc = markerDoc();
+          return !!doc && pickedMarkers(doc.markers, editor.current().selectedMarkers).length === 1;
+        },
+        reason: () => "Pick one marker in the Markers panel first.",
+      }),
+      actions.register({
+        id: "edit.marker.delete",
+        run: async () => {
+          const doc = markerDoc();
+          if (!doc) return;
+          const ids = pickedMarkers(doc.markers, editor.current().selectedMarkers).map((m) => m.id);
+          if (ids.length === 0) return;
+          const op = { op: "remove_markers" as const, ids };
+          if (inWave()) await waveEdit(deleteLabel(ids.length), op);
+          else await session.edit(deleteLabel(ids.length), op, sessionHistory);
+          editor.selectMarkers([]);
+        },
+        enabled: () => {
+          const doc = markerDoc();
+          return !!doc && pickedMarkers(doc.markers, editor.current().selectedMarkers).length > 0;
+        },
+        reason: () => "Pick one or more markers in the Markers panel first.",
+      }),
+      actions.register({
+        id: "edit.marker.delete-all",
+        run: async () => {
+          const doc = markerDoc();
+          if (!doc || doc.markers.length === 0) return;
+          const op = { op: "remove_markers" as const, ids: doc.markers.map((m) => m.id) };
+          if (inWave()) await waveEdit("Delete All Markers", op);
+          else await session.edit("Delete All Markers", op, sessionHistory);
+          editor.selectMarkers([]);
+        },
+        enabled: () => (markerDoc()?.markers.length ?? 0) > 0,
+        reason: () => "There are no markers.",
       }),
       actions.register({
         id: "edit.snap.markers",

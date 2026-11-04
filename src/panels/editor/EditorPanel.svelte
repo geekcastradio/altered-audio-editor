@@ -52,6 +52,7 @@
   import WaveformView from "./WaveformView.svelte";
   import TransportBar, { type ZoomKind } from "./TransportBar.svelte";
   import { prefs } from "../../stores/prefs";
+  import { mediaPool } from "../../stores/media";
   import { startScreen } from "../../stores/start";
   import TempoStrip from "./TempoStrip.svelte";
   import MetronomeRow from "./MetronomeRow.svelte";
@@ -1699,6 +1700,37 @@
     window.addEventListener("pointerup", up, true);
   }
 
+  /**
+   * "Link Media..." for the selected clips when their file is missing: it picks that file in the Files panel
+   * and runs the Link Media action, so a lost file can be pointed at its new place from the clip itself.
+   * Only offered when the selected clips share one missing file.
+   */
+  function linkMediaItems(): ContextItem[] {
+    const paths = new Map((doc?.media ?? []).map((m) => [m.id, m.path]));
+    const lost = new Set<string>();
+    for (const t of doc?.tracks ?? []) {
+      for (const c of t.clips) {
+        const p = ed.selectedClips.has(c.id) ? paths.get(c.media_id) : undefined;
+        if (p && peaks.get(p)?.error === "File not found") lost.add(p);
+      }
+    }
+    if (lost.size !== 1) return [];
+    const [path] = [...lost];
+    const item = mediaPool.current.items.find((it) => it.path === path);
+    if (!item) return [];
+    return [
+      {
+        kind: "item",
+        label: "Link Media...",
+        run: () => {
+          mediaPool.setSelection([item.id]);
+          run("files.link-media");
+        },
+      },
+      { kind: "sep" },
+    ];
+  }
+
   /** Reverse and Invert for the selected clips: toggles that leave the files alone. */
   function clipFlipItems(): ContextItem[] {
     const found = (doc?.tracks ?? []).flatMap((t) => t.clips).filter((c) => ed.selectedClips.has(c.id));
@@ -1755,6 +1787,7 @@
     if (ed.selectedClips.size > 0) {
       const act = (label: string, id: string): ContextItem => ({ kind: "item", label, shortcut: shortcutFor(id), disabled: !can(id), run: () => run(id) });
       items.push(
+        ...linkMediaItems(),
         act("Split at Playhead", "clip.split"),
         act("Trim Start to Playhead", "clip.trim.start"),
         act("Trim End to Playhead", "clip.trim.end"),
@@ -2620,17 +2653,6 @@
               {/if}
               <button type="button" class="ms" class:on={track.muted} title="Mute" aria-pressed={track.muted} onclick={() => setTrack(track, { muted: !track.muted }, track.muted ? "Unmute Track" : "Mute Track")}>M</button>
               <button type="button" class="ms solo" class:on={track.solo} title="Solo" aria-pressed={track.solo} onclick={() => setTrack(track, { solo: !track.solo }, track.solo ? "Unsolo Track" : "Solo Track")}>S</button>
-              <button
-                type="button"
-                class="ms sync"
-                class:on={!!track.sync_lock}
-                title={track.sync_lock ? "Sync Lock on: ripple edits keep this track in step. Click to turn off." : "Sync Lock off. Click to keep this track in step with ripple edits."}
-                aria-label="Sync Lock"
-                aria-pressed={!!track.sync_lock}
-                onclick={() => setTrack(track, { sync_lock: !track.sync_lock }, track.sync_lock ? "Sync Lock Off" : "Sync Lock On")}
-              >
-                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 9.5l3-3M5 7.5L3.7 8.8a2.4 2.4 0 003.5 3.5L8.5 11M11 8.5l1.3-1.3a2.4 2.4 0 00-3.5-3.5L7.5 5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></svg>
-              </button>
               {#if !isMidi(track)}
               <button type="button" class="ms rec" class:on={track.record_armed} title="Arm for recording: Record records this track's input" aria-pressed={track.record_armed} onclick={() => setTrack(track, { record_armed: !track.record_armed }, "Arm Track")}>R</button>
               <button
@@ -2644,7 +2666,8 @@
                 <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="1.6" fill="currentColor" /><path d="M5 5a4.2 4.2 0 0 0 0 6M11 5a4.2 4.2 0 0 1 0 6" fill="none" stroke="currentColor" stroke-width="1.3" /></svg>
               </button>
               {/if}
-              <button type="button" class="ms mono short" class:on={!!track.mono} title="Mono: folds this track's left and right into one centered signal, after its effects and before its fader and pan. Part of the mix, so exports hear it too." aria-pressed={!!track.mono} onclick={() => setTrack(track, { mono: !track.mono }, track.mono ? "Track Stereo" : "Track Mono")}>MO</button>
+              <!-- Sync Lock and Mono sit beside Invert Polarity in the Mix row; they stay up here when that row is not showing. -->
+              {#if track.collapsed || headerView !== "mix"}{@render syncMono(track)}{/if}
             </div>
             {#if !track.collapsed && headerView === "fx" && doc}
               <HeaderFx
@@ -2685,16 +2708,19 @@
               {:else}
                 <Dial value={track.pan} min={-100} max={100} step={1} origin={0} label="Pan" icon="pan" format={formatPan} onChange={(v) => setValue(track, "pan", v)} {...holdOf(track.id, "pan", () => track.pan)} />
               {/if}
-              <button
-                type="button"
-                class="ms pol"
-                class:on={!!track.polarity_inverted}
-                title="Invert Polarity: flips the track's waveform, to fix a mic wired backwards or two mics fighting each other"
-                aria-pressed={!!track.polarity_inverted}
-                onclick={() => setTrack(track, { polarity_inverted: !track.polarity_inverted }, "Invert Polarity")}
-              >
-                <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4.5" fill="none" stroke="currentColor" stroke-width="1.3" /><path d="M3.5 13.5l9-11" stroke="currentColor" stroke-width="1.3" /></svg>
-              </button>
+              <span class="tail">
+                {@render syncMono(track)}
+                <button
+                  type="button"
+                  class="ms pol"
+                  class:on={!!track.polarity_inverted}
+                  title="Invert Polarity: flips the track's waveform, to fix a mic wired backwards or two mics fighting each other"
+                  aria-pressed={!!track.polarity_inverted}
+                  onclick={() => setTrack(track, { polarity_inverted: !track.polarity_inverted }, "Invert Polarity")}
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="4.5" fill="none" stroke="currentColor" stroke-width="1.3" /><path d="M3.5 13.5l9-11" stroke="currentColor" stroke-width="1.3" /></svg>
+                </button>
+              </span>
             </div>
             {/if}
             {#if !track.collapsed && isMidi(track)}
@@ -3122,6 +3148,21 @@
 >
   <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 11.5L5 6l4 3.5 5.5-6" fill="none" stroke="currentColor" stroke-width="1.4" /><circle cx="5" cy="6" r="1.4" fill="currentColor" /><circle cx="9" cy="9.5" r="1.4" fill="currentColor" /></svg>
 </button>
+{/snippet}
+
+{#snippet syncMono(track: TrackDoc)}
+<button
+  type="button"
+  class="ms sync"
+  class:on={!!track.sync_lock}
+  title={track.sync_lock ? "Sync Lock on: ripple edits keep this track in step. Click to turn off." : "Sync Lock off. Click to keep this track in step with ripple edits."}
+  aria-label="Sync Lock"
+  aria-pressed={!!track.sync_lock}
+  onclick={() => setTrack(track, { sync_lock: !track.sync_lock }, track.sync_lock ? "Sync Lock Off" : "Sync Lock On")}
+>
+  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 9.5l3-3M5 7.5L3.7 8.8a2.4 2.4 0 003.5 3.5L8.5 11M11 8.5l1.3-1.3a2.4 2.4 0 00-3.5-3.5L7.5 5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></svg>
+</button>
+<button type="button" class="ms mono short" class:on={!!track.mono} title="Mono: folds this track's left and right into one centered signal, after its effects and before its fader and pan. Part of the mix, so exports hear it too." aria-pressed={!!track.mono} onclick={() => setTrack(track, { mono: !track.mono }, track.mono ? "Track Stereo" : "Track Mono")}>MO</button>
 {/snippet}
 
 {#snippet autoLanes(track: TrackDoc, i: number)}
@@ -3768,7 +3809,11 @@
     color: #fff;
   }
 
-  .ms.pol {
+  .tail {
+    display: flex;
+    flex: none;
+    gap: 3px;
+    align-items: center;
     margin-left: auto;
   }
 
