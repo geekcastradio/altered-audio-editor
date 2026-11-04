@@ -341,6 +341,8 @@ export interface SessionDoc {
   bit_depth: number;
   /** Missing means "balance", the law older files were mixed with. */
   pan_law?: PanLawId;
+  /** The loudness target Check Loudness uses for this session, by id. Missing means the choice in Settings. */
+  loudness_target?: string | null;
   media: MediaRefDoc[];
   tracks: TrackDoc[];
   /** Bus tracks, in mixer order. */
@@ -535,6 +537,7 @@ export type Op =
   | { op: "set_sample_rate"; sample_rate: number; exact?: number[] }
   | { op: "set_session_info"; name?: string; bit_depth?: number }
   | { op: "set_pan_law"; pan_law: PanLawId }
+  | { op: "set_loudness_target"; target: string | null }
   | { op: "set_clips"; changes: ClipChange[] }
   | { op: "add_markers"; markers: MarkerDoc[] }
   | { op: "remove_markers"; ids: string[] }

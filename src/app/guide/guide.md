@@ -139,6 +139,8 @@ File > Export has these choices:
 
 Check Loudness (File > Check Loudness) measures your episode against a target. Loudness Match (Effects > Loudness Match) levels clips to a target.
 
+Each session can have its own loudness target. Set it in Multitrack > Session Properties under Loudness target, and Check Loudness uses it for that session instead of the choice in Settings. It is saved with the session, so a session template made from it (File > Save as Session Template) starts every new episode with the same target. Leave it on "Use my Settings choice" to keep one target for everything.
+
 ## Files, folders and settings
 
 Open Settings with Edit > Settings. Pages cover audio hardware, playback and recording, appearance, colors and where files go. The cache, recordings and other working files each have a place you can change.

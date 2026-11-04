@@ -38,6 +38,13 @@
         "type": "string"
       }
     },
+    "loudness_target": {
+      "description": "The loudness target Check Loudness measures this session against, by\nthe id the program uses for its targets (for example `podcast-stereo`).\nNone uses the choice in Settings. Left out of the file when not set.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "markers": {
       "type": "array",
       "items": {

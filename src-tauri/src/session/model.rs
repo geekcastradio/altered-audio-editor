@@ -61,6 +61,11 @@ pub struct Session {
     /// setting use the balance law they were mixed with.
     #[serde(default, skip_serializing_if = "PanLaw::is_default")]
     pub pan_law: PanLaw,
+    /// The loudness target Check Loudness measures this session against, by
+    /// the id the program uses for its targets (for example `podcast-stereo`).
+    /// None uses the choice in Settings. Left out of the file when not set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loudness_target: Option<String>,
     /// Tempo and meter. MIDI clips and notes are placed in beats, so they
     /// follow it. Files from before MIDI tracks get the default.
     #[serde(default, skip_serializing_if = "Tempo::is_default")]
@@ -113,6 +118,7 @@ impl Session {
             buses: Vec::new(),
             master: MasterTrack::default(),
             pan_law: PanLaw::default(),
+            loudness_target: None,
             tempo: Tempo::default(),
             space: None,
             markers: Vec::new(),
