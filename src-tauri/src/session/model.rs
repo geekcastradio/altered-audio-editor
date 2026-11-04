@@ -517,6 +517,28 @@ pub enum TrackRole {
     Guest,
 }
 
+/// What a track does in the mix: the voice the listener follows, sound
+/// that sits under it, or sound that is lowered while someone speaks. It
+/// is a label for now, shown and set by the user; features that mix for
+/// you (ducking, auto mix) read it. `normal` means no role and is left
+/// out of the file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MixRole {
+    #[default]
+    Normal,
+    Foreground,
+    Background,
+    Ducked,
+}
+
+impl MixRole {
+    /// For `skip_serializing_if`: files stay as they were while no role is set.
+    pub fn is_normal(&self) -> bool {
+        *self == Self::Normal
+    }
+}
+
 /// An audio track.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Track {
@@ -559,6 +581,9 @@ pub struct Track {
     /// tracks stay in step. Left out of the file when off.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub sync_lock: bool,
+    /// What the track does in the mix. Left out of the file when `normal`.
+    #[serde(default, skip_serializing_if = "MixRole::is_normal")]
+    pub mix_role: MixRole,
     /// Folds the track's left and right into one centered signal, after
     /// its Voice Chain and before its fader and pan. Left out of the
     /// file when off.
@@ -617,6 +642,7 @@ impl Track {
             solo: false,
             polarity_inverted: false,
             sync_lock: false,
+            mix_role: MixRole::Normal,
             mono: false,
             space: None,
             record_armed: false,

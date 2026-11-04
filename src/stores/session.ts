@@ -209,6 +209,9 @@ export interface EnvelopeDoc {
   height?: number;
 }
 
+/** What a track does in the mix. `normal` means no role. */
+export type MixRole = "normal" | "foreground" | "background" | "ducked";
+
 export interface TrackDoc {
   id: string;
   name: string;
@@ -226,6 +229,8 @@ export interface TrackDoc {
   polarity_inverted?: boolean;
   /** Ripple edits move every track that has this on together. Missing in files where it is off. */
   sync_lock?: boolean;
+  /** What the track does in the mix. Missing in files where it is normal. */
+  mix_role?: MixRole;
   /** Folded to mono after its Voice Chain. Missing in files where it is off. */
   mono?: boolean;
   /** 3D Space sessions: where it sits in the room. */
@@ -463,6 +468,8 @@ export interface TrackChanges {
   pan?: number;
   polarity_inverted?: boolean;
   sync_lock?: boolean;
+  /** `normal` clears the role. */
+  mix_role?: MixRole;
   mono?: boolean;
   /** 3D Space sessions: where it sits in the room. */
   space?: SpacePosDoc | null;

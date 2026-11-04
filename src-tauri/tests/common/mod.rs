@@ -140,6 +140,7 @@ pub fn track() -> Track {
         solo: true,
         polarity_inverted: false,
         sync_lock: false,
+        mix_role: MixRole::Normal,
         mono: false,
         space: None,
         record_armed: true,
