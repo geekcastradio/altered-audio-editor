@@ -21,6 +21,26 @@ describe("guide parsing", () => {
     expect(ul.kind === "ul" && ul.items).toHaveLength(2);
   });
 
+  it("reads a picture on its own line and searches its caption", () => {
+    const s = parseGuide("## Mixer\n\nText\n![Faders on a bus](bus)\nMore");
+    expect(s[0]!.blocks.map((b) => b.kind)).toEqual(["p", "img", "p"]);
+    const img = s[0]!.blocks[1]!;
+    expect(img.kind === "img" && [img.name, img.alt]).toEqual(["bus", "Faders on a bus"]);
+    expect(searchGuide(s, "faders").length).toBe(1);
+  });
+
+  it("every picture the guide names exists and is a plain SVG", () => {
+    const files = import.meta.glob("./images/*.svg", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
+    const named = [...guideSource.matchAll(/^!\[[^\]]*\]\(([^)]+)\)$/gm)].map((m) => m[1]!);
+    expect(named.length).toBeGreaterThan(0);
+    for (const n of named) {
+      const svg = files[`./images/${n}.svg`];
+      expect(svg, n).toBeTruthy();
+      expect(svg, n).toContain("<svg");
+      expect(svg, n).not.toMatch(/<script|onload=|onclick=/i);
+    }
+  });
+
   it("searches by every word", () => {
     const s = parseGuide("## Mixer\n\nFaders and buses\n\n## Export\n\nMixdown");
     expect(searchGuide(s, "").length).toBe(2);

@@ -11,7 +11,8 @@
 
 export type Span = { text: string; bold?: boolean; code?: boolean };
 
-export type Block = { kind: "p"; spans: Span[] } | { kind: "ul"; items: Span[][] } | { kind: "ol"; items: Span[][] };
+/** `img` is a picture on a line of its own: `![what it shows](file-name)`, a file in `guide/images`. */
+export type Block = { kind: "p"; spans: Span[] } | { kind: "ul"; items: Span[][] } | { kind: "ol"; items: Span[][] } | { kind: "img"; name: string; alt: string };
 
 export interface GuideSection {
   id: string;
@@ -68,6 +69,13 @@ export function parseGuide(md: string): GuideSection[] {
       continue;
     }
     if (!cur) continue;
+    const image = /^!\[(.*?)\]\((.+?)\)$/.exec(line.trim());
+    if (image) {
+      flushPara();
+      flushList();
+      cur.blocks.push({ kind: "img", alt: image[1]!, name: image[2]! });
+      continue;
+    }
     const bullet = /^-\s+(.+)$/.exec(line);
     const number = /^\d+\.\s+(.+)$/.exec(line);
     if (bullet || number) {
@@ -92,7 +100,7 @@ export function parseGuide(md: string): GuideSection[] {
   flushPara();
   flushList();
   for (const s of sections) {
-    s.text = (s.title + " " + s.blocks.map((b) => (b.kind === "p" ? plain(b.spans) : b.items.map(plain).join(" "))).join(" ")).toLowerCase();
+    s.text = (s.title + " " + s.blocks.map((b) => (b.kind === "p" ? plain(b.spans) : b.kind === "img" ? b.alt : b.items.map(plain).join(" "))).join(" ")).toLowerCase();
   }
   return sections;
 }

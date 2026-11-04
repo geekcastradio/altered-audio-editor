@@ -153,7 +153,7 @@ export const MENUS: readonly Menu[] = [
       ]),
       sub("Ripple Delete", [
         item("edit.ripple.clips", "Selected Clips"),
-        item("edit.ripple.time-clips", "Time Selection in Selected Clips", { pending: LATER }),
+        item("edit.ripple.time-clips", "Time Selection in Selected Clips"),
         item("edit.ripple.time-track", "Time Selection in Selected Track"),
         item("edit.ripple.time-all", "Time Selection in All Tracks"),
         item("edit.ripple.gap", "Gap Between Clips"),

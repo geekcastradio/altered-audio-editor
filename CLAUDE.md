@@ -263,7 +263,7 @@ Approved 2026-10-23 (the right-click menu rework; disabled items hold their chor
 | Add Tracks, Delete Empty Tracks | Shift+A, Shift+E |
 | Delete Selected Track | Ctrl+Alt+Backspace |
 | Group Clips, Suspend Groups (not built) | Ctrl+G, Ctrl+Shift+G |
-| Ripple delete: selected clips, time selection in selected clips (not built), time selection in all tracks | Shift+Backspace, Alt+Backspace, Ctrl+Shift+Backspace |
+| Ripple delete: selected clips, time selection in selected clips, time selection in all tracks | Shift+Backspace, Alt+Backspace, Ctrl+Shift+Backspace |
 | Deselect All, next clip in selected track, clips to end of track, clear time selection | Ctrl+Shift+A, Period, Ctrl+Alt+T, G |
 | Add CD Track marker, add Cart Timer marker | Shift+M, C |
 

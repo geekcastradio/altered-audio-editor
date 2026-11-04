@@ -2603,6 +2603,17 @@
               {/if}
               <button type="button" class="ms" class:on={track.muted} title="Mute" aria-pressed={track.muted} onclick={() => setTrack(track, { muted: !track.muted }, track.muted ? "Unmute Track" : "Mute Track")}>M</button>
               <button type="button" class="ms solo" class:on={track.solo} title="Solo" aria-pressed={track.solo} onclick={() => setTrack(track, { solo: !track.solo }, track.solo ? "Unsolo Track" : "Solo Track")}>S</button>
+              <button
+                type="button"
+                class="ms sync"
+                class:on={!!track.sync_lock}
+                title={track.sync_lock ? "Sync Lock on: ripple edits keep this track in step. Click to turn off." : "Sync Lock off. Click to keep this track in step with ripple edits."}
+                aria-label="Sync Lock"
+                aria-pressed={!!track.sync_lock}
+                onclick={() => setTrack(track, { sync_lock: !track.sync_lock }, track.sync_lock ? "Sync Lock Off" : "Sync Lock On")}
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 9.5l3-3M5 7.5L3.7 8.8a2.4 2.4 0 003.5 3.5L8.5 11M11 8.5l1.3-1.3a2.4 2.4 0 00-3.5-3.5L7.5 5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></svg>
+              </button>
               {#if !isMidi(track)}
               <button type="button" class="ms rec" class:on={track.record_armed} title="Arm for recording: Record records this track's input" aria-pressed={track.record_armed} onclick={() => setTrack(track, { record_armed: !track.record_armed }, "Arm Track")}>R</button>
               <button
@@ -3644,6 +3655,16 @@
   .ms.on {
     background: var(--accent-dim);
     color: #fff;
+  }
+
+  .ms.sync {
+    display: inline-grid;
+    place-items: center;
+  }
+
+  .ms.sync svg {
+    width: 12px;
+    height: 12px;
   }
 
   .ms.autos {

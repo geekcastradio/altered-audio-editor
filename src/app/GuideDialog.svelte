@@ -15,6 +15,10 @@
 
   const { onClose }: Props = $props();
 
+  // Pictures are our own SVG files bundled with the program, drawn inline so they need no network or file access.
+  const pictures = import.meta.glob("./guide/images/*.svg", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
+  const picture = (name: string) => pictures[`./guide/images/${name}.svg`] ?? "";
+
   const all = parseGuide(guideSource);
   let query = $state("");
   let picked = $state(all[0]?.id ?? "");
@@ -51,6 +55,11 @@
           {#each current.blocks as b, i (i)}
             {#if b.kind === "p"}
               <p>{@render runs(b.spans)}</p>
+            {:else if b.kind === "img"}
+              <figure>
+                {@html picture(b.name)}
+                <figcaption>{b.alt}</figcaption>
+              </figure>
             {:else if b.kind === "ul"}
               <ul>{#each b.items as it, j (j)}<li>{@render runs(it)}</li>{/each}</ul>
             {:else}
@@ -151,6 +160,21 @@
   ol {
     margin: 0 0 8px;
     padding-left: 22px;
+  }
+  figure {
+    margin: 4px 0 14px;
+  }
+  figure :global(svg) {
+    display: block;
+    width: 100%;
+    max-width: 640px;
+    height: auto;
+    border-radius: 6px;
+  }
+  figcaption {
+    margin-top: 4px;
+    color: var(--text-dim);
+    font-size: 11px;
   }
   code {
     padding: 0 3px;

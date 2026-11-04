@@ -2,6 +2,8 @@
 
 Altered Audio Editor is a free, open-source multitrack audio editor for podcasters and voiceover. It works like the editors you may know from Adobe Audition, with extras made for spoken word.
 
+![The Multitrack Editor: 1 the ruler, 2 a track header, 3 a clip and 4 the playhead](editor-overview)
+
 There are two editors. The **Multitrack Editor** is where you build an episode: tracks, clips, effects, mixing and export. The **Waveform Editor** edits one audio file at a time, down to the sample. Switch with View > Switch Between Editors, or pick one from the View menu.
 
 Your first episode in five steps:
@@ -13,6 +15,8 @@ Your first episode in five steps:
 5. When it sounds right, choose File > Export > Session Mixdown.
 
 Save often with File > Save. While there are unsaved changes the program also keeps a recovery copy, and offers to recover it if it did not close normally.
+
+If you open a session made by an older version, nothing changes until you save. Saving upgrades it and keeps the original in the Backups folder, named with the old version, and a notice says so. Older versions of Altered Audio cannot open a session once it is upgraded. If the backup cannot be made, the save is stopped and your file is left as it was.
 
 ## Privacy
 
@@ -33,9 +37,21 @@ A **track** holds clips. A **clip** is a piece of an audio file placed on the ti
 - Split at the playhead with Clip > Split at Playhead, or all clips at once with Split All Clips at Playhead.
 - Drag a clip to move it. Lock Position keeps a clip where it is.
 - Drag the small square handles in a clip's title bar to set its fade in and fade out. New fades start as an S curve, which sounds smooth on speech.
-- Ripple editing (Edit > Ripple) closes the gap when you delete, so the rest of the episode slides left.
+- Ripple editing (Edit > Ripple Delete) closes the gap when you delete, so the rest of the episode slides left.
 - Snap (Edit > Snap) pulls edges to clips, the playhead, markers or ruler ticks.
 - Undo and Redo cover every edit. A fader drag or a recorded automation take is one step.
+
+**Closing gaps.** Click an empty space between two clips and it lights up. Press Delete (or use Edit > Ripple Delete > Gap Between Clips) and the clips after it slide left to close it. Undo puts everything back.
+
+![Click the gap between clips and press Delete: everything after it slides left](ripple-gap)
+
+**Ripple Delete a time selection.** Drag across a stretch of time, then choose one of the Ripple Delete commands. Time Selection in Selected Clips (Alt+Backspace) cuts that stretch out of only the clips you selected and slides the later clips on their tracks left. Time Selection in Selected Track and in All Tracks cut whole tracks.
+
+**Sync Lock** keeps tracks in step. The chain-link button in a track's header turns it on or off. When you ripple on a track with Sync Lock on, every other track with Sync Lock on closes the same stretch, so music and voices do not drift apart. A track with it off is left alone. New sessions start with Sync Lock on for the first tracks; tracks you add later start with it off.
+
+![With Sync Lock on, a ripple delete on Voice closes the same time on Music; with it off, Music is left behind](sync-lock)
+
+If a Sync Lock track has audio in the space you are closing, the program stops and says so, because closing it would cut or misalign that track. Turn Sync Lock off for that track to close the gap on one track only.
 
 Markers (Edit > Add Marker) can mark cues, chapters, ad slots and social clips. Chapters and ad slots can be exported from File > Export > Markers and Chapters.
 
@@ -52,6 +68,8 @@ A plain effect only changes what you hear in the session. To make an effect perm
 ## The Mixer, buses and routing
 
 Open the Mixer from the Window menu if it is not showing. Every track and bus has a fader, a pan control, Mute, Solo and a level meter. The master strip is on the right.
+
+![Host and Guest feed a Voices bus, a send adds a shared reverb bus, and everything reaches the master](bus-routing)
 
 A **bus** is a track that other tracks feed. Add one with Multitrack > Add > Bus Track. A typical use is a Voices bus: send all voice tracks to it and put the compressor and limiter on the bus once.
 
