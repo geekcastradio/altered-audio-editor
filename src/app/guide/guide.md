@@ -55,6 +55,8 @@ If a Sync Lock track has audio in the space you are closing, the program stops a
 
 Markers (Edit > Add Marker) can mark cues, chapters, ad slots and social clips. Chapters and ad slots can be exported from File > Export > Markers and Chapters.
 
+In the Markers panel, click a marker to pick it and jump to it. Ctrl+click adds or removes one, and Shift+click picks a run. Edit > Markers > Rename Selected Marker, Delete Selected Markers and Delete All Markers work on the pick, and Undo brings them back.
+
 ## Voice Chain and effects
 
 The **Voice Chain** panel (Window > Voice Chain) is a row of effects that every track, bus and the master can have. Add effects from the Effects menu. Reorder effects by dragging, and switch one off to compare. The chain also has input gain, output gain and a Mix control.

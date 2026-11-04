@@ -41,6 +41,19 @@ describe("gap pick", () => {
   });
 });
 
+describe("marker pick", () => {
+  it("replaces the pick, clears with an empty list, and leaves the clip pick alone", () => {
+    editor.selectClips(["a"]);
+    editor.selectMarkers(["m1", "m2"]);
+    expect([...editor.current().selectedMarkers]).toEqual(["m1", "m2"]);
+    expect(editor.current().selectedClips.has("a")).toBe(true);
+    editor.selectMarkers(["m3"]);
+    expect([...editor.current().selectedMarkers]).toEqual(["m3"]);
+    editor.selectMarkers([]);
+    expect(editor.current().selectedMarkers.size).toBe(0);
+  });
+});
+
 describe("play mode", () => {
   it("toggles between loop, skip and normal, and survives a restart", () => {
     editor.togglePlayMode("loop");

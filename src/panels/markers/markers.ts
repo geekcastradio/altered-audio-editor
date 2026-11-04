@@ -63,6 +63,25 @@ export function nextMarkerName(
   }
 }
 
+/** The markers whose ids are in `ids`, in time order (markers at the same spot keep their list order). */
+export function pickedMarkers(markers: readonly MarkerDoc[], ids: ReadonlySet<string>): MarkerDoc[] {
+  return markers.filter((m) => ids.has(m.id)).sort((a, b) => a.position - b.position);
+}
+
+/** Ids of every marker from `a` to `b` in time order, both ends included (Shift+click). Empty when either is missing. */
+export function markersBetween(markers: readonly MarkerDoc[], a: string, b: string): string[] {
+  const ordered = [...markers].sort((x, y) => x.position - y.position);
+  const i = ordered.findIndex((m) => m.id === a);
+  const j = ordered.findIndex((m) => m.id === b);
+  if (i < 0 || j < 0) return [];
+  return ordered.slice(Math.min(i, j), Math.max(i, j) + 1).map((m) => m.id);
+}
+
+/** The undo label for deleting `n` markers. */
+export function deleteLabel(n: number): string {
+  return n === 1 ? "Delete Marker" : `Delete ${n} Markers`;
+}
+
 /** The marker whose flag is under `x` (pixels), nearest first, within `tolerance`. */
 export function markerAt(
   markers: readonly MarkerDoc[],

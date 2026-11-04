@@ -351,27 +351,8 @@ pub async fn session_save(
     let t2 = target.clone();
     let keep = backups.unwrap_or(0).min(MAX_BACKUPS);
     let saved = spawn_blocking(move || {
-        // A file made by an older version is about to be upgraded in place.
-        // A copy of it is always kept first, whatever the backups setting
-        // says, and nothing is saved if the copy cannot be made. The new
-        // file is checked before it replaces the old one.
         let older = file::older_than_current(&t2);
-        if let Some(v) = older {
-            backup_previous(&t2, 0, chrono::Local::now(), Some(v)).map_err(|e| {
-                format!("Could not keep a copy of the original, so nothing was saved: {e}")
-            })?;
-        } else if keep > 0 {
-            // The file about to be replaced becomes the newest backup.
-            if let Err(e) = backup_previous(&t2, keep as usize, chrono::Local::now(), None) {
-                eprintln!("session backup skipped: {e}");
-            }
-        }
-        if older.is_some() {
-            file::save_verified(&session, &t2, &media)
-        } else {
-            file::save(&session, &t2, &media)
-        }
-        .map_err(|e| e.to_string())
+        save_to_disk(&session, &t2, &media, keep, older, chrono::Local::now())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -397,6 +378,39 @@ pub async fn session_save(
 
 /// Most backups kept per session.
 const MAX_BACKUPS: u32 = 50;
+
+/// The disk half of Save, apart from the app handle so it can be tested.
+///
+/// `older` is the version of the file already at `target` when that file was
+/// made by an older build (see [`file::older_than_current`]). Such a file is
+/// about to be upgraded in place: a copy of it is always kept first, whatever
+/// the backups setting says, and nothing is saved if the copy cannot be made.
+/// The new file is then checked before it replaces the old one. Otherwise the
+/// file about to be replaced becomes the newest of `keep` ordinary backups.
+fn save_to_disk(
+    session: &Session,
+    target: &std::path::Path,
+    media: &[MediaRef],
+    keep: u32,
+    older: Option<u32>,
+    now: chrono::DateTime<chrono::Local>,
+) -> Result<Session, String> {
+    if let Some(v) = older {
+        backup_previous(target, 0, now, Some(v)).map_err(|e| {
+            format!("Could not keep a copy of the original, so nothing was saved: {e}")
+        })?;
+    } else if keep > 0 {
+        if let Err(e) = backup_previous(target, keep as usize, now, None) {
+            eprintln!("session backup skipped: {e}");
+        }
+    }
+    if older.is_some() {
+        file::save_verified(session, target, media)
+    } else {
+        file::save(session, target, media)
+    }
+    .map_err(|e| e.to_string())
+}
 
 /// Version number (when older than this build's) of the open session's
 /// file on disk. The interface asks before a Save so it can explain the
@@ -821,6 +835,73 @@ mod tests {
             None,
         )
         .unwrap();
+    }
+
+    fn at(h: u32) -> chrono::DateTime<chrono::Local> {
+        use chrono::TimeZone;
+        chrono::Local
+            .with_ymd_and_hms(2026, 11, 4, h, 0, 0)
+            .unwrap()
+    }
+
+    #[test]
+    fn saving_over_an_older_file_keeps_a_byte_identical_copy_and_writes_a_valid_file() {
+        let d = tempfile::tempdir().unwrap();
+        let target = d.path().join("Show.altaudio");
+        let mut s = Session::new("Show", 48_000);
+        file::save(&s, &target, &[]).unwrap();
+        let original = std::fs::read(&target).unwrap();
+
+        s.name = "Show edited".into();
+        // Backups off (0): the copy of an upgraded file is made anyway.
+        let saved = super::save_to_disk(&s, &target, &[], 0, Some(1), at(9)).unwrap();
+
+        let copy = d
+            .path()
+            .join("Backups")
+            .join("Show v1 2026-11-04 090000.altaudio");
+        assert_eq!(std::fs::read(&copy).unwrap(), original);
+        assert_ne!(std::fs::read(&target).unwrap(), original);
+        let back = file::open(&target).unwrap().session;
+        assert_eq!(back.name, "Show edited");
+        assert_eq!(back.id, saved.id);
+        // Nothing is left beside it from the write.
+        assert!(!d.path().join("Show.altaudio.tmp").exists());
+    }
+
+    #[test]
+    fn nothing_is_saved_when_the_copy_of_an_older_file_cannot_be_made() {
+        let d = tempfile::tempdir().unwrap();
+        let target = d.path().join("Show.altaudio");
+        let mut s = Session::new("Show", 48_000);
+        file::save(&s, &target, &[]).unwrap();
+        let original = std::fs::read(&target).unwrap();
+        // A file where the Backups folder should go makes the copy fail.
+        std::fs::write(d.path().join("Backups"), "in the way").unwrap();
+
+        s.name = "Show edited".into();
+        let err = super::save_to_disk(&s, &target, &[], 0, Some(1), at(9)).unwrap_err();
+        assert!(err.contains("nothing was saved"), "{err}");
+        assert_eq!(std::fs::read(&target).unwrap(), original);
+    }
+
+    #[test]
+    fn an_ordinary_save_only_backs_up_when_backups_are_on() {
+        let d = tempfile::tempdir().unwrap();
+        let target = d.path().join("Show.altaudio");
+        let s = Session::new("Show", 48_000);
+        file::save(&s, &target, &[]).unwrap();
+
+        super::save_to_disk(&s, &target, &[], 0, None, at(9)).unwrap();
+        assert!(!d.path().join("Backups").exists());
+
+        super::save_to_disk(&s, &target, &[], 2, None, at(10)).unwrap();
+        let names: Vec<String> = std::fs::read_dir(d.path().join("Backups"))
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["Show 2026-11-04 100000.altaudio"]);
     }
 
     #[test]
