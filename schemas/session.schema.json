@@ -69,6 +69,10 @@
     "name": {
       "type": "string"
     },
+    "pan_law": {
+      "description": "How a pan setting divides a sound between left and right. Files from before this\nsetting use the balance law they were mixed with.",
+      "$ref": "#/$defs/PanLaw"
+    },
     "playlist": {
       "description": "Playlist panel: range markers in the order they play and export.",
       "type": "array",
@@ -1203,6 +1207,14 @@
             "type"
           ]
         }
+      ]
+    },
+    "PanLaw": {
+      "description": "How panning shares a sound between the two speakers.",
+      "type": "string",
+      "enum": [
+        "balance",
+        "constant_power"
       ]
     },
     "RecordMode": {

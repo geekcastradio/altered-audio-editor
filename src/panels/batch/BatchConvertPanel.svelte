@@ -21,6 +21,7 @@
   import { BATCH_RECIPES, RECIPE_ONLY_GROUPS } from "../voice-chain/batch-recipes";
   import { addRows, batchRows, conflicts, destFor, effectiveTemplate, fileName, sanitizeBatch, sanitizeLevel, shapingFor, tagsFor, type BatchRow, type BatchSettings } from "./batch";
   import BatchOutputDialog from "./BatchOutputDialog.svelte";
+  import { applyChain, BUILTIN_CHAINS, chainFrom, describeChain, removeChain, sanitizeChains, saveChain, type BatchChain } from "./batch-chain";
 
   interface Props {
     pool: MediaPool;
@@ -45,6 +46,42 @@
     const snap = $state.snapshot(s);
     if (loaded) prefs.set(KEY, snap);
   });
+
+  // Saved chains: the processing steps under a name, remembered between runs.
+  const CHAINS_KEY = "batch.chains";
+  let chains = $state<BatchChain[]>([]);
+  // svelte-ignore state_referenced_locally
+  void prefs.load().then(() => (chains = sanitizeChains(prefs.raw(CHAINS_KEY))));
+  let chainPick = $state("");
+  let chainName = $state("");
+  let chainWithFormat = $state(false);
+  const pickedChain = $derived([...BUILTIN_CHAINS, ...chains].find((c) => c.name === chainPick) ?? null);
+  const userChainPicked = $derived(chains.some((c) => c.name === chainPick));
+  function useChain(name: string) {
+    chainPick = name;
+    const c = [...BUILTIN_CHAINS, ...chains].find((x) => x.name === name);
+    if (!c) return;
+    s = applyChain(s, c);
+    chainName = userChainPicked ? c.name : "";
+  }
+  function saveCurrentChain() {
+    const next = saveChain(chains, chainFrom(chainName, s, chainWithFormat));
+    if (!next) {
+      onNotice("Name the chain first.");
+      return;
+    }
+    chains = next;
+    prefs.set(CHAINS_KEY, $state.snapshot(next));
+    chainPick = next[next.length - 1]!.name;
+    onNotice(`Saved the chain "${chainPick}".`);
+  }
+  function deleteChain() {
+    if (!userChainPicked) return;
+    chains = removeChain(chains, chainPick);
+    prefs.set(CHAINS_KEY, $state.snapshot(chains));
+    onNotice(`Deleted the chain "${chainPick}".`);
+    chainPick = "";
+  }
 
   let rows = $state<BatchRow[]>([]);
   const unsub = batchRows.subscribe((v) => (rows = v));
@@ -221,6 +258,26 @@
     </button>
   </div>
 
+  <div class="process chain" title="A chain is the steps below saved under a name: the Voice Chain preset, trim, loudness, peak and fades">
+    <span>Chain</span>
+    <select value={chainPick} disabled={running} onchange={(e) => useChain(e.currentTarget.value)}>
+      <option value="">Pick a chain to load its steps</option>
+      <optgroup label="Starters">
+        {#each BUILTIN_CHAINS as c (c.name)}<option value={c.name}>{c.name}</option>{/each}
+      </optgroup>
+      {#if chains.length}
+        <optgroup label="Yours">
+          {#each chains as c (c.name)}<option value={c.name}>{c.name}</option>{/each}
+        </optgroup>
+      {/if}
+    </select>
+    <input type="text" class="name" placeholder="Name to save as" maxlength="60" bind:value={chainName} disabled={running} aria-label="Chain name" />
+    <label class="check" title="Also remember the output format"><input type="checkbox" bind:checked={chainWithFormat} disabled={running} /> Format</label>
+    <button type="button" disabled={running || chainName.trim() === ""} onclick={saveCurrentChain}>Save</button>
+    <button type="button" disabled={running || !userChainPicked} onclick={deleteChain}>Delete</button>
+  </div>
+  <p class="chain-note">{pickedChain ? `Runs: ${describeChain(pickedChain)}.` : "Load a starter or one of your own, or set the steps below and save them as a chain."}</p>
+
   <label class="process" title="A Voice Chain preset run on every file before it is saved">
     <span>Process with</span>
     <select value={s.process ?? ""} disabled={running} onchange={(e) => (s.process = e.currentTarget.value || null)}>
@@ -237,7 +294,21 @@
       {/each}
     </select>
   </label>
-  <div class="process level" title="After the preset: bring every file to the same peak, and fade the ends">
+  <div class="process level" title="After the preset: trim the ends, bring every file to the same loudness or peak, and fade the ends">
+    <span class="grp">
+      <label class="check"><input type="checkbox" checked={s.level.trim} disabled={running} onchange={(e) => (s.level.trim = e.currentTarget.checked)} /> Trim silence below</label>
+      <input type="number" class="num" min="-80" max="-10" step="1" value={s.level.trimDb} disabled={running || !s.level.trim} aria-label="Trim level, dB" onchange={(e) => (s.level.trimDb = sanitizeLevel({ ...s.level, trimDb: Number(e.currentTarget.value) }).trimDb)} />
+      <span>dB, keep</span>
+      <input type="number" class="num" min="0" max="5000" step="50" value={s.level.trimKeepMs} disabled={running || !s.level.trim} aria-label="Silence to keep, ms" onchange={(e) => (s.level.trimKeepMs = sanitizeLevel({ ...s.level, trimKeepMs: Number(e.currentTarget.value) }).trimKeepMs)} />
+      <span>ms</span>
+    </span>
+    <span class="grp">
+      <label class="check"><input type="checkbox" checked={s.level.loudness} disabled={running} onchange={(e) => (s.level.loudness = e.currentTarget.checked)} /> Loudness</label>
+      <input type="number" class="num" min="-40" max="-5" step="0.5" value={s.level.loudnessLufs} disabled={running || !s.level.loudness} aria-label="Loudness, LUFS" onchange={(e) => (s.level.loudnessLufs = sanitizeLevel({ ...s.level, loudnessLufs: Number(e.currentTarget.value) }).loudnessLufs)} />
+      <span>LUFS, peaks under</span>
+      <input type="number" class="num" min="-30" max="0" step="0.5" value={s.level.ceilingDb} disabled={running || !s.level.loudness} aria-label="Peak ceiling, dB" onchange={(e) => (s.level.ceilingDb = sanitizeLevel({ ...s.level, ceilingDb: Number(e.currentTarget.value) }).ceilingDb)} />
+      <span>dB</span>
+    </span>
     <span class="grp">
       <label class="check"><input type="checkbox" checked={s.level.normalize} disabled={running} onchange={(e) => (s.level.normalize = e.currentTarget.checked)} /> Normalize to</label>
       <input type="number" class="num" min="-30" max="0" step="0.1" value={s.level.normalizeDb} disabled={running || !s.level.normalize} aria-label="Normalize peak, dB" onchange={(e) => (s.level.normalizeDb = sanitizeLevel({ ...s.level, normalizeDb: Number(e.currentTarget.value) }).normalizeDb)} />
@@ -309,7 +380,7 @@
 <style>
   .panel {
     display: grid;
-    grid-template-rows: auto auto auto minmax(70px, 1fr) auto;
+    grid-template-rows: auto auto auto auto auto minmax(70px, 1fr) auto;
     grid-template-columns: minmax(0, 1fr);
     height: 100%;
     min-height: 0;
@@ -346,6 +417,43 @@
   .process select {
     flex: 1;
     min-width: 0;
+  }
+  .chain .name {
+    flex: 1;
+    min-width: 60px;
+    height: 20px;
+    padding: 0 4px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--surface-0);
+    color: var(--text);
+    font: inherit;
+    font-size: 11px;
+  }
+  .chain .check {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    white-space: nowrap;
+  }
+  .chain button {
+    height: 20px;
+    padding: 0 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--surface-3);
+    color: var(--text);
+    font: inherit;
+  }
+  .chain button:disabled {
+    opacity: 0.5;
+  }
+  .chain-note {
+    margin: 0;
+    padding: 2px 6px 4px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-faint);
+    font-size: 11px;
   }
   .level {
     flex-wrap: wrap;

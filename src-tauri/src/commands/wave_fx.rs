@@ -16,6 +16,7 @@ use tauri::{AppHandle, Emitter, State};
 use super::spectral::{by_pairs, render_n, snapshot, write_n, SpectralResult};
 use super::wave::OpenWave;
 use crate::dsp::effects::ChainProcessor;
+use crate::dsp::roomtone;
 use crate::export::mixdown;
 use crate::session::model::EffectChain;
 
@@ -158,6 +159,120 @@ pub async fn wave_apply_chain(
         })?;
         let media = write_n(&dir, "voice-chain", &out, n, 0, frames, rate)?;
         Ok(SpectralResult { media, start, end })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Fill with Room Tone: what it made, and where the tone came from.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomToneResult {
+    pub media: crate::session::model::MediaRef,
+    pub start: u64,
+    pub end: u64,
+    /// Timeline sample where the room tone was taken from.
+    pub source_start: u64,
+    /// Level of that tone, dBFS RMS.
+    pub source_db: f64,
+}
+
+/// A quiet room is quieter than this. Anything louder is speech or music, not a floor.
+const ROOM_TONE_CEILING_DB: f64 = -40.0;
+
+/// Windows rendered per pass while looking for room tone (30 seconds).
+const SCAN_WINDOWS: usize = 600;
+
+/// Waveform editor Fill with Room Tone on `start..end`: finds the quietest
+/// second of the file outside that range, builds room tone of the same level
+/// and tone from it, and writes it over the range. The interface swaps the
+/// result in; Undo takes it back.
+#[tauri::command]
+pub async fn wave_room_tone(
+    app: AppHandle,
+    wave: State<'_, OpenWave>,
+    cancel: State<'_, super::export::ExportCancel>,
+    start: u64,
+    end: u64,
+) -> Result<RoomToneResult, String> {
+    let session = snapshot(&wave)?;
+    let dir = crate::commands::cache::cache_root(&app)?.join("wave-fx");
+    let flag = cancel.0.clone();
+    flag.store(false, Ordering::Relaxed);
+    let progress = app.clone();
+    spawn_blocking(move || -> Result<RoomToneResult, String> {
+        let rate = session.sample_rate;
+        let total = mixdown::session_end(&session);
+        let end = end.min(total);
+        if end <= start {
+            return Err("Select the part to fill first.".into());
+        }
+        let win = ((f64::from(rate) * roomtone::WINDOW_SECONDS) as usize).max(1);
+        let windows = total as usize / win;
+        // Keep the tone away from the part being replaced and its edges.
+        let guard = 2 * win as u64;
+        let (lo, hi) = (start.saturating_sub(guard), end + guard);
+        let mut powers: Vec<Option<f64>> = Vec::with_capacity(windows);
+        let mut w0 = 0usize;
+        while w0 < windows {
+            if flag.load(Ordering::Relaxed) {
+                return Err("Cancelled.".into());
+            }
+            let w1 = (w0 + SCAN_WINDOWS).min(windows);
+            let (audio, n) = render_n(&session, (w0 * win) as i64, (w1 * win) as i64);
+            for w in w0..w1 {
+                let from = (w * win) as u64;
+                let to = from + win as u64;
+                let a = (w - w0) * win * n;
+                let slice = audio.get(a..a + win * n);
+                let usable = from >= hi || to <= lo;
+                powers.push(match slice {
+                    Some(s) if usable && !s.is_empty() => {
+                        let p = s.iter().map(|v| f64::from(*v).powi(2)).sum::<f64>() / s.len() as f64;
+                        (p >= roomtone::SILENT_POWER).then_some(p)
+                    }
+                    _ => None,
+                });
+            }
+            let _ = progress.emit(
+                "export-progress",
+                serde_json::json!({ "done": w1 as u64, "total": windows as u64 }),
+            );
+            w0 = w1;
+        }
+        let run = roomtone::quietest_run(&powers, roomtone::SOURCE_WINDOWS).ok_or(
+            "There is no quiet stretch of room tone to copy. Record a few seconds of the room, then try again.",
+        )?;
+        let mean = powers[run..run + roomtone::SOURCE_WINDOWS]
+            .iter()
+            .flatten()
+            .sum::<f64>()
+            / roomtone::SOURCE_WINDOWS as f64;
+        let source_db = 10.0 * mean.log10();
+        if source_db > ROOM_TONE_CEILING_DB {
+            return Err(format!(
+                "The quietest second of this file is {source_db:.0} dBFS, too loud to be room tone. Record a few seconds of the room, then try again."
+            ));
+        }
+        let from = (run * win) as i64;
+        let (src, n) = render_n(&session, from, from + (roomtone::SOURCE_WINDOWS * win) as i64);
+        let frames = (end - start) as usize;
+        let seed = start ^ (end << 21) ^ 0x9E37_79B9;
+        let fill = by_pairs(&src, n, |st| {
+            roomtone::synthesize(st, frames, rate, seed)
+                .ok_or_else(|| "The room tone is too short to copy.".to_string())
+        })?;
+        let (orig, _) = render_n(&session, start as i64, end as i64);
+        let edge = (f64::from(rate) * 0.01) as usize;
+        let out = roomtone::blend(&orig, &fill, n, edge);
+        let media = write_n(&dir, "room-tone", &out, n, 0, frames, rate)?;
+        Ok(RoomToneResult {
+            media,
+            start,
+            end,
+            source_start: from as u64,
+            source_db,
+        })
     })
     .await
     .map_err(|e| e.to_string())?

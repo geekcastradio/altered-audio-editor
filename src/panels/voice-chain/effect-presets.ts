@@ -182,6 +182,11 @@ export const BUILTIN_EFFECT_PRESETS: Readonly<Record<string, readonly EffectPres
     { name: "Quiet Parts Down, Gentle", params: { threshold: -20, ratio: 2.5 } },
     { name: "Quiet Parts Down, Firm", params: { threshold: -20, ratio: 5 } },
   ],
+  "altaudio.plosive": [
+    { name: "Close Mic, Firm", params: { freq: 140, trigger: 4, reduction: 24, release: 120 } },
+    { name: "Standard Mic", params: { freq: 120, trigger: 6, reduction: 18, release: 100 } },
+    { name: "Light Touch", params: { freq: 100, trigger: 9, reduction: 10, release: 80 } },
+  ],
   "altaudio.noise_reducer": [
     // Reduction follows the strengths in the readouts (20, 40 and 80 percent) at 0.3 dB per percent. Check by ear.
     { name: "Noise, Light", params: { reduction: 6 } },

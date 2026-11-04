@@ -41,6 +41,7 @@ const APPROVED: Record<string, string[]> = {
   "transport.prev-marker": ["Ctrl+Alt+ArrowLeft"],
   "transport.next-marker": ["Ctrl+Alt+ArrowRight"],
   "edit.marker.cue": ["M", "Shift+*", "*", "F8"],
+  "edit.marker.retake": ["F9"],
   "view.zoom-session": ["\\"],
   "view.zoom-selection": ["Shift+S", "Shift+/", "?"],
   "view.zoom-out-full": ["Shift+\\", "|"],
@@ -119,6 +120,7 @@ const APPROVED: Record<string, string[]> = {
   "clip.trim.selection": ["Alt+T"],
   "edit.marker.range": ["Ctrl+Shift+M"],
   "fx.add.noise_print": ["Ctrl+Shift+P"],
+  "fx.spectrum.repair": ["Ctrl+U"],
 };
 
 const key = (

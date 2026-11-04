@@ -17,7 +17,7 @@
 <script lang="ts">
   import Knob from "../../app/Knob.svelte";
   import { presetMenu } from "./preset-menu";
-  import { effectsCatalog, learnNoisePrint, pluginOpenWindow, pluginRestart, pluginsRegistry, type EffectInfo, type EffectParamInfo, type LearnSource } from "../../app/core";
+  import { exportText, effectsCatalog, learnNoisePrint, pluginOpenWindow, pluginRestart, pluginsRegistry, type EffectInfo, type EffectParamInfo, type LearnSource } from "../../app/core";
   import { markStopped, pluginsVersion, stoppedPlugins } from "../../stores/plugins";
   import { editor, type EditorState } from "../../stores/editor";
   import { chainTarget } from "../../stores/chain-target";
@@ -73,6 +73,7 @@
   import { GRAPHED } from "./graph";
   import DynamicsPanel from "./DynamicsPanel.svelte";
   import { importAuditionRacks } from "./audition-presets";
+  import { mergePack, packPresets, readPack } from "./preset-pack";
   import { favoriteIds, KEY_FAVORITES, toggleFavorite } from "./favorites";
   import InfoTip from "../../app/InfoTip.svelte";
   import { effectHelp } from "./effect-help";
@@ -502,6 +503,43 @@
     }
   }
 
+  let packInput = $state<HTMLInputElement | null>(null);
+  /** Saves your Voice Chain and single-effect presets to one file. */
+  async function exportPack() {
+    const count = userPresets.length + Object.values(fxBank).reduce((n, l) => n + l.length, 0);
+    if (count === 0) {
+      onNotice("You have no saved presets to export yet.");
+      return;
+    }
+    try {
+      const path = await exportText("My Presets", null, "Export My Presets", "Altered Audio presets", "json", packPresets($state.snapshot(userPresets), $state.snapshot(fxBank)));
+      if (path) onNotice(`Exported ${count} ${count === 1 ? "preset" : "presets"}.`);
+    } catch (e) {
+      onError(e);
+    }
+  }
+  /** Adds the presets from a pack. Nothing you have is replaced; a taken name gets a number. */
+  async function importPack(file: File | undefined) {
+    if (!file) return;
+    try {
+      const pack = readPack(await file.text());
+      if ("error" in pack) {
+        onNotice(pack.error);
+        return;
+      }
+      const m = mergePack($state.snapshot(userPresets), $state.snapshot(fxBank), pack, BUILTIN_PRESETS.map((p) => p.name));
+      userPresets = m.chains;
+      fxBank = m.bank;
+      prefs.set(KEY_PRESETS, $state.snapshot(userPresets));
+      prefs.set(KEY_FX_PRESETS, $state.snapshot(fxBank));
+      const n = m.addedChains + m.addedEffects;
+      const extra = [m.renamed ? `${m.renamed} got a new name because theirs was taken` : "", m.full ? `${m.full} did not fit (60 per effect)` : ""].filter(Boolean).join("; ");
+      onNotice(n === 0 ? "Everything in that pack is already here." : `Added ${n} ${n === 1 ? "preset" : "presets"}${extra ? `; ${extra}` : ""}.`);
+    } catch (e) {
+      onError(e);
+    }
+  }
+
   function choosePreset(name: string) {
     const p = [...userPresets, ...BUILTIN_PRESETS].find((x) => x.name === name);
     if (!p) return;
@@ -732,7 +770,7 @@
           aria-haspopup="menu"
           onclick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
-            slotMenu = { x: r.left, y: r.bottom, items: presetMenu(userPresets, BUILTIN_PRESETS, choosePreset, () => auditionInput?.click()) };
+            slotMenu = { x: r.left, y: r.bottom, items: presetMenu(userPresets, BUILTIN_PRESETS, choosePreset, () => auditionInput?.click(), { save: () => void exportPack(), load: () => packInput?.click() }) };
           }}
         >
           <span>(Choose a preset)</span><span aria-hidden="true">▾</span>
@@ -973,6 +1011,7 @@
       </div>
     {/if}
 
+    <input type="file" accept=".json" class="hidden" bind:this={packInput} onchange={(e) => { void importPack(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }} />
     <input type="file" accept=".xml" class="hidden" bind:this={auditionInput} onchange={(e) => { void importAudition(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }} />
 
     <div class="bottom">

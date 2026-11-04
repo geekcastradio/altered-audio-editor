@@ -866,6 +866,19 @@ export function waveReverseInvert(start: number, end: number, mode: "reverse" | 
   return invoke<SpectralResult>("wave_reverse_invert", { start, end, mode });
 }
 
+/** Fill with Room Tone: the stretch to swap in, and where the tone came from. */
+export interface RoomToneResult extends SpectralResult {
+  /** Timeline sample the tone was copied from. */
+  sourceStart: number;
+  /** Level of that tone, dBFS RMS. */
+  sourceDb: number;
+}
+
+/** Fills `start..end` of the Waveform editor's file with room tone found elsewhere in it. Progress arrives as `export-progress`. */
+export function waveRoomTone(start: number, end: number): Promise<RoomToneResult> {
+  return invoke<RoomToneResult>("wave_room_tone", { start, end });
+}
+
 export interface PitchReport {
   frames: number;
   voiced: number;
@@ -1050,7 +1063,7 @@ export function batchConvert(
   overwrite: boolean,
   copyTags = false,
   process: EffectChainDoc | null = null,
-  shape: { normalizeDb: number | null; fadeInMs: number; fadeOutMs: number } | null = null,
+  shape: { normalizeDb: number | null; fadeInMs: number; fadeOutMs: number; loudnessLufs?: number | null; ceilingDb?: number; trimDb?: number | null; trimKeepMs?: number } | null = null,
 ): Promise<BatchSummary> {
   return invoke<BatchSummary>("batch_convert", { jobs, format, overwrite, copyTags, process, shape });
 }

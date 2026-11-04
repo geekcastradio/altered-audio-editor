@@ -17,8 +17,8 @@ use uuid::Uuid;
 use super::model::{
     AudioType, Bus, ChannelLayout, ChannelMix, ChapterInfo, Clip, ClipLoop, ClipStretch,
     EffectChain, EffectSlot, Envelope, EnvelopePoint, EnvelopeTarget, Fade, Id, Marker, MarkerKind,
-    MediaRef, MidiClip, Output, RecordMode, Send, Session, SessionView, Space, SpacePos, Tempo,
-    Track, TrackKind, TrackRole, STRETCH_MAX, STRETCH_MIN,
+    MediaRef, MidiClip, Output, PanLaw, RecordMode, Send, Session, SessionView, Space, SpacePos,
+    Tempo, Track, TrackKind, TrackRole, STRETCH_MAX, STRETCH_MIN,
 };
 
 /// Points for one effect setting's envelope on a clip.
@@ -409,6 +409,10 @@ pub enum Op {
         name: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         bit_depth: Option<u16>,
+    },
+    /// How panning divides a sound between left and right.
+    SetPanLaw {
+        pan_law: PanLaw,
     },
     /// Master output level in dB.
     SetMasterVolume {
@@ -1015,6 +1019,10 @@ fn apply_one(s: &mut Session, op: &Op) -> Result<Op, OpError> {
                 name: old_name,
                 bit_depth: old_bits,
             })
+        }
+        Op::SetPanLaw { pan_law } => {
+            let old = std::mem::replace(&mut s.pan_law, *pan_law);
+            Ok(Op::SetPanLaw { pan_law: old })
         }
         Op::SetMasterVolume { volume_db } => {
             let old = std::mem::replace(&mut s.master.volume_db, volume_db.clamp(-96.0, 24.0));
@@ -2290,6 +2298,19 @@ mod tests {
         assert_eq!(s.tracks, before.tracks, "undo restores exact positions");
         assert_eq!(s.sample_rate, 48_000);
         assert_eq!(s.view.playhead, 96_000);
+    }
+
+    #[test]
+    fn pan_law_changes_and_undoes() {
+        let mut s = Session::new("Test", 48_000);
+        assert_eq!(s.pan_law, PanLaw::Balance);
+        roundtrip(
+            &mut s,
+            Op::SetPanLaw {
+                pan_law: PanLaw::ConstantPower,
+            },
+        );
+        assert_eq!(s.pan_law, PanLaw::ConstantPower);
     }
 
     #[test]

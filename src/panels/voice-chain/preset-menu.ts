@@ -13,7 +13,7 @@ const ADD_GROUPS = ["Breath gates", "Processing", "Delay", "Repair", "EQ"] as co
  * Cleanup, Voice Over) replace the chain; the single-effect groups add
  * one effect. Each row carries a short description on the right.
  */
-export function presetMenu(user: readonly ChainPreset[], builtin: readonly ChainPreset[], pick: (name: string) => void, onImport?: () => void): ContextItem[] {
+export function presetMenu(user: readonly ChainPreset[], builtin: readonly ChainPreset[], pick: (name: string) => void, onImport?: () => void, pack?: { save: () => void; load: () => void }): ContextItem[] {
   const row = (p: ChainPreset, hint?: string): ContextItem => ({ kind: "item", label: p.name, run: () => pick(p.name), shortcut: hint });
   const out: ContextItem[] = [];
   if (user.length) out.push({ kind: "sub", label: "Yours", items: user.map((p) => row(p)) });
@@ -31,6 +31,8 @@ export function presetMenu(user: readonly ChainPreset[], builtin: readonly Chain
     const list = builtin.filter((p) => p.group === g);
     if (list.length) out.push({ kind: "sub", label: `${g} (add one effect)`, items: list.map((p) => row(p, PRESET_INFO[p.name]?.blurb)) });
   }
-  if (onImport) out.push({ kind: "sep" }, { kind: "item", label: "Import Chains from Audition...", run: onImport });
+  if (pack || onImport) out.push({ kind: "sep" });
+  if (pack) out.push({ kind: "item", label: "Export My Presets...", run: pack.save }, { kind: "item", label: "Import Presets...", run: pack.load });
+  if (onImport) out.push({ kind: "item", label: "Import Chains from Audition...", run: onImport });
   return out;
 }

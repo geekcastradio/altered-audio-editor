@@ -90,6 +90,7 @@ describe("Effect presets", () => {
         points: [2, 8], knee: [0, 24], makeup: [-24, 24], detect_attack: [0.1, 200], detect_release: [5, 2000], rms: [0, 1],
         gain_attack: [0.1, 200], gain_release: [5, 2000], lookahead: [0, 20], ...curvePoints(),
       },
+      "altaudio.plosive": { freq: [60, 250], trigger: [0, 24], reduction: [0, 30], release: [20, 400] },
       "altaudio.dynamics": { threshold: [-60, 0], ratio: [1, 20], attack: [0.1, 200], release: [5, 2000], knee: [0, 24], makeup: [0, 24] },
       "altaudio.limiter": { ceiling: [-24, 0], input_boost: [0, 24], lookahead: [0, 20], release: [10, 1000], linked: [0, 1] },
       "altaudio.breath_gate": { threshold: [-80, 0], attack: [0.1, 100], hold: [0, 1000], release: [5, 2000] },

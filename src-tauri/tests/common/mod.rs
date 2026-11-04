@@ -212,6 +212,7 @@ pub fn session() -> Session {
         created: date(),
         modified: date(),
         tempo: Default::default(),
+        pan_law: Default::default(),
         space: None,
         media: vec![MediaRef {
             id: id(100),

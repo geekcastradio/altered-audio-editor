@@ -75,9 +75,7 @@ export const MENUS: readonly Menu[] = [
       item("file.new-session", "New Session..."),
       item("file.new-audio", "New Audio File..."),
       item("file.open", "Open..."),
-      item("file.convert-sample-type", "Convert Sample Type...", {
-        pending: LATER,
-      }),
+      item("file.convert-sample-type", "Convert Sample Type..."),
       sub("Open Recent", [
         ...Array.from({ length: RECENT_SLOTS }, (_, i) =>
           item(`file.recent.${i + 1}`, `Recent ${i + 1}`, {
@@ -193,6 +191,7 @@ export const MENUS: readonly Menu[] = [
       }),
       sub("Markers", [
         item("edit.marker.cue", "Add Cue Marker"),
+        item("edit.marker.retake", "Add Retake Marker"),
         item("edit.marker.subclip", "Add Subclip Marker"),
         item("edit.marker.cd-track", "Add CD Track Marker"),
         item("edit.marker.cart", "Add Cart Timer Marker"),
@@ -236,9 +235,7 @@ export const MENUS: readonly Menu[] = [
         item("multitrack.vis.show-all", "Show All Tracks"),
         sep,
         item("multitrack.vis.only-audio", "Show Only Audio Tracks"),
-        item("multitrack.vis.only-bus", "Show Only Bus Tracks", {
-          pending: "Not built yet: bus tracks always show below the audio tracks.",
-        }),
+        item("multitrack.vis.only-bus", "Show Only Bus Tracks"),
         item("multitrack.vis.only-clips", "Show Only Tracks with Clips"),
         item(
           "multitrack.vis.only-selection",
@@ -275,9 +272,7 @@ export const MENUS: readonly Menu[] = [
         item("transport.prev-marker", "Previous Marker"),
         item("transport.next-marker", "Next Marker"),
       ]),
-      item("multitrack.return-on-stop", "Return to Start on Stop", {
-        pending: LATER,
-      }),
+      item("multitrack.return-on-stop", "Return to Start on Stop"),
       item("multitrack.meter-input", "Meter Input Signal", { pending: LATER }),
       item("multitrack.record", "Record"),
       item("multitrack.record-options", "Recording Options..."),
@@ -393,11 +388,12 @@ export const MENUS: readonly Menu[] = [
       item("fx.invert", "Invert"),
       item("fx.reverse", "Reverse"),
       item("fx.silence", "Silence"),
+      item("fx.room-tone", "Fill with Room Tone"),
       sub("Spectrum", [
         item("fx.spectrum.reduce-12", "Reduce Selected Area 12 dB"),
         item("fx.spectrum.reduce-24", "Reduce Selected Area 24 dB"),
         item("fx.spectrum.remove", "Remove Selected Area"),
-        item("fx.spectrum.repair", "Repair Selected Area"),
+        item("fx.spectrum.repair", "Auto Heal Selection"),
       ]),
       sub("Amplitude", [
         item("fx.add.gain", "Gain (in the Voice Chain)"),
@@ -413,6 +409,7 @@ export const MENUS: readonly Menu[] = [
         item("fx.gen.silence", "Silence..."),
       ]),
       item("fx.loudness-match", "Loudness Match..."),
+      item("fx.match-eq", "Match EQ..."),
       sep,
       item("fx.add.vox_strip", "Vox Strip (vocal chain)"),
       sortedSub("Delay and Reverb", [
@@ -434,6 +431,7 @@ export const MENUS: readonly Menu[] = [
         item("fx.add.limiter", "Limiter"),
         item("fx.add.breath_gate", "Breath Gate"),
         item("fx.add.deesser", "De-Esser"),
+        item("fx.add.plosive", "Plosive Tamer"),
         item("fx.add.speech_leveler", "Speech Leveler"),
         item("fx.add.multiband", "Multiband Compressor"),
         item("fx.add.expander", "Expander / Gate"),

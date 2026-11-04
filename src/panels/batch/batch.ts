@@ -54,9 +54,31 @@ export interface LevelSettings {
   /** 0 for none, up to 60 s. */
   fadeInMs: number;
   fadeOutMs: number;
+  /** Bring each file to one integrated loudness (LUFS), never past the peak ceiling. */
+  loudness: boolean;
+  loudnessLufs: number;
+  /** Highest peak the loudness step may reach, dBFS. */
+  ceilingDb: number;
+  /** Cut silence from both ends of each file. */
+  trim: boolean;
+  /** Below this level counts as silence, dBFS. */
+  trimDb: number;
+  /** Silence kept at each end after the cut. */
+  trimKeepMs: number;
 }
 
-export const DEFAULT_LEVEL: LevelSettings = { normalize: false, normalizeDb: -1, fadeInMs: 0, fadeOutMs: 0 };
+export const DEFAULT_LEVEL: LevelSettings = {
+  normalize: false,
+  normalizeDb: -1,
+  fadeInMs: 0,
+  fadeOutMs: 0,
+  loudness: false,
+  loudnessLufs: -16,
+  ceilingDb: -1,
+  trim: false,
+  trimDb: -50,
+  trimKeepMs: 150,
+};
 
 export function sanitizeLevel(raw: unknown): LevelSettings {
   const v = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -66,13 +88,37 @@ export function sanitizeLevel(raw: unknown): LevelSettings {
     normalizeDb: num(v.normalizeDb, -30, 0, DEFAULT_LEVEL.normalizeDb),
     fadeInMs: num(v.fadeInMs, 0, 60_000, 0),
     fadeOutMs: num(v.fadeOutMs, 0, 60_000, 0),
+    loudness: v.loudness === true,
+    loudnessLufs: num(v.loudnessLufs, -40, -5, DEFAULT_LEVEL.loudnessLufs),
+    ceilingDb: num(v.ceilingDb, -30, 0, DEFAULT_LEVEL.ceilingDb),
+    trim: v.trim === true,
+    trimDb: num(v.trimDb, -80, -10, DEFAULT_LEVEL.trimDb),
+    trimKeepMs: num(v.trimKeepMs, 0, 5_000, DEFAULT_LEVEL.trimKeepMs),
   };
 }
 
 /** What the core needs for the level work, or null when it is all off. */
-export function shapingFor(l: LevelSettings): { normalizeDb: number | null; fadeInMs: number; fadeOutMs: number } | null {
-  if (!l.normalize && l.fadeInMs <= 0 && l.fadeOutMs <= 0) return null;
-  return { normalizeDb: l.normalize ? l.normalizeDb : null, fadeInMs: l.fadeInMs, fadeOutMs: l.fadeOutMs };
+export function shapingFor(l: LevelSettings): BatchShaping | null {
+  if (!l.normalize && !l.loudness && !l.trim && l.fadeInMs <= 0 && l.fadeOutMs <= 0) return null;
+  return {
+    normalizeDb: l.normalize ? l.normalizeDb : null,
+    fadeInMs: l.fadeInMs,
+    fadeOutMs: l.fadeOutMs,
+    loudnessLufs: l.loudness ? l.loudnessLufs : null,
+    ceilingDb: l.ceilingDb,
+    trimDb: l.trim ? l.trimDb : null,
+    trimKeepMs: l.trimKeepMs,
+  };
+}
+
+export interface BatchShaping {
+  normalizeDb: number | null;
+  fadeInMs: number;
+  fadeOutMs: number;
+  loudnessLufs: number | null;
+  ceilingDb: number;
+  trimDb: number | null;
+  trimKeepMs: number;
 }
 
 /** Tag fields as typed in the panel. */

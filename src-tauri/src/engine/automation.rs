@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use super::graph::Place;
 use super::plan::{to_out, ParamLane};
-use crate::session::model::{Envelope, EnvelopeTarget, Id, Send, SpaceParam};
+use crate::session::model::{Envelope, EnvelopeTarget, Id, PanLaw, Send, SpaceParam};
 
 /// A setting that can be taken over by hand while its lane plays.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -112,6 +112,8 @@ fn lane(e: &Envelope, session_rate: u32, out_rate: u32) -> ParamLane {
 pub struct StripAuto {
     /// The track or bus this is for (for hand-held settings).
     pub strip: Id,
+    /// How the pan lane divides the sound.
+    pub law: PanLaw,
     volume: Option<ParamLane>,
     pan: Option<ParamLane>,
     pub params: Vec<ParamLane>,
@@ -214,9 +216,10 @@ impl StripAuto {
             };
             self.vol.push(v);
             let p = match &self.pan {
-                Some(l) => {
-                    super::graph::balance(f64::from(held_pan.unwrap_or_else(|| l.value_at(at))))
-                }
+                Some(l) => super::graph::balance(
+                    f64::from(held_pan.unwrap_or_else(|| l.value_at(at))),
+                    self.law,
+                ),
                 None => [1.0, 1.0],
             };
             self.pan_lr.push(p);

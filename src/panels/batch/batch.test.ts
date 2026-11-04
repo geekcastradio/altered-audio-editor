@@ -67,10 +67,13 @@ describe("Batch Convert", () => {
     expect(sanitizeBatch({ naming: "affix", template: "{date} {name}", process: "Podcast Voice" })).toMatchObject({ naming: "affix", process: "Podcast Voice" });
   });
   it("keeps level settings in range and sends them only when on", () => {
-    expect(sanitizeLevel({ normalize: true, normalizeDb: 6, fadeInMs: -5, fadeOutMs: "x" })).toEqual({ normalize: true, normalizeDb: 0, fadeInMs: 0, fadeOutMs: 0 });
+    expect(sanitizeLevel({ normalize: true, normalizeDb: 6, fadeInMs: -5, fadeOutMs: "x" })).toMatchObject({ normalize: true, normalizeDb: 0, fadeInMs: 0, fadeOutMs: 0, loudness: false, loudnessLufs: -16, trim: false });
     expect(sanitizeBatch({}).level.normalize).toBe(false);
     expect(shapingFor(sanitizeLevel({}))).toBeNull();
-    expect(shapingFor({ normalize: false, normalizeDb: -1, fadeInMs: 0, fadeOutMs: 500 })).toEqual({ normalizeDb: null, fadeInMs: 0, fadeOutMs: 500 });
-    expect(shapingFor({ normalize: true, normalizeDb: -3, fadeInMs: 0, fadeOutMs: 0 })?.normalizeDb).toBe(-3);
+    const lvl = sanitizeLevel({});
+    expect(shapingFor({ ...lvl, fadeOutMs: 500 })).toMatchObject({ normalizeDb: null, fadeInMs: 0, fadeOutMs: 500, loudnessLufs: null, trimDb: null });
+    expect(shapingFor({ ...lvl, normalize: true, normalizeDb: -3 })?.normalizeDb).toBe(-3);
+    expect(shapingFor({ ...lvl, loudness: true, loudnessLufs: -19 })).toMatchObject({ loudnessLufs: -19, ceilingDb: -1 });
+    expect(shapingFor({ ...lvl, trim: true })).toMatchObject({ trimDb: -50, trimKeepMs: 150 });
   });
 });

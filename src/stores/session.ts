@@ -322,6 +322,9 @@ export interface ViewDoc {
   selection: { start: number; end: number } | null;
 }
 
+/** How a pan setting divides a sound between left and right. */
+export type PanLawId = "balance" | "constant_power";
+
 export interface SessionDoc {
   format: "altaudio.session";
   schema_version: number;
@@ -329,6 +332,8 @@ export interface SessionDoc {
   name: string;
   sample_rate: number;
   bit_depth: number;
+  /** Missing means "balance", the law older files were mixed with. */
+  pan_law?: PanLawId;
   media: MediaRefDoc[];
   tracks: TrackDoc[];
   /** Bus tracks, in mixer order. */
@@ -519,6 +524,7 @@ export type Op =
   | { op: "remove_clips"; ids: string[] }
   | { op: "set_sample_rate"; sample_rate: number; exact?: number[] }
   | { op: "set_session_info"; name?: string; bit_depth?: number }
+  | { op: "set_pan_law"; pan_law: PanLawId }
   | { op: "set_clips"; changes: ClipChange[] }
   | { op: "add_markers"; markers: MarkerDoc[] }
   | { op: "remove_markers"; ids: string[] }

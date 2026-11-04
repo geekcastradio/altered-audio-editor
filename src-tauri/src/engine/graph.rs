@@ -40,7 +40,7 @@ use std::sync::Arc;
 use super::fx::{swap_fx, Fx};
 use super::render::{ChainUpdate, Renderer};
 use crate::dsp::effects::Delay;
-use crate::session::model::{ChannelLayout, EffectChain, Id, Session, Tempo};
+use crate::session::model::{ChannelLayout, EffectChain, Id, PanLaw, Session, Tempo};
 use crate::session::routing::{self, Node};
 
 /// Levels for one track or bus, as left and right multipliers on the
@@ -128,14 +128,12 @@ fn db(v: f64) -> f32 {
     10f64.powf(v.clamp(-96.0, 24.0) / 20.0) as f32
 }
 
-/// Pan as a balance: centered plays both sides at full level, and
-/// panning turns the far side down, so a centered voice plays at
-/// exactly the level the fader shows.
-pub fn balance(pan: f64) -> [f32; 2] {
-    let pan = (pan.clamp(-100.0, 100.0) / 100.0) as f32;
-    let left = if pan > 0.0 { 1.0 - pan } else { 1.0 };
-    let right = if pan < 0.0 { 1.0 + pan } else { 1.0 };
-    [left, right]
+/// Pan as left and right gains. Under the Balance law a centered voice
+/// plays both sides at full level and panning turns the far side down,
+/// so a centered voice plays at exactly the level the fader shows. Under
+/// the Constant Power law the center is 3 dB down on each side.
+pub fn balance(pan: f64, law: PanLaw) -> [f32; 2] {
+    law.gains(pan.clamp(-100.0, 100.0) / 100.0)
 }
 
 /// Who can be heard, with mute and solo. With nothing soloed, everything
@@ -216,7 +214,11 @@ pub fn levels(s: &Session) -> Levels {
         let on = if heard { sign } else { 0.0 };
         let fader = db(volume_db);
         // In a 3D Space session the spot does what the pan would.
-        let [l, r] = if space { [1.0, 1.0] } else { balance(pan) };
+        let [l, r] = if space {
+            [1.0, 1.0]
+        } else {
+            balance(pan, s.pan_law)
+        };
         NodeLevel {
             main: [on * fader * l, on * fader * r],
             sends: sends
@@ -224,7 +226,7 @@ pub fn levels(s: &Session) -> Levels {
                 .map(|x| {
                     let g = if x.enabled { on * db(x.level_db) } else { 0.0 };
                     let g = if x.pre_fader { g } else { g * fader };
-                    let [l, r] = balance(x.pan);
+                    let [l, r] = balance(x.pan, s.pan_law);
                     [g * l, g * r]
                 })
                 .collect(),
@@ -473,6 +475,7 @@ impl Graph {
                 )
                 .map(|mut a| {
                     a.strip = t.id;
+                    a.law = s.pan_law;
                     a
                 }),
                 ..Strip::default()
@@ -493,6 +496,7 @@ impl Graph {
                     )
                     .map(|mut a| {
                         a.strip = b.id;
+                        a.law = s.pan_law;
                         a
                     }),
                     ..Strip::default()
@@ -1519,6 +1523,20 @@ mod tests {
         let meters = m.graph().take_meters();
         assert!((meters.buses[0][0] - 0.5).abs() < 0.01, "{meters:?}");
         assert!(meters.bus_chains[0].is_some());
+    }
+
+    #[test]
+    fn the_pan_law_decides_the_level_at_the_center() {
+        let mut s = Session::new("t", RATE);
+        s.tracks.push(Track::new("t", ChannelLayout::Stereo));
+        let balanced = levels(&s).tracks[0].main;
+        assert_eq!(balanced, [1.0, 1.0]);
+        s.pan_law = PanLaw::ConstantPower;
+        let [l, r] = levels(&s).tracks[0].main;
+        assert!((l - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-6 && (r - l).abs() < 1e-6);
+        s.tracks[0].pan = 100.0;
+        let [l, r] = levels(&s).tracks[0].main;
+        assert!(l.abs() < 1e-6 && (r - 1.0).abs() < 1e-6);
     }
 
     #[test]

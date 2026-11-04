@@ -57,6 +57,10 @@ pub struct Session {
     /// Bus tracks, top to bottom.
     pub buses: Vec<Bus>,
     pub master: MasterTrack,
+    /// How a pan setting divides a sound between left and right. Files from before this
+    /// setting use the balance law they were mixed with.
+    #[serde(default, skip_serializing_if = "PanLaw::is_default")]
+    pub pan_law: PanLaw,
     /// Tempo and meter. MIDI clips and notes are placed in beats, so they
     /// follow it. Files from before MIDI tracks get the default.
     #[serde(default, skip_serializing_if = "Tempo::is_default")]
@@ -108,6 +112,7 @@ impl Session {
             tracks: Vec::new(),
             buses: Vec::new(),
             master: MasterTrack::default(),
+            pan_law: PanLaw::default(),
             tempo: Tempo::default(),
             space: None,
             markers: Vec::new(),
@@ -414,6 +419,39 @@ pub struct MediaRef {
     pub channels: u16,
     /// Length in samples at the file's own rate.
     pub length: u64,
+}
+
+/// How panning shares a sound between the two speakers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PanLaw {
+    // Centered plays both sides at full level; panning turns the far side down.
+    #[default]
+    Balance,
+    // Centered plays both sides 3 dB down, so a sound keeps the same loudness as it moves.
+    ConstantPower,
+}
+
+impl PanLaw {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Gains for left and right at `pan`, from -1 (all left) to 1 (all right).
+    pub fn gains(self, pan: f64) -> [f32; 2] {
+        let pan = pan.clamp(-1.0, 1.0) as f32;
+        match self {
+            Self::Balance => {
+                let left = if pan > 0.0 { 1.0 - pan } else { 1.0 };
+                let right = if pan < 0.0 { 1.0 + pan } else { 1.0 };
+                [left, right]
+            }
+            Self::ConstantPower => {
+                let angle = (pan + 1.0) * std::f32::consts::FRAC_PI_4;
+                [angle.cos().max(0.0), angle.sin().max(0.0)]
+            }
+        }
+    }
 }
 
 /// Mono or stereo. More layouts can be added without a version bump.
@@ -1299,6 +1337,35 @@ pub struct EpisodeMetadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pan_laws_share_the_sound_as_named() {
+        assert_eq!(PanLaw::Balance.gains(0.0), [1.0, 1.0]);
+        assert_eq!(PanLaw::Balance.gains(0.5), [0.5, 1.0]);
+        let c = PanLaw::ConstantPower.gains(0.0);
+        assert!(
+            (c[0] - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-6 && (c[1] - c[0]).abs() < 1e-6
+        );
+        let right = PanLaw::ConstantPower.gains(1.0);
+        assert!(right[0].abs() < 1e-6 && (right[1] - 1.0).abs() < 1e-6);
+        for i in -10..=10 {
+            let g = PanLaw::ConstantPower.gains(f64::from(i) / 10.0);
+            assert!((g[0] * g[0] + g[1] * g[1] - 1.0).abs() < 1e-5);
+        }
+    }
+
+    #[test]
+    fn the_pan_law_stays_out_of_files_that_use_the_default() {
+        let mut s = Session::new("t", 48_000);
+        assert!(!serde_json::to_string(&s).unwrap().contains("pan_law"));
+        s.pan_law = PanLaw::ConstantPower;
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(json.contains("\"pan_law\":\"constant_power\""));
+        assert_eq!(
+            serde_json::from_str::<Session>(&json).unwrap().pan_law,
+            PanLaw::ConstantPower
+        );
+    }
 
     #[test]
     fn space_settings_round_trip_and_stay_out_of_plain_files() {

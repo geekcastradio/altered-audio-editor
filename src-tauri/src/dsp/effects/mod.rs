@@ -26,6 +26,7 @@ mod modulation;
 mod phase;
 pub mod phase_curve;
 mod pitch;
+mod plosive;
 pub mod print;
 mod restore;
 pub mod reverb;
@@ -195,6 +196,7 @@ pub fn catalog() -> Vec<EffectInfo> {
         dynamics::limiter_info(),
         dynamics::gate_info(),
         dynamics::deesser_info(),
+        plosive::info(),
         expander::info(),
         suite::info(),
         dynamics::leveler_info(),
@@ -445,6 +447,7 @@ pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
         "altaudio.expander" => Box::new(expander::Expander::new(&p, rate)),
         suite::SUITE => Box::new(suite::Suite::new(&p, rate)),
         "altaudio.deesser" => Box::new(DeEsser::new(&p, rate)),
+        "altaudio.plosive" => Box::new(plosive::Plosive::new(&p, rate)),
         "altaudio.speech_leveler" => Box::new(SpeechLeveler::new(&p, rate)),
         "altaudio.gain" => Box::new(Gain(db_to_gain(p.get("gain")))),
         "altaudio.noise_reducer" => Box::new(restore::noise_reducer(&p, rate)),

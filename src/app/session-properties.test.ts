@@ -32,6 +32,13 @@ describe("propertiesOp", () => {
     });
   });
 
+  it("changes the pan law, and treats a file without one as balance", () => {
+    expect(currentProperties(doc).panLaw).toBe("balance");
+    expect(propertiesOp(doc, { ...currentProperties(doc), panLaw: "constant_power" })).toEqual({ op: "set_pan_law", pan_law: "constant_power" });
+    expect(propertiesOp({ ...doc, pan_law: "constant_power" }, { ...currentProperties(doc), panLaw: "constant_power" })).toBeNull();
+    expect(propertiesOp(doc, { name: "EP 440", sampleRate: 48_000, bitDepth: 32 })).toBeNull();
+  });
+
   it("sizes a mixdown", () => {
     expect(mixdownBytes(48_000, 24)).toBe(288_000);
   });

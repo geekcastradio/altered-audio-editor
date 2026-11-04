@@ -235,6 +235,8 @@ Approved 2026-10-20 and assigned in 0.1.9 (disabled menu items hold the chord fo
 | Previous or next marker, clip or selection edge | Ctrl+Left, Ctrl+Right |
 | Previous or next marker only | Ctrl+Alt+Left, Ctrl+Alt+Right |
 | Add marker | M or * |
+| Add Retake marker | F9 |
+| Auto Heal Selection | Ctrl+U |
 | Return playhead to start on stop (toggle) | Shift+X |
 | Zoom in or out horizontally | =, - |
 | Zoom in or out vertically | Alt+=, Alt+- |

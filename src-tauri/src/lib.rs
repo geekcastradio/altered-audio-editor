@@ -172,6 +172,7 @@ pub fn run() {
             commands::wave_fx::wave_reverse_invert,
             commands::wave_fx::wave_channel_edit,
             commands::wave_fx::wave_stretch,
+            commands::wave_fx::wave_room_tone,
             commands::spectral::wave_pitch,
             commands::wave_fx::wave_pitch_edit,
             commands::session::session_get,

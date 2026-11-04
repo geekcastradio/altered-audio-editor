@@ -95,6 +95,8 @@ export interface AppSettings {
   phaseWheel: PhaseWheelPrefs;
   /** View > Music Mode: offers the music tools (MIDI tracks, the Amp Model, the metronome). Off keeps them out of the way. */
   musicMode: boolean;
+  /** Transport > Return to Start on Stop: Stop (and Space while playing) puts the playhead back where playback began. Off leaves it where playback stopped. */
+  returnOnStop: boolean;
   /** Offer the Amp Model in the Add effect menus even with Music Mode off (it is a music tool, so off by default). */
   ampModelAlways: boolean;
   /** The metronome, kept between runs. */
@@ -203,6 +205,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   timecodeFps: 30,
   phaseWheel: { size: 4096, fps: 60, a: "left", b: "right" },
   musicMode: false,
+  returnOnStop: true,
   ampModelAlways: false,
   updateCheck: false,
   lastUpdateCheck: 0,
@@ -307,6 +310,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       : d.timecodeFps,
     phaseWheel: phasePrefs(o.phaseWheel),
     musicMode: bool(o.musicMode, d.musicMode),
+    returnOnStop: bool(o.returnOnStop, d.returnOnStop),
     ampModelAlways: bool(o.ampModelAlways, d.ampModelAlways),
     updateCheck: bool(o.updateCheck, d.updateCheck),
     lastUpdateCheck:

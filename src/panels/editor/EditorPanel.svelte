@@ -1756,6 +1756,7 @@
         ...clipFlipItems(),
         act("Group Clips", "clip.group"),
         act("Ungroup Clips", "clip.ungroup"),
+        act("Merge Clips", "clip.merge"),
         {
           kind: "sub",
           label: "Audio Type",
@@ -1862,7 +1863,7 @@
         act("Show Only Tracks with Clips within Time Selection", "multitrack.vis.only-selection"),
         act("Show Only Tracks with Clips at Playhead", "multitrack.vis.only-playhead"),
         sep,
-        off("Show Only Bus Tracks", "Not built yet: bus tracks always show below the audio tracks."),
+        act("Show Only Bus Tracks", "multitrack.vis.only-bus"),
         off("Load and Save Visibility Presets", "Not built yet."),
       ]),
       sub("Insert", [

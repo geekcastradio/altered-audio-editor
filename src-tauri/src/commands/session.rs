@@ -146,6 +146,8 @@ pub const NEW_SESSION_TRACKS: usize = 6;
 pub fn fresh_session(name: String, sample_rate: u32) -> Session {
     use crate::session::model::{ChannelLayout, Track};
     let mut s = Session::new(name, sample_rate);
+    // New sessions pan with the constant power law; older files keep the balance law they were mixed with.
+    s.pan_law = crate::session::model::PanLaw::ConstantPower;
     for i in 1..=NEW_SESSION_TRACKS {
         s.tracks
             .push(Track::new(format!("Track {i}"), ChannelLayout::Stereo));

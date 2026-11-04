@@ -366,7 +366,7 @@
             <label><input type="radio" bind:group={d.app.soloExclusive} value={false} /> Several tracks can be soloed at once</label>
             <label><input type="radio" bind:group={d.app.soloExclusive} value={true} /> Soloing a track unsolos the others</label>
           </fieldset>
-          <label class="off"><select disabled><option>Balance (centre at full level)</option></select> Pan law <span class="why">Planned with buses.</span></label>
+          <label class="off"><select disabled><option>-3 dB at center</option></select> Pan law <span class="why">New sessions start with -3 dB at center. Change it per session in Session Properties.</span></label>
           <label class="off"><input type="checkbox" disabled checked /> New tracks get a color in turn <span class="why">Always on.</span></label>
         {:else if page === "Clips"}
           <label><input type="checkbox" bind:checked={d.editor.autoCrossfade} /> Crossfade clips that overlap on a track</label>

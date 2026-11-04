@@ -90,12 +90,61 @@ pub struct Shaping {
     /// Fade in and fade out at the ends of the file, in milliseconds.
     pub fade_in_ms: f64,
     pub fade_out_ms: f64,
+    /// Bring the whole file to this integrated loudness, LUFS (-40 to -5).
+    /// Never pushes the peak past `ceiling_db`; the file stays quieter
+    /// than asked when it would.
+    pub loudness_lufs: Option<f64>,
+    /// Highest peak the loudness step may produce, dBFS. -1 when unset.
+    pub ceiling_db: Option<f64>,
+    /// Cut silence from both ends: audio below this level (dBFS, -80 to
+    /// -10) counts as silence.
+    pub trim_db: Option<f64>,
+    /// Silence kept at each end after trimming, in milliseconds.
+    pub trim_keep_ms: f64,
 }
 
 impl Shaping {
     fn is_off(&self) -> bool {
-        self.normalize_db.is_none() && self.fade_in_ms <= 0.0 && self.fade_out_ms <= 0.0
+        self.normalize_db.is_none()
+            && self.fade_in_ms <= 0.0
+            && self.fade_out_ms <= 0.0
+            && self.loudness_lufs.is_none()
+            && self.trim_db.is_none()
     }
+}
+
+/// What the first pass learns about a processed file.
+struct Measured {
+    peak: f32,
+    frames: u64,
+    /// Integrated loudness, when asked for and the file is loud enough to have one.
+    lufs: Option<f64>,
+    /// First and last frame at or above the trim level, when asked for.
+    sound: Option<(u64, u64)>,
+}
+
+/// The frames to keep when trimming: the sound plus `keep` either side.
+fn trim_range(sound: Option<(u64, u64)>, keep: u64, frames: u64) -> (u64, u64) {
+    match sound {
+        Some((first, last)) => (first.saturating_sub(keep), (last + 1 + keep).min(frames)),
+        None => (0, frames),
+    }
+}
+
+/// Drops the frames of `buf` that fall outside `keep` (a half-open frame
+/// range of the whole file). `at` is the file position of `buf`'s first
+/// frame and moves on by the block's length.
+fn trim_block(buf: &mut Vec<f32>, at: &mut u64, ch: usize, keep: (u64, u64)) {
+    let frames = (buf.len() / ch) as u64;
+    let (from, to) = (*at, *at + frames);
+    *at = to;
+    if from >= keep.0 && to <= keep.1 {
+        return;
+    }
+    let lo = keep.0.clamp(from, to) - from;
+    let hi = keep.1.clamp(from, to) - from;
+    buf.truncate(hi as usize * ch);
+    buf.drain(..lo as usize * ch);
 }
 
 /// Gain for output frame `at` of `total`: fade in, fade out (both a
@@ -153,25 +202,49 @@ pub fn convert_file(
     )
 }
 
-/// Peak and length of the file after `process`, for normalize and the
-/// fade out. None when cancelled.
+/// Peak, length, loudness and where the sound is, for the file after
+/// `process`. None when cancelled.
+#[allow(clippy::too_many_arguments)]
 fn measure(
     src: &Path,
     channels: usize,
     rate: u32,
     process: Option<&EffectChain>,
+    want_lufs: bool,
+    trim_db: Option<f64>,
     cancel: &AtomicBool,
     mut progress: impl FnMut(u64),
-) -> Result<Option<(f32, u64)>, String> {
+) -> Result<Option<Measured>, String> {
     let mut reader = AudioReader::open(src, channels, None).map_err(|e| e.to_string())?;
     let mut fx = match process {
         Some(c) => FileFx::new(c, rate, channels)?,
         None => None,
     };
+    let mut meter = if want_lufs {
+        ebur128::EbuR128::new(channels as u32, rate, ebur128::Mode::I).ok()
+    } else {
+        None
+    };
+    let floor = trim_db.map(|db| 10f32.powf(db.clamp(-80.0, -10.0) as f32 / 20.0));
     let mut buf = Vec::new();
     let (mut peak, mut frames, mut read) = (0f32, 0u64, 0u64);
+    let mut sound: Option<(u64, u64)> = None;
     let mut take = |b: &[f32]| {
         peak = b.iter().fold(peak, |m, v| m.max(v.abs()));
+        if let Some(m) = meter.as_mut() {
+            let _ = m.add_frames_f32(b);
+        }
+        if let Some(floor) = floor {
+            for (i, f) in b.chunks(channels).enumerate() {
+                if f.iter().any(|v| v.abs() >= floor) {
+                    let at = frames + i as u64;
+                    sound = Some(match sound {
+                        Some((first, _)) => (first, at),
+                        None => (at, at),
+                    });
+                }
+            }
+        }
         frames += (b.len() / channels) as u64;
     };
     loop {
@@ -192,7 +265,15 @@ fn measure(
     if let Some(f) = fx.as_mut() {
         take(&f.flush());
     }
-    Ok(Some((peak, frames)))
+    let lufs = meter
+        .and_then(|m| m.loudness_global().ok())
+        .filter(|l| l.is_finite());
+    Ok(Some(Measured {
+        peak,
+        frames,
+        lufs,
+        sound,
+    }))
 }
 
 /// [`convert_file`], running `process` on the audio first when given,
@@ -225,25 +306,53 @@ pub fn convert_with(
     let ch = usize::from(info.channels.max(1));
     let rate = f64::from(info.sample_rate);
     // A first pass when the level or the exact length is needed.
-    let two_pass = shape.normalize_db.is_some() || shape.fade_out_ms > 0.0;
+    let two_pass = shape.normalize_db.is_some()
+        || shape.fade_out_ms > 0.0
+        || shape.loudness_lufs.is_some()
+        || shape.trim_db.is_some();
     let total = info.length;
-    let (gain, frames_out) = if two_pass {
-        match measure(src, ch, info.sample_rate, process, cancel, |d| {
-            progress(d.min(total) / 2, total)
-        })? {
+    let keep_frames = (shape.trim_keep_ms.max(0.0) / 1000.0 * rate) as u64;
+    let (gain, frames_out, kept) = if two_pass {
+        match measure(
+            src,
+            ch,
+            info.sample_rate,
+            process,
+            shape.loudness_lufs.is_some(),
+            shape.trim_db,
+            cancel,
+            |d| progress(d.min(total) / 2, total),
+        )? {
             None => return Ok(Converted::Cancelled),
-            Some((peak, frames)) => {
-                let gain = match shape.normalize_db {
-                    Some(db) if peak > 1e-9 => {
-                        (10f64.powf(db.clamp(-30.0, 0.0) / 20.0) / f64::from(peak)) as f32
-                    }
-                    _ => 1.0,
+            Some(m) => {
+                let kept = if shape.trim_db.is_some() {
+                    trim_range(m.sound, keep_frames, m.frames)
+                } else {
+                    (0, m.frames)
                 };
-                (gain, frames)
+                let peak = f64::from(m.peak);
+                let gain = match (shape.loudness_lufs, m.lufs) {
+                    (Some(target), Some(now)) => {
+                        let want = 10f64.powf((target.clamp(-40.0, -5.0) - now) / 20.0);
+                        let ceiling =
+                            10f64.powf(shape.ceiling_db.unwrap_or(-1.0).clamp(-30.0, 0.0) / 20.0);
+                        let safe = if peak > 1e-9 { ceiling / peak } else { want };
+                        want.min(safe) as f32
+                    }
+                    // Too quiet to measure: leave it alone rather than boost noise.
+                    (Some(_), None) => 1.0,
+                    (None, _) => match shape.normalize_db {
+                        Some(db) if peak > 1e-9 => {
+                            (10f64.powf(db.clamp(-30.0, 0.0) / 20.0) / peak) as f32
+                        }
+                        _ => 1.0,
+                    },
+                };
+                (gain, kept.1 - kept.0, kept)
             }
         }
     } else {
-        (1.0, total)
+        (1.0, total, (0, total))
     };
     let fade_in = (shape.fade_in_ms.max(0.0) / 1000.0 * rate) as u64;
     let fade_out = (shape.fade_out_ms.max(0.0) / 1000.0 * rate) as u64;
@@ -256,7 +365,12 @@ pub fn convert_with(
         let mut buf = Vec::new();
         let mut done = 0u64;
         let mut out_at = 0u64;
-        let mut shape_block = |b: &mut [f32]| {
+        let mut file_at = 0u64;
+        let trimming = shape.trim_db.is_some();
+        let mut shape_block = |b: &mut Vec<f32>| {
+            if trimming {
+                trim_block(b, &mut file_at, ch, kept);
+            }
             if !shaping {
                 return;
             }
@@ -416,6 +530,7 @@ mod tests {
             normalize_db: Some(-1.0),
             fade_in_ms: 100.0,
             fade_out_ms: 250.0,
+            ..Default::default()
         };
         let mut last = (0, 0);
         convert_with(
@@ -454,6 +569,86 @@ mod tests {
         assert!((mid - peak).abs() < 0.02, "{mid} vs {peak}");
         assert!((shape_gain(0, 100, 10, 0, 1.0)).abs() < 1e-6);
         assert!((shape_gain(50, 100, 10, 10, 2.0) - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn trim_keeps_the_sound_and_a_margin() {
+        assert_eq!(trim_range(Some((1_000, 2_999)), 200, 10_000), (800, 3_200));
+        assert_eq!(trim_range(Some((50, 9_990)), 200, 10_000), (0, 10_000));
+        assert_eq!(trim_range(None, 200, 10_000), (0, 10_000));
+        // Blocks of any size give the same result as one big block.
+        let all: Vec<f32> = (0..2_000).map(|i| i as f32).collect();
+        let mut kept = Vec::new();
+        let mut at = 0u64;
+        for chunk in all.chunks(300) {
+            let mut b = chunk.to_vec();
+            trim_block(&mut b, &mut at, 2, (150, 700));
+            kept.extend(b);
+        }
+        assert_eq!(kept, all[300..1_400].to_vec());
+    }
+
+    #[test]
+    fn trims_silence_and_brings_a_file_to_a_loudness() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("in.wav");
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 48_000,
+            bits_per_sample: 32,
+            sample_format: hound::SampleFormat::Float,
+        };
+        let mut w = hound::WavWriter::create(&src, spec).unwrap();
+        // 1 s silence, 4 s of a 997 Hz tone at -20 dBFS, 1 s silence.
+        for i in 0..6 * 48_000u32 {
+            let on = (48_000..5 * 48_000).contains(&i);
+            let v = if on {
+                0.1 * (2.0 * std::f32::consts::PI * 997.0 * i as f32 / 48_000.0).sin()
+            } else {
+                0.0
+            };
+            w.write_sample(v).unwrap();
+        }
+        w.finalize().unwrap();
+        let dest = dir.path().join("out.wav");
+        let fmt = OutputFormat {
+            kind: FormatKind::Wav,
+            bit_depth: Some(32),
+            ..Default::default()
+        };
+        let shape = Shaping {
+            loudness_lufs: Some(-16.0),
+            trim_db: Some(-60.0),
+            trim_keep_ms: 100.0,
+            ..Default::default()
+        };
+        convert_with(
+            &src,
+            &dest,
+            &fmt,
+            false,
+            None,
+            &shape,
+            &AtomicBool::new(false),
+            |_, _| {},
+        )
+        .unwrap();
+        let out: Vec<f32> = hound::WavReader::open(&dest)
+            .unwrap()
+            .samples()
+            .map(|s| s.unwrap())
+            .collect();
+        // 4 s of tone plus 100 ms either side.
+        assert!(
+            (out.len() as i64 - 4 * 48_000 - 9_600).abs() < 8,
+            "{}",
+            out.len()
+        );
+        // A mono sine at -20 dBFS peak is about -23 LUFS; it should now sit near -16
+        // (peak about -13 dBFS, under the -1 dBFS ceiling).
+        let peak = out.iter().fold(0f32, |m, v| m.max(v.abs()));
+        let db = 20.0 * peak.log10();
+        assert!((db + 13.0).abs() < 1.0, "peak {db}");
     }
 
     #[test]

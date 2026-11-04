@@ -4,7 +4,7 @@
 
 /** Choices and edit building for the Session Properties dialog. */
 
-import type { Op, SessionDoc } from "../stores/session";
+import type { Op, PanLawId, SessionDoc } from "../stores/session";
 
 export const SAMPLE_RATES = [22_050, 32_000, 44_100, 48_000, 88_200, 96_000] as const;
 
@@ -14,14 +14,22 @@ export const BIT_DEPTHS: { value: number; label: string }[] = [
   { value: 32, label: "32-bit float" },
 ];
 
+/** The ways a pan setting can divide a sound, for the Session Properties dialog. */
+export const PAN_LAWS: { value: PanLawId; label: string; hint: string }[] = [
+  { value: "constant_power", label: "-3 dB at center", hint: "A sound keeps the same loudness as it moves across the mix." },
+  { value: "balance", label: "Balance (full level at center)", hint: "Centered plays both sides at full level; panning turns the far side down." },
+];
+
 export interface SessionProperties {
   name: string;
   sampleRate: number;
   bitDepth: number;
+  /** Left out by callers that do not change it. */
+  panLaw?: PanLawId;
 }
 
 export function currentProperties(doc: SessionDoc): SessionProperties {
-  return { name: doc.name, sampleRate: doc.sample_rate, bitDepth: doc.bit_depth };
+  return { name: doc.name, sampleRate: doc.sample_rate, bitDepth: doc.bit_depth, panLaw: doc.pan_law ?? "balance" };
 }
 
 /** The edit for the changed values, or null when nothing changed. */
@@ -33,6 +41,7 @@ export function propertiesOp(doc: SessionDoc, next: SessionProperties): Op | nul
   if (next.bitDepth !== doc.bit_depth) info.bit_depth = next.bitDepth;
   if (info.name !== undefined || info.bit_depth !== undefined) ops.push(info);
   if (next.sampleRate !== doc.sample_rate) ops.push({ op: "set_sample_rate", sample_rate: next.sampleRate });
+  if (next.panLaw !== undefined && next.panLaw !== (doc.pan_law ?? "balance")) ops.push({ op: "set_pan_law", pan_law: next.panLaw });
   if (ops.length === 0) return null;
   return ops.length === 1 ? ops[0]! : { op: "batch", ops };
 }

@@ -16,6 +16,7 @@ pub mod meters;
 pub mod musicfit;
 pub mod nam;
 pub mod pitchedit;
+pub mod roomtone;
 pub mod space;
 pub mod spectral;
 pub mod stft;

@@ -14,6 +14,7 @@
     BIT_DEPTHS,
     currentProperties,
     mixdownBytes,
+    PAN_LAWS,
     SAMPLE_RATES,
     type SessionProperties,
   } from "./session-properties";
@@ -31,6 +32,7 @@
   let name = $state(start.name);
   let sampleRate = $state(start.sampleRate);
   let bitDepth = $state(start.bitDepth);
+  let panLaw = $state(start.panLaw ?? "balance");
   let input = $state<HTMLInputElement | null>(null);
 
   const rates = $derived(
@@ -49,7 +51,7 @@
   });
 
   function done() {
-    if (name.trim()) onDone({ name: name.trim(), sampleRate, bitDepth });
+    if (name.trim()) onDone({ name: name.trim(), sampleRate, bitDepth, panLaw });
   }
 
   function key(e: KeyboardEvent) {
@@ -98,6 +100,15 @@
         </select>
       </label>
     </div>
+    <label>
+      <span>Pan law</span>
+      <select bind:value={panLaw}>
+        {#each PAN_LAWS as l (l.value)}
+          <option value={l.value}>{l.label}</option>
+        {/each}
+      </select>
+    </label>
+    <p class="note">{PAN_LAWS.find((l) => l.value === panLaw)?.hint}{panLaw !== start.panLaw ? " Changing it changes how every panned track sounds in the mix." : ""}</p>
     {#if rateChanged}
       <p class="note">
         Clips keep their place in time. Files at a different rate are converted as they play, so nothing on disk

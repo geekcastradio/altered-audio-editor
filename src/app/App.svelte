@@ -56,6 +56,7 @@
   import { PreviewMeter } from "../stores/preview-meter";
   import QuickPassPanel from "../panels/quickpass/QuickPassPanel.svelte";
   import BatchConvertPanel from "../panels/batch/BatchConvertPanel.svelte";
+  import SampleSettingsDialog from "../panels/batch/SampleSettingsDialog.svelte";
   import { trackNameFromFile } from "./track-names";
   import MixerPanel from "../panels/mixer/MixerPanel.svelte";
   import TimeInfoPanel from "../panels/time-info/TimeInfoPanel.svelte";
@@ -74,6 +75,8 @@
   import PromptDialog from "./PromptDialog.svelte";
   import ExportProgress from "./ExportProgress.svelte";
   import LoudnessDialog from "./LoudnessDialog.svelte";
+  import MatchEqDialog from "./MatchEqDialog.svelte";
+  import { matchEq, type MatchFit } from "./match-eq";
   import AnalysisDialog from "./AnalysisDialog.svelte";
   import TagsDialog from "./TagsDialog.svelte";
   import { TAGGABLE } from "./tags";
@@ -225,6 +228,7 @@
     previewStatus,
     probeMedia,
     sessionExportSesx,
+    waveRoomTone,
     waveStretch,
     wavePitchEdit,
     waveReverseInvert,
@@ -232,6 +236,8 @@
     automationLiveClear,
     controllerEvents,
     controllerOpen,
+    batchConvert,
+    type BatchProgress,
   } from "./core";
   import { Controller } from "./controller/controller";
   import ControllersDialog from "./ControllersDialog.svelte";
@@ -860,6 +866,7 @@
       }),
       mk("multitrack.vis.show-all", "Show All Tracks", () => true, () => tracks().some((t) => t.hidden), "No tracks are hidden."),
       mk("multitrack.vis.only-audio", "Show Only Audio Tracks", () => true, () => tracks().some((t) => t.hidden), "Bus tracks always show below the audio tracks."),
+      mk("multitrack.vis.only-bus", "Show Only Bus Tracks", () => false, () => (session.current?.buses ?? []).length > 0 && tracks().some((t) => !t.hidden), "Add a bus track first, or the audio tracks are already hidden."),
       mk("multitrack.vis.only-clips", "Show Only Tracks with Clips", (t) => t.clips.length > 0),
       mk("multitrack.vis.only-selection", "Show Only Tracks with Clips in Selection", (t) => {
         const s = timeSel();
@@ -1806,6 +1813,43 @@
     }
   }
 
+  // Effects > Match EQ: tone of one track moved toward another's, as a Parametric EQ on the first.
+  let matchOpen = $state(false);
+
+  async function measureEqMatch(sourceId: string, referenceId: string): Promise<MatchFit | string> {
+    const r = timeSel();
+    const range = r ? { range: [r.start, r.end] as [number, number] } : {};
+    try {
+      const a = await analyzeAudio({ track: sourceId, ...range });
+      const b = await analyzeAudio({ track: referenceId, ...range });
+      if (a.cancelled || b.cancelled) return "Cancelled. Nothing changed.";
+      const fit = matchEq({ hz: a.spectrumHz, db: a.spectrumDb }, { hz: b.spectrumHz, db: b.spectrumDb });
+      return fit ?? "There was not enough audio on those tracks to measure.";
+    } catch (e) {
+      return String(e);
+    }
+  }
+
+  async function addMatchEq(trackId: string, fit: MatchFit) {
+    const doc = session.current;
+    const track = doc?.tracks.find((t) => t.id === trackId);
+    if (!doc || !track) return;
+    fxCatalog ??= await effectsCatalog();
+    const info = fxCatalog.find((e) => e.id === "altaudio.parametric_eq");
+    if (!info) return;
+    const slot = { ...newSlot(info, uuid()), preset: "Match EQ" };
+    slot.params = { ...slot.params, ...fit.params };
+    const next = addSlot(chainOf(track.effects), slot);
+    if (!next) {
+      showNotice("That Voice Chain is full: it holds 16 effects.");
+      return;
+    }
+    await session.edit("Match EQ", { op: "set_effects", target: { kind: "track", id: trackId }, chain: next }, sessionHistory);
+    matchOpen = false;
+    effectWindowRequest.set(slot.id);
+    showNotice(`Added a Parametric EQ to ${track.name}. Listen with it on and off; adjust the bands if a word sounds off.`);
+  }
+
   // Analysis menu: spectrum, statistics and histogram of the mix or the time selection.
   let tagsEdit = $state<{ path: string; tags: FileTags } | null>(null);
   let analysis = $state<{ report: AnalysisReport | null; progress: number | null; tab: AnalysisTab; scope: string } | null>(null);
@@ -1911,6 +1955,31 @@
   let colorFor = $state<{ ids: string[]; current: string | null } | null>(null);
 
   let propertiesOpen = $state(false);
+  // File > Convert Sample Type: the Sample Settings choices, applied to the open file as a new file beside it.
+  let convertReq = $state<{ source: string; format: OutputFormat } | null>(null);
+  async function runConvertSampleType(format: OutputFormat) {
+    const req = convertReq;
+    convertReq = null;
+    if (!req || exporting) return;
+    const cut = Math.max(req.source.lastIndexOf("/"), req.source.lastIndexOf("\\"));
+    const dir = cut >= 0 ? req.source.slice(0, cut + 1) : "";
+    const stem = req.source.slice(cut + 1).replace(/\.[^.]+$/, "");
+    const dest = `${dir}${stem} (converted).${extensionOf(format.kind)}`;
+    const id = crypto.randomUUID();
+    exporting = { title: "Converting", progress: 0 };
+    const off = await listen<BatchProgress>("batch-progress", (e) => {
+      if (exporting && e.payload.id === id) exporting = { ...exporting, progress: e.payload.progress };
+    });
+    try {
+      const r = await batchConvert([{ id, source: req.source, dest }], $state.snapshot(format), false, true);
+      showNotice(r.done > 0 ? `Saved ${dest}.` : r.failed > 0 ? "The file could not be converted." : "Conversion stopped.");
+    } catch (e) {
+      showError(e);
+    } finally {
+      off();
+      exporting = null;
+    }
+  }
 
   async function applyProperties(next: SessionProperties | null) {
     propertiesOpen = false;
@@ -2505,6 +2574,7 @@
     "limiter",
     "breath_gate",
     "deesser",
+    "plosive",
     "speech_leveler",
     "parametric_eq",
     "hum_cut",
@@ -3020,6 +3090,31 @@
     }
   }
 
+  /** Effects > Fill with Room Tone: replaces the selection with room tone copied from the quietest part of the file. */
+  async function waveRoomToneFill() {
+    const d = wave.current;
+    const r = waveSel();
+    if (!d || !r || exporting) return;
+    exporting = { title: "Finding room tone", progress: 0 };
+    let off: (() => void) | null = null;
+    try {
+      off = await listen<{ done: number; total: number }>("export-progress", (e) => {
+        if (exporting) exporting = { ...exporting, progress: e.payload.total > 0 ? e.payload.done / e.payload.total : 0 };
+      });
+      const res = await waveRoomTone(r[0], r[1]);
+      const label = "Fill with Room Tone";
+      await waveEdit(label, replaceRange(wave.current ?? d, res.start, res.end, res.media, label, uuid), [res.start, res.end]);
+      const secs = (r[1] - r[0]) / d.sample_rate;
+      showNotice(`${label}: ${secs.toFixed(2)} s filled with tone from ${(res.sourceStart / d.sample_rate).toFixed(1)} s into the file (${res.sourceDb.toFixed(0)} dBFS). Undo takes it back.`);
+    } catch (e) {
+      if (String(e) === "Cancelled.") showNotice("Cancelled. Nothing changed.");
+      else showError(e);
+    } finally {
+      off?.();
+      exporting = null;
+    }
+  }
+
   async function waveAmplify(db: number) {
     const d = wave.current;
     const r = waveAll();
@@ -3144,7 +3239,11 @@
   /** Space bar: stops when recording or playing, otherwise plays (the multitrack, or the open Waveform file). */
   function spaceToggle(t: TransportStore): Promise<void> {
     if (take) return finishRecord();
-    return t.current.playing ? t.stop() : t.toggle();
+    return t.current.playing ? stopTransport(t) : t.toggle();
+  }
+  /** Stop: back to where playback began, or, with Return to Start on Stop off, where it stopped. */
+  function stopTransport(t: TransportStore): Promise<void> {
+    return t.current.playing && !settings.current.returnOnStop ? t.pause() : t.stop();
   }
 
   // Recording. Multitrack: every armed track records its input into
@@ -3664,7 +3763,7 @@
       ...["fx.spectrum.reduce-12", "fx.spectrum.reduce-24", "fx.spectrum.remove", "fx.spectrum.repair"].map((id) =>
         actions.register({ id, run: () => {}, enabled: () => false, reason: () => NOT_WAVE }),
       ),
-      ...["edit.mix-paste", "edit.crop", "fx.invert", "fx.reverse", "fx.silence", "fx.fade-in", "fx.fade-out", "fx.amplify", "fx.normalize", "fx.pitch-tune", "fx.pitch-curve"].map((id) =>
+      ...["edit.mix-paste", "edit.crop", "fx.invert", "fx.reverse", "fx.silence", "fx.room-tone", "fx.fade-in", "fx.fade-out", "fx.amplify", "fx.normalize", "fx.pitch-tune", "fx.pitch-curve"].map((id) =>
         actions.register({ id, run: () => {}, enabled: () => false, reason: () => NOT_WAVE }),
       ),
       ov(waveFocus, {
@@ -3849,6 +3948,12 @@
         reason: () => NEED_WAVE_SEL,
       }),
       ov(waveIsOpen, {
+        id: "fx.room-tone",
+        run: () => waveRoomToneFill(),
+        enabled: () => waveSel() !== null && exporting === null,
+        reason: () => (exporting ? "Wait for the current job to finish." : NEED_WAVE_SEL),
+      }),
+      ov(waveIsOpen, {
         id: "fx.fade-in",
         run: async () => {
           const r = waveSel();
@@ -3919,6 +4024,16 @@
         },
       }),
       ov(waveIsOpen, {
+        id: "edit.marker.retake",
+        run: async () => {
+          const d = wave.current;
+          if (!d) return;
+          const m = newMarker(uuid(), nextMarkerName(d.markers, "Retake"), wavePlayhead());
+          await waveEdit("Add Retake Marker", { op: "add_markers", markers: [m] });
+          if (take) showNotice("Retake marked.");
+        },
+      }),
+      ov(waveIsOpen, {
         id: "edit.marker.subclip",
         run: async () => {
           const d = wave.current;
@@ -3964,7 +4079,7 @@
         reason: () => NEED_WAVE_SEL,
       }),
       ov(waveIsOpen, { id: "multitrack.play-pause", run: () => spaceToggle(waveTransport) }),
-      ov(waveIsOpen, { id: "multitrack.stop", run: () => (take ? finishRecord() : waveTransport.stop()) }),
+      ov(waveIsOpen, { id: "multitrack.stop", run: () => (take ? finishRecord() : stopTransport(waveTransport)) }),
       ov(waveIsOpen, { id: "transport.go-start", run: () => waveTransport.seek(0) }),
       ov(waveIsOpen, { id: "transport.go-end", run: () => waveTransport.seek(wave.current ? sessionEnd(wave.current) : 0) }),
       ov(waveIsOpen, { id: "view.zoom-in", run: () => waveZoom.run?.("in") }),
@@ -4257,7 +4372,7 @@
         run: () => toggleRecord(),
         label: () => (take ? "Stop Recording" : "Record"),
       }),
-      actions.register({ id: "multitrack.stop", run: () => (take ? finishRecord() : transport.stop()) }),
+      actions.register({ id: "multitrack.stop", run: () => (take ? finishRecord() : stopTransport(transport)) }),
       actions.register({
         id: "multitrack.properties",
         enabled: () => session.current !== null,
@@ -4272,6 +4387,14 @@
           addTracksOpen = true;
         },
         enabled: () => session.current !== null,
+      }),
+      actions.register({
+        id: "multitrack.return-on-stop",
+        run: () => {
+          settings.set({ ...settings.current, returnOnStop: !settings.current.returnOnStop });
+          actions.invalidate();
+        },
+        checked: () => settings.current.returnOnStop,
       }),
       actions.register({ id: "multitrack.add.stereo", run: () => addTrack(true) }),
       actions.register({ id: "multitrack.add.midi", run: () => addMidiTrack(), enabled: () => session.current !== null, visible: () => settings.current.musicMode }),
@@ -4656,6 +4779,14 @@
         }),
       ),
       actions.register({
+        id: "fx.match-eq",
+        run: () => {
+          matchOpen = true;
+        },
+        enabled: () => !inWave() && (session.current?.tracks.length ?? 0) >= 2,
+        reason: () => (inWave() ? "Match EQ works between two tracks in the Multitrack editor." : "Needs two tracks with audio on them."),
+      }),
+      actions.register({
         id: "fx.loudness-match",
         run: () => openLoudnessMatch(),
         enabled: () => exporting === null && lm === null && (session.current?.tracks.some((t) => t.clips.length > 0) ?? false),
@@ -4674,6 +4805,17 @@
           if (!doc) return;
           const m = newMarker(uuid(), nextMarkerName(doc.markers, settings.current.markerName), playheadNow());
           await session.edit("Add Marker", { op: "add_markers", markers: [m] }, sessionHistory);
+        },
+        enabled: () => session.current !== null,
+      }),
+      actions.register({
+        id: "edit.marker.retake",
+        run: async () => {
+          const doc = session.current;
+          if (!doc) return;
+          const m = newMarker(uuid(), nextMarkerName(doc.markers, "Retake"), playheadNow());
+          await session.edit("Add Retake Marker", { op: "add_markers", markers: [m] }, sessionHistory);
+          if (take) showNotice("Retake marked.");
         },
         enabled: () => session.current !== null,
       }),
@@ -4969,6 +5111,15 @@
           checked: () => boardNow === n,
         }),
       ),
+      actions.register({
+        id: "file.convert-sample-type",
+        run: () => {
+          const f = waveFile.current();
+          if (f) convertReq = { source: f.path, format: { ...DEFAULT_FORMAT } };
+        },
+        enabled: () => exporting === null && waveIsOpen(),
+        reason: () => (exporting ? "Wait for the current export to finish." : "Open an audio file in the Waveform editor first. The saved file on disk is converted into a new file beside it."),
+      }),
       actions.register({
         id: "edit.repeat-last",
         run: async () => {
@@ -5714,6 +5865,17 @@
   />
 {/if}
 
+{#if matchOpen && session.current}
+  <MatchEqDialog
+    tracks={session.current.tracks.map((t) => ({ id: t.id, name: t.name }))}
+    initialSource={editor.current().selectedTrack}
+    scope={timeSel() ? "the time selection" : "the whole session"}
+    onMatch={measureEqMatch}
+    onApply={(id, fit) => void addMatchEq(id, fit)}
+    onClose={() => (matchOpen = false)}
+  />
+{/if}
+
 {#if loud}
   <LoudnessDialog
     report={loud.report}
@@ -5890,6 +6052,10 @@
       r?.(v);
     }}
   />
+{/if}
+
+{#if convertReq}
+  <SampleSettingsDialog format={convertReq.format} onApply={(f) => void runConvertSampleType(f)} onClose={() => (convertReq = null)} />
 {/if}
 
 {#if propertiesOpen && session.current}

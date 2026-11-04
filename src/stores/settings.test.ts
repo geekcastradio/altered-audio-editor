@@ -16,6 +16,9 @@ describe("app settings", () => {
     expect(s.autosaveMinutes).toBe(1);
     expect(s.meterRedDb).toBe(-9);
     expect(s.musicMode).toBe(false);
+    expect(s.returnOnStop).toBe(true);
+    expect(sanitizeSettings({ returnOnStop: false }).returnOnStop).toBe(false);
+    expect(sanitizeSettings({ returnOnStop: "no" }).returnOnStop).toBe(true);
     expect(sanitizeSettings({ musicMode: true }).musicMode).toBe(true);
     expect(sanitizeSettings({ ampModelAlways: true }).ampModelAlways).toBe(true);
     expect(sanitizeSettings({}).ampModelAlways).toBe(false);

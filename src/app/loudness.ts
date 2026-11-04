@@ -21,6 +21,12 @@ export interface LoudnessReport {
   samplePeak: number;
   seconds: number;
   cancelled: boolean;
+  /** Average level (RMS) of the mix, dBFS. Missing in reports from older cores. */
+  rms?: number | null;
+  /** The room tone: quietest half second that is not digital silence, dBFS. */
+  noiseFloor?: number | null;
+  /** Seconds of digital silence. */
+  silentSeconds?: number;
 }
 
 export interface LoudnessTarget {
