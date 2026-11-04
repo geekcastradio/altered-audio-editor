@@ -1729,6 +1729,10 @@
             }
           ]
         },
+        "sync_lock": {
+          "description": "Ripple edits (closing a gap, ripple delete) on a track that has this\non also move the clips of every other track that has it on, so the\ntracks stay in step. Left out of the file when off.",
+          "type": "boolean"
+        },
         "volume_db": {
           "type": "number",
           "format": "double"

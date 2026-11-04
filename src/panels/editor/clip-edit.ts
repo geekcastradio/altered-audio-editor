@@ -665,6 +665,55 @@ export function gapAt(doc: SessionDoc, trackId: string, at: number): { start: nu
   return end === Infinity || end <= start ? null : { start, end };
 }
 
+/** The empty span around `at` on a track, running on forever when no clip follows. Null if `at` is inside a clip. */
+function emptySpan(doc: SessionDoc, trackId: string, at: number): { start: number; end: number } | null {
+  const t = doc.tracks.find((x) => x.id === trackId);
+  if (!t) return null;
+  const media = mediaOf(doc);
+  let start = 0;
+  let end = Infinity;
+  for (const c of t.clips) {
+    const e = clipEnd(c, media, doc.sample_rate);
+    if (at >= c.start && at < e) return null;
+    if (e <= at) start = Math.max(start, e);
+    if (c.start > at) end = Math.min(end, c.start);
+  }
+  return { start, end };
+}
+
+/**
+ * The tracks a ripple edit on `trackId` moves: that track alone, or, when it has sync lock on,
+ * every track that has it on (so they stay in step).
+ */
+export function rippleTracks(doc: SessionDoc, trackId: string): string[] {
+  const t = doc.tracks.find((x) => x.id === trackId);
+  if (!t?.sync_lock) return [trackId];
+  return doc.tracks.filter((x) => x.sync_lock || x.id === trackId).map((x) => x.id);
+}
+
+/**
+ * What closing the gap at `at` on `trackId` removes, and from which tracks. The range is the empty
+ * space the synced tracks share, so no track loses audio. "blocked" when the track has a gap there
+ * but another synced track has a clip (or MIDI) in the way; null when there is no gap to close.
+ */
+export function gapToClose(doc: SessionDoc, trackId: string, at: number): { start: number; end: number; tracks: string[] } | "blocked" | null {
+  const own = gapAt(doc, trackId, at);
+  if (!own) return null;
+  const tracks = rippleTracks(doc, trackId);
+  let { start, end } = own;
+  for (const id of tracks) {
+    const t = doc.tracks.find((x) => x.id === id);
+    // MIDI clips are not moved by a ripple yet, so a synced MIDI track would drift out of step.
+    if (t && (t.midi_clips?.length ?? 0) > 0) return "blocked";
+    if (id === trackId) continue;
+    const s = emptySpan(doc, id, at);
+    if (!s) return "blocked";
+    start = Math.max(start, s.start);
+    end = Math.min(end, s.end);
+  }
+  return end > start ? { start, end, tracks } : "blocked";
+}
+
 /** Trims clips so they fit inside `a` to `b`. Clips outside the range are left alone. */
 export function trimToRange(doc: SessionDoc, ids: Iterable<string>, a: number, b: number): ClipChange[] {
   const media = mediaOf(doc);

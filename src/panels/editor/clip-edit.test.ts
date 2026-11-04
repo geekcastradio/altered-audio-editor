@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { ClipDoc, SessionDoc, TrackDoc } from "../../stores/session";
-import { clipsAt, copyClips, copyMoved, fadeClip, gapAt, LockedError, MIN_CLIP, moveClips, nearest, pasteClips, previewTracks, rippleDeleteClips, rippleDeleteRange, snapTargets, trimToRange, splitClips, trimClip, trimToPlayhead, withCrossfades, fadeShapeChanges, withGroups, withLayers, TOP_LAYER, withVolume, withEnvelope, envelopeId, loopChanges } from "./clip-edit";
+import { clipsAt, copyClips, copyMoved, fadeClip, gapAt, gapToClose, rippleTracks, LockedError, MIN_CLIP, moveClips, nearest, pasteClips, previewTracks, rippleDeleteClips, rippleDeleteRange, snapTargets, trimToRange, splitClips, trimClip, trimToPlayhead, withCrossfades, fadeShapeChanges, withGroups, withLayers, TOP_LAYER, withVolume, withEnvelope, envelopeId, loopChanges } from "./clip-edit";
 
 const fade = () => ({ length: 0, shape: "linear" as const, curve: 0 });
 
@@ -206,6 +206,37 @@ describe("gaps, ranges and the clipboard", () => {
     expect(gapAt(doc, "A", 50_000)).toEqual({ start: 48_000, end: 60_000 });
     expect(gapAt(doc, "A", 10)).toBeNull();
     expect(gapAt(doc, "A", 200_000)).toBeNull();
+  });
+
+  it("closes a gap on its own track when sync lock is off", () => {
+    const d = session([track("A", [clip("a", 0), clip("b", 60_000)]), track("B", [clip("c", 0), clip("d", 120_000)])]);
+    expect(gapToClose(d, "A", 50_000)).toEqual({ start: 48_000, end: 60_000, tracks: ["A"] });
+    expect(gapToClose(d, "A", 10)).toBeNull();
+  });
+
+  it("closes only the empty space the synced tracks share", () => {
+    const lock = (t: TrackDoc): TrackDoc => ({ ...t, sync_lock: true });
+    const d = session([
+      lock(track("A", [clip("a", 0), clip("b", 60_000)])),
+      lock(track("B", [clip("c", 0), clip("d", 120_000)])),
+      track("C", [clip("e", 50_000)]),
+    ]);
+    // B is empty from 48,000 to 120,000, so the common gap is A's: 48,000 to 60,000.
+    expect(gapToClose(d, "A", 50_000)).toEqual({ start: 48_000, end: 60_000, tracks: ["A", "B"] });
+    // Clicking B's gap shrinks to what A also leaves empty. C has no sync lock and is left alone.
+    expect(gapToClose(d, "B", 55_000)).toEqual({ start: 48_000, end: 60_000, tracks: ["A", "B"] });
+  });
+
+  it("refuses when a synced track has audio in the way", () => {
+    const lock = (t: TrackDoc): TrackDoc => ({ ...t, sync_lock: true });
+    const d = session([lock(track("A", [clip("a", 0), clip("b", 60_000)])), lock(track("B", [clip("c", 40_000)]))]);
+    expect(gapToClose(d, "A", 50_000)).toBe("blocked");
+  });
+
+  it("an unlocked track never takes the others with it", () => {
+    const d = session([track("A", [clip("a", 0), clip("b", 60_000)]), { ...track("B", [clip("c", 0), clip("d", 100_000)]), sync_lock: true }]);
+    expect(rippleTracks(d, "A")).toEqual(["A"]);
+    expect(rippleTracks(d, "B")).toEqual(["B"]);
   });
 
   it("trims clips to a range", () => {

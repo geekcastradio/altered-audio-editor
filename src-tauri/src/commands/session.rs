@@ -149,8 +149,10 @@ pub fn fresh_session(name: String, sample_rate: u32) -> Session {
     // New sessions pan with the constant power law; older files keep the balance law they were mixed with.
     s.pan_law = crate::session::model::PanLaw::ConstantPower;
     for i in 1..=NEW_SESSION_TRACKS {
-        s.tracks
-            .push(Track::new(format!("Track {i}"), ChannelLayout::Stereo));
+        let mut t = Track::new(format!("Track {i}"), ChannelLayout::Stereo);
+        // New sessions keep their tracks in step when a gap is closed; older files are left as they were.
+        t.sync_lock = true;
+        s.tracks.push(t);
     }
     s
 }
@@ -761,6 +763,15 @@ mod tests {
         assert_eq!(s.tracks[5].name, "Track 6");
         assert!(s.tracks.iter().all(|t| t.clips.is_empty()));
         assert_eq!(s.sample_rate, 44_100);
+    }
+
+    #[test]
+    fn new_sessions_start_with_sync_lock_on_and_plain_tracks_without() {
+        let s = fresh_session("New".into(), 44_100);
+        assert!(s.tracks.iter().all(|t| t.sync_lock));
+        let t =
+            crate::session::model::Track::new("A", crate::session::model::ChannelLayout::Stereo);
+        assert!(!t.sync_lock);
     }
 
     #[test]
