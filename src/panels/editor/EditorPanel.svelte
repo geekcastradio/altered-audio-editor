@@ -2004,6 +2004,23 @@
         checked: !!track.sync_lock,
         run: () => setTrack(track, { sync_lock: !track.sync_lock }, track.sync_lock ? "Turn Sync Lock Off" : "Turn Sync Lock On"),
       },
+      {
+        kind: "sub",
+        label: "Mix Role",
+        items: (
+          [
+            ["normal", "None"],
+            ["foreground", "Foreground"],
+            ["background", "Background"],
+            ["ducked", "Ducked"],
+          ] as const
+        ).map(([role, label]) => ({
+          kind: "item" as const,
+          label,
+          checked: (track.mix_role ?? "normal") === role,
+          run: () => setTrack(track, { mix_role: role }, role === "normal" ? "Clear Mix Role" : `Mix Role: ${label}`),
+        })),
+      },
       { kind: "item", label: "Duplicate Track", run: () => { editor.selectTrack(track.id); run("multitrack.duplicate-track"); } },
       { kind: "item", label: "Delete Track", run: () => { editor.selectTrack(track.id); run("multitrack.delete-track"); } },
       { kind: "sep" },

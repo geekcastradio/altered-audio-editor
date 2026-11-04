@@ -17,8 +17,8 @@ use uuid::Uuid;
 use super::model::{
     AudioType, Bus, ChannelLayout, ChannelMix, ChapterInfo, Clip, ClipLoop, ClipStretch,
     EffectChain, EffectSlot, Envelope, EnvelopePoint, EnvelopeTarget, Fade, Id, Marker, MarkerKind,
-    MediaRef, MidiClip, Output, PanLaw, RecordMode, Send, Session, SessionView, Space, SpacePos,
-    Tempo, Track, TrackKind, TrackRole, STRETCH_MAX, STRETCH_MIN,
+    MediaRef, MidiClip, MixRole, Output, PanLaw, RecordMode, Send, Session, SessionView, Space,
+    SpacePos, Tempo, Track, TrackKind, TrackRole, STRETCH_MAX, STRETCH_MIN,
 };
 
 /// Points for one effect setting's envelope on a clip.
@@ -125,6 +125,9 @@ pub struct TrackChanges {
     /// Keeps the track in step with the other sync-locked tracks when ripple editing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sync_lock: Option<bool>,
+    /// What the track does in the mix; `normal` clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mix_role: Option<MixRole>,
     /// Folds the track to mono after its Voice Chain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mono: Option<bool>,
@@ -698,6 +701,9 @@ fn apply_one(s: &mut Session, op: &Op) -> Result<Op, OpError> {
             }
             if let Some(v) = changes.sync_lock {
                 old.sync_lock = Some(std::mem::replace(&mut t.sync_lock, v));
+            }
+            if let Some(v) = changes.mix_role {
+                old.mix_role = Some(std::mem::replace(&mut t.mix_role, v));
             }
             if let Some(v) = changes.mono {
                 old.mono = Some(std::mem::replace(&mut t.mono, v));
@@ -2340,6 +2346,32 @@ mod tests {
         );
         assert!(s.tracks[0].sync_lock);
         assert!(serde_json::to_string(&s).unwrap().contains("sync_lock"));
+    }
+
+    #[test]
+    fn mix_role_sets_undoes_and_stays_out_of_files_when_normal() {
+        use crate::session::model::{ChannelLayout, MixRole, Track};
+        let mut s = Session::new("Test", 48_000);
+        let t = Track::new("A", ChannelLayout::Stereo);
+        let id = t.id;
+        s.tracks.push(t);
+        assert_eq!(s.tracks[0].mix_role, MixRole::Normal);
+        assert!(!serde_json::to_string(&s).unwrap().contains("mix_role"));
+        roundtrip(
+            &mut s,
+            Op::SetTrack {
+                id,
+                changes: TrackChanges {
+                    mix_role: Some(MixRole::Background),
+                    ..TrackChanges::default()
+                },
+            },
+        );
+        assert_eq!(s.tracks[0].mix_role, MixRole::Background);
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(json.contains("\"mix_role\":\"background\""));
+        let back: Session = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.tracks[0].mix_role, MixRole::Background);
     }
 
     #[test]

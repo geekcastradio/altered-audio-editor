@@ -1126,6 +1126,16 @@
         "notes"
       ]
     },
+    "MixRole": {
+      "description": "What a track does in the mix: the voice the listener follows, sound\nthat sits under it, or sound that is lowered while someone speaks. It\nis a label for now, shown and set by the user; features that mix for\nyou (ducking, auto mix) read it. `normal` means no role and is left\nout of the file.",
+      "type": "string",
+      "enum": [
+        "normal",
+        "foreground",
+        "background",
+        "ducked"
+      ]
+    },
     "Note": {
       "description": "One note in a MIDI clip.",
       "type": "object",
@@ -1660,6 +1670,10 @@
           "items": {
             "$ref": "#/$defs/MidiClip"
           }
+        },
+        "mix_role": {
+          "description": "What the track does in the mix. Left out of the file when `normal`.",
+          "$ref": "#/$defs/MixRole"
         },
         "monitor_input": {
           "description": "Scaffolding (P4): input monitoring on.",
