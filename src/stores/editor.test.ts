@@ -22,6 +22,25 @@ describe("editor settings", () => {
   });
 });
 
+describe("gap pick", () => {
+  it("picks a gap and its track, and clears when clips or another track are picked", () => {
+    editor.selectClips(["a"]);
+    editor.selectGap({ trackId: "T1", at: 5_000 });
+    expect(editor.current().selectedGap).toEqual({ trackId: "T1", at: 5_000 });
+    expect(editor.current().selectedTrack).toBe("T1");
+    expect(editor.current().selectedClips.size).toBe(0);
+    editor.selectClips(["b"]);
+    expect(editor.current().selectedGap).toBeNull();
+    editor.selectGap({ trackId: "T1", at: 5_000 });
+    editor.selectTrack("T2");
+    expect(editor.current().selectedGap).toBeNull();
+    editor.selectGap({ trackId: "T1", at: 1 });
+    editor.selectGap(null);
+    expect(editor.current().selectedGap).toBeNull();
+    expect(editor.current().selectedTrack).toBe("T1");
+  });
+});
+
 describe("play mode", () => {
   it("toggles between loop, skip and normal, and survives a restart", () => {
     editor.togglePlayMode("loop");

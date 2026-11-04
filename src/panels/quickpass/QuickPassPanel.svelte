@@ -388,26 +388,27 @@
 
 <section class="qp" aria-label="QuickPass">
   <div class="top">
-    <label class="line">Scan for
-      <select aria-label="What to scan for" value={s.scan} onchange={(e) => chooseScan(e.currentTarget.value as ScanType)}>
+    <div class="frm">
+      <label for="qp-scan">Scan for</label>
+      <select id="qp-scan" value={s.scan} onchange={(e) => chooseScan(e.currentTarget.value as ScanType)}>
         {#each SCAN_TYPES as t (t.id)}<option value={t.id}>{t.label}</option>{/each}
       </select>
-    </label>
-    <div class="line">
-      <label class="grow" for="qp-preset">Preset</label>
-      <select id="qp-preset" value={known ? preset : ""} onchange={(e) => choosePreset(e.currentTarget.value)}>
-        {#if !known}<option value="" disabled>Custom</option>{/if}
-        {#each shownPresets as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
-      </select>
-      <button type="button" class="icon" title="Save the current settings as a preset" aria-label="Save preset" onclick={() => void savePreset()}>
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.5h8l2.5 2.5v8.5h-10.5zM5.5 2.5v3.5h4v-3.5M5.5 13.5v-4h5v4" fill="none" stroke="currentColor" stroke-width="1.2" /></svg>
-      </button>
-      <button type="button" class="icon" disabled={isBuiltin || !known} title={isBuiltin ? "Built-in presets cannot be deleted" : "Delete this preset"} aria-label="Delete preset" onclick={deletePreset}>
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 4.5h9M6 4.5v-2h4v2M4.5 4.5l.6 9h5.8l.6-9M7 7v4M9 7v4" fill="none" stroke="currentColor" stroke-width="1.2" /></svg>
-      </button>
+      <label for="qp-preset">Preset</label>
+      <div class="presetline">
+        <select id="qp-preset" value={known ? preset : ""} onchange={(e) => choosePreset(e.currentTarget.value)}>
+          {#if !known}<option value="" disabled>Custom</option>{/if}
+          {#each shownPresets as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
+        </select>
+        <button type="button" class="icon" title="Save the current settings as a preset" aria-label="Save preset" onclick={() => void savePreset()}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.5h8l2.5 2.5v8.5h-10.5zM5.5 2.5v3.5h4v-3.5M5.5 13.5v-4h5v4" fill="none" stroke="currentColor" stroke-width="1.2" /></svg>
+        </button>
+        <button type="button" class="icon" disabled={isBuiltin || !known} title={isBuiltin ? "Built-in presets cannot be deleted" : "Delete this preset"} aria-label="Delete preset" onclick={deletePreset}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 4.5h9M6 4.5v-2h4v2M4.5 4.5l.6 9h5.8l.6-9M7 7v4M9 7v4" fill="none" stroke="currentColor" stroke-width="1.2" /></svg>
+        </button>
+      </div>
     </div>
     <div class="tabs" role="tablist" aria-label="QuickPass view">
-      <button type="button" role="tab" aria-selected={view === "scan"} class:on={view === "scan"} onclick={() => (view = "scan")}>Scan</button>
+      <button type="button" role="tab" aria-selected={view === "scan"} class:on={view === "scan"} onclick={() => (view = "scan")}>Findings</button>
       <button type="button" role="tab" aria-selected={view === "settings"} class:on={view === "settings"} onclick={() => (view = "settings")}>Settings</button>
     </div>
   </div>
@@ -472,26 +473,24 @@
       </fieldset>
     </div>
   {:else}
-    <label class="fixby">Fix by
-      <select value={s.action} onchange={(e) => set({ action: e.currentTarget.value as QuickPassSettings["action"] })}>
+    <div class="frm pad">
+      <label for="qp-fix">Fix by</label>
+      <select id="qp-fix" value={s.action} onchange={(e) => set({ action: e.currentTarget.value as QuickPassSettings["action"] })}>
         {#each info.actions as a (a)}<option value={a}>{FIX_BY[a]}</option>{/each}
       </select>
-    </label>
-    {#if (doc?.tracks.length ?? 0) > 1 && !inWave}
-      <div class="fixby">
-        <span>Tracks</span>
-        <button type="button" class="grow" aria-haspopup="menu" onclick={openTracks} title="Pick the tracks to scan. Locked clips are always left alone.">{skippedCount === 0 ? "All tracks" : `${(doc?.tracks.length ?? 0) - skippedCount} of ${doc?.tracks.length} tracks`} ▾</button>
-      </div>
-    {/if}
-    {#if s.action === "remove"}
-      <label class="fixby" title="Leaving the gap open keeps every track in step. Closing it moves later clips left.">Gaps
-        <select value={s.ripple} onchange={(e) => set({ ripple: e.currentTarget.value === "all" ? "all" : e.currentTarget.value === "track" ? "track" : "none" })}>
+      {#if (doc?.tracks.length ?? 0) > 1 && !inWave}
+        <label for="qp-tracks">Tracks</label>
+        <button type="button" id="qp-tracks" class="pickbtn" aria-haspopup="menu" onclick={openTracks} title="Pick the tracks to scan. Locked clips are always left alone.">{skippedCount === 0 ? "All tracks" : `${(doc?.tracks.length ?? 0) - skippedCount} of ${doc?.tracks.length} tracks`} ▾</button>
+      {/if}
+      {#if s.action === "remove"}
+        <label for="qp-gaps" title="Leaving the gap open keeps every track in step. Closing it moves later clips left.">Gaps</label>
+        <select id="qp-gaps" value={s.ripple} onchange={(e) => set({ ripple: e.currentTarget.value === "all" ? "all" : e.currentTarget.value === "track" ? "track" : "none" })}>
           <option value="none">Leave them open</option>
           <option value="track">Close on that track</option>
           <option value="all">Close on all tracks</option>
         </select>
-      </label>
-    {/if}
+      {/if}
+    </div>
     <div class="bar">
       <button type="button" class="go" disabled={busy} onclick={scan}>{busy ? (progress === null ? "Scanning" : `Scanning ${Math.round(progress * 100)}%`) : "Scan"}</button>
       <span class="grow"></span>
@@ -541,33 +540,49 @@
   .top {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 5px;
+    gap: 8px;
     padding: 6px 8px;
     border-bottom: 1px solid var(--border);
   }
-  .fixby {
-    display: flex;
+  .frm {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 5px 8px;
     align-items: center;
-    gap: 6px;
-    padding: 4px 8px 0;
     color: var(--text-dim);
   }
-  .fixby select {
-    flex: 1;
+  .frm.pad {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .frm select,
+  .pickbtn {
+    width: 100%;
+    min-width: 0;
+    height: 22px;
+  }
+  .presetline {
+    display: flex;
+    gap: 2px;
+    align-items: center;
     min-width: 0;
   }
-  .line {
-    display: flex;
-    gap: 6px;
-    align-items: center;
+  .presetline select {
+    flex: 1;
+    width: auto;
   }
-  .line select,
+  .pickbtn {
+    padding: 0 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--surface-0);
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+  }
   .grow {
     flex: 1;
     min-width: 0;
-  }
-  .line > label.grow {
-    flex: 0 0 auto;
   }
   select,
   input[type="number"] {
@@ -673,8 +688,8 @@
     border-bottom: 1px solid var(--border);
   }
   .bar button {
-    height: 20px;
-    padding: 0 6px;
+    height: 22px;
+    padding: 0 8px;
     border: 1px solid var(--border-strong);
     border-radius: 2px;
     background: var(--surface-0);
@@ -693,6 +708,13 @@
   }
   .bar .go {
     border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent, #fff);
+    min-width: 64px;
+  }
+  .bar .go:hover:not(:disabled) {
+    background: var(--accent);
+    filter: brightness(1.1);
   }
   .table {
     background: var(--surface-0);
@@ -702,7 +724,7 @@
     display: grid;
     grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
     gap: 6px;
-    padding: 2px 8px;
+    padding: 3px 8px;
     text-align: left;
   }
   .head {

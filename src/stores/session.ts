@@ -224,6 +224,8 @@ export interface TrackDoc {
   record_armed: boolean;
   /** Missing in files where it is off. */
   polarity_inverted?: boolean;
+  /** Ripple edits move every track that has this on together. Missing in files where it is off. */
+  sync_lock?: boolean;
   /** Folded to mono after its Voice Chain. Missing in files where it is off. */
   mono?: boolean;
   /** 3D Space sessions: where it sits in the room. */
@@ -460,6 +462,7 @@ export interface TrackChanges {
   volume_db?: number;
   pan?: number;
   polarity_inverted?: boolean;
+  sync_lock?: boolean;
   mono?: boolean;
   /** 3D Space sessions: where it sits in the room. */
   space?: SpacePosDoc | null;

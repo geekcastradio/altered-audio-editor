@@ -34,7 +34,7 @@
   import { stretchTo } from "./stretch";
   import { timeDisplayItems } from "./time-menu";
   import { dragGain, gainBox, gainText } from "./clip-gain";
-  import { clipsAt, copyMoved, fadeClip, LockedError, MIN_CLIP, moveClips, nearest, previewTracks, snapTargets, splitClips, trimClip, withCrossfades,
+  import { clipsAt, copyMoved, fadeClip, gapAt, LockedError, MIN_CLIP, moveClips, nearest, previewTracks, snapTargets, splitClips, trimClip, withCrossfades,
     withLayers, withGroups } from "./clip-edit";
   import { shownTracks as listedTracks } from "./visibility";
   import { addPoint, chipBox, chipLabel, envChange, envName, formatValue, fxChoices, fxLaneOf, fxParam, levelAt, movePoint, movePoints, pointsOf, rangeOf, restValue, snapValue, valueToY, yToValue, type EnvKind } from "./envelope";
@@ -433,6 +433,12 @@
   $effect(() => editor.setWidth(lanesWidth));
 
   const rate = $derived(doc?.sample_rate ?? 48000);
+  /** The picked gap, looked up live so it follows edits and disappears once something fills it. */
+  const gapShown = $derived.by(() => {
+    const g = ed.selectedGap;
+    const span = g && doc ? gapAt(doc, g.trackId, g.at) : null;
+    return g && span ? { trackId: g.trackId, ...span } : null;
+  });
   const view = $derived<Viewport>({ spp: doc?.view.samples_per_pixel ?? 1024, scroll: doc?.view.scroll ?? 0 });
   /** While the playhead is being dragged on the ruler: where the pointer has it, shown at once. */
   let dragHead = $state<number | null>(null);
@@ -1539,7 +1545,11 @@
       const cur = session.current;
       if (cur?.view.selection) session.setView({ ...cur.view, selection: null });
       if (!ev.shiftKey) editor.selectClips([]);
-      if (!tp?.playing) void transport.seek(sampleAt(ev.clientX - box.left, v));
+      // A click in the empty space between two clips picks that gap, so Delete can close it.
+      const at = sampleAt(ev.clientX - box.left, v);
+      const over = hitLanes(ev.clientX, ev.clientY).trackId;
+      if (!ev.shiftKey && over && doc && gapAt(doc, over, at)) editor.selectGap({ trackId: over, at });
+      if (!tp?.playing) void transport.seek(at);
     };
     window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerup", up, true);
@@ -1988,6 +1998,12 @@
       { kind: "item", label: "Rename Track", run: () => (renaming = track.id) },
       { kind: "item", label: track.show_automation ? "Hide Automation Lanes" : "Show Automation Lanes", run: () => toggleLanes(track) },
       { kind: "item", label: "Track Color...", run: () => (colorFor = { kind: "track", id: track.id, current: track.color ?? null }) },
+      {
+        kind: "item",
+        label: "Sync Lock",
+        checked: !!track.sync_lock,
+        run: () => setTrack(track, { sync_lock: !track.sync_lock }, track.sync_lock ? "Turn Sync Lock Off" : "Turn Sync Lock On"),
+      },
       { kind: "item", label: "Duplicate Track", run: () => { editor.selectTrack(track.id); run("multitrack.duplicate-track"); } },
       { kind: "item", label: "Delete Track", run: () => { editor.selectTrack(track.id); run("multitrack.delete-track"); } },
       { kind: "sep" },
@@ -2894,6 +2910,19 @@
         {/if}
         {#if selBox}
           <div class="selBox" style:left="{selBox.x}px" style:top="{selBox.y}px" style:width="{selBox.w}px" style:height="{selBox.h}px"></div>
+        {/if}
+        {#if gapShown}
+          {@const gRow = lanesEl?.querySelector<HTMLElement>(`[data-track="${CSS.escape(gapShown.trackId)}"]`)}
+          {#if gRow}
+            <div
+              class="gapSel"
+              style:left="{xOf(gapShown.start, view)}px"
+              style:width="{Math.max(2, xOf(gapShown.end, view) - xOf(gapShown.start, view))}px"
+              style:top="{gRow.offsetTop}px"
+              style:height="{gRow.offsetHeight}px"
+              title="Press Delete to close this gap"
+            ></div>
+          {/if}
         {/if}
         {#if razor && ed.tool === "razor"}
           {@const row = razor.trackId ? lanesEl?.querySelector<HTMLElement>(`[data-track="${razor.trackId}"]`) : null}
@@ -3811,6 +3840,15 @@
     background: var(--surface-2);
     color: var(--text);
     font-size: 11px;
+    pointer-events: none;
+  }
+
+  .gapSel {
+    position: absolute;
+    z-index: 3;
+    box-sizing: border-box;
+    border: 1px solid var(--accent, #6ab0ff);
+    background: color-mix(in srgb, var(--accent, #6ab0ff) 22%, transparent);
     pointer-events: none;
   }
 

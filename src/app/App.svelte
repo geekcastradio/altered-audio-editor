@@ -118,7 +118,7 @@
     fadeClip,
     findClips,
     loopChanges,
-    gapAt,
+    gapToClose,
     mediaOf,
     LockedError,
     pasteClips,
@@ -199,6 +199,7 @@
     sessionRecover,
     sessionRecoverable,
     sessionSave,
+    sessionUpgradeNotice,
     setWindowTitle,
     waveSpectralEdit,
     waveApplyChain,
@@ -1151,6 +1152,26 @@
     await session.edit(label, op, sessionHistory);
   }
 
+  /**
+   * Closes the empty space at `at` on a track: the later clips move left. With Sync Lock on, the
+   * synced tracks move too, and only the space they all leave empty is removed.
+   */
+  async function closeGapAt(trackId: string, at: number): Promise<void> {
+    const doc = session.current;
+    if (!doc) return;
+    const g = gapToClose(doc, trackId, at);
+    if (g === null) {
+      showNotice("Click or put the playhead in an empty space between two clips on the track.");
+      return;
+    }
+    if (g === "blocked") {
+      showNotice("A synced track has audio or MIDI in that space, so closing it would cut or misalign that track. Turn Sync Lock off (track right-click menu) to close the gap on one track.");
+      return;
+    }
+    await guarded("Close Gap", () => rippleDeleteRange(doc, g.tracks, g.start, g.end, uuid), "Nothing to close.");
+    editor.selectGap(null);
+  }
+
   function copySelected(): boolean {
     const doc = session.current;
     if (!doc) return false;
@@ -2051,7 +2072,14 @@
   const files = new SessionFiles({
     backend: {
       create: (options) => sessionNew<SessionDoc>(options),
-      save: (path, media, libs) => sessionSave<SessionDoc, MediaRefDoc>(path, media, libs, settings.current.backups ? settings.current.backupCount : 0),
+      save: async (path, media, libs) => {
+        // Saving over a file made by an older version upgrades it in place. The core
+        // keeps a copy of the original first; say so afterward, once, in plain words.
+        const older = path === null ? await sessionUpgradeNotice().catch(() => null) : null;
+        const saved = await sessionSave<SessionDoc, MediaRefDoc>(path, media, libs, settings.current.backups ? settings.current.backupCount : 0);
+        if (older !== null) showNotice("Upgraded from an older version. The original is kept in the Backups folder. Older versions of Altered Audio can't open this session.");
+        return saved;
+      },
       open: (path) => sessionOpen<SessionDoc>(path),
       autosave: (media) => sessionAutosave(media),
       clearAutosave: () => sessionClearAutosave(),
@@ -2514,11 +2542,20 @@
       deselect: () => mediaPool.setSelection([]),
     },
     multitrack: {
-      deleteLabel: "Delete Clips",
-      selected: () => editor.current().selectedClips.size,
+      // A picked gap (a click on empty track space) is what Delete closes when no clips are selected.
+      get deleteLabel() {
+        const e = editor.current();
+        return e.selectedGap && e.selectedClips.size === 0 ? "Close Gap" : "Delete Clips";
+      },
+      selected: () => editor.current().selectedClips.size + (editor.current().selectedGap ? 1 : 0),
       total: () => (session.current?.tracks ?? []).reduce((n, t) => n + t.clips.length + (t.midi_clips?.length ?? 0), 0),
       remove: async () => {
         const doc = session.current;
+        const gap = editor.current().selectedGap;
+        if (gap && editor.current().selectedClips.size === 0) {
+          await closeGapAt(gap.trackId, gap.at);
+          return;
+        }
         const ids = [...editor.current().selectedClips];
         if (!ids.length || !doc) return;
         const ops = deleteClipsOps(doc, new Set(ids));
@@ -5018,12 +5055,7 @@
           const doc = session.current;
           const t = editor.current().selectedTrack;
           if (!doc || !t) return;
-          const g = gapAt(doc, t, playheadNow());
-          if (!g) {
-            showNotice("Put the playhead in an empty space between two clips on the selected track.");
-            return;
-          }
-          return guarded("Close Gap", () => rippleDeleteRange(doc, [t], g.start, g.end, uuid), "Nothing to close.");
+          return closeGapAt(t, playheadNow());
         },
         enabled: () => editor.current().selectedTrack !== null,
         reason: () => "Select a track first.",

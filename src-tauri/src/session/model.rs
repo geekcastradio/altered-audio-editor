@@ -554,6 +554,11 @@ pub struct Track {
     /// file when off.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub polarity_inverted: bool,
+    /// Ripple edits (closing a gap, ripple delete) on a track that has this
+    /// on also move the clips of every other track that has it on, so the
+    /// tracks stay in step. Left out of the file when off.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub sync_lock: bool,
     /// Folds the track's left and right into one centered signal, after
     /// its Voice Chain and before its fader and pan. Left out of the
     /// file when off.
@@ -611,6 +616,7 @@ impl Track {
             muted: false,
             solo: false,
             polarity_inverted: false,
+            sync_lock: false,
             mono: false,
             space: None,
             record_armed: false,

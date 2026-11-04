@@ -22,9 +22,17 @@ export interface SnapSettings {
   ruler: boolean;
 }
 
+/** An empty stretch of a track picked by clicking it: the track and a sample inside the gap. The gap itself is looked up live, so edits never leave it stale. */
+export interface GapPick {
+  trackId: string;
+  at: number;
+}
+
 export interface EditorState {
   selectedTrack: string | null;
   selectedClips: ReadonlySet<string>;
+  /** The gap picked by a click on empty track space, or null. Picking clips or another track clears it. */
+  selectedGap: GapPick | null;
   timeFormat: TimeFormat;
   /** Width of the lanes in pixels, for zoom commands. */
   width: number;
@@ -82,6 +90,7 @@ export type EditorTool = "move" | "razor" | "slip" | "time";
 const initial: EditorState = {
   selectedTrack: null,
   selectedClips: new Set(),
+  selectedGap: null,
   timeFormat: "time",
   width: 800,
   snap: { on: true, clips: true, playhead: true, markers: true, ruler: true },
@@ -109,6 +118,8 @@ export const editor: Readable<EditorState> & {
   current(): EditorState;
   selectTrack(id: string | null): void;
   selectClips(ids: Iterable<string>, track?: string | null): void;
+  /** Picks a gap (and its track), or clears the pick. Clips are deselected. */
+  selectGap(gap: GapPick | null): void;
   setTimeFormat(f: TimeFormat): void;
   setWidth(w: number): void;
   setSnap(patch: Partial<SnapSettings>): void;
@@ -131,9 +142,10 @@ export const editor: Readable<EditorState> & {
 } = {
   subscribe: state.subscribe,
   current: () => value,
-  selectTrack: (id) => state.update((s) => ({ ...s, selectedTrack: id, selectedClips: new Set() })),
+  selectTrack: (id) => state.update((s) => ({ ...s, selectedTrack: id, selectedClips: new Set(), selectedGap: null })),
   selectClips: (ids, track) =>
-    state.update((s) => ({ ...s, selectedClips: new Set(ids), selectedTrack: track === undefined ? s.selectedTrack : track })),
+    state.update((s) => ({ ...s, selectedClips: new Set(ids), selectedGap: null, selectedTrack: track === undefined ? s.selectedTrack : track })),
+  selectGap: (gap) => state.update((s) => ({ ...s, selectedGap: gap, selectedClips: new Set(), selectedTrack: gap ? gap.trackId : s.selectedTrack })),
   setTimeFormat: (f) => state.update((s) => ({ ...s, timeFormat: f })),
   setAutoCrossfade: (on) => state.update((s) => ({ ...s, autoCrossfade: on })),
   setSnapZero: (on) => state.update((s) => ({ ...s, snapZero: on })),

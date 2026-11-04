@@ -122,6 +122,9 @@ pub struct TrackChanges {
     pub space: Option<SpacePos>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub polarity_inverted: Option<bool>,
+    /// Keeps the track in step with the other sync-locked tracks when ripple editing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync_lock: Option<bool>,
     /// Folds the track to mono after its Voice Chain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mono: Option<bool>,
@@ -692,6 +695,9 @@ fn apply_one(s: &mut Session, op: &Op) -> Result<Op, OpError> {
             }
             if let Some(v) = changes.polarity_inverted {
                 old.polarity_inverted = Some(std::mem::replace(&mut t.polarity_inverted, v));
+            }
+            if let Some(v) = changes.sync_lock {
+                old.sync_lock = Some(std::mem::replace(&mut t.sync_lock, v));
             }
             if let Some(v) = changes.mono {
                 old.mono = Some(std::mem::replace(&mut t.mono, v));
@@ -2311,6 +2317,29 @@ mod tests {
             },
         );
         assert_eq!(s.pan_law, PanLaw::ConstantPower);
+    }
+
+    #[test]
+    fn sync_lock_sets_undoes_and_stays_out_of_files_when_off() {
+        use crate::session::model::{ChannelLayout, Track};
+        let mut s = Session::new("Test", 48_000);
+        let t = Track::new("A", ChannelLayout::Stereo);
+        let id = t.id;
+        s.tracks.push(t);
+        assert!(!s.tracks[0].sync_lock);
+        assert!(!serde_json::to_string(&s).unwrap().contains("sync_lock"));
+        roundtrip(
+            &mut s,
+            Op::SetTrack {
+                id,
+                changes: TrackChanges {
+                    sync_lock: Some(true),
+                    ..TrackChanges::default()
+                },
+            },
+        );
+        assert!(s.tracks[0].sync_lock);
+        assert!(serde_json::to_string(&s).unwrap().contains("sync_lock"));
     }
 
     #[test]

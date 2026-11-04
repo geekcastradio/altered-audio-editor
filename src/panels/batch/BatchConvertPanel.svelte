@@ -83,6 +83,26 @@
     chainPick = "";
   }
 
+  // The step controls start hidden: most runs just pick a chain. The choice is remembered.
+  const OPEN_KEY = "batch.stepsOpen";
+  let stepsOpen = $state(false);
+  // svelte-ignore state_referenced_locally
+  void prefs.load().then(() => (stepsOpen = prefs.raw(OPEN_KEY) === true));
+  function setStepsOpen(on: boolean) {
+    stepsOpen = on;
+    prefs.set(OPEN_KEY, on);
+  }
+  const stepsSummary = $derived.by(() => {
+    const l = s.level;
+    const parts: string[] = [];
+    if (s.process) parts.push(s.process);
+    if (l.trim) parts.push(`trim below ${l.trimDb} dB`);
+    if (l.loudness) parts.push(`${l.loudnessLufs} LUFS, peaks under ${l.ceilingDb} dB`);
+    if (l.normalize) parts.push(`normalize to ${l.normalizeDb} dB`);
+    if (l.fadeInMs || l.fadeOutMs) parts.push(`fades ${l.fadeInMs}/${l.fadeOutMs} ms`);
+    return parts.length ? `Runs: ${parts.join(", ")}.` : "No processing. Files are converted as they are. Pick a chain or open the steps.";
+  });
+
   let rows = $state<BatchRow[]>([]);
   const unsub = batchRows.subscribe((v) => (rows = v));
   onDestroy(unsub);
@@ -258,10 +278,10 @@
     </button>
   </div>
 
-  <div class="process chain" title="A chain is the steps below saved under a name: the Voice Chain preset, trim, loudness, peak and fades">
+  <div class="process chain" title="A chain is the steps saved under a name: the Voice Chain preset, trim, loudness, peak and fades">
     <span>Chain</span>
     <select value={chainPick} disabled={running} onchange={(e) => useChain(e.currentTarget.value)}>
-      <option value="">Pick a chain to load its steps</option>
+      <option value="">Pick a chain</option>
       <optgroup label="Starters">
         {#each BUILTIN_CHAINS as c (c.name)}<option value={c.name}>{c.name}</option>{/each}
       </optgroup>
@@ -271,56 +291,64 @@
         </optgroup>
       {/if}
     </select>
-    <input type="text" class="name" placeholder="Name to save as" maxlength="60" bind:value={chainName} disabled={running} aria-label="Chain name" />
-    <label class="check" title="Also remember the output format"><input type="checkbox" bind:checked={chainWithFormat} disabled={running} /> Format</label>
-    <button type="button" disabled={running || chainName.trim() === ""} onclick={saveCurrentChain}>Save</button>
-    <button type="button" disabled={running || !userChainPicked} onclick={deleteChain}>Delete</button>
+    <button type="button" class="toggle" aria-expanded={stepsOpen} title="Show or hide the steps this chain runs" onclick={() => setStepsOpen(!stepsOpen)}>
+      {stepsOpen ? "Hide steps" : "Edit steps"}
+    </button>
   </div>
-  <p class="chain-note">{pickedChain ? `Runs: ${describeChain(pickedChain)}.` : "Load a starter or one of your own, or set the steps below and save them as a chain."}</p>
+  <p class="chain-note" title={stepsSummary}>{stepsSummary}</p>
 
-  <label class="process" title="A Voice Chain preset run on every file before it is saved">
-    <span>Process with</span>
-    <select value={s.process ?? ""} disabled={running} onchange={(e) => (s.process = e.currentTarget.value || null)}>
-      <option value="">Nothing (convert only)</option>
-      {#if userPresets.length}
-        <optgroup label="Yours">
-          {#each userPresets as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
-        </optgroup>
-      {/if}
-      {#each GROUPS as g (g)}
-        <optgroup label={g}>
-          {#each BATCH_PRESETS.filter((p) => p.group === g) as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
-        </optgroup>
-      {/each}
-    </select>
-  </label>
-  <div class="process level" title="After the preset: trim the ends, bring every file to the same loudness or peak, and fade the ends">
-    <span class="grp">
-      <label class="check"><input type="checkbox" checked={s.level.trim} disabled={running} onchange={(e) => (s.level.trim = e.currentTarget.checked)} /> Trim silence below</label>
-      <input type="number" class="num" min="-80" max="-10" step="1" value={s.level.trimDb} disabled={running || !s.level.trim} aria-label="Trim level, dB" onchange={(e) => (s.level.trimDb = sanitizeLevel({ ...s.level, trimDb: Number(e.currentTarget.value) }).trimDb)} />
-      <span>dB, keep</span>
-      <input type="number" class="num" min="0" max="5000" step="50" value={s.level.trimKeepMs} disabled={running || !s.level.trim} aria-label="Silence to keep, ms" onchange={(e) => (s.level.trimKeepMs = sanitizeLevel({ ...s.level, trimKeepMs: Number(e.currentTarget.value) }).trimKeepMs)} />
-      <span>ms</span>
-    </span>
-    <span class="grp">
-      <label class="check"><input type="checkbox" checked={s.level.loudness} disabled={running} onchange={(e) => (s.level.loudness = e.currentTarget.checked)} /> Loudness</label>
-      <input type="number" class="num" min="-40" max="-5" step="0.5" value={s.level.loudnessLufs} disabled={running || !s.level.loudness} aria-label="Loudness, LUFS" onchange={(e) => (s.level.loudnessLufs = sanitizeLevel({ ...s.level, loudnessLufs: Number(e.currentTarget.value) }).loudnessLufs)} />
-      <span>LUFS, peaks under</span>
-      <input type="number" class="num" min="-30" max="0" step="0.5" value={s.level.ceilingDb} disabled={running || !s.level.loudness} aria-label="Peak ceiling, dB" onchange={(e) => (s.level.ceilingDb = sanitizeLevel({ ...s.level, ceilingDb: Number(e.currentTarget.value) }).ceilingDb)} />
-      <span>dB</span>
-    </span>
-    <span class="grp">
-      <label class="check"><input type="checkbox" checked={s.level.normalize} disabled={running} onchange={(e) => (s.level.normalize = e.currentTarget.checked)} /> Normalize to</label>
-      <input type="number" class="num" min="-30" max="0" step="0.1" value={s.level.normalizeDb} disabled={running || !s.level.normalize} aria-label="Normalize peak, dB" onchange={(e) => (s.level.normalizeDb = sanitizeLevel({ ...s.level, normalizeDb: Number(e.currentTarget.value) }).normalizeDb)} />
-      <span>dB</span>
-    </span>
-    <span class="grp">
-      <span>Fade in</span>
-      <input type="number" class="num" min="0" max="60000" step="10" value={s.level.fadeInMs} disabled={running} aria-label="Fade in, ms" onchange={(e) => (s.level.fadeInMs = sanitizeLevel({ ...s.level, fadeInMs: Number(e.currentTarget.value) }).fadeInMs)} />
-      <span>out</span>
-      <input type="number" class="num" min="0" max="60000" step="10" value={s.level.fadeOutMs} disabled={running} aria-label="Fade out, ms" onchange={(e) => (s.level.fadeOutMs = sanitizeLevel({ ...s.level, fadeOutMs: Number(e.currentTarget.value) }).fadeOutMs)} />
-      <span>ms</span>
-    </span>
+  <div class="steps">
+    {#if stepsOpen}
+      <label class="step" title="A Voice Chain preset run on every file before it is saved">
+        <span class="lbl">Process with</span>
+        <select value={s.process ?? ""} disabled={running} onchange={(e) => (s.process = e.currentTarget.value || null)}>
+          <option value="">Nothing (convert only)</option>
+          {#if userPresets.length}
+            <optgroup label="Yours">
+              {#each userPresets as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
+            </optgroup>
+          {/if}
+          {#each GROUPS as g (g)}
+            <optgroup label={g}>
+              {#each BATCH_PRESETS.filter((p) => p.group === g) as p (p.name)}<option value={p.name}>{p.name}</option>{/each}
+            </optgroup>
+          {/each}
+        </select>
+      </label>
+      <div class="step">
+        <label class="lbl check"><input type="checkbox" checked={s.level.trim} disabled={running} onchange={(e) => (s.level.trim = e.currentTarget.checked)} /> Trim silence</label>
+        <span class="vals">
+          below <input type="number" class="num" min="-80" max="-10" step="1" value={s.level.trimDb} disabled={running || !s.level.trim} aria-label="Trim level, dB" onchange={(e) => (s.level.trimDb = sanitizeLevel({ ...s.level, trimDb: Number(e.currentTarget.value) }).trimDb)} /> dB, keep
+          <input type="number" class="num" min="0" max="5000" step="50" value={s.level.trimKeepMs} disabled={running || !s.level.trim} aria-label="Silence to keep, ms" onchange={(e) => (s.level.trimKeepMs = sanitizeLevel({ ...s.level, trimKeepMs: Number(e.currentTarget.value) }).trimKeepMs)} /> ms
+        </span>
+      </div>
+      <div class="step">
+        <label class="lbl check"><input type="checkbox" checked={s.level.loudness} disabled={running} onchange={(e) => (s.level.loudness = e.currentTarget.checked)} /> Loudness</label>
+        <span class="vals">
+          <input type="number" class="num" min="-40" max="-5" step="0.5" value={s.level.loudnessLufs} disabled={running || !s.level.loudness} aria-label="Loudness, LUFS" onchange={(e) => (s.level.loudnessLufs = sanitizeLevel({ ...s.level, loudnessLufs: Number(e.currentTarget.value) }).loudnessLufs)} /> LUFS, peaks under
+          <input type="number" class="num" min="-30" max="0" step="0.5" value={s.level.ceilingDb} disabled={running || !s.level.loudness} aria-label="Peak ceiling, dB" onchange={(e) => (s.level.ceilingDb = sanitizeLevel({ ...s.level, ceilingDb: Number(e.currentTarget.value) }).ceilingDb)} /> dB
+        </span>
+      </div>
+      <div class="step">
+        <label class="lbl check"><input type="checkbox" checked={s.level.normalize} disabled={running} onchange={(e) => (s.level.normalize = e.currentTarget.checked)} /> Normalize</label>
+        <span class="vals">
+          to <input type="number" class="num" min="-30" max="0" step="0.1" value={s.level.normalizeDb} disabled={running || !s.level.normalize} aria-label="Normalize peak, dB" onchange={(e) => (s.level.normalizeDb = sanitizeLevel({ ...s.level, normalizeDb: Number(e.currentTarget.value) }).normalizeDb)} /> dB
+        </span>
+      </div>
+      <div class="step">
+        <span class="lbl">Fades</span>
+        <span class="vals">
+          in <input type="number" class="num" min="0" max="60000" step="10" value={s.level.fadeInMs} disabled={running} aria-label="Fade in, ms" onchange={(e) => (s.level.fadeInMs = sanitizeLevel({ ...s.level, fadeInMs: Number(e.currentTarget.value) }).fadeInMs)} />
+          out <input type="number" class="num" min="0" max="60000" step="10" value={s.level.fadeOutMs} disabled={running} aria-label="Fade out, ms" onchange={(e) => (s.level.fadeOutMs = sanitizeLevel({ ...s.level, fadeOutMs: Number(e.currentTarget.value) }).fadeOutMs)} /> ms
+        </span>
+      </div>
+      <div class="step save">
+        <input type="text" class="nameIn" placeholder="Save these steps as a chain" maxlength="60" bind:value={chainName} disabled={running} aria-label="Chain name" />
+        <label class="check" title="Also remember the output format"><input type="checkbox" bind:checked={chainWithFormat} disabled={running} /> Format</label>
+        <button type="button" disabled={running || chainName.trim() === ""} onclick={saveCurrentChain}>Save</button>
+        <button type="button" disabled={running || !userChainPicked} onclick={deleteChain}>Delete</button>
+      </div>
+    {/if}
   </div>
 
   <div class="list" role="listbox" aria-label="Files to convert" aria-multiselectable="true">
@@ -380,7 +408,7 @@
 <style>
   .panel {
     display: grid;
-    grid-template-rows: auto auto auto auto auto minmax(70px, 1fr) auto;
+    grid-template-rows: auto auto auto auto minmax(70px, 1fr) auto;
     grid-template-columns: minmax(0, 1fr);
     height: 100%;
     min-height: 0;
@@ -418,25 +446,7 @@
     flex: 1;
     min-width: 0;
   }
-  .chain .name {
-    flex: 1;
-    min-width: 60px;
-    height: 20px;
-    padding: 0 4px;
-    border: 1px solid var(--border-strong);
-    border-radius: 2px;
-    background: var(--surface-0);
-    color: var(--text);
-    font: inherit;
-    font-size: 11px;
-  }
-  .chain .check {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    white-space: nowrap;
-  }
-  .chain button {
+  .chain .toggle {
     height: 20px;
     padding: 0 8px;
     border: 1px solid var(--border-strong);
@@ -444,9 +454,7 @@
     background: var(--surface-3);
     color: var(--text);
     font: inherit;
-  }
-  .chain button:disabled {
-    opacity: 0.5;
+    white-space: nowrap;
   }
   .chain-note {
     margin: 0;
@@ -454,17 +462,46 @@
     border-bottom: 1px solid var(--border);
     color: var(--text-faint);
     font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .level {
-    flex-wrap: wrap;
-    gap: 4px;
+  .steps {
+    min-height: 0;
+    max-height: 45vh;
+    overflow-y: auto;
   }
-  .level .check {
+  .steps:not(:empty) {
+    border-bottom: 1px solid var(--border);
+  }
+  .step {
+    display: grid;
+    grid-template-columns: 110px minmax(0, 1fr);
+    gap: 6px;
+    align-items: center;
+    padding: 3px 6px;
+    color: var(--text-dim);
+  }
+  .step .lbl {
+    color: var(--text);
+  }
+  .step .check {
     display: flex;
     gap: 4px;
     align-items: center;
+    white-space: nowrap;
   }
-  .level .num {
+  .step .vals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+  }
+  .step select {
+    width: 100%;
+    min-width: 0;
+  }
+  .step .num {
     width: 56px;
     height: 20px;
     padding: 0 4px;
@@ -475,15 +512,23 @@
     font: inherit;
     font-size: 11px;
   }
-  .level {
-    row-gap: 4px;
-    column-gap: 12px;
+  .step.save {
+    grid-template-columns: minmax(80px, 1fr) auto auto auto;
   }
-  .level .grp {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-    white-space: nowrap;
+  .step .nameIn {
+    min-width: 0;
+    height: 20px;
+    padding: 0 4px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--surface-0);
+    color: var(--text);
+    font: inherit;
+    font-size: 11px;
+  }
+  .step.save button {
+    height: 20px;
+    padding: 0 8px;
   }
 
   .tool {
@@ -618,7 +663,8 @@
   }
 
   footer button,
-  .process select {
+  .process select,
+  .step select {
     height: 20px;
     padding: 0 6px;
     border: 1px solid var(--border-strong);

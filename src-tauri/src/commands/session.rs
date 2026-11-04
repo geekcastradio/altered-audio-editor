@@ -149,8 +149,10 @@ pub fn fresh_session(name: String, sample_rate: u32) -> Session {
     // New sessions pan with the constant power law; older files keep the balance law they were mixed with.
     s.pan_law = crate::session::model::PanLaw::ConstantPower;
     for i in 1..=NEW_SESSION_TRACKS {
-        s.tracks
-            .push(Track::new(format!("Track {i}"), ChannelLayout::Stereo));
+        let mut t = Track::new(format!("Track {i}"), ChannelLayout::Stereo);
+        // New sessions keep their tracks in step when a gap is closed; older files are left as they were.
+        t.sync_lock = true;
+        s.tracks.push(t);
     }
     s
 }
@@ -349,13 +351,27 @@ pub async fn session_save(
     let t2 = target.clone();
     let keep = backups.unwrap_or(0).min(MAX_BACKUPS);
     let saved = spawn_blocking(move || {
-        // The file about to be replaced becomes the newest backup.
-        if keep > 0 {
-            if let Err(e) = backup_previous(&t2, keep as usize, chrono::Local::now()) {
+        // A file made by an older version is about to be upgraded in place.
+        // A copy of it is always kept first, whatever the backups setting
+        // says, and nothing is saved if the copy cannot be made. The new
+        // file is checked before it replaces the old one.
+        let older = file::older_than_current(&t2);
+        if let Some(v) = older {
+            backup_previous(&t2, 0, chrono::Local::now(), Some(v)).map_err(|e| {
+                format!("Could not keep a copy of the original, so nothing was saved: {e}")
+            })?;
+        } else if keep > 0 {
+            // The file about to be replaced becomes the newest backup.
+            if let Err(e) = backup_previous(&t2, keep as usize, chrono::Local::now(), None) {
                 eprintln!("session backup skipped: {e}");
             }
         }
-        file::save(&session, &t2, &media)
+        if older.is_some() {
+            file::save_verified(&session, &t2, &media)
+        } else {
+            file::save(&session, &t2, &media)
+        }
+        .map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -382,12 +398,26 @@ pub async fn session_save(
 /// Most backups kept per session.
 const MAX_BACKUPS: u32 = 50;
 
+/// Version number (when older than this build's) of the open session's
+/// file on disk. The interface asks before a Save so it can explain the
+/// upgrade once. Reads the file header only; nothing is written.
+#[tauri::command]
+pub fn session_upgrade_notice(open: State<'_, OpenSession>) -> Result<Option<u32>, String> {
+    let path = open.0.lock().map_err(|e| e.to_string())?.path.clone();
+    Ok(path.and_then(|p| file::older_than_current(&p)))
+}
+
 /// Copies the session file at `target` (if there is one) into a Backups
 /// folder beside it, named with the time, and keeps only the newest `keep`.
+///
+/// With `from_version`, the copy is of a file about to be upgraded: its
+/// name carries the old version ("Show v1 2026-10-19 093000.altaudio") and
+/// it is never pruned, so the original version of a session always survives.
 fn backup_previous(
     target: &std::path::Path,
     keep: usize,
     now: chrono::DateTime<chrono::Local>,
+    from_version: Option<u32>,
 ) -> std::io::Result<()> {
     if !target.exists() {
         return Ok(());
@@ -401,8 +431,17 @@ fn backup_previous(
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let name = format!("{stem} {}.{EXTENSION}", now.format("%Y-%m-%d %H%M%S"));
+    let stamp = now.format("%Y-%m-%d %H%M%S");
+    let name = match from_version {
+        Some(v) => format!("{stem} v{v} {stamp}.{EXTENSION}"),
+        None => format!("{stem} {stamp}.{EXTENSION}"),
+    };
     std::fs::copy(target, dir.join(name))?;
+    if from_version.is_some() {
+        // The names above never match the plain-timestamp filter below,
+        // so upgrade copies are also left alone by ordinary pruning.
+        return Ok(());
+    }
     let prefix = format!("{stem} ");
     let suffix = format!(".{EXTENSION}");
     let mut ours: Vec<PathBuf> = std::fs::read_dir(&dir)?
@@ -727,6 +766,15 @@ mod tests {
     }
 
     #[test]
+    fn new_sessions_start_with_sync_lock_on_and_plain_tracks_without() {
+        let s = fresh_session("New".into(), 44_100);
+        assert!(s.tracks.iter().all(|t| t.sync_lock));
+        let t =
+            crate::session::model::Track::new("A", crate::session::model::ChannelLayout::Stereo);
+        assert!(!t.sync_lock);
+    }
+
+    #[test]
     fn backups_keep_the_newest_few() {
         use chrono::TimeZone;
         let d = tempfile::tempdir().unwrap();
@@ -736,7 +784,7 @@ mod tests {
             let t = chrono::Local
                 .with_ymd_and_hms(2026, 10, 19, 9, m, 0)
                 .unwrap();
-            super::backup_previous(&target, 3, t).unwrap();
+            super::backup_previous(&target, 3, t, None).unwrap();
         }
         let dir = d.path().join("Backups");
         // Another session's backups in the same folder are left alone.
@@ -747,6 +795,7 @@ mod tests {
             chrono::Local
                 .with_ymd_and_hms(2026, 10, 19, 10, 0, 0)
                 .unwrap(),
+            None,
         )
         .unwrap();
         let mut names: Vec<String> = std::fs::read_dir(&dir)
@@ -765,6 +814,42 @@ mod tests {
             ]
         );
         // No file yet: nothing to back up.
-        super::backup_previous(&d.path().join("New.altaudio"), 3, chrono::Local::now()).unwrap();
+        super::backup_previous(
+            &d.path().join("New.altaudio"),
+            3,
+            chrono::Local::now(),
+            None,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn an_upgrade_copy_names_the_old_version_and_survives_pruning() {
+        use chrono::TimeZone;
+        let d = tempfile::tempdir().unwrap();
+        let target = d.path().join("Show.altaudio");
+        std::fs::write(&target, "original").unwrap();
+        let t = |h| {
+            chrono::Local
+                .with_ymd_and_hms(2026, 11, 3, h, 0, 0)
+                .unwrap()
+        };
+        super::backup_previous(&target, 0, t(9), Some(1)).unwrap();
+        let kept = d
+            .path()
+            .join("Backups")
+            .join("Show v1 2026-11-03 090000.altaudio");
+        assert_eq!(std::fs::read_to_string(&kept).unwrap(), "original");
+        // Many ordinary backups later, with a tight limit, the upgrade copy is still there.
+        for h in 10..16 {
+            super::backup_previous(&target, 2, t(h), None).unwrap();
+        }
+        assert!(kept.is_file());
+        let plain = std::fs::read_dir(d.path().join("Backups"))
+            .unwrap()
+            .flatten()
+            .filter(|e| !e.file_name().to_string_lossy().contains(" v1 "))
+            .count();
+        assert_eq!(plain, 2);
     }
 }
