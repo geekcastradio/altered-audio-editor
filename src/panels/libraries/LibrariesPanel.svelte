@@ -18,10 +18,14 @@
   import { peakRange, pickLevel } from "../editor/timeline";
   import { binsOf, defaultColor, initials, missingStarterBins, STARTER_BINS } from "./bins";
   import {
+    browseList,
+    exportText,
     libraryCleanUp,
     libraryImageData,
+    libraryOpen,
     libraryPickFolder,
     libraryPickPictures,
+    pathsExist,
     pickMediaFiles,
     previewPlay,
     previewStatus,
@@ -32,7 +36,8 @@
   import type { FileDropRouter } from "../../app/filedrop";
   import { beginPathDrag } from "../../app/pathdrag";
   import { revealLabel } from "../../lib/platform";
-  import { itemPath, type LibrariesState, type LibraryStore } from "../../stores/libraries";
+  import { itemPath, joinPath, type LibrariesState, type LibraryStore } from "../../stores/libraries";
+  import { packLibraryList, readLibraryList, sameDir, type KnownLibrary } from "../../stores/library-list";
   import type { CommandRunner } from "../../stores/media-pool";
   import { clickSelection, stepSelection } from "../files/selection";
   import { formatChannels } from "../files/format";
@@ -90,6 +95,13 @@
   let confirmClean = $state<{ dir: string; count: number } | null>(null);
   let binMenu = $state<{ x: number; y: number; id: string } | null>(null);
   let libMenu = $state<{ x: number; y: number } | null>(null);
+  /** Libraries on the list that are not open. */
+  const closedKnown = $derived((snap?.known ?? []).filter((k) => !(snap?.libs ?? []).some((l) => sameDir(l.dir, k.dir))));
+  /** Closed libraries whose folder was not there the last time the list was shown. */
+  let missing = $state<ReadonlySet<string>>(new Set());
+  let confirmForget = $state<{ dir: string; name: string } | null>(null);
+  let missingFor = $state<KnownLibrary | null>(null);
+  let listInput = $state<HTMLInputElement | null>(null);
   let poll: ReturnType<typeof setInterval> | undefined;
 
   $effect(() => {
@@ -240,13 +252,136 @@
     ask("New Show Library", "Show name", "", "Create", (name) => void store.create(name, undefined, STARTER_BINS).catch(fail));
   }
 
+  /** Libraries in a folder: the folder itself and the folders directly inside it. */
+  async function scanFolder(root: string): Promise<KnownLibrary[]> {
+    const dirs = [root];
+    for (const e of await browseList(root, false)) if (e.isDir) dirs.push(e.path);
+    const has = await pathsExist(dirs.map((d) => joinPath(d, "library.json")));
+    const found: KnownLibrary[] = [];
+    for (const [i, dir] of dirs.entries()) {
+      if (!has[i]) continue;
+      try {
+        const lib = await libraryOpen(dir);
+        found.push({ dir, name: lib.name, color: lib.color ?? null });
+      } catch {
+        // A damaged library.json is skipped; opening it by hand shows why.
+      }
+    }
+    return found;
+  }
+
   async function openLibrary() {
+    let dir: string | null = null;
     try {
-      const dir = await libraryPickFolder("Open Library");
+      dir = await libraryPickFolder("Open Library");
       if (dir) await store.openDir(dir);
+    } catch (e) {
+      // The folder may hold libraries rather than be one: look inside it.
+      try {
+        const found = dir ? await scanFolder(dir) : [];
+        if (found.length === 1) await store.openDir(found[0]!.dir);
+        else if (found.length > 1) {
+          store.addKnown(found);
+          onNotice(`Found ${found.length} libraries in that folder and added them to your list. Choose one from the library list.`);
+        } else fail(e);
+      } catch {
+        fail(e);
+      }
+    }
+  }
+
+  /** Looks through a folder for libraries and puts them on the list. */
+  async function findLibraries() {
+    try {
+      const root = await libraryPickFolder("Find Libraries in Folder");
+      if (!root) return;
+      const found = await scanFolder(root);
+      const added = store.addKnown(found);
+      onNotice(
+        found.length === 0
+          ? "No libraries found in that folder or the folders directly inside it."
+          : added === 0
+            ? "Those libraries are already on your list."
+            : `Added ${added} ${added === 1 ? "library" : "libraries"} to your list.`,
+      );
     } catch (e) {
       fail(e);
     }
+  }
+
+  async function refreshMissing() {
+    const closed = closedKnown;
+    if (closed.length === 0) {
+      missing = new Set();
+      return;
+    }
+    try {
+      const has = await pathsExist(closed.map((k) => joinPath(k.dir, "library.json")));
+      missing = new Set(closed.filter((_, i) => !has[i]).map((k) => k.dir));
+    } catch {
+      missing = new Set();
+    }
+  }
+
+  async function openKnown(k: KnownLibrary) {
+    try {
+      await store.openDir(k.dir);
+    } catch {
+      missingFor = k;
+    }
+  }
+
+  /** Points a library on the list at the folder where it is now. */
+  async function locateKnown(k: KnownLibrary) {
+    try {
+      const dir = await libraryPickFolder(`Locate ${k.name}`);
+      if (dir) await store.locate(k.dir, dir);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function exportList() {
+    const known = $state.snapshot(snap?.known ?? []) as KnownLibrary[];
+    if (known.length === 0) {
+      onNotice("There are no libraries to put in a list yet.");
+      return;
+    }
+    try {
+      const path = await exportText("My Libraries", null, "Export Library List", "Altered Audio library list", "json", packLibraryList(known));
+      if (path) onNotice(`Exported a list of ${known.length} ${known.length === 1 ? "library" : "libraries"}. Copy the library folders to the other computer too.`);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function importList(file: File | undefined) {
+    if (!file) return;
+    try {
+      const r = readLibraryList(await file.text());
+      if ("error" in r) {
+        onNotice(r.error);
+        return;
+      }
+      const has = await pathsExist(r.map((k) => joinPath(k.dir, "library.json")));
+      const absent = has.filter((h) => !h).length;
+      const added = store.addKnown(r);
+      onNotice(
+        added === 0
+          ? "Those libraries are already on your list."
+          : absent === 0
+            ? `Added ${added} ${added === 1 ? "library" : "libraries"} to your list.`
+            : `Added ${added} ${added === 1 ? "library" : "libraries"} to your list. ${absent} ${absent === 1 ? "folder is" : "folders are"} not on this computer yet. Copy ${absent === 1 ? "it" : "them"} over, then choose ${absent === 1 ? "it" : "each"} from the library list and point to the folder.`,
+      );
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function openLibraryMenu(e: MouseEvent) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    await refreshMissing();
+    libMenu = { x: r.left, y: r.bottom };
   }
 
   /** Counts unused copied files first and asks before deleting anything. */
@@ -344,10 +479,20 @@
       label: l.dir === active?.dir ? `${l.lib.name}  (shown)` : l.lib.name,
       run: () => store.show(l.dir),
     }));
+    if (closedKnown.length > 0) {
+      out.push({ kind: "sep" });
+      for (const k of closedKnown) {
+        out.push({ kind: "item", label: missing.has(k.dir) ? `${k.name}  (folder not found)` : k.name, run: () => void openKnown(k) });
+      }
+    }
     out.push(
       { kind: "sep" },
       { kind: "item", label: "New Show Library...", run: newLibrary },
       { kind: "item", label: "Open Library...", run: () => void openLibrary() },
+      { kind: "item", label: "Find Libraries in Folder...", run: () => void findLibraries() },
+      { kind: "sep" },
+      { kind: "item", label: "Export Library List...", run: () => void exportList() },
+      { kind: "item", label: "Import Library List...", run: () => listInput?.click() },
     );
     return out;
   }
@@ -585,6 +730,7 @@
         },
         { kind: "item", label: "Clean Up Library Folder", run: () => void cleanUp() },
         { kind: "item", label: "Close Library", run: () => store.close(a.dir) },
+        { kind: "item", label: "Remove Library from List...", run: () => (confirmForget = { dir: a.dir, name: a.lib.name }) },
       );
     }
     return out;
@@ -608,6 +754,11 @@
       <p>Keep intros, beds, promos and legal reads in a library and reuse them in every episode.</p>
       <button type="button" onclick={newLibrary}>New Library...</button>
       <button type="button" onclick={() => void openLibrary()}>Open Library...</button>
+      <button type="button" onclick={() => void findLibraries()}>Find Libraries...</button>
+      <button type="button" onclick={() => listInput?.click()}>Import Library List...</button>
+      {#each closedKnown as k (k.dir)}
+        <button type="button" onclick={() => void openKnown(k)}>Reopen {k.name}</button>
+      {/each}
     </div>
   {:else}
     {@const lib = active?.lib}
@@ -628,10 +779,7 @@
         type="button"
         class="title"
         title="Switch library"
-        onclick={(e) => {
-          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-          libMenu = { x: r.left, y: r.bottom };
-        }}
+        onclick={(e) => void openLibraryMenu(e)}
       >
         <span class="name">{lib?.name ?? "No library"}</span>
         <span class="sub">{lib ? `${lib.items.length} ${lib.items.length === 1 ? "item" : "items"} · ${lib.collections.length} ${lib.collections.length === 1 ? "bin" : "bins"}` : ""}</span>
@@ -874,6 +1022,43 @@
     onChoose={(v) => (v === "yes" ? void doCleanUp() : (confirmClean = null))}
   />
 {/if}
+
+{#if confirmForget}
+  <ChoiceDialog
+    title="Remove Library from List"
+    message={`Remove "${confirmForget.name}" from your library list? Nothing is deleted. The folder and its files stay at ${confirmForget.dir}. To bring it back, use Open Library or Find Libraries and pick that folder.`}
+    buttons={[
+      { label: "Remove from List", value: "yes", primary: true },
+      { label: "Cancel", value: "no" },
+    ]}
+    onChoose={(v) => {
+      const c = confirmForget;
+      confirmForget = null;
+      if (v === "yes" && c) store.forget(c.dir);
+    }}
+  />
+{/if}
+
+{#if missingFor}
+  <ChoiceDialog
+    title="Library Folder Not Found"
+    message={`${missingFor.name} is not at ${missingFor.dir} any more. If the folder moved, point to where it is now. Or take it off your list; no files are touched either way.`}
+    buttons={[
+      { label: "Locate Folder...", value: "locate", primary: true },
+      { label: "Remove from List", value: "remove" },
+      { label: "Cancel", value: "no" },
+    ]}
+    onChoose={(v) => {
+      const k = missingFor;
+      missingFor = null;
+      if (!k) return;
+      if (v === "locate") void locateKnown(k);
+      else if (v === "remove") store.forget(k.dir);
+    }}
+  />
+{/if}
+
+<input type="file" accept=".json" class="hidden" bind:this={listInput} onchange={(e) => { void importList(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }} />
 
 {#if libMenu}
   <ContextMenu x={libMenu.x} y={libMenu.y} items={libraryItems()} onClose={() => (libMenu = null)} />
@@ -1479,5 +1664,8 @@
     font-weight: 600;
     text-align: center;
     pointer-events: none;
+  }
+  .hidden {
+    display: none;
   }
 </style>

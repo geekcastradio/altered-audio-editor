@@ -11,11 +11,14 @@
  * Clean Up Library deletes files no item uses.
  *
  * Which libraries are open, and which one is showing, is a preference,
- * not an edit.
+ * not an edit. So is the list of every library the app has met: closing
+ * a library keeps it in that list so it can be reopened in one click, and
+ * only Remove from List forgets it. No files are ever deleted by either.
  */
 
 import type { Library, LibraryCollection, LibraryImportResult, LibraryItem } from "../app/core";
 import type { Command } from "../commands";
+import { lastSegment, sameDir, type KnownLibrary } from "./library-list";
 import type { CommandRunner } from "./media-pool";
 
 export interface LibraryBackend {
@@ -37,12 +40,16 @@ export interface LibrariesState {
   /** Collection id being shown, or null for all items. */
   readonly collection: string | null;
   readonly selected: ReadonlySet<string>;
+  /** Every library the app knows, open or closed, in the order they were met. */
+  readonly known: readonly KnownLibrary[];
 }
 
 /** Keeps open libraries and the shown one across restarts. */
 export interface LibraryPrefs {
   get(): { open: string[]; active: string | null };
   set(open: string[], active: string | null): void;
+  getKnown(): KnownLibrary[];
+  setKnown(known: KnownLibrary[]): void;
 }
 
 type Listener = (s: LibrariesState) => void;
@@ -77,9 +84,7 @@ export function folderName(name: string): string {
   return cleaned || "Library";
 }
 
-function samePath(a: string, b: string): boolean {
-  return a.replace(/\\/g, "/").toLowerCase() === b.replace(/\\/g, "/").toLowerCase();
-}
+const samePath = sameDir;
 
 let counter = 0;
 const newId = () =>
@@ -91,8 +96,9 @@ export class LibraryStore {
   private collection: string | null = null;
   private selection = new Set<string>();
   private restored = false;
+  private known: KnownLibrary[] = [];
   private readonly listeners = new Set<Listener>();
-  private state: LibrariesState = { libs: [], active: null, collection: null, selected: new Set() };
+  private state: LibrariesState = { libs: [], active: null, collection: null, selected: new Set(), known: [] };
 
   constructor(
     private readonly backend: LibraryBackend,
@@ -116,16 +122,21 @@ export class LibraryStore {
     if (this.restored) return [];
     this.restored = true;
     const { open, active } = this.prefs.get();
+    const saved = this.prefs.getKnown();
+    this.known = [...saved, ...this.known.filter((k) => !saved.some((o) => samePath(o.dir, k.dir)))];
     const failed: string[] = [];
     for (const dir of open) {
       if (this.libs.some((l) => samePath(l.dir, dir))) continue;
       try {
         const lib = await this.backend.open(dir);
         this.libs.push({ dir, lib });
+        this.note(dir, lib);
       } catch {
         failed.push(dir);
+        this.noteMissing(dir);
       }
     }
+    this.prefs.setKnown(this.known);
     this.activeDir = this.libs.find((l) => active && samePath(l.dir, active))?.dir ?? this.libs[0]?.dir ?? null;
     this.emit(true);
     return failed;
@@ -164,6 +175,48 @@ export class LibraryStore {
       this.selection.clear();
     }
     this.emit(true);
+  }
+
+  /** Whether a library is open right now. */
+  isOpen(dir: string): boolean {
+    return this.libs.some((l) => samePath(l.dir, dir));
+  }
+
+  /** Closes a library and takes it off the list. The folder and its files stay where they are. */
+  forget(dir: string): void {
+    this.close(dir);
+    this.known = this.known.filter((k) => !samePath(k.dir, dir));
+    this.prefs.setKnown(this.known);
+    this.emit();
+  }
+
+  /**
+   * A library that moved: opens the folder `to` and takes the old entry for
+   * `from` off the list. Throws when `to` is not a library.
+   */
+  async locate(from: string, to: string): Promise<OpenLibrary> {
+    const opened = await this.openDir(to);
+    if (!samePath(from, to)) {
+      this.known = this.known.filter((k) => !samePath(k.dir, from));
+      this.prefs.setKnown(this.known);
+      this.emit();
+    }
+    return opened;
+  }
+
+  /** Adds entries to the list (an imported list, or libraries found in a folder). Returns how many were new. */
+  addKnown(entries: readonly KnownLibrary[]): number {
+    let added = 0;
+    for (const e of entries) {
+      if (this.known.some((k) => samePath(k.dir, e.dir))) continue;
+      this.known.push({ dir: e.dir, name: e.name, color: e.color });
+      added++;
+    }
+    if (added > 0) {
+      this.prefs.setKnown(this.known);
+      this.emit();
+    }
+    return added;
   }
 
   show(dir: string): void {
@@ -368,6 +421,7 @@ export class LibraryStore {
     await this.backend.save(dir, lib);
     const i = this.libs.findIndex((l) => l.dir === dir);
     if (i >= 0) this.libs[i] = { dir, lib };
+    if (this.note(dir, lib)) this.prefs.setKnown(this.known);
     const ids = new Set(lib.items.map((it) => it.id));
     for (const id of [...this.selection]) if (!ids.has(id)) this.selection.delete(id);
     if (this.collection && !lib.collections.some((c) => c.id === this.collection)) this.collection = null;
@@ -380,11 +434,32 @@ export class LibraryStore {
 
   private add(open: OpenLibrary): OpenLibrary {
     this.libs.push(open);
+    if (this.note(open.dir, open.lib)) this.prefs.setKnown(this.known);
     this.activeDir = open.dir;
     this.collection = null;
     this.selection.clear();
     this.emit(true);
     return open;
+  }
+
+  /** Records a library's folder, name and color in the list. True when the list changed. */
+  private note(dir: string, lib: Library): boolean {
+    const entry: KnownLibrary = { dir, name: lib.name, color: lib.color ?? null };
+    const i = this.known.findIndex((k) => samePath(k.dir, dir));
+    if (i < 0) {
+      this.known.push(entry);
+      return true;
+    }
+    const old = this.known[i]!;
+    if (old.name === entry.name && old.color === entry.color && old.dir === entry.dir) return false;
+    this.known[i] = entry;
+    return true;
+  }
+
+  /** A library that was open last time but cannot be read now stays on the list under its folder name. */
+  private noteMissing(dir: string): void {
+    if (this.known.some((k) => samePath(k.dir, dir))) return;
+    this.known.push({ dir, name: lastSegment(dir), color: null });
   }
 
   private emit(persist = false): void {
@@ -393,6 +468,7 @@ export class LibraryStore {
       active: this.activeLib(),
       collection: this.collection,
       selected: new Set(this.selection),
+      known: [...this.known],
     };
     if (persist) this.prefs.set(this.libs.map((l) => l.dir), this.activeDir);
     for (const fn of this.listeners) fn(this.state);
