@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { targetById, type LoudnessReport } from "./loudness";
 import type { AnalysisReport } from "./analysis";
-import { levelRow, levelsOf, matchChanges, matchItems, matchRow } from "./loudness-match";
+import { changeFor, levelRow, levelsOf, matchChanges, matchItems, matchRow, truePeakRow } from "./loudness-match";
 import type { SessionDoc } from "../stores/session";
 
 const rep = (i: number, tp: number, mono = i - 3): LoudnessReport => ({ integrated: i, integratedMono: mono, range: 5, truePeak: tp, samplePeak: tp, seconds: 60, cancelled: false });
@@ -62,5 +62,24 @@ describe("loudness match", () => {
     expect(r.peakAfter).toBe(2);
     expect(r.peakWarning).toBe(true);
     expect(levelRow(item, "peak", -1, stats([-200, -200], [-200, -200])).measurable).toBe(false);
+  });
+  it("matches by true peak", () => {
+    const item = { key: "a", label: "a", clipIds: ["a"] };
+    const r = truePeakRow(item, -1, rep(-20, -4));
+    expect(r).toMatchObject({ measured: -4, change: 3, peakAfter: -1, measurable: true, peakWarning: false });
+    expect(truePeakRow(item, 1, rep(-20, -4)).peakWarning).toBe(true);
+    expect(truePeakRow(item, -1, rep(-Infinity, -Infinity)).measurable).toBe(false);
+  });
+  it("leaves items alone that are already within the tolerance", () => {
+    expect(changeFor(-16, -16.4, 0.5)).toBe(0);
+    expect(changeFor(-16, -16.5, 0.5)).toBe(0);
+    expect(changeFor(-16, -16.6, 0.5)).toBe(0.6);
+    expect(changeFor(-16, -16.1, 0)).toBe(0.1);
+    expect(changeFor(-16, -17, -1)).toBe(1);
+    const t = targetById("podcast-stereo");
+    const near = matchRow({ key: "h", label: "Host", clipIds: ["a"] }, rep(-16.3, -6), t, 0.5);
+    expect(near.change).toBe(0);
+    expect(near.measurable).toBe(true);
+    expect(matchChanges(doc, [near])).toEqual([]);
   });
 });

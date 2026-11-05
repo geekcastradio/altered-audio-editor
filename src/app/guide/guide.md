@@ -139,7 +139,7 @@ File > Export has these choices:
 - **Markers and Chapters** writes your chapters and cues.
 - **Multitrack Session (.sesx)** writes an Audition session file. Routing and some effects may be left out, and the export tells you what.
 
-Check Loudness (File > Check Loudness) measures your episode against a target. Loudness Match (Effects > Loudness Match) levels clips to a target.
+Check Loudness (File > Check Loudness) measures your episode against a target. Loudness Match (Effects > Loudness Match, or right-click a clip and choose Loudness Match) sets clip gain so each selected clip, or each track when none are selected, reaches a goal. Match by Loudness (LUFS), Peak, True Peak or Total RMS. The Tolerance box leaves alone anything already within that many dB of the goal, so a clip that is close enough is not touched. Rows that would peak over full scale start unticked, and applying is one undo step.
 
 Each session can have its own loudness target. Set it in Multitrack > Session Properties under Loudness target, and Check Loudness uses it for that session instead of the choice in Settings. It is saved with the session, so a session template made from it (File > Save as Session Template) starts every new episode with the same target. Leave it on "Use my Settings choice" to keep one target for everything.
 

@@ -36,21 +36,30 @@ export interface MatchRow extends MatchItem {
   peakWarning: boolean;
 }
 
-export function matchRow(item: MatchItem, r: LoudnessReport, t: LoudnessTarget): MatchRow {
+/** Default tolerance in dB: an item already this close to the goal is left alone. */
+export const DEFAULT_TOLERANCE = 0.5;
+
+/** The gain change to move `measured` to `goal`, rounded to 0.1 dB, or 0 when already within `tolerance`. */
+export function changeFor(goal: number, measured: number, tolerance: number): number {
+  if (Math.abs(goal - measured) <= Math.max(0, tolerance)) return 0;
+  return Math.round((goal - measured) * 10) / 10;
+}
+
+export function matchRow(item: MatchItem, r: LoudnessReport, t: LoudnessTarget, tolerance = 0): MatchRow {
   const measured = t.mono ? r.integratedMono : r.integrated;
   if (!Number.isFinite(measured)) {
     return { ...item, measured, truePeak: r.truePeak, change: 0, peakAfter: r.truePeak, measurable: false, peakWarning: false };
   }
-  const change = Math.round((t.lufs - measured) * 10) / 10;
+  const change = changeFor(t.lufs, measured, tolerance);
   const peakAfter = Math.round((r.truePeak + change) * 10) / 10;
-  return { ...item, measured, truePeak: r.truePeak, change, peakAfter, measurable: true, peakWarning: peakAfter > t.peak };
+  return { ...item, measured, truePeak: r.truePeak, change, peakAfter, measurable: true, peakWarning: change !== 0 && peakAfter > t.peak };
 }
 
-/** What a match brings each item to: a loudness target, its loudest sample, or its average level. */
-export type MatchBasis = "loudness" | "peak" | "rms";
+/** What a match brings each item to: a loudness target, its loudest sample, its true peak, or its average level. */
+export type MatchBasis = "loudness" | "peak" | "truepeak" | "rms";
 
-/** Where Peak and RMS start, in dB below full scale. */
-export const BASIS_LEVEL: Record<"peak" | "rms", number> = { peak: -1, rms: -18 };
+/** Where Peak, True Peak and RMS start, in dB below full scale. */
+export const BASIS_LEVEL: Record<"peak" | "truepeak" | "rms", number> = { peak: -1, truepeak: -1, rms: -18 };
 
 /** Loudest sample and average (RMS) level of both channels together, in dB below full scale. */
 export function levelsOf(r: AnalysisReport): { peakDb: number; rmsDb: number } {
@@ -63,15 +72,29 @@ export function levelsOf(r: AnalysisReport): { peakDb: number; rmsDb: number } {
  * The row for matching by peak or RMS: the change that puts the item at `level` dB.
  * A change that would push the loudest sample past full scale is flagged.
  */
-export function levelRow(item: MatchItem, basis: "peak" | "rms", level: number, r: AnalysisReport): MatchRow {
+export function levelRow(item: MatchItem, basis: "peak" | "rms", level: number, r: AnalysisReport, tolerance = 0): MatchRow {
   const { peakDb, rmsDb } = levelsOf(r);
   const measured = basis === "peak" ? peakDb : rmsDb;
   if (!Number.isFinite(measured) || measured <= -120) {
     return { ...item, measured, truePeak: peakDb, change: 0, peakAfter: peakDb, measurable: false, peakWarning: false };
   }
-  const change = Math.round((level - measured) * 10) / 10;
+  const change = changeFor(level, measured, tolerance);
   const peakAfter = Math.round((peakDb + change) * 10) / 10;
-  return { ...item, measured, truePeak: peakDb, change, peakAfter, measurable: true, peakWarning: peakAfter > 0 };
+  return { ...item, measured, truePeak: peakDb, change, peakAfter, measurable: true, peakWarning: change !== 0 && peakAfter > 0 };
+}
+
+/**
+ * The row for matching by true peak (the loudest point of the reconstructed
+ * waveform, which can sit above the loudest sample): the change that puts it at `level` dBTP.
+ */
+export function truePeakRow(item: MatchItem, level: number, r: LoudnessReport, tolerance = 0): MatchRow {
+  const measured = r.truePeak;
+  if (!Number.isFinite(measured) || measured <= -120) {
+    return { ...item, measured, truePeak: measured, change: 0, peakAfter: measured, measurable: false, peakWarning: false };
+  }
+  const change = changeFor(level, measured, tolerance);
+  const peakAfter = Math.round((measured + change) * 10) / 10;
+  return { ...item, measured, truePeak: measured, change, peakAfter, measurable: true, peakWarning: change !== 0 && peakAfter > 0 };
 }
 
 /** The clip gain changes for the chosen rows, as one edit. Gain stays within the clip gain limits. */
