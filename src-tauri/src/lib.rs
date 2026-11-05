@@ -56,6 +56,10 @@ pub fn run() {
         .manage(commands::wave::Playing::default())
         .manage(commands::update::PendingUpdate::default())
         .setup(|app| {
+            // Settings from older versions are moved to the Altered Audio folder first.
+            paths::migrate_settings(app.handle());
+            // Backups and the cache move into Documents\Altered Audio with the libraries.
+            paths::migrate_documents(app.handle());
             if let Ok(dir) = paths::config_dir(app.handle()) {
                 // Settings are backed up before anything reads them: one snapshot per
                 // changed launch, and always one before the first launch of a new version.

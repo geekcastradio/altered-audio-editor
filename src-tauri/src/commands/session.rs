@@ -172,11 +172,7 @@ pub struct SessionWithPath {
 }
 
 fn autosave_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("autosave"))
+    Ok(crate::paths::config_dir(app)?.join("autosave"))
 }
 
 #[tauri::command]

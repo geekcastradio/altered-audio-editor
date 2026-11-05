@@ -1,6 +1,6 @@
 # Altered Audio Editor 0.16.0
 
-Faster marker work, more ways to match loudness, music that ducks from track roles, and a track view with room to read.
+Faster marker work, a stronger Loudness Match, music that ducks from track roles, and a track view with room to read.
 
 ## Mixing
 
