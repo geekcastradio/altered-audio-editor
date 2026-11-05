@@ -350,7 +350,7 @@
           <div class="row">
             <button type="button" disabled={busy} onclick={() => void chooseCacheFolder(false)}>Change Folder...</button>
             <button type="button" disabled={busy} onclick={() => void chooseCacheFolder(true)}>Use Default</button>
-            <span class="why">The default is Documents\Altered Audio Editor\Cache. If Documents syncs to a cloud service, pick a local folder instead.</span>
+            <span class="why">The default is Documents\Altered Audio\Cache. If Documents syncs to a cloud service, pick a local folder instead.</span>
           </div>
         {:else if page === "Backup and Restore"}
           <BackupPage />
