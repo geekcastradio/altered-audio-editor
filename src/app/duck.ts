@@ -70,6 +70,33 @@ export function duckKeys(doc: SessionDoc, music: TrackDoc): TrackDoc[] {
   return doc.tracks.filter((t) => t.id !== music.id && isVoiceTrack(t));
 }
 
+export interface DuckPlan {
+  /** The tracks that get ducked. */
+  targets: TrackDoc[];
+  /** The tracks they listen to. */
+  keys: TrackDoc[];
+  /** True when the Foreground roles chose the listened-to tracks. */
+  byRole: boolean;
+}
+
+const roleOf = (t: TrackDoc) => t.mix_role ?? "normal";
+
+/**
+ * What Duck Music works on. A selected track that is not marked Ducked is the one that gets ducked, as
+ * always. With nothing selected, or a Ducked track selected, every track marked Ducked is. It listens to
+ * the tracks marked Foreground, or, when none are, to the voice tracks. Sessions with no roles behave
+ * as they did before roles existed. Null when there is nothing to duck.
+ */
+export function duckPlan(doc: SessionDoc, selected: TrackDoc | null): DuckPlan | null {
+  const targets = selected && roleOf(selected) !== "ducked" ? [selected] : doc.tracks.filter((t) => roleOf(t) === "ducked");
+  if (targets.length === 0) return null;
+  const own = new Set(targets.map((t) => t.id));
+  const foreground = doc.tracks.filter((t) => roleOf(t) === "foreground" && !t.muted && t.clips.length > 0 && !own.has(t.id));
+  const byRole = foreground.length > 0;
+  const keys = byRole ? foreground : doc.tracks.filter((t) => !own.has(t.id) && isVoiceTrack(t));
+  return { targets, keys, byRole };
+}
+
 /** True when the track already carries duck slots. */
 export const hasDuck = (music: TrackDoc): boolean => (music.effects?.slots ?? []).some(isDuckSlot);
 

@@ -65,6 +65,8 @@ Presets are in the Voice Chain's Presets menu. Presets you save appear under You
 
 The built-in effects cover the usual spoken-word jobs: noise reduction and noise print, de-essing, hum cut, compression, limiting, EQ, click and clip repair, and speech leveling. For more, plug-ins are described below.
 
+**QuickPass** (Effects > QuickPass) scans your clips for silences, short noises such as coughs and bumps, clicks and clipping, and lists what it found before changing anything. Its Remove Silence scan is the quick way to tighten an episode: pick a preset, set how quiet is silent and how long it must last, and choose what to do with each one. Remove cuts it out and can close the gap on that track or on every track, Split cuts the clip in two at each end, Turn Down only lowers it, and Mark adds a range marker. Remove keeps a short pad at each end so words do not run together, and Undo puts everything back in one step.
+
 A plain effect only changes what you hear in the session. To make an effect permanent on part of a file, open the file in the Waveform Editor and use Apply to Selection or Apply to Whole File.
 
 ## The Mixer, buses and routing
@@ -82,6 +84,8 @@ In a track's header (taller headers show more) you can choose where its sound go
 - **None**: the track plays to nothing. It still shows its meter and its sends still work, but it is left out of the mix and out of exports. Use it for a track that only feeds a bus through a send.
 
 **Sends** copy a little of a track to a bus at their own level, for example to a shared reverb. A send can be before or after the fader.
+
+**Mix Role** is a label on a track: right-click a track header and choose Mix Role. Foreground is for voices, Ducked is for music that should drop while a Foreground track talks, and Background is a label for sound that sits low under everything (nothing reads it yet). Multitrack > Duck Music Under Voice uses the labels: with nothing selected, or a Ducked track selected, it ducks every Ducked track under the Foreground tracks. If a track that is not marked Ducked is selected, it ducks just that one. With no roles set it works on the selected track and listens to the voice tracks, as before.
 
 When tracks go through buses or the master has effects, the program mixes a short moment ahead. A fader move can then take about half a second to be heard. In a session with no routing, faders act at once.
 

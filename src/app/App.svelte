@@ -91,7 +91,7 @@
   import { ALIGN_MAX_MS, alignOps, alignPair, describeAlign } from "../panels/editor/align";
   import SettingsDialog from "./settings/SettingsDialog.svelte";
   import { balance, balanceItems, describeBalance } from "./speaker-balance";
-  import { DUCK_DEPTHS, duckKeys, hasDuck, withDuck, withoutDuck } from "./duck";
+  import { DUCK_DEPTHS, duckPlan, hasDuck, withDuck, withoutDuck } from "./duck";
   import { HOST_PROFILES, profileById, profileOp } from "./host-profiles";
   import type { SettingsDraft } from "./settings/pages";
   import { colorVars, meterPercent, sanitizeSettings, settings, type AppSettings } from "../stores/settings";
@@ -1300,36 +1300,43 @@
     const rate = m.sample_rate || doc.sample_rate;
     return musicFit(m.path, f.clip.source_in / rate, f.clip.source_out / rate, seconds, FIT_XFADE);
   }
-  // Multitrack > Duck Music Under Voice.
+  // Multitrack > Duck Music Under Voice. Works on the selected track, or on every track marked Ducked, listening to the Foreground tracks.
   const duckTarget = () => {
     const doc = session.current;
-    const music = selectedTrack();
-    return doc && music ? { doc, music, keys: duckKeys(doc, music) } : null;
+    const plan = doc ? duckPlan(doc, selectedTrack()) : null;
+    return doc && plan ? { doc, ...plan } : null;
   };
   async function runDuck() {
     const at = duckTarget();
     if (!at) return;
-    const { music, keys } = at;
-    const own = hasDuck(music);
+    const { targets, keys } = at;
+    const own = targets.some(hasDuck);
     const buttons: ChoiceButton[] = [
       ...DUCK_DEPTHS.map((d) => ({ label: d.label, value: d.id, primary: d.id === "medium" })),
       ...(own ? [{ label: "Remove Ducking", value: "remove" }] : []),
       { label: "Cancel", value: "cancel" },
     ];
-    const who = keys.length === 1 ? keys[0]!.name : `${keys.length} voice tracks`;
-    const pick = await ask("Duck Music Under Voice", `Turn ${music.name} down while ${who} talks, and bring it back after. It adds plain Dynamics effects to ${music.name} that you can still edit in the Voice Chain. How far should it drop?`, buttons);
+    const who = keys.length === 1 ? keys[0]!.name : `${keys.length} ${at.byRole ? "Foreground" : "voice"} tracks`;
+    const what = targets.length === 1 ? targets[0]!.name : `${targets.length} Ducked tracks`;
+    const pick = await ask("Duck Music Under Voice", `Turn ${what} down while ${who} talks, and bring it back after. It adds plain Dynamics effects to ${targets.length === 1 ? what : "each one"} that you can still edit in the Voice Chain. How far should it drop?`, buttons);
     if (pick === "cancel" || pick === null) return;
-    const chain = chainOf(music.effects);
-    if (pick === "remove") {
-      await session.edit("Remove Ducking", { op: "set_effects", target: { kind: "track", id: music.id }, chain: withoutDuck(chain) }, sessionHistory);
-      return showNotice(`Removed ducking from ${music.name}.`);
+    const depth = pick === "remove" ? null : DUCK_DEPTHS.find((d) => d.id === pick);
+    if (pick !== "remove" && !depth) return;
+    const ops: Op[] = [];
+    const full: string[] = [];
+    for (const t of targets) {
+      const chain = chainOf(t.effects);
+      const next = depth ? withDuck(chain, keys.map((k) => k.id), depth.db, uuid) : withoutDuck(chain);
+      if (!next) {
+        full.push(t.name);
+        continue;
+      }
+      ops.push({ op: "set_effects", target: { kind: "track", id: t.id }, chain: next });
     }
-    const depth = DUCK_DEPTHS.find((d) => d.id === pick);
-    if (!depth) return;
-    const next = withDuck(chain, keys.map((k) => k.id), depth.db, uuid);
-    if (!next) return showNotice(`${music.name}'s Voice Chain is full: it holds 16 effects.`);
-    await session.edit("Duck Music Under Voice", { op: "set_effects", target: { kind: "track", id: music.id }, chain: next }, sessionHistory);
-    showNotice(`${music.name} now ducks about ${depth.db} dB under ${who}. Adjust it in the Voice Chain.`);
+    if (ops.length === 0) return showNotice(`${full.join(", ")}: the Voice Chain is full, it holds 16 effects.`);
+    await session.edit(depth ? "Duck Music Under Voice" : "Remove Ducking", ops.length === 1 ? ops[0]! : { op: "batch", ops }, sessionHistory);
+    const skipped = full.length > 0 ? ` ${full.join(", ")} was skipped because its Voice Chain is full.` : "";
+    showNotice(depth ? `${what} now ${targets.length === 1 ? "ducks" : "duck"} about ${depth.db} dB under ${who}. Adjust it in the Voice Chain.${skipped}` : `Removed ducking from ${what}.`);
   }
 
   // Multitrack > Speaker Balance.
@@ -5338,7 +5345,7 @@
           const at = duckTarget();
           return !!at && at.keys.length > 0;
         },
-        reason: () => (selectedTrack() ? "Needs another track with a voice on it to listen to." : "Select the music track first."),
+        reason: () => (selectedTrack() ? "Needs another track with a voice on it to listen to." : "Select the music track first, or mark tracks Ducked (right-click a track header > Mix Role)."),
       }),
       actions.register({
         id: "multitrack.speaker-balance",
@@ -5691,6 +5698,15 @@
         id: "multitrack.space",
         run: () => {
           if (!openPanels.has("space")) dock.toggle("space");
+        },
+      }),
+    );
+    // Effects > QuickPass shows the panel (without closing it when already open).
+    offs.push(
+      actions.register({
+        id: "fx.quickpass",
+        run: () => {
+          if (!openPanels.has("quickpass")) dock.toggle("quickpass");
         },
       }),
     );

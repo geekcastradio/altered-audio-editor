@@ -347,6 +347,7 @@ describe("menu model", () => {
       "clip.split-bands",
       "fx.capture-noise-print",
       "fx.add.echo",
+      "fx.quickpass",
       "fx.hide-windows",
       "help.guide",
       "edit.controllers",

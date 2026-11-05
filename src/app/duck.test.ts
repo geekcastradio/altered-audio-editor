@@ -3,7 +3,7 @@
 // This file is part of Altered Audio Editor.
 
 import { describe, expect, it } from "vitest";
-import { DUCK_DEPTHS, duckKeys, duckParams, hasDuck, isDuckSlot, withDuck, withoutDuck } from "./duck";
+import { DUCK_DEPTHS, duckKeys, duckParams, duckPlan, hasDuck, isDuckSlot, withDuck, withoutDuck } from "./duck";
 import type { EffectChainDoc, SessionDoc, TrackDoc } from "../stores/session";
 
 const track = (id: string, over: Partial<TrackDoc> = {}) =>
@@ -60,5 +60,47 @@ describe("duck keys", () => {
     const doc = { tracks: [track("host"), track("guest"), music, track("quiet", { muted: true }), track("none", { clips: [] })] } as unknown as SessionDoc;
     expect(duckKeys(doc, music).map((t) => t.id)).toEqual(["host", "guest"]);
     expect(hasDuck(music)).toBe(false);
+  });
+});
+
+describe("duck plan", () => {
+  const music = track("music", { clips: [{ id: "mc", media_id: "m", audio_type: "music" }] as never });
+  const doc = (roles: Record<string, TrackDoc["mix_role"]>) =>
+    ({ tracks: [track("host"), track("guest"), music, track("bed")].map((t) => ({ ...t, mix_role: roles[t.id] })) }) as unknown as SessionDoc;
+
+  it("works as it always did when no roles are set", () => {
+    const d = doc({});
+    const p = duckPlan(d, d.tracks[2]!)!;
+    expect(p.targets.map((t) => t.id)).toEqual(["music"]);
+    expect(p.keys.map((t) => t.id)).toEqual(["host", "guest", "bed"]);
+    expect(p.byRole).toBe(false);
+    expect(duckPlan(d, null)).toBeNull();
+  });
+
+  it("ducks every Ducked track when nothing, or a Ducked track, is selected", () => {
+    const d = doc({ music: "ducked", bed: "ducked" });
+    expect(duckPlan(d, null)!.targets.map((t) => t.id)).toEqual(["music", "bed"]);
+    expect(duckPlan(d, d.tracks[2]!)!.targets.map((t) => t.id)).toEqual(["music", "bed"]);
+  });
+
+  it("lets a selected track that is not Ducked win", () => {
+    const d = doc({ music: "ducked" });
+    expect(duckPlan(d, d.tracks[3]!)!.targets.map((t) => t.id)).toEqual(["bed"]);
+  });
+
+  it("listens to the Foreground tracks when there are any", () => {
+    const d = doc({ music: "ducked", host: "foreground" });
+    const p = duckPlan(d, null)!;
+    expect(p.keys.map((t) => t.id)).toEqual(["host"]);
+    expect(p.byRole).toBe(true);
+  });
+
+  it("does not listen to a muted or empty Foreground track, or to itself", () => {
+    const d = doc({ music: "ducked", host: "foreground", guest: "foreground" });
+    d.tracks[0]!.muted = true;
+    d.tracks[1]!.clips = [];
+    const p = duckPlan(d, null)!;
+    expect(p.byRole).toBe(false);
+    expect(p.keys.map((t) => t.id)).not.toContain("music");
   });
 });

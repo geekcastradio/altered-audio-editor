@@ -467,12 +467,7 @@ export const MENUS: readonly Menu[] = [
         item("fx.pitch-tune", "Pitch Tune (automatic correction)..."),
         item("fx.pitch-curve", "Pitch Curve (bend over time)..."),
       ]),
-      sortedSub("QuickPass", [
-        item("fx.quickpass", "Presets arrive in P5", {
-          pending: P5,
-          placeholder: true,
-        }),
-      ]),
+      item("fx.quickpass", "QuickPass (find and fix silence, noise, clicks)"),
       sortedSub("Stereo and Channels", [
         item("fx.add.center_remover", "Center Remover (remove vocals)"),
         item("fx.add.center_extract", "Center Channel Extractor (keep or remove the middle)"),
