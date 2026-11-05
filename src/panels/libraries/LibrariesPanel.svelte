@@ -14,6 +14,8 @@
   import PromptDialog from "../../app/PromptDialog.svelte";
   import ClipColorDialog from "../../app/ClipColorDialog.svelte";
   import ChoiceDialog from "../../app/ChoiceDialog.svelte";
+  import ShowAppearance from "./ShowAppearance.svelte";
+  import { picturesOnly } from "./cover";
   import type { PeakStore } from "../../stores/peaks";
   import { peakRange, pickLevel } from "../editor/timeline";
   import { binsOf, defaultColor, initials, missingStarterBins, STARTER_BINS } from "./bins";
@@ -91,7 +93,12 @@
   let playingId = $state<string | null>(null);
   /** Bin under the pointer while dragging items, to show where they will go. */
   let hoverBin = $state<string | null>(null);
-  let colorFor = $state<{ kind: "bin"; id: string; current: string | null } | { kind: "show"; current: string | null } | null>(null);
+  let colorFor = $state<{ id: string; current: string | null } | null>(null);
+  /** The show badge, and where the Show Appearance popup hangs while it is open. */
+  let badgeEl = $state<HTMLElement | null>(null);
+  let appearance = $state<{ left: number; top: number; bottom: number } | null>(null);
+  let coverZone = $state<HTMLElement | null>(null);
+  let coverOver = $state(false);
   let confirmClean = $state<{ dir: string; count: number } | null>(null);
   let binMenu = $state<{ x: number; y: number; id: string } | null>(null);
   let libMenu = $state<{ x: number; y: number } | null>(null);
@@ -378,6 +385,57 @@
     }
   }
 
+  function openAppearance() {
+    if (!badgeEl) return;
+    const r = badgeEl.getBoundingClientRect();
+    appearance = { left: r.left, top: r.top, bottom: r.bottom };
+  }
+
+  /** Copies a dropped or chosen picture into the library and makes it the cover. */
+  async function setCoverFromFiles(paths: string[]) {
+    const pics = picturesOnly(paths);
+    if (pics.length === 0) {
+      onNotice("A cover has to be a JPEG or PNG picture.");
+      return;
+    }
+    if (!active) return;
+    busy = true;
+    try {
+      const r = await store.importPaths([pics[0]!], runner);
+      const added = r.items.find((i) => i.kind === "image");
+      if (added) {
+        await store.setLibraryCover(added.id, runner);
+        onNotice(`Set ${added.name} as the library cover.`);
+      } else if (r.skipped.length > 0) {
+        onNotice(`Could not use that picture: ${r.skipped[0]!.reason}`);
+      }
+    } catch (e) {
+      fail(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function chooseCoverFile() {
+    try {
+      const paths = await libraryPickPictures();
+      if (paths.length > 0) await setCoverFromFiles(paths);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  // The popup's cover box takes dropped pictures. It sits inside the panel, so the router
+  // gives it the files while the pointer is over it and the panel everywhere else.
+  $effect(() => {
+    if (!coverZone) return;
+    return router.register({
+      element: coverZone,
+      onDrop: (paths) => void setCoverFromFiles(paths),
+      onHover: (over) => (coverOver = over),
+    });
+  });
+
   async function openLibraryMenu(e: MouseEvent) {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     await refreshMissing();
@@ -465,7 +523,7 @@
     const i = active.lib.collections.indexOf(c);
     return [
       { kind: "item", label: "Rename Bin...", run: () => ask("Rename Bin", "Bin name", c.name, "Rename", (n) => void store.renameCollection(c.id, n, runner).catch(fail)) },
-      { kind: "item", label: "Bin Color...", run: () => (colorFor = { kind: "bin", id: c.id, current: c.color ?? null }) },
+      { kind: "item", label: "Bin Color...", run: () => (colorFor = { id: c.id, current: c.color ?? null }) },
       { kind: "item", label: "Move Left", disabled: i === 0, run: () => void store.moveCollection(c.id, i - 1, runner).catch(fail) },
       { kind: "item", label: "Move Right", disabled: i === active.lib.collections.length - 1, run: () => void store.moveCollection(c.id, i + 1, runner).catch(fail) },
       { kind: "sep" },
@@ -713,7 +771,7 @@
       const a = active;
       out.push(
         { kind: "item", label: "Rename Library...", run: () => ask("Rename Library", "Library name", a.lib.name, "Rename", (n) => void store.renameLibrary(n, runner).catch(fail)) },
-        { kind: "item", label: "Show Color...", run: () => (colorFor = { kind: "show", current: a.lib.color ?? null }) },
+        { kind: "item", label: "Show Color and Cover...", run: openAppearance },
         {
           kind: "item",
           label: "Use Selected Picture as Library Cover",
@@ -770,9 +828,10 @@
         class="badge"
         class:has-cover={coverItem !== null}
         style:background="var({badge})"
-        title="Show color"
-        aria-label="Show color"
-        onclick={() => lib && (colorFor = { kind: "show", current: lib.color ?? null })}
+        title="Show color and cover"
+        aria-label="Show color and cover"
+        bind:this={badgeEl}
+        onclick={openAppearance}
         >{#if coverItem}{#key pathOf(coverItem)}<span class="cover" use:thumb={pathOf(coverItem)}>{#if thumbs[pathOf(coverItem)]}<img src={thumbs[pathOf(coverItem)]} alt="" draggable="false" />{/if}</span>{/key}{:else}{initials(lib?.name ?? "")}{/if}</button
       >
       <button
@@ -1023,6 +1082,29 @@
   />
 {/if}
 
+{#if appearance && active}
+  {@const shownLib = active.lib}
+  {@const coverOf = shownLib.cover ? (shownLib.items.find((i) => i.id === shownLib.cover && i.kind === "image") ?? null) : null}
+  <ShowAppearance
+    anchor={appearance}
+    color={shownLib.color ?? null}
+    coverPath={coverOf ? pathOf(coverOf) : null}
+    pictures={shownLib.items.filter((i) => i.kind === "image").map((i) => ({ id: i.id, name: i.name, path: pathOf(i), on: shownLib.cover === i.id }))}
+    {thumbs}
+    {thumb}
+    over={coverOver}
+    bind:zone={coverZone}
+    onColor={(c) => void store.setLibraryColor(c, runner).catch(fail)}
+    onPicture={(id) => void store.setLibraryCover(id, runner).catch(fail)}
+    onChoose={() => void chooseCoverFile()}
+    onRemove={() => void store.setLibraryCover(null, runner).catch(fail)}
+    onClose={() => {
+      appearance = null;
+      coverOver = false;
+    }}
+  />
+{/if}
+
 {#if confirmForget}
   <ChoiceDialog
     title="Remove Library from List"
@@ -1074,16 +1156,14 @@
 
 {#if colorFor}
   <ClipColorDialog
-    title={colorFor.kind === "bin" ? "Bin Color" : "Show Color"}
-    noneLabel={colorFor.kind === "bin" ? "No Color" : "Automatic"}
+    title="Bin Color"
+    noneLabel="No Color"
     current={colorFor.current}
     onDone={(c) => {
       const target = colorFor;
       colorFor = null;
       if (!target || c === null) return;
-      const value = c === "" ? null : c;
-      if (target.kind === "bin") void store.setCollectionColor(target.id, value, runner).catch(fail);
-      else void store.setLibraryColor(value, runner).catch(fail);
+      void store.setCollectionColor(target.id, c === "" ? null : c, runner).catch(fail);
     }}
   />
 {/if}

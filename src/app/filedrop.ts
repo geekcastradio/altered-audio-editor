@@ -101,15 +101,27 @@ export class FileDropRouter {
     this.setHovered(null);
   }
 
-  /** Topmost visible target containing the point, in CSS pixels. */
+  /**
+   * The visible target containing the point, in CSS pixels. When panels nest
+   * (a small drop box inside a panel) the smallest one wins, so the inner
+   * box gets the files and the panel around it gets the rest.
+   */
   private hit(x: number, y: number, exclude?: HTMLElement): DropTarget | null {
+    let best: DropTarget | null = null;
+    let bestArea = Infinity;
     for (const t of this.targets) {
       if (exclude && t.element === exclude) continue;
       const r = t.element.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) continue;
-      if (x >= r.left && x < r.right && y >= r.top && y < r.bottom) return t;
+      if (x >= r.left && x < r.right && y >= r.top && y < r.bottom) {
+        const area = r.width * r.height;
+        if (area < bestArea) {
+          best = t;
+          bestArea = area;
+        }
+      }
     }
-    return null;
+    return best;
   }
 
   private setHovered(t: DropTarget | null): void {

@@ -64,6 +64,30 @@ describe("FileDropRouter", () => {
   });
 });
 
+describe("FileDropRouter with nested targets", () => {
+  it("gives the files to the smallest target under the pointer, and the panel around it gets the rest", () => {
+    const outer: string[][] = [];
+    const inner: string[][] = [];
+    const router = new FileDropRouter(() => {});
+    // The inner box is registered after the panel, as a popup opened on top of it would be.
+    router.register({ element: box(0, 0, 400, 400), onDrop: (p) => outer.push(p) });
+    router.register({ element: box(50, 50, 100, 60), onDrop: (p) => inner.push(p) });
+    router.handle({ type: "drop", paths: ["a.png"], x: 60, y: 60 });
+    router.handle({ type: "drop", paths: ["b.png"], x: 300, y: 300 });
+    expect(inner).toEqual([["a.png"]]);
+    expect(outer).toEqual([["b.png"]]);
+  });
+
+  it("does not depend on the order they were registered in", () => {
+    const hits: string[] = [];
+    const router = new FileDropRouter(() => {});
+    router.register({ element: box(50, 50, 100, 60), onDrop: () => hits.push("inner") });
+    router.register({ element: box(0, 0, 400, 400), onDrop: () => hits.push("outer") });
+    router.handle({ type: "drop", paths: ["a.png"], x: 60, y: 60 });
+    expect(hits).toEqual(["inner"]);
+  });
+});
+
 describe("FileDropRouter in-app drags", () => {
   it("delivers to the panel under the pointer and never falls back", () => {
     const fallback: string[][] = [];
