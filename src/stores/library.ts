@@ -10,10 +10,12 @@ import {
   librarySave,
 } from "../app/core";
 import { LibraryStore } from "./libraries";
+import { sanitizeKnown } from "./library-list";
 import { prefs } from "./prefs";
 
 const KEY_OPEN = "libraries.open";
 const KEY_ACTIVE = "libraries.active";
+const KEY_KNOWN = "libraries.known";
 
 /** The app's open libraries. Restored by App after preferences load. */
 export const libraries = new LibraryStore(
@@ -35,5 +37,7 @@ export const libraries = new LibraryStore(
       prefs.set(KEY_OPEN, open);
       prefs.set(KEY_ACTIVE, active ?? "");
     },
+    getKnown: () => sanitizeKnown(prefs.raw(KEY_KNOWN)),
+    setKnown: (known) => prefs.set(KEY_KNOWN, known),
   },
 );

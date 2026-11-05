@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { Library, LibraryItem } from "../app/core";
 import { UndoStack } from "../commands";
 import { folderName, itemPath, joinPath, LibraryStore, type LibraryBackend } from "./libraries";
+import type { KnownLibrary } from "./library-list";
 
 function emptyLib(name: string): Library {
   return {
@@ -41,6 +42,7 @@ function item(id: string, file = `audio/${id}.wav`): LibraryItem {
 function setup(
   saved: { open: string[]; active: string | null } = { open: [], active: null },
   disk = new Map<string, Library>(),
+  savedKnown: KnownLibrary[] = [],
 ) {
   let n = 0;
   const backend: LibraryBackend = {
@@ -59,11 +61,14 @@ function setup(
     import: async (_dir, paths) => ({ items: paths.map(() => item(`i${++n}`)), skipped: [] }),
   };
   let prefs = saved;
+  let known = savedKnown;
   const store = new LibraryStore(backend, {
     get: () => prefs,
     set: (open, active) => (prefs = { open, active }),
+    getKnown: () => known,
+    setKnown: (list) => (known = structuredClone(list)),
   });
-  return { store, disk, stack: new UndoStack(), prefs: () => prefs };
+  return { store, disk, stack: new UndoStack(), prefs: () => prefs, known: () => known };
 }
 
 describe("LibraryStore", () => {
@@ -155,6 +160,77 @@ describe("LibraryStore", () => {
     // A second restore (the window reloading) adds nothing.
     expect(await second.store.restore()).toEqual([]);
     expect(second.store.current.libs).toHaveLength(2);
+  });
+});
+
+describe("known libraries", () => {
+  it("keeps a closed library on the list and reopens it in one step", async () => {
+    const { store, known } = setup();
+    const a = await store.create("Beds");
+    expect(known().map((k) => k.name)).toEqual(["Beds"]);
+    store.close(a.dir);
+    expect(store.current.libs).toHaveLength(0);
+    expect(store.current.known.map((k) => k.dir)).toEqual([a.dir]);
+    expect(store.isOpen(a.dir)).toBe(false);
+    await store.openDir(a.dir);
+    expect(store.isOpen(a.dir)).toBe(true);
+    expect(store.current.known).toHaveLength(1);
+  });
+
+  it("tracks a rename and a color change on the list", async () => {
+    const { store, stack, known } = setup();
+    await store.create("Beds");
+    await store.renameLibrary("Music Beds", stack);
+    await store.setLibraryColor("--clip-4", stack);
+    expect(known()).toEqual([{ dir: store.current.active!.dir, name: "Music Beds", color: "--clip-4" }]);
+  });
+
+  it("forgets a library without touching its folder", async () => {
+    const { store, disk, known } = setup();
+    const a = await store.create("Beds");
+    store.forget(a.dir);
+    expect(store.current.libs).toHaveLength(0);
+    expect(known()).toEqual([]);
+    expect(disk.has(a.dir)).toBe(true);
+  });
+
+  it("adds new entries from a list and ignores the ones it has", async () => {
+    const { store, known } = setup();
+    const a = await store.create("Beds");
+    const added = store.addKnown([
+      { dir: a.dir.toLowerCase(), name: "Beds", color: null },
+      { dir: "D:\\Shows\\Promos", name: "Promos", color: "--clip-2" },
+    ]);
+    expect(added).toBe(1);
+    expect(known().map((k) => k.name)).toEqual(["Beds", "Promos"]);
+  });
+
+  it("locates a moved library: opens the new folder and drops the old entry", async () => {
+    const first = setup();
+    const a = await first.store.create("Beds");
+    const moved = "E:\\Moved\\Beds";
+    first.disk.set(moved, first.disk.get(a.dir)!);
+    first.disk.delete(a.dir);
+    const second = setup({ open: [], active: null }, first.disk, [{ dir: a.dir, name: "Beds", color: null }]);
+    await second.store.restore();
+    await expect(second.store.openDir(a.dir)).rejects.toThrow();
+    await second.store.locate(a.dir, moved);
+    expect(second.known().map((k) => k.dir)).toEqual([moved]);
+    expect(second.store.isOpen(moved)).toBe(true);
+  });
+
+  it("keeps a library that was open but is gone on the list under its folder name", async () => {
+    const { store, known } = setup({ open: ["D:\\Gone\\Old Show"], active: null });
+    expect(await store.restore()).toEqual(["D:\\Gone\\Old Show"]);
+    expect(known()).toEqual([{ dir: "D:\\Gone\\Old Show", name: "Old Show", color: null }]);
+  });
+
+  it("puts libraries that were already open on the list the first time it runs", async () => {
+    const first = setup();
+    const a = await first.store.create("A");
+    const second = setup({ open: [a.dir], active: a.dir }, first.disk, []);
+    await second.store.restore();
+    expect(second.known().map((k) => k.name)).toEqual(["A"]);
   });
 });
 
