@@ -99,7 +99,7 @@
   import GenerateDialog, { type GenerateMode, type GenerateValues } from "./GenerateDialog.svelte";
   import { naturalLength, stretchTo, unstretch } from "../panels/editor/stretch";
   import { CHAPTER_FORMATS, embedList, markerList, type ChapterFormat } from "../panels/markers/chapters";
-  import { BASIS_LEVEL, levelRow, matchChanges, matchItems, matchRow, type MatchBasis, type MatchItem, type MatchRow } from "./loudness-match";
+  import { BASIS_LEVEL, DEFAULT_TOLERANCE, levelRow, matchChanges, matchItems, matchRow, truePeakRow, type MatchBasis, type MatchItem, type MatchRow } from "./loudness-match";
   import { DEFAULT_TARGET, guessRegion, setCustomTarget, targetById, targetsFor, type LoudnessReport } from "./loudness";
   import ClipColorDialog from "./ClipColorDialog.svelte";
   import MarkersPanel from "../panels/markers/MarkersPanel.svelte";
@@ -1911,7 +1911,8 @@
   // Effects > Loudness Match: clip gain so each selected clip, or each track, reaches a target.
   const KEY_MATCH_TARGET = "loudness.match-target";
   const KEY_MATCH_BASIS = "loudness.match-basis";
-  let lm = $state<{ mode: "clips" | "tracks"; items: MatchItem[]; rows: MatchRow[] | null; progress: number | null; target: string; region: string; basis: MatchBasis; level: number } | null>(null);
+  const KEY_MATCH_TOLERANCE = "loudness.match-tolerance";
+  let lm = $state<{ mode: "clips" | "tracks"; items: MatchItem[]; rows: MatchRow[] | null; progress: number | null; target: string; region: string; basis: MatchBasis; level: number; tolerance: number } | null>(null);
   let lmStop = false;
 
   function openLoudnessMatch() {
@@ -1919,9 +1920,9 @@
     if (!doc) return;
     const { mode, items } = matchItems(doc, editor.current().selectedClips);
     if (items.length === 0) return showNotice("There are no clips to match.");
-    const basis = ((b) => (b === "peak" || b === "rms" ? b : "loudness"))(prefs.string(KEY_MATCH_BASIS, "loudness")) as MatchBasis;
+    const basis = ((b) => (b === "peak" || b === "truepeak" || b === "rms" ? b : "loudness"))(prefs.string(KEY_MATCH_BASIS, "loudness")) as MatchBasis;
     const level = basis === "loudness" ? BASIS_LEVEL.peak : BASIS_LEVEL[basis];
-    lm = { mode, items, rows: null, progress: null, target: prefs.string(KEY_MATCH_TARGET, DEFAULT_TARGET), region: prefs.string(KEY_LOUD_REGION, guessRegion()), basis, level };
+    lm = { mode, items, rows: null, progress: null, target: prefs.string(KEY_MATCH_TARGET, DEFAULT_TARGET), region: prefs.string(KEY_LOUD_REGION, guessRegion()), basis, level, tolerance: Math.max(0, prefs.number(KEY_MATCH_TOLERANCE, DEFAULT_TOLERANCE)) };
     void measureMatch();
   }
 
@@ -1944,14 +1945,14 @@
         } else {
           request = { track: item.key, clipOnly: true };
         }
-        if (lm.basis === "loudness") {
+        if (lm.basis === "loudness" || lm.basis === "truepeak") {
           const report: LoudnessReport = await loudnessCheck(request);
           if (report.cancelled || lmStop || !lm) break;
-          rows.push(matchRow(item, report, t));
+          rows.push(lm.basis === "loudness" ? matchRow(item, report, t, lm.tolerance) : truePeakRow(item, lm.level, report, lm.tolerance));
         } else {
           const stats = await analyzeAudio(request);
           if (stats.cancelled || lmStop || !lm) break;
-          rows.push(levelRow(item, lm.basis, lm.level, stats));
+          rows.push(levelRow(item, lm.basis, lm.level, stats, lm.tolerance));
         }
         lm = { ...lm, progress: (i + 1) / lm.items.length };
       }
@@ -6106,6 +6107,12 @@
     region={lm.region}
     basis={lm.basis}
     level={lm.level}
+    tolerance={lm.tolerance}
+    onTolerance={(db) => {
+      prefs.set(KEY_MATCH_TOLERANCE, db);
+      if (lm) lm = { ...lm, tolerance: db, rows: null };
+      void measureMatch();
+    }}
     onBasis={(b) => {
       prefs.set(KEY_MATCH_BASIS, b);
       if (lm) lm = { ...lm, basis: b, level: b === "loudness" ? lm.level : BASIS_LEVEL[b], rows: null };

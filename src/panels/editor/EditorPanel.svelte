@@ -1795,6 +1795,7 @@
         act(actions.isChecked("clip.mute") ? "Unmute Clip" : "Mute Clip", "clip.mute"),
         act(actions.isChecked("clip.lock") ? "Unlock Position" : "Lock Position", "clip.lock"),
         act("Clip Gain...", "clip.gain"),
+        act("Match Loudness...", "fx.loudness-match"),
         act("Clip Color...", "clip.color"),
         ...clipFlipItems(),
         act("Group Clips", "clip.group"),

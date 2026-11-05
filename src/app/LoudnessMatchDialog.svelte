@@ -22,8 +22,11 @@
     basis: MatchBasis;
     /** The dB level for a Peak or RMS match. */
     level: number;
+    /** How close, in dB, an item must already be to leave it alone. */
+    tolerance: number;
     onBasis: (b: MatchBasis) => void;
     onLevel: (db: number) => void;
+    onTolerance: (db: number) => void;
     onTarget: (id: string) => void;
     onRegion: (id: string) => void;
     onMeasure: () => void;
@@ -32,7 +35,7 @@
     onClose: () => void;
   }
 
-  const { mode, rows, progress, targetId, region, basis, level, onBasis, onLevel, onTarget, onRegion, onMeasure, onCancel, onApply, onClose }: Props = $props();
+  const { mode, rows, progress, targetId, region, basis, level, tolerance, onBasis, onLevel, onTolerance, onTarget, onRegion, onMeasure, onCancel, onApply, onClose }: Props = $props();
 
   const target = $derived(targetById(targetId, region));
   const targets = $derived(targetsFor(region));
@@ -42,6 +45,8 @@
     skip = new Set((rows ?? []).filter((r) => !r.measurable || r.peakWarning).map((r) => r.key));
   });
   const chosen = $derived((rows ?? []).filter((r) => r.measurable && !skip.has(r.key) && r.change !== 0));
+  const nowUnit = $derived(basis === "loudness" ? "LUFS" : basis === "truepeak" ? "dBTP" : "dB");
+  const afterUnit = $derived(basis === "loudness" || basis === "truepeak" ? "dBTP" : "dB");
   const db = (v: number) => (Number.isFinite(v) ? `${v > 0 ? "+" : ""}${v.toFixed(1)}` : "-");
   function toggle(key: string) {
     const next = new Set(skip);
@@ -65,7 +70,8 @@
       <select value={basis} disabled={progress !== null} onchange={(e) => onBasis(e.currentTarget.value as MatchBasis)}>
         <option value="loudness">Loudness (LUFS)</option>
         <option value="peak">Peak (loudest sample)</option>
-        <option value="rms">RMS (average level)</option>
+        <option value="truepeak">True Peak (between samples)</option>
+        <option value="rms">Total RMS (average level)</option>
       </select>
     </label>
     {#if basis !== "loudness"}
@@ -74,6 +80,13 @@
         <input type="number" min="-60" max="0" step="0.5" value={level} disabled={progress !== null} onchange={(e) => onLevel(Math.max(-60, Math.min(0, Number(e.currentTarget.value) || 0)))} />
       </label>
     {/if}
+    <label class="row">
+      <span>Tolerance</span>
+      <span class="tol">
+        <input type="number" min="0" max="12" step="0.1" value={tolerance} disabled={progress !== null} onchange={(e) => onTolerance(Math.max(0, Math.min(12, Number(e.currentTarget.value) || 0)))} />
+        <span class="hint">dB. Items already this close are left alone.</span>
+      </span>
+    </label>
     <label class="row" hidden={basis !== "loudness"}>
       <span>Target</span>
       <select value={targetId} disabled={progress !== null} onchange={(e) => onTarget(e.currentTarget.value)}>
@@ -99,17 +112,17 @@
           <label class="line" class:warn={r.peakWarning} class:off={!r.measurable}>
             <input type="checkbox" checked={r.measurable && !skip.has(r.key)} disabled={!r.measurable} onchange={() => toggle(r.key)} />
             <span class="nm">{r.label}</span>
-            <span>{r.measurable ? `${r.measured.toFixed(1)} ${basis === "loudness" ? "LUFS" : "dB"}` : "Silent"}</span>
-            <span>{r.measurable ? `${db(r.change)} dB` : "-"}</span>
-            <span>{r.measurable ? `${db(r.peakAfter)} ${basis === "loudness" ? "dBTP" : "dB"}` : "-"}</span>
+            <span>{r.measurable ? `${r.measured.toFixed(1)} ${nowUnit}` : "Silent"}</span>
+            <span>{!r.measurable ? "-" : r.change === 0 ? "In range" : `${db(r.change)} dB`}</span>
+            <span>{r.measurable ? `${db(r.peakAfter)} ${afterUnit}` : "-"}</span>
           </label>
         {/each}
       </div>
       {#if rows.some((r) => r.peakWarning)}
-        <p class="note warn">Rows marked in red would peak above {basis === "loudness" ? `${target.peak} dBTP` : "full scale (0 dB)"}, so they start unticked. Lower their loudest moments or limit them (limiting arrives with effects), or tick them to apply anyway.</p>
+        <p class="note warn">Rows marked in red would peak above {basis === "loudness" ? `${target.peak} dBTP` : basis === "truepeak" ? "full scale (0 dBTP)" : "full scale (0 dB)"}, so they start unticked. Lower their loudest moments or limit them (limiting arrives with effects), or tick them to apply anyway.</p>
       {/if}
     {:else}
-      <p class="note">Measure to see how far each {mode === "clips" ? "clip" : "track"} is from {basis === "loudness" ? `${target.lufs} LUFS` : `${level} dB ${basis === "peak" ? "peak" : "RMS"}`}.</p>
+      <p class="note">Measure to see how far each {mode === "clips" ? "clip" : "track"} is from {basis === "loudness" ? `${target.lufs} LUFS` : `${level} ${basis === "truepeak" ? "dBTP true peak" : basis === "peak" ? "dB peak" : "dB RMS"}`}.</p>
     {/if}
 
     <footer>
@@ -154,10 +167,21 @@
   }
   .row {
     display: grid;
-    grid-template-columns: 60px minmax(0, 1fr);
+    grid-template-columns: 72px minmax(0, 1fr);
     gap: 8px;
     align-items: center;
     color: var(--text-dim);
+  }
+  .tol {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .tol input {
+    width: 64px;
+  }
+  .hint {
+    color: var(--text-faint);
   }
   select {
     height: 24px;
