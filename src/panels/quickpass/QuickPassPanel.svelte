@@ -119,6 +119,9 @@
     found = [];
     done = {};
     scanned = false;
+    // A scan still running belongs to the old type: let it finish unseen.
+    scanToken++;
+    busy = false;
   }
   const isBuiltin = $derived(BUILTIN_PRESETS.some((p) => p.name === preset));
   const known = $derived(allPresets.some((p) => p.name === preset && p.settings.scan === s.scan));
@@ -250,24 +253,36 @@
     }
   }
 
+  /** Counts scans, so a scan that was stopped (or whose type changed) never writes its answer. */
+  let scanToken = 0;
+
+  /** Stops waiting for the scan. The count keeps going in the background, but its answer is dropped. */
+  function cancelScan() {
+    scanToken++;
+    busy = false;
+    onNotice("Scan stopped.");
+  }
+
   async function scan() {
     const { ids, info } = targets();
     if (ids.length === 0) return onNotice("There are no clips to scan.");
+    const mine = ++scanToken;
+    busy = true;
     try {
+      let list: Finding[];
       if (s.scan === "clicks" || s.scan === "clipping") {
-        busy = true;
-        try {
-          found = spotFindings(await quickpassSpots(ids, spotsRequest(s), inWave), info, s.scan);
-        } finally {
-          busy = false;
-        }
-      } else found = findAll(await measure(ids), info, s, rate);
+        list = spotFindings(await quickpassSpots(ids, spotsRequest(s), inWave), info, s.scan);
+      } else list = findAll(await quickpassLevels(ids, WINDOW_MS, inWave), info, s, rate);
+      if (mine !== scanToken) return;
+      found = list;
       done = {};
       picked = new Set();
       scanned = true;
       view = "scan";
     } catch (e) {
-      onError(e);
+      if (mine === scanToken) onError(e);
+    } finally {
+      if (mine === scanToken) busy = false;
     }
   }
 
@@ -493,6 +508,9 @@
     </div>
     <div class="bar">
       <button type="button" class="go" disabled={busy} onclick={scan}>{busy ? (progress === null ? "Scanning" : `Scanning ${Math.round(progress * 100)}%`) : "Scan"}</button>
+      {#if busy}
+        <button type="button" onclick={cancelScan} title="Stop waiting for the scan. Nothing changes.">Cancel</button>
+      {/if}
       <span class="grow"></span>
       <button type="button" disabled={target.length === 0} onclick={() => void fix(target)}>{VERB[s.action]}</button>
       <button type="button" disabled={waiting.length === 0} onclick={() => void fix(waiting)}>{VERB[s.action]} All</button>

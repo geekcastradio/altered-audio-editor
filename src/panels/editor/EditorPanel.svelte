@@ -1236,7 +1236,8 @@
 
   function onLanePointer(e: PointerEvent, track: TrackDoc) {
     if (e.button === 1) {
-      startPan(e, true);
+      // Middle button slides the timeline sideways only; Shift also lets it move the tracks up and down.
+      startPan(e, e.shiftKey);
       return;
     }
     if (e.button !== 0 && e.button !== 2) return;
@@ -2667,8 +2668,9 @@
                 <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="1.6" fill="currentColor" /><path d="M5 5a4.2 4.2 0 0 0 0 6M11 5a4.2 4.2 0 0 1 0 6" fill="none" stroke="currentColor" stroke-width="1.3" /></svg>
               </button>
               {/if}
-              <!-- Sync Lock and Mono sit beside Invert Polarity in the Mix row; they stay up here when that row is not showing. -->
-              {#if track.collapsed || headerView !== "mix"}{@render syncMono(track)}{/if}
+              <!-- Sync Lock sits next to M and S, so the Mix row has room for Mono and Invert Polarity. Mono stays up here when that row is not showing. -->
+              {@render syncBtn(track)}
+              {#if track.collapsed || headerView !== "mix"}{@render monoBtn(track)}{/if}
             </div>
             {#if !track.collapsed && headerView === "fx" && doc}
               <HeaderFx
@@ -2710,7 +2712,7 @@
                 <Dial value={track.pan} min={-100} max={100} step={1} origin={0} label="Pan" icon="pan" format={formatPan} onChange={(v) => setValue(track, "pan", v)} {...holdOf(track.id, "pan", () => track.pan)} />
               {/if}
               <span class="tail">
-                {@render syncMono(track)}
+                {@render monoBtn(track)}
                 <button
                   type="button"
                   class="ms pol"
@@ -3151,7 +3153,7 @@
 </button>
 {/snippet}
 
-{#snippet syncMono(track: TrackDoc)}
+{#snippet syncBtn(track: TrackDoc)}
 <button
   type="button"
   class="ms sync"
@@ -3163,6 +3165,9 @@
 >
   <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 9.5l3-3M5 7.5L3.7 8.8a2.4 2.4 0 003.5 3.5L8.5 11M11 8.5l1.3-1.3a2.4 2.4 0 00-3.5-3.5L7.5 5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></svg>
 </button>
+{/snippet}
+
+{#snippet monoBtn(track: TrackDoc)}
 <button type="button" class="ms mono short" class:on={!!track.mono} title="Mono: folds this track's left and right into one centered signal, after its effects and before its fader and pan. Part of the mix, so exports hear it too." aria-pressed={!!track.mono} onclick={() => setTrack(track, { mono: !track.mono }, track.mono ? "Track Stereo" : "Track Mono")}>MO</button>
 {/snippet}
 
