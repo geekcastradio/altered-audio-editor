@@ -3281,10 +3281,10 @@
     files.stopAutosave();
     if (settings.current.autosave) files.startAutosave(settings.current.autosaveMinutes * 60_000);
   }
-  /** Space bar: stops when recording or playing, otherwise plays (the multitrack, or the open Waveform file). */
+  /** Space bar: ends a recording, pauses playback where it is, or plays on from the playhead (the multitrack, or the open Waveform file). Stop follows the Return to Start on Stop toggle. */
   function spaceToggle(t: TransportStore): Promise<void> {
     if (take) return finishRecord();
-    return t.current.playing ? stopTransport(t) : t.toggle();
+    return t.toggle();
   }
   /** Stop: back to where playback began, or, with Return to Start on Stop off, where it stopped. */
   function stopTransport(t: TransportStore): Promise<void> {

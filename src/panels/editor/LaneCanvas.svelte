@@ -224,7 +224,7 @@
       g.textBaseline = "middle";
       g.save();
       g.beginPath();
-      g.rect(left, 1, right - left, titleH);
+      g.rect(left, 1, right - left, titleH + 3);
       g.clip();
       const st = stretchOf(clip);
       // A stretched clip says so in its title, with the pitch mode.
@@ -232,8 +232,9 @@
       const pitchText = semis ? `  ${semis > 0 ? "+" : ""}${Math.round(semis * 100) / 100} st` : "";
       const label = st === 1 && !semis ? clip.name : `${clip.name}  ${st === 1 ? "" : `${Math.round(st * 1000) / 10}%`}${clip.stretch?.keep_pitch === false ? " tape" : ""}${pitchText}`;
       // Clear of the stretch handle in the corner, when shown.
-      const indent = stretchHandles && !clip.looped && !clip.locked && x1 - x0 > 26 ? 14 : 4;
-      g.fillText(label, Math.max(x0, 0) + indent, 1 + titleH / 2);
+      // The name sits a little lower and further in, so the selected clip's thick outline never covers it.
+      const indent = stretchHandles && !clip.looped && !clip.locked && x1 - x0 > 26 ? 17 : 7;
+      g.fillText(label, Math.max(x0, 0) + indent, 1 + titleH / 2 + 2);
       g.restore();
 
       // Waveform.

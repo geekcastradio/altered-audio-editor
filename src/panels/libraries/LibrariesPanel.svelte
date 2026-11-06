@@ -116,10 +116,18 @@
   const VIEW_KEY = "libraries.view";
   let view = $state<ViewState>({ ...DEFAULT_VIEW });
   let viewReady = false;
+  /** The details area under the list (name, tags, color) can be hidden to give the list the room. Kept between runs. */
+  const DETAILS_KEY = "libraries.details";
+  let detailsOpen = $state(true);
   void prefs.load().then(() => {
     view = sanitizeView(prefs.raw(VIEW_KEY));
+    detailsOpen = prefs.raw(DETAILS_KEY) !== false;
     viewReady = true;
   });
+  function toggleDetails() {
+    detailsOpen = !detailsOpen;
+    if (viewReady) prefs.set(DETAILS_KEY, detailsOpen);
+  }
   function setView(next: ViewState) {
     view = next;
     if (viewReady) prefs.set(VIEW_KEY, next);
@@ -954,6 +962,11 @@
     </div>
 
     {#if single}
+      <button type="button" class="details-toggle" aria-expanded={detailsOpen} onclick={toggleDetails} title={detailsOpen ? "Hide the details under the list" : "Show the details under the list"}>
+        <span aria-hidden="true">{detailsOpen ? "\u25BE" : "\u25B8"}</span> Details
+      </button>
+    {/if}
+    {#if single && detailsOpen}
       {#key single.id}
         <div class="details">
           <input class="field" type="text" aria-label="Item name" value={single.name} onchange={(e) => commit("name", e.currentTarget.value)} />
@@ -1612,6 +1625,23 @@
     color: var(--text-faint);
     font-size: var(--font-size-small);
     text-align: center;
+  }
+
+  .details-toggle {
+    flex: none;
+    padding: 2px 8px;
+    border: 0;
+    border-top: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    font: inherit;
+    font-size: var(--font-size-small);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .details-toggle:hover {
+    color: var(--text);
   }
 
   .details {
