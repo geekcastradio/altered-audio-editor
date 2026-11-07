@@ -5887,7 +5887,7 @@
 
 <div class="shell">
   <header class="top">
-    <MenuBar menus={MENUS} {actions} {shortcutFor} onError={showError} popups={{ "fx.vst3": vst3Popup }} searches={{ Effects: effectsMenuSearch }} />
+    <MenuBar menus={MENUS} {actions} {shortcutFor} onError={showError} onBlocked={showNotice} popups={{ "fx.vst3": vst3Popup }} searches={{ Effects: effectsMenuSearch }} />
     <label class="wsswitch" title="Switch workspace">
       <span>Workspace</span>
       <select value={wsView.current} onchange={(e) => void dock.switchTo(e.currentTarget.value)}>
