@@ -3817,7 +3817,7 @@
       ...["fx.spectrum.reduce-12", "fx.spectrum.reduce-24", "fx.spectrum.remove", "fx.spectrum.repair"].map((id) =>
         actions.register({ id, run: () => {}, enabled: () => false, reason: () => NOT_WAVE }),
       ),
-      ...["edit.mix-paste", "edit.crop", "fx.invert", "fx.reverse", "fx.silence", "fx.room-tone", "fx.fade-in", "fx.fade-out", "fx.amplify", "fx.normalize", "fx.pitch-tune", "fx.pitch-curve"].map((id) =>
+      ...["edit.mix-paste", "edit.crop", "fx.invert", "fx.reverse", "fx.silence", "fx.room-tone", "fx.fade-in", "fx.fade-out", "fx.fade-in-linear", "fx.fade-out-linear", "fx.amplify", "fx.normalize", "fx.pitch-tune", "fx.pitch-curve"].map((id) =>
         actions.register({ id, run: () => {}, enabled: () => false, reason: () => NOT_WAVE }),
       ),
       ov(waveFocus, {
@@ -4007,24 +4007,23 @@
         enabled: () => waveSel() !== null && exporting === null,
         reason: () => (exporting ? "Wait for the current job to finish." : NEED_WAVE_SEL),
       }),
-      ov(waveIsOpen, {
-        id: "fx.fade-in",
-        run: async () => {
-          const r = waveSel();
-          if (r) await waveEdit("Fade In", fadeRange(wave.current!, r[0], r[1], "in", uuid), r);
-        },
-        enabled: () => waveSel() !== null,
-        reason: () => NEED_WAVE_SEL,
-      }),
-      ov(waveIsOpen, {
-        id: "fx.fade-out",
-        run: async () => {
-          const r = waveSel();
-          if (r) await waveEdit("Fade Out", fadeRange(wave.current!, r[0], r[1], "out", uuid), r);
-        },
-        enabled: () => waveSel() !== null,
-        reason: () => NEED_WAVE_SEL,
-      }),
+      // Fades cover the selection, or the whole file when nothing is selected.
+      ...(
+        [
+          ["fx.fade-in", "in", "power", "Fade In"],
+          ["fx.fade-out", "out", "power", "Fade Out"],
+          ["fx.fade-in-linear", "in", "linear", "Fade In (Linear)"],
+          ["fx.fade-out-linear", "out", "linear", "Fade Out (Linear)"],
+        ] as const
+      ).map(([id, dir, shape, label]) =>
+        ov(waveIsOpen, {
+          id,
+          run: async () => {
+            const r = waveAll();
+            if (r) await waveEdit(label, fadeRange(wave.current!, r[0], r[1], dir, uuid, shape), r);
+          },
+        }),
+      ),
       ov(waveIsOpen, {
         id: "fx.amplify",
         run: async () => {

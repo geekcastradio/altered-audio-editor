@@ -126,9 +126,13 @@ export function amplifyRange(doc: SessionDoc, a: number, b: number, db: number, 
   return onPieces(doc, a, b, newId, (c) => ({ id: c.id, gain_db: Math.max(-96, Math.min(24, c.gain_db + db)) }));
 }
 
-/** Gain in dB for a fade at `t` from 0 to 1: an equal-power curve, silent at 0. */
-export function fadeDb(t: number): number {
-  const g = Math.sin((Math.max(0, Math.min(1, t)) * Math.PI) / 2);
+/**
+ * Gain in dB for a fade at `t` from 0 to 1, silent at 0. "power" is an
+ * equal-power curve; "linear" ramps the gain itself in a straight line.
+ */
+export function fadeDb(t: number, shape: "power" | "linear" = "power"): number {
+  const x = Math.max(0, Math.min(1, t));
+  const g = shape === "linear" ? x : Math.sin((x * Math.PI) / 2);
   return g <= 0 ? DB_MIN : Math.max(DB_MIN, 20 * Math.log10(g));
 }
 
@@ -139,7 +143,7 @@ const FADE_POINTS = 24;
  * envelope (on top of any envelope it already has), so a fade can cross
  * earlier edits.
  */
-export function fadeRange(doc: SessionDoc, a: number, b: number, dir: "in" | "out", newId: () => string): Op | null {
+export function fadeRange(doc: SessionDoc, a: number, b: number, dir: "in" | "out", newId: () => string, shape: "power" | "linear" = "power"): Op | null {
   const media = mediaOf(doc);
   const span = b - a;
   if (span <= 0) return null;
@@ -151,7 +155,7 @@ export function fadeRange(doc: SessionDoc, a: number, b: number, dir: "in" | "ou
     for (let i = 0; i <= FADE_POINTS; i++) {
       const pos = Math.round((len * i) / FADE_POINTS);
       const t = (c.start + pos - a) / span;
-      const f = fadeDb(dir === "in" ? t : 1 - t);
+      const f = fadeDb(dir === "in" ? t : 1 - t, shape);
       pts.push({ position: pos, value: Math.max(DB_MIN, levelAt(old, pos) + f), curve: "linear" });
     }
     return { id: c.id, volume: pts };
