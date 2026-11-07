@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultTrackColor,
+  edgeScrollPx,
   dragOverviewEdge,
   fit,
   formatClock,
@@ -196,5 +197,23 @@ describe("track height", () => {
 
   it("still lets a track be folded to its name row", () => {
     expect(trackHeight({ height: 200, collapsed: true })).toBe(COLLAPSED_H);
+  });
+});
+
+describe("edge scrolling while dragging", () => {
+  it("stands still away from the ends", () => {
+    expect(edgeScrollPx(500, 100, 900)).toBe(0);
+  });
+
+  it("scrolls toward the end the pointer is near, faster the closer it gets", () => {
+    expect(edgeScrollPx(870, 100, 900)).toBeGreaterThan(0);
+    expect(edgeScrollPx(895, 100, 900)).toBeGreaterThan(edgeScrollPx(870, 100, 900));
+    expect(edgeScrollPx(130, 100, 900)).toBeLessThan(0);
+    expect(edgeScrollPx(105, 100, 900)).toBeLessThan(edgeScrollPx(130, 100, 900));
+  });
+
+  it("keeps going with the pointer outside the lanes, up to a top speed", () => {
+    expect(edgeScrollPx(5000, 100, 900)).toBe(40);
+    expect(edgeScrollPx(-5000, 100, 900)).toBe(-40);
   });
 });

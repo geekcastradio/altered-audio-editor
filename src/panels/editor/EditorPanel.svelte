@@ -66,7 +66,7 @@
   import { KIND_COLORS, markerAt, markerCss } from "../markers/markers";
   import { quiet, type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
   import { channelNames } from "../space/space";
-  import { defaultTrackColor, MIN_TRACK_H, trackHeight, formatIn, maxSppFor, rulerTicks, ticksFor, setDisplayTempo, sampleAt, xOf, zoomAround, type Viewport, TRACK_GAP } from "./timeline";
+  import { defaultTrackColor, MIN_TRACK_H, trackHeight, formatIn, maxSppFor, rulerTicks, ticksFor, setDisplayTempo, sampleAt, xOf, zoomAround, edgeScrollPx, type Viewport, TRACK_GAP } from "./timeline";
 
   interface Props {
     session: SessionStore;
@@ -1461,6 +1461,26 @@
     return () => window.clearInterval(timer);
   }
 
+  /**
+   * The same for the timeline: while a drag holds the pointer near the left
+   * or right end of the lanes, scrolls it that way and runs `again` with the
+   * last pointer event so the drag follows. Returns the stop.
+   */
+  function edgeScrollX(last: () => PointerEvent | null, again: (ev: PointerEvent) => void): () => void {
+    const timer = window.setInterval(() => {
+      const ev = last();
+      if (!ev || !lanesEl) return;
+      const r = lanesEl.getBoundingClientRect();
+      const px = edgeScrollPx(ev.clientX, r.left, r.right);
+      if (px === 0) return;
+      const next = Math.max(0, view.scroll + px * view.spp);
+      if (next === view.scroll) return;
+      setView({ scroll: next });
+      again(ev);
+    }, 30);
+    return () => window.clearInterval(timer);
+  }
+
   function startSelectFromLane(e: PointerEvent) {
     if (e.button !== 0) return;
     if (ed.tool === "move") startBoxSelect(e);
@@ -1473,32 +1493,36 @@
     e.preventDefault();
     const d0 = doc;
     const left = leftEdge ?? lanesEl.getBoundingClientRect().left;
-    const v = view;
     const snap = ed.snap;
     const targets = targetsFor(d0, new Set());
+    // The view is read live, so the range keeps following the pointer while the timeline scrolls under it.
     const at = (clientX: number, shift: boolean) => {
-      const s = sampleAt(clientX - left, v);
-      const hit = snap.on && !shift ? nearest(s, targets, SNAP_PX * v.spp) : null;
+      const s = sampleAt(clientX - left, view);
+      const hit = snap.on && !shift ? nearest(s, targets, SNAP_PX * view.spp) : null;
       return hit ?? s;
     };
     const anchor = at(e.clientX, e.shiftKey);
     const startX = e.clientX;
     let moved = false;
+    let lastEv: PointerEvent | null = null;
     const move = (ev: PointerEvent) => {
+      lastEv = ev;
       if (!moved && Math.abs(ev.clientX - startX) < 3) return;
       moved = true;
       const p = at(ev.clientX, ev.shiftKey);
       const cur = session.current;
       if (cur) session.setView({ ...cur.view, selection: { start: Math.min(anchor, p), end: Math.max(anchor, p) } });
     };
+    const stopScroll = edgeScrollX(() => (moved ? lastEv : null), move);
     const up = (ev: PointerEvent) => {
+      stopScroll();
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", up, true);
       if (moved) return;
       const cur = session.current;
       if (cur?.view.selection) session.setView({ ...cur.view, selection: null });
       // While playing, only the ruler moves the playhead; a click in the lanes leaves playback alone.
-      if (leftEdge !== undefined || !tp?.playing) void transport.seek(sampleAt(ev.clientX - left, v));
+      if (leftEdge !== undefined || !tp?.playing) void transport.seek(sampleAt(ev.clientX - left, view));
     };
     window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerup", up, true);
@@ -1511,6 +1535,8 @@
     e.preventDefault();
     const box = lanesEl.getBoundingClientRect();
     const v = view;
+    // The start is kept as a sample, so it stays put on the timeline while the view scrolls.
+    const a0 = sampleAt(e.clientX - box.left, v);
     const x0 = e.clientX - box.left;
     // Heights count from the top of the lanes, which move as they scroll.
     const y0 = e.clientY - box.top;
@@ -1518,13 +1544,14 @@
     const keep = e.shiftKey ? new Set(editor.current().selectedClips) : new Set<string>();
     let moved = false;
     const pick = (x1: number, y1: number) => {
-      const left = Math.min(x0, x1);
-      const right = Math.max(x0, x1);
+      const xa = (a0 - view.scroll) / view.spp;
+      const left = Math.min(xa, x1);
+      const right = Math.max(xa, x1);
       const top = Math.min(y0, y1);
       const bottom = Math.max(y0, y1);
       selBox = { x: left, y: top, w: right - left, h: bottom - top };
-      const t0 = sampleAt(left, v);
-      const t1 = sampleAt(right, v);
+      const t0 = sampleAt(left, view);
+      const t1 = sampleAt(right, view);
       const ids = new Set(keep);
       for (const t of shown) {
         const row = lanesEl?.querySelector<HTMLElement>(`[data-track="${t.id}"]`);
@@ -1544,9 +1571,11 @@
       moved = true;
       pick(x1, y1);
     };
-    const stopScroll = edgeScrollY(() => (moved ? lastEv : null), move);
+    const stopY = edgeScrollY(() => (moved ? lastEv : null), move);
+    const stopX = edgeScrollX(() => (moved ? lastEv : null), move);
     const up = (ev: PointerEvent) => {
-      stopScroll();
+      stopY();
+      stopX();
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", up, true);
       selBox = null;

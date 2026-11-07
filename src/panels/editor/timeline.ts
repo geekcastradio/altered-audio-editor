@@ -31,6 +31,18 @@ export function sampleAt(x: number, v: Viewport): number {
   return Math.max(0, Math.round(v.scroll + x * v.spp));
 }
 
+/**
+ * How far to scroll the timeline, in pixels (negative is left), for a drag
+ * whose pointer is at `x`, over lanes that run from `left` to `right`.
+ * Zero in the middle; within `band` of an end it speeds up the closer the
+ * pointer gets, and keeps going beyond the end, up to a top speed.
+ */
+export function edgeScrollPx(x: number, left: number, right: number, band = 40): number {
+  if (x > right - band) return Math.min(40, 4 + (x - (right - band)) / 3);
+  if (x < left + band) return -Math.min(40, 4 + (left + band - x) / 3);
+  return 0;
+}
+
 /** The timeline shows at most this long unless the content is longer. */
 export const DEFAULT_MAX_SECONDS = 4 * 3600;
 
