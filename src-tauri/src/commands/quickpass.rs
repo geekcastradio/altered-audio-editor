@@ -27,6 +27,10 @@ use crate::session::model::{Id, Session};
 struct ScanProgress {
     done: usize,
     total: usize,
+    /// Spots found so far, for scans that count them as they go (clicks and
+    /// clipping). `None` for level scans, whose findings are worked out
+    /// after every clip has been measured.
+    found: Option<usize>,
 }
 
 /// Floor reported for digital silence, in dBFS.
@@ -179,6 +183,7 @@ pub async fn quickpass_spots(
             .collect();
         ids.sort();
         let total = ids.len();
+        let mut so_far = 0usize;
         ids.into_iter()
             .enumerate()
             .filter_map(|(n, id)| {
@@ -189,7 +194,17 @@ pub async fn quickpass_spots(
                         .collect();
                     ClipSpots { clip_id: id, spans }
                 });
-                let _ = app.emit("quickpass-progress", ScanProgress { done: n + 1, total });
+                if let Some(f) = &found {
+                    so_far += f.spans.len();
+                }
+                let _ = app.emit(
+                    "quickpass-progress",
+                    ScanProgress {
+                        done: n + 1,
+                        total,
+                        found: Some(so_far),
+                    },
+                );
                 found
             })
             .collect()
@@ -270,7 +285,14 @@ pub async fn quickpass_levels(
             .enumerate()
             .filter_map(|(n, id)| {
                 let found = measure(&session, id, window_ms);
-                let _ = app.emit("quickpass-progress", ScanProgress { done: n + 1, total });
+                let _ = app.emit(
+                    "quickpass-progress",
+                    ScanProgress {
+                        done: n + 1,
+                        total,
+                        found: None,
+                    },
+                );
                 found
             })
             .collect()

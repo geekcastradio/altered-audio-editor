@@ -884,3 +884,10 @@ export function duckOp(
   }
   return changes.length ? { op: "set_clips", changes } : null;
 }
+
+/** What the Scan button says while a scan runs: the clip it has reached, and the spots found so far when the scan counts them. */
+export function scanLabel(p: { done: number; total: number; found: number | null } | null): string {
+  if (!p || p.total <= 0) return "Scanning";
+  const base = `Scanning clip ${Math.min(p.done, p.total)} of ${p.total}`;
+  return p.found === null ? base : `${base}, ${p.found} found`;
+}

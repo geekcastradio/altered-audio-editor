@@ -32,6 +32,7 @@
     markersFor,
     removeOp,
     sanitizeSettings,
+    scanLabel,
     shiftFindings,
     splitOp,
     spotFindings,
@@ -227,13 +228,13 @@
   }
   const scope = $derived(inWave ? "the open file" : chosen.size > 0 ? `${chosen.size} selected ${chosen.size === 1 ? "clip" : "clips"}` : "all clips on tracks that play");
 
-  /** How far the scan is, in clips (0 to 1), or null before the first clip reports. */
-  let progress = $state<number | null>(null);
+  /** How far the scan is: the clip it has reached, and the spots found so far (null for scans that count at the end). Null before the first clip reports. */
+  let progress = $state<{ done: number; total: number; found: number | null } | null>(null);
   $effect(() => {
     let off: (() => void) | undefined;
     let gone = false;
-    void listen<{ done: number; total: number }>("quickpass-progress", (e) => {
-      if (e.payload.total > 0) progress = e.payload.done / e.payload.total;
+    void listen<{ done: number; total: number; found?: number | null }>("quickpass-progress", (e) => {
+      if (e.payload.total > 0) progress = { done: e.payload.done, total: e.payload.total, found: e.payload.found ?? null };
     }).then((f) => (gone ? f() : (off = f)));
     return () => {
       gone = true;
@@ -507,7 +508,7 @@
       {/if}
     </div>
     <div class="bar">
-      <button type="button" class="go" disabled={busy} onclick={scan}>{busy ? (progress === null ? "Scanning" : `Scanning ${Math.round(progress * 100)}%`) : "Scan"}</button>
+      <button type="button" class="go" disabled={busy} onclick={scan}>{busy ? scanLabel(progress) : "Scan"}</button>
       {#if busy}
         <button type="button" onclick={cancelScan} title="Stop waiting for the scan. Nothing changes.">Cancel</button>
       {/if}

@@ -272,6 +272,7 @@
   import { startScreen } from "../stores/start";
   import type { SessionRow } from "../panels/files/session-row";
   import { bugInfoText, recordError } from "./bug-info";
+  import { reportUrl } from "./bug-report-link";
   import { waveRows, type WaveRow } from "../panels/files/wave-rows";
   import { rasterize } from "../panels/editor/spectrum";
   import { inputLevels, liveTakes, LiveWave, recordControl, recording } from "../stores/record";
@@ -699,6 +700,13 @@
   }
 
   async function openAudio(paths: string[]): Promise<void> {
+    // One audio file opens as itself in the Waveform editor. Two or more build a multitrack, below.
+    if (paths.length === 1) {
+      const imported = await mediaPool.importPaths(paths, sessionHistory);
+      mediaPool.setSelection(imported.ids);
+      await openInWaveform(paths[0]!);
+      return;
+    }
     const doc = session.current;
     if (!doc) return;
     const empty = doc.tracks.every((t) => t.clips.length === 0);
@@ -2396,6 +2404,7 @@
             onError: showError,
             onPlaceFiles: (paths: string[], trackId: string | null, at: number) =>
               void placeFiles(paths, trackId, at).catch(showError),
+            onOpenSingle: (path: string) => void openAudio([path]).catch(showError),
             prompt: promptText,
             wave,
             waveFile,
@@ -4167,7 +4176,7 @@
       actions.register({ id: "help.discord", run: () => openLink(LINKS.discord) }),
       actions.register({ id: "help.update", run: () => void checkUpdate(true) }),
       actions.register({ id: "help.github", run: () => openLink(LINKS.github) }),
-      actions.register({ id: "help.report", run: () => openLink(LINKS.report) }),
+      actions.register({ id: "help.report", run: () => openLink(reportUrl(info?.version ?? null, navigator.userAgent)) }),
       actions.register({
         id: "help.bug-info",
         run: async () => {

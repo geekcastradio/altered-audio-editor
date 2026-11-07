@@ -12,6 +12,16 @@ function box(left: number, top: number, width: number, height: number): HTMLElem
 }
 
 describe("FileDropRouter", () => {
+  it("marks files from the file manager as external, and in-app drags as not", () => {
+    const seen: (boolean | undefined)[] = [];
+    const router = new FileDropRouter(() => {});
+    const el = box(0, 0, 250, 400);
+    router.register({ element: el, onDrop: (_p, _at, external) => seen.push(external) });
+    router.handle({ type: "drop", paths: ["a.wav"], x: 10, y: 10 });
+    router.dragEnd(["a.wav"], 10, 10);
+    expect(seen).toEqual([true, undefined]);
+  });
+
   it("drops on the panel under the pointer and highlights while hovering", () => {
     const fallback: string[][] = [];
     const dropped: string[][] = [];
