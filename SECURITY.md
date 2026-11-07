@@ -12,4 +12,4 @@ Only the latest release gets fixes while the project is in early development.
 
 ## Scope
 
-The app makes no network calls on its own and has no accounts. Reports about file handling (opening crafted audio, session or zip files), the installer, and the update check (once it exists) are most useful.
+The app has no accounts and no telemetry. Its only network use is the update check (Help > Check for Updates, or the optional weekly check), which reads one small file from this project's GitHub releases. Reports about file handling (opening crafted audio, session or zip files), the installer, and the update check are most useful.

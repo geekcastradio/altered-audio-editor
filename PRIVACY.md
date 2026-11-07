@@ -23,6 +23,10 @@ The Help menu has links (The GCRN website, the book, and an optional PayPal page
 
 Help > Check for Updates reads one small file (`latest.json`) from this project's GitHub releases and nothing else. The optional weekly check does the same and is off unless you turn it on in Edit > Settings > Privacy. Neither sends anything about you or your audio. GitHub sees a normal web request from your internet address, as with any download. A newer version is only installed when you click Install and Restart, and the installer is checked against the project's signing key first. The portable zip never updates itself.
 
+## Plug-ins
+
+VST3 plug-ins you load are made by other companies and may behave differently. Check their own policies if that matters to you.
+
 ## For contributors
 
 Changes that add network access, telemetry, accounts or tracking of any kind will not be accepted. If a future feature truly needs the network (for example, an optional sync with a podcast host you choose), it must be off by default, clearly labeled, and never required to use the app.

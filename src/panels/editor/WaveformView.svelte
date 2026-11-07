@@ -21,7 +21,7 @@
   import { clipLength, sessionEnd, stretchOf, type ClipDoc, type SessionDoc, type SessionStore } from "../../stores/session";
   import type { TransportState, TransportStore } from "../../stores/transport";
   import { onDestroy } from "svelte";
-  import { waveZoom, type WaveFile } from "../../stores/wave";
+  import { keepView, waveZoom, type WaveFile } from "../../stores/wave";
   import { allOn, toggleChannel, waveChannels } from "./wave-channels";
   import { channelLabels } from "../properties/channel-mix";
   import { laneWidths } from "../time-info/time-info";
@@ -155,6 +155,14 @@
   $effect(() => {
     if (!doc || !file || width <= 0) return;
     const key = file.path + doc.id;
+    if (keepView.once && fittedFor !== key) {
+      // A save swapped in a fresh document: leave the view where the user had it.
+      keepView.once = false;
+      fittedFor = key;
+      fittedSpp = doc.view.samples_per_pixel;
+      fittedWidth = width;
+      return;
+    }
     const untouched = fittedFor === key && doc.view.samples_per_pixel === fittedSpp && doc.view.scroll === 0;
     if (fittedFor === key && !(untouched && width !== fittedWidth)) return;
     fittedFor = key;

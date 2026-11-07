@@ -206,6 +206,9 @@ export function savesInPlace(f: WaveFile | null): boolean {
   return !!f && !f.untitled && ["WAV", "FLAC", "MP3"].includes(f.format.toUpperCase());
 }
 
+/** Set while a save swaps in its fresh document, so the Waveform view does not treat it as a newly opened file. */
+export const keepView = { once: false };
+
 /**
  * Saves the edits. Null `path` replaces the open file; a path writes a
  * new file and the editor moves to it. Either way the edit list starts
@@ -214,8 +217,13 @@ export function savesInPlace(f: WaveFile | null): boolean {
 export async function saveWaveFile(path: string | null, bitDepth: number | null = null): Promise<void> {
   await waveTransport.stop();
   const doc = await waveSave<SessionDoc>(path, bitDepth);
+  // Saving hands back a fresh document. The view keeps the zoom and place the user had, instead of refitting as a newly opened file would.
+  const view = wave.current?.view ?? null;
+  keepView.once = view !== null;
   adopt(doc);
+  if (view) wave.setView(view);
   await waveHistory.clear(path ? "Saved As" : "Saved");
+  keepView.once = false;
 }
 
 /** The current spectral selection in the Waveform editor: boxes, lassos and brush strokes. Null when none. */
