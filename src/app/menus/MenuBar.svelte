@@ -31,13 +31,15 @@
     /** Shortcut text shown beside an item, from the keymap. */
     shortcutFor: (id: string) => string | undefined;
     onError: (e: unknown) => void;
+    /** Told why when someone picks an item that is greyed out, so a click is never silent. */
+    onBlocked?: (reason: string) => void;
     /** Builds each popup entry's list by id, when it opens. */
     popups?: Record<string, () => PopupList>;
     /** Menus with a search box at the top, by menu label: what each finds for the text typed. */
     searches?: Record<string, { placeholder: string; find: (query: string) => readonly ContextItem[] }>;
   }
 
-  const { menus, actions, shortcutFor, onError, popups = {}, searches = {} }: Props = $props();
+  const { menus, actions, shortcutFor, onError, onBlocked, popups = {}, searches = {} }: Props = $props();
   /** Text in the open menu's search box, and the highlighted result. */
   let menuQuery = $state("");
   let resultActive = $state(-1);
@@ -54,7 +56,14 @@
 
   function runResult(i: number) {
     const r = results[i];
-    if (!r || r.disabled) return;
+    if (!r) return;
+    if (r.disabled) {
+      if (r.reason) {
+        close();
+        onBlocked?.(r.reason);
+      }
+      return;
+    }
     close();
     r.run();
   }
@@ -174,7 +183,14 @@
       }
       return;
     }
-    if (!actions.isEnabled(it.id)) return;
+    if (!actions.isEnabled(it.id)) {
+      const why = actions.reason(it.id);
+      if (why) {
+        close();
+        onBlocked?.(why);
+      }
+      return;
+    }
     close();
     actions.run(it.id).catch(onError);
   }

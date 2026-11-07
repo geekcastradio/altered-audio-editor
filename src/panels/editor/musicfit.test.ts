@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { ClipDoc, MediaRefDoc, SessionDoc } from "../../stores/session";
-import { describeJoins, describePlan, FIT_XFADE, fitOps } from "./musicfit";
+import { describeJoins, describePlan, FIT_XFADE, fitOps, sameLength } from "./musicfit";
 
 const media = { id: "m", path: "bed.wav", sample_rate: 44_100, channels: 2, length: 44_100 * 32 } as unknown as MediaRefDoc;
 const clip = {
@@ -67,5 +67,11 @@ describe("music fit", () => {
     const loop = { segments: [{ start: 0, end: 46 + h }, { start: 30 - h, end: 46 + h }, { start: 30 - h, end: 60 }], length: 0, stretch: 1, joins: 2, quality: 1, tempo: 120 };
     expect(describeJoins(loop, 0)).toBe("Repeats 30.0 s to 46.0 s, 2 more times");
     expect(describeJoins({ ...skip, segments: [{ start: 0, end: 5 }] }, 0)).toBe("Plays the whole clip");
+  });
+  it("spots a target that is the clip's own length", () => {
+    expect(sameLength(32, 32)).toBe(true);
+    expect(sameLength(32.02, 32)).toBe(true);
+    expect(sameLength(31.9, 32)).toBe(false);
+    expect(sameLength(30, 32)).toBe(false);
   });
 });

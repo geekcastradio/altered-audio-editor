@@ -10,7 +10,7 @@
   crossfades, grouped, as one undoable step.
 -->
 <script lang="ts">
-  import { describeJoins, describePlan, type FitPlan } from "../panels/editor/musicfit";
+  import { describeJoins, describePlan, sameLength, type FitPlan } from "../panels/editor/musicfit";
   import { parseSeconds } from "../panels/editor/stretch";
 
   interface Props {
@@ -36,6 +36,8 @@
   // svelte-ignore state_referenced_locally
   let text = $state(fmt(selection ?? current));
   const secs = $derived(parseSeconds(text));
+  // The box opens on the clip's own length; fitting to that would change nothing.
+  const same = $derived(!!secs && sameLength(secs, current));
   let busy = $state(false);
   let plans = $state<FitPlan[]>([]);
   let pick = $state(0);
@@ -46,7 +48,7 @@
   const stale = $derived(result !== null && planned !== secs);
 
   async function find() {
-    if (!secs) return;
+    if (!secs || same) return;
     busy = true;
     error = null;
     plans = [];
@@ -78,7 +80,7 @@
       {#each [15, 30, 60] as q (q)}<button type="button" onclick={() => (text = fmt(q))}>{q} s</button>{/each}
       {#if selection}<button type="button" onclick={() => (text = fmt(selection))}>Time selection ({fmt(selection)} s)</button>{/if}
     </div>
-    {#if !secs}<p class="warn">Type a length like 30 or 1:15.5.</p>{/if}
+    {#if !secs}<p class="warn">Type a length like 30 or 1:15.5.</p>{:else if same}<p class="note">That is already this clip's length. Type the length you want.</p>{/if}
 
     {#if busy}
       <p class="note">Listening for the beat and the sections…</p>
@@ -102,7 +104,7 @@
 
     <div class="buttons">
       <button type="button" onclick={onClose}>Cancel</button>
-      <button type="button" disabled={!secs || busy} onclick={() => void find()}>Find Joins</button>
+      <button type="button" disabled={!secs || same || busy} onclick={() => void find()}>Find Joins</button>
       <button type="button" class="primary" disabled={!result || stale || busy} onclick={() => result && onApply(result)}>Apply</button>
     </div>
   </div>

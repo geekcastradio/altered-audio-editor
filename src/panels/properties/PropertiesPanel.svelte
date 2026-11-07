@@ -47,7 +47,7 @@
   const st = $derived<StretchSettings | null>(first ? settingsOf(first.clip) : null);
   const looped = $derived(picked.some((p) => p.clip.looped));
 
-  async function apply(patch: Partial<StretchSettings>, label = "Clip Stretch and Pitch") {
+  async function apply(patch: Partial<StretchSettings>, label = "Clip Stretch") {
     const d = doc;
     if (!d || !st) return;
     const next: StretchSettings = { ...st, ...patch, advanced: { ...st.advanced, ...(patch.advanced ?? {}) } };
@@ -115,7 +115,7 @@
       <dt>File</dt><dd title={media?.path ?? ""}>{media?.path.split(/[\\/]/).pop() ?? "Missing"}</dd>
     </dl>
 
-    <h2>Stretch and Pitch</h2>
+    <h2>Stretch</h2>
     {#if looped}
       <p class="note">Looped clips cannot stretch. Turn off Loop Clip first.</p>
     {:else}
@@ -123,8 +123,8 @@
         <label for="pp-mode">Mode</label>
         <select id="pp-mode" value={st.mode} onchange={(e) => void apply({ mode: e.currentTarget.value as StretchSettings["mode"] })}>
           <option value="off">Off</option>
-          <option value="live">Live</option>
-          <option value="rendered">Rendered</option>
+          <option value="live">Real-time</option>
+          <option value="rendered">Rendered (HQ)</option>
         </select>
 
         <label for="pp-type">Type</label>

@@ -29,6 +29,11 @@ export interface FitPlan {
 /** Crossfade at each join, in seconds. Long enough to hide the cut, short enough to stay on the beat. */
 export const FIT_XFADE = 0.04;
 
+/** True when `target` is the clip's own length (to a few milliseconds), so fitting would change nothing. */
+export function sameLength(target: number, current: number): boolean {
+  return Math.abs(target - current) < 0.05;
+}
+
 /** The edit that replaces `clip` with the plan's segments. */
 export function fitOps(doc: SessionDoc, trackId: string, clip: ClipDoc, media: MediaRefDoc, plan: FitPlan, newId: () => string): Op {
   const sess = doc.sample_rate;
