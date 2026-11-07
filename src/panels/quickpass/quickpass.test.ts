@@ -13,6 +13,7 @@ import {
   scanInfo,
   findSilences,
   sanitizeSettings,
+  scanLabel,
   shiftFindings,
   silentRuns,
   suggestLevels,
@@ -507,5 +508,15 @@ describe("Strip leaves gaps open", () => {
     } as never;
     const rest = shiftFindings([b], a, "none", 0, 48000);
     expect(rest).toEqual([b]);
+  });
+});
+
+describe("scan label", () => {
+  it("says which clip the scan is on, and how many spots it has found so far", () => {
+    expect(scanLabel(null)).toBe("Scanning");
+    expect(scanLabel({ done: 0, total: 0, found: null })).toBe("Scanning");
+    expect(scanLabel({ done: 3, total: 12, found: null })).toBe("Scanning clip 3 of 12");
+    expect(scanLabel({ done: 3, total: 12, found: 47 })).toBe("Scanning clip 3 of 12, 47 found");
+    expect(scanLabel({ done: 13, total: 12, found: 0 })).toBe("Scanning clip 12 of 12, 0 found");
   });
 });

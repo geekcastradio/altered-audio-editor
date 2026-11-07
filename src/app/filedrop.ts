@@ -17,8 +17,12 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 export interface DropTarget {
   readonly element: HTMLElement;
-  /** `at` is the drop point in CSS pixels, relative to the window. */
-  onDrop(paths: string[], at: { x: number; y: number }): void;
+  /**
+   * `at` is the drop point in CSS pixels, relative to the window. `external`
+   * is true for files dropped from the system file manager, and left out for
+   * in-app drags (a Files panel row, a library item).
+   */
+  onDrop(paths: string[], at: { x: number; y: number }, external?: boolean): void;
   /** Highlight on or off while files hover over this panel. */
   onHover?(over: boolean): void;
   /**
@@ -71,7 +75,7 @@ export class FileDropRouter {
         this.setHovered(null);
         if (e.paths.length === 0) return;
         if (this.sessions && e.paths.some(isSessionFile)) this.sessions(e.paths);
-        else if (target) target.onDrop(e.paths, { x: e.x, y: e.y });
+        else if (target) target.onDrop(e.paths, { x: e.x, y: e.y }, true);
         else this.fallback(e.paths);
         break;
       }

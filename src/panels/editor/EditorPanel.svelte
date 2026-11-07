@@ -77,6 +77,8 @@
     actions: ActionRegistry;
     /** Adds files as clips on a track (null makes a new track) at a session sample. */
     onPlaceFiles: (paths: string[], trackId: string | null, at: number) => void;
+    /** One file dropped from outside the app onto a session with no clips: open it as itself instead. */
+    onOpenSingle?: (path: string) => void;
     shortcutFor?: (id: string) => string | undefined;
     onError?: (e: unknown) => void;
     /** Asks for one line of text. */
@@ -101,6 +103,7 @@
     router,
     actions,
     onPlaceFiles,
+    onOpenSingle,
     shortcutFor = () => undefined,
     onError = console.error,
     prompt = async () => null,
@@ -514,7 +517,11 @@
       element: lanesEl,
       onHover: (over) => (dropping = over),
       onMove: (paths, at) => showDropGhost(paths, at),
-      onDrop: (paths, at) => {
+      onDrop: (paths, at, external) => {
+        if (external && onOpenSingle && paths.length === 1 && doc && doc.tracks.every((t) => t.clips.length === 0)) {
+          onOpenSingle(paths[0]!);
+          return;
+        }
         const { trackId, sample } = hitLanes(at.x, at.y);
         const at2 = dropSample(sample);
         // An audio file open in the Waveform editor with edits (or never saved) is placed as a rendered copy.
