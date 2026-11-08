@@ -531,6 +531,8 @@ export interface SesxReport {
   /** Names of the effects left out, each once. */
   skippedNames?: string[];
   buses?: number;
+  /** Markers brought in. */
+  markers?: number;
   /** VST3 plug-ins brought in with their settings. */
   plugins?: number;
   /** Plug-ins brought in that this computer has not scanned. */

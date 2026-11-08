@@ -7,7 +7,7 @@ import { UndoStack } from "../commands";
 import { MediaPool } from "../stores/media-pool";
 import { SessionStore, type SessionDoc } from "../stores/session";
 import type { Recoverable, SessionResult } from "./core";
-import { displayName, isBlank, planOpen, SessionFiles, type Choice, type SessionFileBackend } from "./session-files";
+import { displayName, isBlank, planOpen, SessionFiles, sesxSummary, type Choice, type SessionFileBackend } from "./session-files";
 
 function doc(name = "Untitled Session", media: SessionDoc["media"] = []): SessionDoc {
   return {
@@ -249,5 +249,14 @@ describe("several open sessions", () => {
     expect(await files.close()).toBe(true);
     expect(session.current!.id).toBe(first);
     expect(files.others).toEqual([]);
+  });
+});
+
+describe("sesxSummary", () => {
+  it("mentions markers only when some came across", () => {
+    const base = { tracks: 2, clips: 3, skippedEffects: 0, missingFiles: [] };
+    expect(sesxSummary(base)).not.toContain("marker");
+    expect(sesxSummary({ ...base, markers: 1 })).toContain("1 marker came across.");
+    expect(sesxSummary({ ...base, markers: 4 })).toContain("4 markers came across.");
   });
 });
