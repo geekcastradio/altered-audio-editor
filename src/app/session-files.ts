@@ -97,6 +97,7 @@ export function sesxSummary(r: SesxReport): string {
   const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   const buses = r.buses ? `, ${count(r.buses, "bus", "buses")}` : "";
   const parts = [`Imported ${count(r.tracks, "track", "tracks")}${buses} and ${count(r.clips, "clip", "clips")}.`];
+  if (r.markers) parts.push(`${count(r.markers, "marker", "markers")} came across.`);
   if (r.plugins) parts.push(`${count(r.plugins, "plug-in", "plug-ins")} came across with ${r.plugins === 1 ? "its" : "their"} settings.`);
   if (r.missingPlugins?.length) {
     parts.push(`Not found on this computer (install or scan them in the Plug-in Manager): ${r.missingPlugins.join(", ")}.`);

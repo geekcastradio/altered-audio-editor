@@ -29,7 +29,8 @@ use crate::codecs::probe;
 use crate::session::model::{
     new_id, Bus, ChannelLayout, ChannelMix, ChannelSend, Clip, ClipStretch, EffectChain,
     EffectSlot, Envelope, EnvelopeCurve, EnvelopePoint, EnvelopeTarget, Fade, FadeShape, Id,
-    MediaRef, Output, Session, StretchAdvanced, Track, STRETCH_MAX, STRETCH_MIN,
+    Marker, MarkerKind, MediaRef, Output, Session, StretchAdvanced, Track, STRETCH_MAX,
+    STRETCH_MIN,
 };
 
 #[derive(Debug, Error)]
@@ -67,6 +68,8 @@ pub struct ImportReport {
     pub approximate: Vec<String>,
     /// Media files that could not be found. Their clips are still placed.
     pub missing_files: Vec<PathBuf>,
+    /// Markers brought in.
+    pub markers: usize,
 }
 
 #[derive(Debug)]
@@ -1102,11 +1105,50 @@ pub fn import(path: &Path) -> Result<Imported, SesxError> {
         session.master.effects = racks(master, &mut report);
     }
 
+    session.markers = read_markers(session_node, sample_rate);
+    report.markers = session.markers.len();
+
     Ok(Imported {
         session,
         report,
         missing,
     })
+}
+
+/// Reads the session's `<markers>` list: a name, a start and a length in
+/// samples, and a type. Points have a length of 0. Types we have no kind
+/// for come in as cues. Markers kept in track data are not read here.
+fn read_markers(session_node: roxmltree::Node<'_, '_>, sample_rate: u32) -> Vec<Marker> {
+    let Some(list) = child(session_node, "markers") else {
+        return Vec::new();
+    };
+    // Markers are in samples at the session's rate; keep them inside the
+    // range a session can hold.
+    let cap = u64::from(sample_rate) * 60 * 60 * 100;
+    let mut out: Vec<Marker> = list
+        .children()
+        .filter(|n| n.has_tag_name("marker"))
+        .map(|m| {
+            let kind = match m.attribute("type").map(str::to_ascii_lowercase).as_deref() {
+                Some("subclip") => MarkerKind::Subclip,
+                Some("cdtrack") | Some("cd") => MarkerKind::CdTrack,
+                _ => MarkerKind::Cue,
+            };
+            Marker {
+                id: new_id(),
+                name: m.attribute("name").unwrap_or("").to_string(),
+                kind,
+                position: attr_u64(m, "startPoint").unwrap_or(0).min(cap),
+                duration: attr_u64(m, "duration").unwrap_or(0).min(cap),
+                description: m.attribute("comment").unwrap_or("").to_string(),
+                chapter: None,
+                contracted_duration: None,
+                color: None,
+            }
+        })
+        .collect();
+    out.sort_by_key(|m| m.position);
+    out
 }
 
 /// Finds a media file and measures it. Missing files get a placeholder
@@ -1582,5 +1624,37 @@ mod tests {
         assert_eq!(chain.input_gain_db, -6.0);
         assert_eq!(chain.output_gain_db, 0.0);
         assert_eq!(chain.mix, 0.75);
+    }
+
+    #[test]
+    fn session_markers_come_across_in_order() {
+        let xml = r#"<session sampleRate="48000"><markers>
+            <marker duration="0" id="1" name="Retake" startPoint="96000" type="cue"/>
+            <marker duration="48000" id="0" name="Intro" startPoint="48000" type="Subclip" comment="cold open"/>
+            <marker id="2" name="Track 1" startPoint="144000" type="cdtrack"/>
+            <marker id="3" name="Odd" startPoint="1" type="something"/>
+        </markers></session>"#;
+        let doc = roxmltree::Document::parse(xml).unwrap();
+        let m = read_markers(doc.root_element(), 48_000);
+        let seen: Vec<_> = m
+            .iter()
+            .map(|m| (m.name.as_str(), m.kind, m.position, m.duration))
+            .collect();
+        assert_eq!(
+            seen,
+            vec![
+                ("Odd", MarkerKind::Cue, 1, 0),
+                ("Intro", MarkerKind::Subclip, 48_000, 48_000),
+                ("Retake", MarkerKind::Cue, 96_000, 0),
+                ("Track 1", MarkerKind::CdTrack, 144_000, 0),
+            ]
+        );
+        assert_eq!(m[1].description, "cold open");
+    }
+
+    #[test]
+    fn a_session_without_markers_has_none() {
+        let doc = roxmltree::Document::parse(r#"<session sampleRate="48000"/>"#).unwrap();
+        assert!(read_markers(doc.root_element(), 48_000).is_empty());
     }
 }
