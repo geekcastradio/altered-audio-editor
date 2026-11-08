@@ -36,7 +36,7 @@
   import type { FileDropRouter } from "../../app/filedrop";
   import { beginPathDrag } from "../../app/pathdrag";
   import { revealLabel } from "../../lib/platform";
-  import { itemPath, joinPath, type LibrariesState, type LibraryStore } from "../../stores/libraries";
+  import { itemPath, joinPath, parseTags, type LibrariesState, type LibraryStore } from "../../stores/libraries";
   import { packLibraryList, readLibraryList, sameDir, type KnownLibrary } from "../../stores/library-list";
   import type { CommandRunner } from "../../stores/media-pool";
   import { clickSelection, stepSelection } from "../files/selection";
@@ -108,7 +108,9 @@
     if (!root) return;
     return router.register({
       element: root,
-      onDrop: (paths) => void addFiles(paths),
+      // Dropped on a bin's name, the files go into that bin as well as the library.
+      onDrop: (paths, at) => void addFiles(paths, binAtPoint(at.x, at.y)),
+      onMove: (_paths, at) => (hoverBin = at ? binAtPoint(at.x, at.y) : null),
       onHover: (over) => (dropping = over),
     });
   });
@@ -230,7 +232,13 @@
     onError(e);
   }
 
-  async function addFiles(paths: string[]) {
+  /** The bin whose name is under a window point, or null. */
+  function binAtPoint(x: number, y: number): string | null {
+    const bin = (document.elementFromPoint(x, y)?.closest("[data-bin]") as HTMLElement | null)?.dataset.bin ?? null;
+    return bin && bin !== "all" ? bin : null;
+  }
+
+  async function addFiles(paths: string[], bin: string | null = null) {
     if (!active) {
       onNotice("Create or open a library first.");
       return;
@@ -238,6 +246,11 @@
     busy = true;
     try {
       const r = await store.importPaths(paths, runner);
+      if (bin && r.items.length > 0) {
+        const name = active?.lib.collections.find((c) => c.id === bin)?.name ?? "the bin";
+        await store.addToCollection(bin, r.items.map((i) => i.id), runner);
+        onNotice(`Added ${r.items.length === 1 ? "1 file" : `${r.items.length} files`} to ${name}.`);
+      }
       if (r.skipped.length > 0) {
         onNotice(
           r.skipped.length === 1
@@ -652,6 +665,17 @@
     }
   }
 
+  /** Several items selected: adds or removes the typed tags on all of them. */
+  function bulkTags(raw: string, mode: "add" | "remove") {
+    const tags = parseTags(raw);
+    const ids = selectedItems.map((i) => i.id);
+    if (tags.length === 0 || ids.length < 2) return;
+    const what = mode === "add" ? "Added" : "Removed";
+    void store
+      .retagItems(ids, mode === "add" ? tags : [], mode === "remove" ? tags : [], runner)
+      .then(() => onNotice(`${what} ${tags.length === 1 ? "1 tag" : `${tags.length} tags`} on ${ids.length} items.`), fail);
+  }
+
   function setColor(color: string | null) {
     if (single && single.color !== color) void store.updateItem(single.id, { color }, runner).catch(fail);
   }
@@ -961,10 +985,35 @@
       {/if}
     </div>
 
-    {#if single}
+    {#if single || selectedItems.length > 1}
       <button type="button" class="details-toggle" aria-expanded={detailsOpen} onclick={toggleDetails} title={detailsOpen ? "Hide the details under the list" : "Show the details under the list"}>
         <span aria-hidden="true">{detailsOpen ? "\u25BE" : "\u25B8"}</span> Details
       </button>
+    {/if}
+    {#if selectedItems.length > 1 && detailsOpen}
+      <div class="details">
+        <div class="meta">{selectedItems.length} items selected</div>
+        <input
+          class="field"
+          type="text"
+          aria-label="Add tags to the selected items"
+          placeholder="Add tags to all, comma separated"
+          onchange={(e) => {
+            bulkTags(e.currentTarget.value, "add");
+            e.currentTarget.value = "";
+          }}
+        />
+        <input
+          class="field"
+          type="text"
+          aria-label="Remove tags from the selected items"
+          placeholder="Remove tags from all, comma separated"
+          onchange={(e) => {
+            bulkTags(e.currentTarget.value, "remove");
+            e.currentTarget.value = "";
+          }}
+        />
+      </div>
     {/if}
     {#if single && detailsOpen}
       {#key single.id}
@@ -1016,7 +1065,7 @@
   {/if}
 
   {#if dropping}
-    <div class="dropzone" aria-hidden="true">{active ? `Add to ${active.lib.name}` : "Create a library first"}</div>
+    <div class="dropzone" aria-hidden="true">{active ? `Add to ${hoverBin ? (active.lib.collections.find((c) => c.id === hoverBin)?.name ?? active.lib.name) : active.lib.name}` : "Create a library first"}</div>
   {/if}
 </section>
 

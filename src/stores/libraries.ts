@@ -75,6 +75,32 @@ export function itemPath(dir: string, item: LibraryItem): string {
 }
 
 /** Folder-safe version of a library name. */
+/** Tags from a comma separated box: trimmed, without blanks, and without repeats (ignoring case). */
+export function parseTags(raw: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(",")) {
+    const t = part.trim();
+    if (!t || seen.has(t.toLowerCase())) continue;
+    seen.add(t.toLowerCase());
+    out.push(t);
+  }
+  return out;
+}
+
+/** `tags` with `add` put on the end (unless already there) and `remove` taken off, matching ignoring case. */
+export function retag(tags: readonly string[], add: readonly string[], remove: readonly string[]): string[] {
+  const gone = new Set(remove.map((t) => t.toLowerCase()));
+  const out = tags.filter((t) => !gone.has(t.toLowerCase()));
+  const have = new Set(out.map((t) => t.toLowerCase()));
+  for (const t of add) {
+    if (gone.has(t.toLowerCase()) || have.has(t.toLowerCase())) continue;
+    have.add(t.toLowerCase());
+    out.push(t);
+  }
+  return out;
+}
+
 export function folderName(name: string): string {
   const cleaned = name
     .replace(/[<>:"/\\|?*]/g, " ")
@@ -303,6 +329,18 @@ export class LibraryStore {
       (lib) => {
         const it = lib.items.find((i) => i.id === id);
         if (it) Object.assign(it, changes);
+      },
+      runner,
+    );
+  }
+
+  /** Adds and removes tags on several items at once, as one undo step. */
+  retagItems(ids: readonly string[], add: readonly string[], remove: readonly string[], runner: CommandRunner): Promise<void> {
+    const pick = new Set(ids);
+    return this.edit(
+      ids.length === 1 ? "Edit Tags" : `Edit Tags for ${ids.length} Items`,
+      (lib) => {
+        for (const it of lib.items) if (pick.has(it.id)) it.tags = retag(it.tags, add, remove);
       },
       runner,
     );

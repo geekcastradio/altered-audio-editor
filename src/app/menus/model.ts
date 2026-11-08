@@ -406,6 +406,8 @@ export const MENUS: readonly Menu[] = [
         item("fx.normalize", "Normalize..."),
         item("fx.fade-in", "Fade In"),
         item("fx.fade-out", "Fade Out"),
+        item("fx.fade-in-linear", "Fade In (Linear)"),
+        item("fx.fade-out-linear", "Fade Out (Linear)"),
       ]),
       sub("Generate", [
         item("fx.gen.tone", "Tone..."),

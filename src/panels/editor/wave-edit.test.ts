@@ -152,6 +152,10 @@ describe("Waveform editor edits", () => {
     expect(fadeDb(0)).toBe(-60);
     expect(fadeDb(1)).toBeCloseTo(0);
     expect(fadeDb(0.5)).toBeCloseTo(-3.01, 1);
+    // A linear fade ramps the gain itself: half way is half the gain, minus 6 dB.
+    expect(fadeDb(0, "linear")).toBe(-60);
+    expect(fadeDb(1, "linear")).toBeCloseTo(0);
+    expect(fadeDb(0.5, "linear")).toBeCloseTo(-6.02, 1);
     let doc = apply(file(), deleteRange(file(), 1_000, 2_000, id));
     doc = apply(doc, fadeRange(doc, 0, 2_000, "in", id));
     const clips = doc.tracks[0]!.clips.slice().sort((a, b) => a.start - b.start);
