@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import type { Library, LibraryItem } from "../app/core";
 import { UndoStack } from "../commands";
-import { folderName, itemPath, joinPath, LibraryStore, type LibraryBackend } from "./libraries";
+import { folderName, itemPath, joinPath, LibraryStore, parseTags, retag, type LibraryBackend } from "./libraries";
 import type { KnownLibrary } from "./library-list";
 
 function emptyLib(name: string): Library {
@@ -245,5 +245,18 @@ describe("library paths", () => {
   it("makes folder-safe names", () => {
     expect(folderName("Show: Promos / Ads")).toBe("Show Promos Ads");
     expect(folderName("  ...  ")).toBe("Library");
+  });
+});
+
+describe("bulk tags", () => {
+  it("reads a comma separated box without blanks or repeats", () => {
+    expect(parseTags(" intro, Ads ,, intro,ADS ")).toEqual(["intro", "Ads"]);
+    expect(parseTags("  ")).toEqual([]);
+  });
+
+  it("adds tags once and removes them ignoring case", () => {
+    expect(retag(["intro", "music"], ["Music", "bed"], [])).toEqual(["intro", "music", "bed"]);
+    expect(retag(["intro", "music"], [], ["MUSIC"])).toEqual(["intro"]);
+    expect(retag([], ["a"], ["a"])).toEqual([]);
   });
 });
