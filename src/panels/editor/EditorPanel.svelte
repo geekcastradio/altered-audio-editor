@@ -786,12 +786,17 @@
     };
     settleSoon();
     document.body.style.cursor = "ew-resize";
+    let lastEv: PointerEvent | null = null;
     const move = (ev: PointerEvent) => {
+      lastEv = ev;
       last = at(ev.clientX);
       dragHead = last;
       settleSoon();
     };
+    // Held at or past the edge of the lanes, the timeline scrolls and the playhead keeps following.
+    const stopScroll = edgeScrollX(() => lastEv, move);
     const up = () => {
+      stopScroll();
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", up, true);
       document.body.style.cursor = "";

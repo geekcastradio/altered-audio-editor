@@ -25,6 +25,14 @@ describe("app settings", () => {
     expect(sanitizeSettings({ musicMode: "yes" }).musicMode).toBe(false);
   });
 
+  it("puts each dropped file on its own track unless one after another was chosen", () => {
+    expect(DEFAULT_SETTINGS.dropMany).toBe("tracks");
+    expect(sanitizeSettings({}).dropMany).toBe("tracks");
+    expect(sanitizeSettings({ dropMany: "sideways" }).dropMany).toBe("tracks");
+    expect(sanitizeSettings({ dropMany: "sequence" }).dropMany).toBe("sequence");
+    expect(sanitizeSettings({ dropMany: "tracks" }).dropMany).toBe("tracks");
+  });
+
   it("turns settings into zoom ratios, colors and meter marks", () => {
     expect(zoomRatios(25)).toEqual({ zoomIn: 0.8, zoomOut: 1.25 });
     expect(colorVars({ wave: "#112233", playhead: "", accent: "", laneSelected: "", spectrumLow: "", spectrumHigh: "", phaseLow: "", phaseHigh: "" })).toEqual({ "--wave": "#112233" });
