@@ -2229,6 +2229,11 @@
     const ids = mediaPool.current.items.filter((it) => mine.has(key(it.path)) && !kept.has(key(it.path))).map((it) => it.id);
     if (ids.length) await closeWaveIfRemoved(ids, () => mediaPool.remove(ids, sessionHistory));
   }
+  /** The close button on a session in the Files panel: closes it and takes its files out of the panel too. */
+  async function closeSessionRow(id: string): Promise<void> {
+    if (session.current?.id !== id && !(await files.switchTo(id))) return;
+    await closeSessionAndMedia();
+  }
   function updateTitle() {
     updateSessionRow();
     updateEditorTitle();
@@ -2309,7 +2314,7 @@
                 .switchTo(id)
                 .then(() => actions.run("view.editor.multitrack"))
                 .catch(showError),
-            onCloseSession: (id: string) => void files.closeSession(id).catch(showError),
+            onCloseSession: (id: string) => void closeSessionRow(id).catch(showError),
             waves: waveRowStore,
             onOpenWave: (path: string) => void openInWaveform(path),
             onCloseWave: (path: string) => void closeWaveRow(path).then(() => undefined).catch(showError),
