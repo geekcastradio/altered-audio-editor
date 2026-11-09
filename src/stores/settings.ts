@@ -174,7 +174,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   wheelAnchor: "between",
   wheelZooms: true,
   fadeShape: "cosine",
-  dropMany: "sequence",
+  dropMany: "tracks",
   colors: { ...NO_COLORS },
   surface: "standard",
   output: null,
@@ -240,7 +240,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
     zoomStep: Math.round(num(o.zoomStep, 5, 100, d.zoomStep)),
     wheelAnchor: o.wheelAnchor === "playhead" || o.wheelAnchor === "between" || o.wheelAnchor === "mouse" ? o.wheelAnchor : d.wheelAnchor,
     wheelZooms: bool(o.wheelZooms, d.wheelZooms),
-    dropMany: o.dropMany === "tracks" ? "tracks" : "sequence",
+    dropMany: o.dropMany === "sequence" ? "sequence" : "tracks",
     fadeShape:
       o.fadeShape === "linear" || o.fadeShape === "logarithmic" || o.fadeShape === "exponential" || o.fadeShape === "equal_power"
         ? o.fadeShape
