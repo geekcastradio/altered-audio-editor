@@ -29,8 +29,8 @@ use crate::codecs::probe;
 use crate::session::model::{
     new_id, Bus, ChannelLayout, ChannelMix, ChannelSend, Clip, ClipStretch, EffectChain,
     EffectSlot, Envelope, EnvelopeCurve, EnvelopePoint, EnvelopeTarget, Fade, FadeShape, Id,
-    Marker, MarkerKind, MediaRef, Output, Session, StretchAdvanced, Track, STRETCH_MAX,
-    STRETCH_MIN,
+    Marker, MarkerKind, MediaRef, Output, Session, StretchAdvanced, Track, DEFAULT_TRACK_HEIGHT,
+    STRETCH_MAX, STRETCH_MIN,
 };
 
 #[derive(Debug, Error)]
@@ -983,7 +983,7 @@ pub fn import(path: &Path) -> Result<Imported, SesxError> {
             },
         );
         if let Some(h) = params.and_then(|p| attr_u64(p, "trackHeight")) {
-            track.height = (h as u32).clamp(40, 600);
+            track.height = import_track_height(h);
         }
         if let Some(a) = audio {
             track.solo = a.attribute("solo") == Some("true");
@@ -1115,10 +1115,98 @@ pub fn import(path: &Path) -> Result<Imported, SesxError> {
     })
 }
 
+/// A track's height on import. Sessions saved with small tracks (53 is
+/// common) would open squashed, so anything under 100 opens at the
+/// standard height.
+fn import_track_height(h: u64) -> u32 {
+    if h < 100 {
+        DEFAULT_TRACK_HEIGHT
+    } else {
+        h.min(600) as u32
+    }
+}
+
+/// All the session's markers, in time order: the plain `<markers>` list
+/// and the marker tracks Audition keeps in the session's metadata.
+fn read_markers(session_node: roxmltree::Node<'_, '_>, sample_rate: u32) -> Vec<Marker> {
+    let mut out = read_listed_markers(session_node, sample_rate);
+    out.extend(read_xmp_markers(session_node, sample_rate));
+    out.sort_by_key(|m| m.position);
+    out
+}
+
+fn child_text<'a>(n: roxmltree::Node<'a, 'a>, tag: &str) -> Option<&'a str> {
+    child(n, tag).and_then(|c| c.text())
+}
+
+/// Reads the marker tracks in the session's metadata. Each track has a
+/// type (Cue; InOut for subclips; Adobe's CD track type is read as CD
+/// tracks), a time unit such as `f48000` (that many units a second), and
+/// markers with a start, and when set a length and a comment. Only the
+/// Cue and InOut types have been seen in real files so far.
+fn read_xmp_markers(session_node: roxmltree::Node<'_, '_>, sample_rate: u32) -> Vec<Marker> {
+    let Some(xmp) = child_text(session_node, "xmpMetadata") else {
+        return Vec::new();
+    };
+    let options = roxmltree::ParsingOptions {
+        allow_dtd: true,
+        ..Default::default()
+    };
+    let Ok(doc) = roxmltree::Document::parse_with_options(xmp.trim(), options) else {
+        return Vec::new();
+    };
+    let cap = u128::from(sample_rate) * 60 * 60 * 100;
+    let mut out = Vec::new();
+    for track in doc
+        .descendants()
+        .filter(|n| n.has_tag_name("li") && child(*n, "trackName").is_some())
+    {
+        let kind = match child_text(track, "trackType")
+            .map(|t| t.trim().to_ascii_lowercase())
+            .as_deref()
+        {
+            Some("inout") | Some("subclip") => MarkerKind::Subclip,
+            Some("cd") | Some("track") | Some("cdtrack") => MarkerKind::CdTrack,
+            _ => MarkerKind::Cue,
+        };
+        let rate = child_text(track, "frameRate")
+            .and_then(|r| r.trim().trim_start_matches('f').parse::<u64>().ok())
+            .filter(|r| *r > 0)
+            .unwrap_or(u64::from(sample_rate));
+        let Some(list) = child(track, "markers").and_then(|m| child(m, "Seq")) else {
+            continue;
+        };
+        let to_samples = |units: u64| -> u64 {
+            let r = u128::from(rate);
+            ((u128::from(units) * u128::from(sample_rate) + r / 2) / r).min(cap) as u64
+        };
+        for m in list.children().filter(|c| c.has_tag_name("li")) {
+            let Some(start) = child_text(m, "startTime").and_then(|t| t.trim().parse().ok()) else {
+                continue;
+            };
+            let length = child_text(m, "duration")
+                .and_then(|t| t.trim().parse().ok())
+                .unwrap_or(0);
+            out.push(Marker {
+                id: new_id(),
+                name: child_text(m, "name").unwrap_or("").trim().to_string(),
+                kind,
+                position: to_samples(start),
+                duration: to_samples(length),
+                description: child_text(m, "comment").unwrap_or("").trim().to_string(),
+                chapter: None,
+                contracted_duration: None,
+                color: None,
+            });
+        }
+    }
+    out
+}
+
 /// Reads the session's `<markers>` list: a name, a start and a length in
 /// samples, and a type. Points have a length of 0. Types we have no kind
-/// for come in as cues. Markers kept in track data are not read here.
-fn read_markers(session_node: roxmltree::Node<'_, '_>, sample_rate: u32) -> Vec<Marker> {
+/// for come in as cues.
+fn read_listed_markers(session_node: roxmltree::Node<'_, '_>, sample_rate: u32) -> Vec<Marker> {
     let Some(list) = child(session_node, "markers") else {
         return Vec::new();
     };
@@ -1656,5 +1744,66 @@ mod tests {
     fn a_session_without_markers_has_none() {
         let doc = roxmltree::Document::parse(r#"<session sampleRate="48000"/>"#).unwrap();
         assert!(read_markers(doc.root_element(), 48_000).is_empty());
+    }
+
+    const XMP_SESSION: &str = r#"<session sampleRate="48000"><xmpMetadata><![CDATA[<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<rdf:Description rdf:about="" xmlns:xmpDM="http://ns.adobe.com/xmp/1.0/DynamicMedia/">
+<xmpDM:Tracks><rdf:Bag>
+<rdf:li rdf:parseType="Resource"><xmpDM:trackName>Craig Notes</xmpDM:trackName><xmpDM:trackType>Cue</xmpDM:trackType><xmpDM:frameRate>f48000</xmpDM:frameRate>
+<xmpDM:markers><rdf:Seq>
+<rdf:li rdf:parseType="Resource"><xmpDM:startTime>63332507</xmpDM:startTime><xmpDM:name>Marker 04</xmpDM:name>
+<xmpDM:cuePointParams><rdf:Seq><rdf:li rdf:parseType="Resource"><xmpDM:key>marker_guid</xmpDM:key><xmpDM:value>xmp:id:70d7</xmpDM:value></rdf:li></rdf:Seq></xmpDM:cuePointParams></rdf:li>
+<rdf:li rdf:parseType="Resource"><xmpDM:startTime>9646673</xmpDM:startTime><xmpDM:name>Marker 01</xmpDM:name><xmpDM:duration>48000</xmpDM:duration><xmpDM:comment>first</xmpDM:comment></rdf:li>
+</rdf:Seq></xmpDM:markers></rdf:li>
+<rdf:li rdf:parseType="Resource"><xmpDM:trackName>Subclip Markers</xmpDM:trackName><xmpDM:trackType>InOut</xmpDM:trackType><xmpDM:frameRate>f48000</xmpDM:frameRate></rdf:li>
+</rdf:Bag></xmpDM:Tracks></rdf:Description></rdf:RDF></x:xmpmeta>
+<?xpacket end="w"?>]]></xmpMetadata></session>"#;
+
+    #[test]
+    fn audition_marker_tracks_come_across() {
+        let doc = roxmltree::Document::parse(XMP_SESSION).unwrap();
+        let m = read_markers(doc.root_element(), 48_000);
+        let seen: Vec<_> = m
+            .iter()
+            .map(|m| (m.name.as_str(), m.kind, m.position, m.duration))
+            .collect();
+        assert_eq!(
+            seen,
+            vec![
+                ("Marker 01", MarkerKind::Cue, 9_646_673, 48_000),
+                ("Marker 04", MarkerKind::Cue, 63_332_507, 0),
+            ]
+        );
+        assert_eq!(m[0].description, "first");
+    }
+
+    #[test]
+    fn marker_track_time_units_are_converted_to_session_samples() {
+        let xml = XMP_SESSION
+            .replace("f48000", "f96000")
+            .replace("sampleRate=\"48000\"", "sampleRate=\"44100\"");
+        let doc = roxmltree::Document::parse(&xml).unwrap();
+        let m = read_markers(doc.root_element(), 44_100);
+        // 96000 units a second, so each unit is shorter at 44.1 kHz.
+        assert_eq!(m[0].position, (9_646_673u64 * 44_100 + 48_000) / 96_000);
+    }
+
+    #[test]
+    fn unreadable_metadata_gives_no_markers_and_no_error() {
+        let doc = roxmltree::Document::parse(
+            r#"<session sampleRate="48000"><xmpMetadata><![CDATA[<not closed]]></xmpMetadata></session>"#,
+        )
+        .unwrap();
+        assert!(read_markers(doc.root_element(), 48_000).is_empty());
+    }
+
+    #[test]
+    fn small_saved_track_heights_open_at_the_standard_height() {
+        assert_eq!(import_track_height(53), DEFAULT_TRACK_HEIGHT);
+        assert_eq!(import_track_height(99), DEFAULT_TRACK_HEIGHT);
+        assert_eq!(import_track_height(117), 117);
+        assert_eq!(import_track_height(134), 134);
+        assert_eq!(import_track_height(9_000), 600);
     }
 }
