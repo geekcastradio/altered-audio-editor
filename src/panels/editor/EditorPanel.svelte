@@ -64,6 +64,7 @@
   import { resolveForPlacing, type WaveFile } from "../../stores/wave";
   import OverviewStrip from "./OverviewStrip.svelte";
   import { KIND_COLORS, markerAt, markerCss } from "../markers/markers";
+  import { markerMenuItems } from "../markers/marker-menu";
   import { quiet, type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
   import { channelNames } from "../space/space";
   import { defaultTrackColor, MIN_TRACK_H, trackHeight, formatIn, maxSppFor, rulerTicks, ticksFor, setDisplayTempo, sampleAt, xOf, zoomAround, edgeScrollPx, type Viewport, TRACK_GAP } from "./timeline";
@@ -751,6 +752,7 @@
       const d = markerDrag;
       markerDrag = null;
       if (!moved) {
+        editor.selectMarkers([hit.id]);
         void transport.seek(hit.position);
         return;
       }
@@ -813,19 +815,24 @@
     const hit = markerAt(doc.markers ?? [], e.clientX - left, (s) => xOf(s, view));
     const at = sampleAt(e.clientX - left, view);
     const items: ContextItem[] = hit
-      ? [
-          { kind: "item", label: "Go to Marker", run: () => void transport.seek(hit.position) },
-          {
-            kind: "item",
-            label: "Rename Marker...",
-            run: async () => {
-              const name = await prompt("Rename Marker", "Name", hit.name);
-              if (name && name !== hit.name)
-                await session.edit("Rename Marker", { op: "set_markers", changes: [{ id: hit.id, name }] }, runner).catch(onError);
-            },
+      ? markerMenuItems(hit, {
+          rate,
+          selection: doc.view.selection,
+          playlist: doc.playlist,
+          showInPanel: () => {
+            editor.selectMarkers([hit.id]);
+            run("markers.show");
           },
-          { kind: "item", label: "Delete Marker", run: () => void session.edit("Delete Marker", { op: "remove_markers", ids: [hit.id] }, runner).catch(onError) },
-        ]
+          goTo: (m) => void transport.seek(m.position),
+          rename: async (m) => {
+            const name = await prompt("Rename Marker", "Name", m.name);
+            if (name && name !== m.name)
+              await session.edit("Rename Marker", { op: "set_markers", changes: [{ id: m.id, name }] }, runner).catch(onError);
+          },
+          change: (label, m, change) => void session.edit(label, { op: "set_markers", changes: [{ id: m.id, ...change }] }, runner).catch(onError),
+          setPlaylist: (ids) => void session.edit("Edit Playlist", { op: "set_playlist", ids }, runner).catch(onError),
+          remove: (m) => void session.edit("Delete Marker", { op: "remove_markers", ids: [m.id] }, runner).catch(onError),
+        })
       : [
           {
             kind: "item",
@@ -3024,12 +3031,11 @@
         {/if}
         {#if razor && ed.tool === "razor"}
           {@const row = razor.trackId ? lanesEl?.querySelector<HTMLElement>(`[data-track="${razor.trackId}"]`) : null}
-          <div
-            class="razor"
-            style:left="{razor.x}px"
-            style:top="{row ? row.offsetTop : 0}px"
-            style:height={row ? `${row.offsetHeight}px` : "100%"}
-          ></div>
+          <!-- The line runs through every lane, as the cut lines in other editors do; the track a click would cut is drawn stronger. -->
+          <div class="razor all" style:left="{razor.x}px" style:top="0" style:height="{lanesEl?.scrollHeight ?? 0}px"></div>
+          {#if row}
+            <div class="razor" style:left="{razor.x}px" style:top="{row.offsetTop}px" style:height="{row.offsetHeight}px"></div>
+          {/if}
         {/if}
         {#if doc}
           {#each laneList as row (row.id)}
@@ -3994,8 +4000,15 @@
     position: absolute;
     z-index: 3;
     width: 0;
-    border-left: 1px dashed var(--danger);
+    border-left: 2px dashed var(--danger);
     pointer-events: none;
+  }
+
+  /* Through every lane, fainter than the segment on the track a click would cut. */
+  .razor.all {
+    z-index: 2;
+    border-left-width: 1px;
+    opacity: 0.55;
   }
 
   .lanes.dropping {

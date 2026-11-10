@@ -5714,6 +5714,8 @@
         },
       }),
     );
+    // The marker menu's Show in Markers Panel: opens the panel or brings it to the front.
+    offs.push(actions.register({ id: "markers.show", run: () => dock.show("markers") }));
     // Effects > QuickPass shows the panel (without closing it when already open).
     offs.push(
       actions.register({
