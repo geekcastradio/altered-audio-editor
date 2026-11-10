@@ -99,6 +99,18 @@ describe("SessionFiles", () => {
     );
   });
 
+  it("lists an imported .sesx in Open Recent and imports it again from there", async () => {
+    const { files, calls, recent } = setup();
+    await files.importSesx();
+    expect(recent()[0]).toBe("C:\\Shows\\EP440.sesx");
+    calls.length = 0;
+    expect(await files.open("C:\\Shows\\EP440.sesx")).toBe(true);
+    expect(calls).toContain("sesx:C:\\Shows\\EP440.sesx");
+    expect(calls.some((c) => c.startsWith("open:"))).toBe(false);
+    expect(recent()[0]).toBe("C:\\Shows\\EP440.sesx");
+    expect(recent().filter((p) => p.endsWith("EP440.sesx"))).toHaveLength(1);
+  });
+
   it("names the window after the file and marks unsaved changes", async () => {
     const { files, makeDirty } = setup();
     expect(files.title()).toBe("Untitled Session - Altered Audio Editor");
