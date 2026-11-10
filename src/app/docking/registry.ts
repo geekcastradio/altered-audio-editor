@@ -24,6 +24,7 @@ export type PanelId =
   | "drive-manager"
   | "libraries"
   | "markers"
+  | "review"
   | "metadata"
   | "playlist"
   | "loudness-match"
@@ -164,6 +165,13 @@ export const PANELS: readonly PanelDef[] = [
   {
     id: "markers",
     title: "Markers",
+    inDefault: false,
+    home: LEFT_TABS,
+    pending: null,
+  },
+  {
+    id: "review",
+    title: "Review",
     inDefault: false,
     home: LEFT_TABS,
     pending: null,
@@ -496,6 +504,7 @@ export const MIN_SIZE: Record<PanelId, { w: number; h: number }> = {
   "drive-manager": { w: 260, h: 140 },
   libraries: { w: 260, h: 200 },
   markers: { w: 260, h: 140 },
+  review: { w: 260, h: 140 },
   metadata: { w: 280, h: 200 },
   playlist: { w: 260, h: 140 },
   "loudness-match": { w: 280, h: 160 },

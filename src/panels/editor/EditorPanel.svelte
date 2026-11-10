@@ -65,6 +65,7 @@
   import OverviewStrip from "./OverviewStrip.svelte";
   import { KIND_COLORS, markerAt, markerCss } from "../markers/markers";
   import { markerMenuItems } from "../markers/marker-menu";
+  import { Scrubber } from "./scrubber";
   import { quiet, type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
   import { channelNames } from "../space/space";
   import { defaultTrackColor, MIN_TRACK_H, trackHeight, formatIn, maxSppFor, rulerTicks, ticksFor, setDisplayTempo, sampleAt, xOf, zoomAround, edgeScrollPx, type Viewport, TRACK_GAP } from "./timeline";
@@ -90,6 +91,8 @@
     waveTransport?: TransportStore;
     /** Waveform editor quick level: dB for the selection or whole file. */
     onWaveLevel?: (db: number) => void;
+    /** Applies a marker edit in the Waveform editor as one undo step. */
+    onWaveMarkerEdit?: (label: string, op: Op) => void;
     /** Brings the Voice Chain panel forward. */
     onShowChain?: () => void;
     /** Takes dial moves while a take records automation. */
@@ -112,6 +115,7 @@
     waveFile,
     waveTransport,
     onWaveLevel = () => {},
+    onWaveMarkerEdit = () => {},
     onShowChain = () => {},
     autoTake,
   }: Props = $props();
@@ -774,6 +778,9 @@
     if (cur?.view.selection) session.setView({ ...cur.view, selection: null });
     const at = (clientX: number) => Math.max(0, sampleAt(Math.max(0, Math.min(lanesWidth, clientX - left)), view));
     let last = at(e.clientX);
+    // With Play audio while scrubbing on, the sound follows the drag.
+    const scrub = new Scrubber(transport, settings.current.scrubAudio);
+    scrub.move(last);
     // The line follows the pointer at once; the playhead itself moves once
     // a frame at most, and playback jumps there when the button is let go.
     dragHead = last;
@@ -793,6 +800,7 @@
       lastEv = ev;
       last = at(ev.clientX);
       dragHead = last;
+      scrub.move(last);
       settleSoon();
     };
     // Held at or past the edge of the lanes, the timeline scrolls and the playhead keeps following.
@@ -802,7 +810,7 @@
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", up, true);
       document.body.style.cursor = "";
-      void transport.seek(last).finally(() => (dragHead = null));
+      void scrub.end(last).finally(() => (dragHead = null));
     };
     window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerup", up, true);
@@ -2495,7 +2503,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 {#if ed.mode === "waveform" && wave && waveTransport}
-  <WaveformView {wave} file={wf} transport={waveTransport} {peaks} {actions} {shortcutFor} onLevel={onWaveLevel} />
+  <WaveformView {wave} file={wf} transport={waveTransport} {peaks} {actions} {shortcutFor} onLevel={onWaveLevel} onMarkerEdit={onWaveMarkerEdit} />
 {:else}
 <section class="editor" aria-label="Multitrack" data-area="multitrack">
   <div class="toolbar">

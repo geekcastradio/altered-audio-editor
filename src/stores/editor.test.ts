@@ -20,6 +20,15 @@ describe("editor settings", () => {
     expect(s.snap.clips).toBe(false);
     expect(s.autoCrossfade).toBe(false);
   });
+
+  it("keeps the HUD on unless it was saved off", () => {
+    expect(parseSettings(null).showHud).toBe(true);
+    expect(parseSettings({ showHud: false }).showHud).toBe(false);
+    expect(parseSettings({ showHud: "no" }).showHud).toBe(true);
+    editor.setShowHud(false);
+    expect(settingsOf(editor.current()).showHud).toBe(false);
+    editor.setShowHud(true);
+  });
 });
 
 describe("gap pick", () => {

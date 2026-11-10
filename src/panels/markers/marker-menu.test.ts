@@ -20,6 +20,13 @@ describe("marker menu", () => {
     expect(labels(markerMenuItems(m, deps({ showInPanel: () => {} })))).toContain("Show in Markers Panel");
   });
 
+  it("leaves the playlist item out where there is no playlist", () => {
+    const m = newMarker("a", "A", 0, 10);
+    const { setPlaylist: _unused, ...withoutPlaylist } = deps();
+    expect(labels(markerMenuItems(m, withoutPlaylist))).not.toContain("Insert into Playlist");
+    expect(labels(markerMenuItems(m, deps()))).toContain("Insert into Playlist");
+  });
+
   it("converts a point to a range sized by the selection, and a range back to a point", () => {
     const d = deps({ selection: { start: 0, end: 700 } });
     const point = find(markerMenuItems(newMarker("a", "A", 200), d), "Convert to Range");

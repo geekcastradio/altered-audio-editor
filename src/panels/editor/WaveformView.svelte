@@ -12,13 +12,15 @@
   import { settings, wheelAnchorX, zoomRatios } from "../../stores/settings";
   import ColorPairPopover from "../../app/ColorPairPopover.svelte";
   import { SPECTRUM_HIGH, SPECTRUM_LOW } from "../../app/colors";
-  import { KIND_COLORS } from "../markers/markers";
+  import { KIND_COLORS, markerAt } from "../markers/markers";
+  import { markerMenuItems } from "../markers/marker-menu";
+  import { Scrubber } from "./scrubber";
   import type { ActionRegistry } from "../../app/actions";
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import { editor, type EditorState } from "../../stores/editor";
   import type { PeakStore } from "../../stores/peaks";
   import { liveTakes, type LiveTakes } from "../../stores/record";
-  import { clipLength, sessionEnd, stretchOf, type ClipDoc, type SessionDoc, type SessionStore } from "../../stores/session";
+  import { clipLength, sessionEnd, stretchOf, type ClipDoc, type Op, type SessionDoc, type SessionStore } from "../../stores/session";
   import type { TransportState, TransportStore } from "../../stores/transport";
   import { onDestroy } from "svelte";
   import { keepView, waveZoom, type WaveFile } from "../../stores/wave";
@@ -41,9 +43,11 @@
     shortcutFor?: (id: string) => string | undefined;
     /** Applies a level change in dB to the selection, or the whole file. */
     onLevel: (db: number) => void;
+    /** Applies a marker edit as one undo step. */
+    onMarkerEdit?: (label: string, op: Op) => void;
   }
 
-  const { wave, file, transport, peaks, actions, shortcutFor = () => undefined, onLevel }: Props = $props();
+  const { wave, file, transport, peaks, actions, shortcutFor = () => undefined, onLevel, onMarkerEdit = () => {} }: Props = $props();
 
   const RULER_H = 22;
   const SCALE_W = 46;
@@ -618,21 +622,59 @@
     // playback moves there when the button is let go.
     e.preventDefault();
     const el = e.currentTarget as HTMLElement;
+    // A click on a marker's flag also picks it in the Markers panel.
+    const flag = markerAt(doc.markers, x, (s) => xOf(s, view));
+    if (flag) editor.selectMarkers([flag.id]);
     const at = (ev: PointerEvent) => Math.max(0, Math.min(total, Math.round(sampleAt(Math.max(0, Math.min(width, xIn(ev, el))), view))));
     const wasPlaying = !!tp?.playing;
+    // With Play audio while scrubbing on, the sound follows the drag; otherwise only the playhead does.
+    const scrub = new Scrubber(transport, settings.current.scrubAudio);
+    const follow = (pos: number) => {
+      if (wasPlaying) return;
+      if (scrub.active) scrub.move(pos);
+      else void transport.seek(pos);
+    };
     let last = at(e);
-    if (!wasPlaying) void transport.seek(last);
+    follow(last);
     const move = (ev: PointerEvent) => {
       last = at(ev);
-      if (!wasPlaying) void transport.seek(last);
+      follow(last);
     };
     const up = () => {
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", up, true);
-      void transport.seek(last);
+      void scrub.end(last);
     };
     window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerup", up, true);
+  }
+
+  /** Right-click on the ruler: a marker's flag gets the marker menu, anywhere else the time display choices. */
+  function onRulerMenu(e: MouseEvent) {
+    e.preventDefault();
+    const d = doc;
+    const hit = d ? markerAt(d.markers, xIn(e, e.currentTarget as HTMLElement), (s) => xOf(s, view)) : null;
+    if (!d || !hit) {
+      menu = { x: e.clientX, y: e.clientY, items: timeDisplayItems() };
+      return;
+    }
+    const items = markerMenuItems(hit, {
+      rate: d.sample_rate,
+      selection: d.view.selection,
+      playlist: undefined,
+      showInPanel: () => {
+        editor.selectMarkers([hit.id]);
+        void actions.run("markers.show");
+      },
+      goTo: (m) => void transport.seek(m.position),
+      rename: (m) => {
+        editor.selectMarkers([m.id]);
+        void actions.run("edit.marker.rename");
+      },
+      change: (label, m, change) => onMarkerEdit(label, { op: "set_markers", changes: [{ id: m.id, ...change }] }),
+      remove: (m) => onMarkerEdit("Delete Marker", { op: "remove_markers", ids: [m.id] }),
+    });
+    menu = { x: e.clientX, y: e.clientY, items: [...items, { kind: "sep" }, ...timeDisplayItems()] };
   }
 
   function onWheel(e: WheelEvent) {
@@ -803,22 +845,21 @@
       bind:this={ruler}
       onpointerdown={onRulerPointer}
       onwheel={onWheel}
-      oncontextmenu={(e) => {
-        e.preventDefault();
-        menu = { x: e.clientX, y: e.clientY, items: timeDisplayItems() };
-      }}
+      oncontextmenu={onRulerMenu}
     ></canvas>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="area" bind:this={area} bind:clientHeight={height} onwheel={onWheel} oncontextmenu={onMenu}>
       <div class="measure" bind:clientWidth={width} style:right="{SCALE_W}px"></div>
       <canvas bind:this={canvas} onpointerdown={onPointer} ondblclick={() => run("edit.select-all")}></canvas>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="hud" class:active={levelDrag} onpointerdown={onLevelPointer} title="Drag right or up to turn the selection (or the whole file) up, left or down to turn it down. Release to apply. Shift for fine steps.">
-        <span class="knob">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M8 8l{3.5 * Math.sin((level / 30) * 2.4)} {-3.5 * Math.cos((level / 30) * 2.4)}" stroke="currentColor" stroke-width="1.6" /></svg>
-        </span>
-        <span class="val">{level > 0 ? "+" : ""}{level.toFixed(1)} dB</span>
-      </div>
+      {#if ed.showHud}
+        <div class="hud" class:active={levelDrag} onpointerdown={onLevelPointer} title="Drag right or up to turn the selection (or the whole file) up, left or down to turn it down. Release to apply. Shift for fine steps.">
+          <span class="knob">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M8 8l{3.5 * Math.sin((level / 30) * 2.4)} {-3.5 * Math.cos((level / 30) * 2.4)}" stroke="currentColor" stroke-width="1.6" /></svg>
+          </span>
+          <span class="val">{level > 0 ? "+" : ""}{level.toFixed(1)} dB</span>
+        </div>
+      {/if}
       {#if channels > 1}
         {#each chNames as label, ch (ch)}
           {@const name = channels === 2 ? (ch === 0 ? "left" : "right") : label}
