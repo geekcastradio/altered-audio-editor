@@ -451,10 +451,54 @@
     const depth = i.bitDepth ? `, ${i.bitDepth}-bit` : "";
     return `${it.path}\n${i.format}, ${i.codec}${depth}, ${formatSize(i.fileSize)}`;
   }
+  /** Column widths: name, status, duration, sample rate, channels. Drag a heading's right edge to change one. */
+  const COLS = [
+    { min: 80, def: 200 },
+    { min: 56, def: 72 },
+    { min: 56, def: 84 },
+    { min: 70, def: 100 },
+    { min: 56, def: 78 },
+  ] as const;
+  const KEY_COLS = "files.columns";
+  function loadWidths(): number[] {
+    try {
+      const raw: unknown = JSON.parse(localStorage.getItem(KEY_COLS) ?? "null");
+      if (Array.isArray(raw) && raw.length === COLS.length && raw.every((n) => typeof n === "number" && Number.isFinite(n))) {
+        return COLS.map((c, i) => Math.min(800, Math.max(c.min, raw[i] as number)));
+      }
+    } catch {
+      // Storage can be missing or blocked; the standard widths do.
+    }
+    return COLS.map((c) => c.def);
+  }
+  let widths = $state<number[]>(loadWidths());
+  const fcols = $derived(widths.map((w) => `${w}px`).join(" "));
+  let headEl = $state<HTMLElement | null>(null);
+
+  function resizeCol(e: PointerEvent, i: number) {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const start = widths[i] ?? COLS[i]!.def;
+    const move = (ev: PointerEvent) => {
+      widths[i] = Math.min(800, Math.max(COLS[i]!.min, Math.round(start + ev.clientX - startX)));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", up, true);
+      try {
+        localStorage.setItem(KEY_COLS, JSON.stringify(widths));
+      } catch {
+        // Not remembered this time.
+      }
+    };
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", up, true);
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<section class="panel" class:dropping aria-label="Files" data-area="files" bind:this={root} oncontextmenu={(e) => openMenu(e, "blank")}>
+<section class="panel" class:dropping aria-label="Files" data-area="files" style:--fcols={fcols} bind:this={root} oncontextmenu={(e) => openMenu(e, "blank")}>
   <div class="toolbar">
     <button type="button" class="tool" title={tip("New Session", "file.new-session")} aria-label="New Session" disabled={!can("file.new-session")} onclick={() => run("file.new-session")}>
       <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -519,16 +563,16 @@
     />
   </div>
 
-  <div class="head" role="row">
-    <button type="button" class="col name" data-sort={ariaSort("name")} onclick={() => sortBy("name")}>Name</button>
-    <button type="button" class="col status" data-sort={ariaSort("status")} onclick={() => sortBy("status")}>Status</button>
-    <button type="button" class="col num duration" data-sort={ariaSort("duration")} onclick={() => sortBy("duration")}
-      >Duration</button
-    >
-    <button type="button" class="col num rate" data-sort={ariaSort("rate")} onclick={() => sortBy("rate")}>Sample Rate</button>
-    <button type="button" class="col channels" data-sort={ariaSort("channels")} onclick={() => sortBy("channels")}
-      >Channels</button
-    >
+  <div class="headwrap" bind:this={headEl}>
+    <div class="head" role="row">
+      {#each [["name", "Name", ""], ["status", "Status", ""], ["duration", "Duration", " num duration"], ["rate", "Sample Rate", " num rate"], ["channels", "Channels", ""]] as [key, label, extra], i (key)}
+        <button type="button" class="col {key}{extra}" data-sort={ariaSort(key as SortKey)} onclick={() => sortBy(key as SortKey)}>
+          {label}
+          <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+          <span class="grip" title="Drag to resize" onpointerdown={(e) => resizeCol(e, i)} onclick={(e) => e.stopPropagation()}></span>
+        </button>
+      {/each}
+    </div>
   </div>
 
   <div
@@ -540,6 +584,9 @@
     bind:this={list}
     onkeydown={onListKey}
     onpointerdown={onBlankPointer}
+    onscroll={(e) => {
+      if (headEl) headEl.scrollLeft = e.currentTarget.scrollLeft;
+    }}
   >
     {#if pickBox}<div class="pick-box" style:left="{pickBox.x}px" style:top="{pickBox.y}px" style:width="{pickBox.w}px" style:height="{pickBox.h}px"></div>{/if}
     {#each sessionRows as sr (sr.id)}
@@ -845,8 +892,33 @@
   .head,
   .row {
     display: grid;
-    grid-template-columns: minmax(80px, 1fr) 64px 78px 86px 62px;
+    grid-template-columns: var(--fcols);
+    width: max-content;
+    min-width: 100%;
     align-items: center;
+  }
+
+  /* The heading row scrolls sideways with the rows below it. */
+  .headwrap {
+    overflow: hidden;
+  }
+
+  .head .col {
+    position: relative;
+  }
+
+  .grip {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    bottom: 0;
+    width: 7px;
+    cursor: col-resize;
+    z-index: 1;
+  }
+
+  .grip:hover {
+    background: var(--border-strong);
   }
 
   .head {
@@ -1007,29 +1079,6 @@
     pointer-events: none;
   }
 
-  /* Narrow left column: Name, Status, Duration only. */
-  @container (max-width: 380px) {
-    .head,
-    .row {
-      grid-template-columns: minmax(60px, 1fr) 64px 78px;
-    }
-
-    .rate,
-    .channels {
-      display: none;
-    }
-  }
-
-  @container (max-width: 200px) {
-    .head,
-    .row {
-      grid-template-columns: minmax(60px, 1fr) 64px;
-    }
-
-    .duration {
-      display: none;
-    }
-  }
   .pick-box {
     position: absolute;
     z-index: 2;
