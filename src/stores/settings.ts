@@ -97,6 +97,8 @@ export interface AppSettings {
   musicMode: boolean;
   /** Transport > Return to Start on Stop: Stop (and Space while playing) puts the playhead back where playback began. Off leaves it where playback stopped. */
   returnOnStop: boolean;
+  /** Dragging the playhead along the ruler plays the audio under it. */
+  scrubAudio: boolean;
   /** Offer the Amp Model in the Add effect menus even with Music Mode off (it is a music tool, so off by default). */
   ampModelAlways: boolean;
   /** The metronome, kept between runs. */
@@ -206,6 +208,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   phaseWheel: { size: 4096, fps: 60, a: "left", b: "right" },
   musicMode: false,
   returnOnStop: true,
+  scrubAudio: false,
   ampModelAlways: false,
   updateCheck: false,
   lastUpdateCheck: 0,
@@ -311,6 +314,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
     phaseWheel: phasePrefs(o.phaseWheel),
     musicMode: bool(o.musicMode, d.musicMode),
     returnOnStop: bool(o.returnOnStop, d.returnOnStop),
+    scrubAudio: bool(o.scrubAudio, d.scrubAudio),
     ampModelAlways: bool(o.ampModelAlways, d.ampModelAlways),
     updateCheck: bool(o.updateCheck, d.updateCheck),
     lastUpdateCheck:

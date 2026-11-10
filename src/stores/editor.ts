@@ -61,6 +61,8 @@ export interface EditorState {
   followPlayhead: boolean;
   /** The Waveform editor shows the spectrum under the waveform. */
   showSpectrum: boolean;
+  /** The Waveform editor shows the on-canvas level control (HUD). */
+  showHud: boolean;
   /** The Waveform editor draws the pitch line over the spectrum. */
   showPitch: boolean;
   /** What a drag does in the Waveform editor's spectrum. */
@@ -108,6 +110,7 @@ const initial: EditorState = {
   playMode: "normal",
   followPlayhead: true,
   showSpectrum: false,
+  showHud: true,
   showPitch: false,
   spectralTool: "time",
   brushSize: 16,
@@ -141,6 +144,7 @@ export const editor: Readable<EditorState> & {
   setFollowPlayhead(on: boolean): void;
   setShowSpectrum(on: boolean): void;
   setShowPitch(on: boolean): void;
+  setShowHud(on: boolean): void;
   setSpectralTool(tool: SpectralTool): void;
   setBrushSize(px: number): void;
   setStretchHandles(on: boolean): void;
@@ -166,6 +170,7 @@ export const editor: Readable<EditorState> & {
   setSpectralTool: (tool) => state.update((s) => ({ ...s, spectralTool: tool })),
   setBrushSize: (px) => state.update((s) => ({ ...s, brushSize: Math.max(2, Math.min(80, Math.round(px))) })),
   setShowSpectrum: (on) => state.update((s) => ({ ...s, showSpectrum: on })),
+  setShowHud: (on) => state.update((s) => ({ ...s, showHud: on })),
   setFollowPlayhead: (on) => state.update((s) => ({ ...s, followPlayhead: on })),
   setStretchHandles: (on) => state.update((s) => ({ ...s, stretchHandles: on })),
   setSnap: (patch) => state.update((s) => ({ ...s, snap: { ...s.snap, ...patch } })),
@@ -185,13 +190,14 @@ export interface EditorSettings {
   playMode: PlayMode;
   followPlayhead: boolean;
   showSpectrum: boolean;
+  showHud: boolean;
   showPitch: boolean;
   brushSize: number;
   stretchHandles: boolean;
 }
 
 export function settingsOf(s: EditorState): EditorSettings {
-  return { snap: s.snap, autoCrossfade: s.autoCrossfade, snapZero: s.snapZero, timeFormat: s.timeFormat, showVolume: s.showVolume, showPan: s.showPan, playMode: s.playMode, followPlayhead: s.followPlayhead, showSpectrum: s.showSpectrum, showPitch: s.showPitch, brushSize: s.brushSize, stretchHandles: s.stretchHandles };
+  return { snap: s.snap, autoCrossfade: s.autoCrossfade, snapZero: s.snapZero, timeFormat: s.timeFormat, showVolume: s.showVolume, showPan: s.showPan, playMode: s.playMode, followPlayhead: s.followPlayhead, showSpectrum: s.showSpectrum, showHud: s.showHud, showPitch: s.showPitch, brushSize: s.brushSize, stretchHandles: s.stretchHandles };
 }
 
 /** Reads saved settings, keeping defaults for anything missing or the wrong type. */
@@ -213,6 +219,7 @@ export function parseSettings(raw: unknown, base: EditorSettings = settingsOf(in
     showPan: bool(o.showPan, base.showPan),
     followPlayhead: bool(o.followPlayhead, base.followPlayhead),
     showSpectrum: bool(o.showSpectrum, base.showSpectrum),
+    showHud: bool(o.showHud, base.showHud),
     showPitch: bool(o.showPitch, base.showPitch),
     stretchHandles: bool(o.stretchHandles, base.stretchHandles),
     brushSize: typeof o.brushSize === "number" && o.brushSize >= 2 && o.brushSize <= 80 ? Math.round(o.brushSize) : base.brushSize,

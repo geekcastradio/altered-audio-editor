@@ -20,25 +20,31 @@ export interface MarkerMenuDeps {
   goTo(m: MarkerDoc): void;
   rename(m: MarkerDoc): void;
   change(label: string, m: MarkerDoc, change: Omit<MarkerChange, "id">): void;
-  setPlaylist(ids: string[]): void;
+  /** Left out where there is no playlist (the Waveform editor), which drops the playlist item. */
+  setPlaylist?: (ids: string[]) => void;
   remove(m: MarkerDoc): void;
 }
 
 export function markerMenuItems(m: MarkerDoc, d: MarkerMenuDeps): ContextItem[] {
   const isRange = m.duration > 0;
   const inList = !!d.playlist?.includes(m.id);
+  const setPlaylist = d.setPlaylist;
   const items: ContextItem[] = [{ kind: "item", label: "Go to Marker", run: () => d.goTo(m) }];
   if (d.showInPanel) items.push({ kind: "item", label: "Show in Markers Panel", run: d.showInPanel });
   items.push(
     { kind: "sep" },
     { kind: "item", label: "Rename Marker...", run: () => d.rename(m) },
-    {
-      kind: "item",
-      label: inList ? "Remove from Playlist" : "Insert into Playlist",
-      disabled: !isRange && !inList,
-      reason: "Only a range can go in the playlist. Convert it to a range first.",
-      run: () => d.setPlaylist(togglePlaylist(d.playlist, m)),
-    },
+    ...(setPlaylist
+      ? [
+          {
+            kind: "item",
+            label: inList ? "Remove from Playlist" : "Insert into Playlist",
+            disabled: !isRange && !inList,
+            reason: "Only a range can go in the playlist. Convert it to a range first.",
+            run: () => setPlaylist(togglePlaylist(d.playlist, m)),
+          } as ContextItem,
+        ]
+      : []),
     isRange
       ? { kind: "item", label: "Convert to Point", run: () => d.change("Convert to Point Marker", m, { duration: 0 }) }
       : { kind: "item", label: "Convert to Range", run: () => d.change("Convert to Range Marker", m, { duration: rangeLengthFor(m, d.selection, d.rate) }) },

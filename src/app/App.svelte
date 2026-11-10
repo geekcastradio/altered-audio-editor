@@ -35,6 +35,7 @@
   import KeyboardShortcutsDialog from "./KeyboardShortcutsDialog.svelte";
   import { DockController, type PanelContent, type WorkspaceState } from "./docking/dock";
   import { PANELS, panelDef, type PanelId } from "./docking/registry";
+  import { clearIn, clearOut, markIn, markOut, type Span } from "./in-out";
   import DockShell from "./docking/DockShell.svelte";
   import { ActionRegistry } from "./actions";
   import { MENUS } from "./menus/model";
@@ -105,6 +106,7 @@
   import MarkersPanel from "../panels/markers/MarkersPanel.svelte";
   import MetadataPanel from "../panels/metadata/MetadataPanel.svelte";
   import PlaylistPanel from "../panels/playlist/PlaylistPanel.svelte";
+  import ReviewPanel from "../panels/review/ReviewPanel.svelte";
   import { exportNames } from "../panels/playlist/playlist";
   import { deleteLabel, newMarker, nextMarkerName, pickedMarkers } from "../panels/markers/markers";
   import { listen } from "@tauri-apps/api/event";
@@ -2393,6 +2395,11 @@
           component: asComponent(MarkersPanel),
           props: { session, transport, runner: sessionHistory, actions, onError: showError, wave, waveRunner: waveHistory, waveTransport, waveFile },
         };
+      case "review":
+        return {
+          component: asComponent(ReviewPanel),
+          props: { session, transport, runner: sessionHistory, actions, onError: showError, wave, waveRunner: waveHistory, waveTransport, waveFile },
+        };
       case "editor":
         return {
           component: asComponent(EditorPanel),
@@ -2415,6 +2422,7 @@
             waveFile,
             waveTransport,
             onWaveLevel: (db: number) => void waveAmplify(db).catch(showError),
+            onWaveMarkerEdit: (label: string, op: Op) => void waveEdit(label, op).catch(showError),
           },
         };
       default: {
@@ -2781,6 +2789,22 @@
   }
   /** Whether some channels of the Waveform editor's file are switched off. */
   const oneWaveChannel = () => (wave.current?.media[0]?.channels ?? 1) > 1 && someOff(get(waveChannels));
+
+  /** I, O, Shift+I and Shift+O in the Waveform editor: move one end of the selection, leave the playhead alone. */
+  function waveInOut(change: (sel: Span, d: SessionDoc) => Span) {
+    const d = wave.current;
+    if (!d) return;
+    const s = waveSel();
+    const next = change(s ? { start: s[0], end: s[1] } : null, d);
+    waveSetSelection(next ? [next.start, next.end] : null);
+  }
+
+  /** The same four commands in the Multitrack editor. */
+  function sessionInOut(change: (sel: Span) => Span) {
+    const v = session.current?.view;
+    if (!v) return;
+    session.setView({ ...v, selection: change(v.selection ?? null) });
+  }
 
   function waveSetSelection(sel: [number, number] | null, playhead?: number) {
     const d = wave.current;
@@ -3173,6 +3197,11 @@
       exporting = null;
     }
   }
+
+  /** The last Amplify amount, offered again by the next Amplify and repeated by Repeat Last Command without asking. */
+  let lastAmplifyDb = 3;
+  /** Commands that repeat with what was chosen last time, without opening their dialog again. */
+  const quietRepeats = new Map<string, () => Promise<void>>();
 
   async function waveAmplify(db: number) {
     const d = wave.current;
@@ -3819,6 +3848,14 @@
         label: () => (editor.current().showSpectrum ? "Hide Spectrum" : "Show Spectrum"),
         checked: () => editor.current().showSpectrum,
       }),
+      actions.register({
+        id: "view.hud",
+        run: () => editor.setShowHud(!editor.current().showHud),
+        label: () => (editor.current().showHud ? "Hide HUD" : "Show HUD"),
+        checked: () => editor.current().showHud,
+        enabled: () => waveIsOpen(),
+        reason: () => NOT_WAVE,
+      }),
       ...["fx.spectrum.reduce-12", "fx.spectrum.reduce-24", "fx.spectrum.remove", "fx.spectrum.repair"].map((id) =>
         actions.register({ id, run: () => {}, enabled: () => false, reason: () => NOT_WAVE }),
       ),
@@ -4032,13 +4069,15 @@
       ov(waveIsOpen, {
         id: "fx.amplify",
         run: async () => {
-          const v = await promptText("Amplify", waveSel() ? "Change the selection by (dB)" : "Change the whole file by (dB)", "3.0");
+          const v = await promptText("Amplify", waveSel() ? "Change the selection by (dB)" : "Change the whole file by (dB)", lastAmplifyDb.toFixed(1));
           if (v === null) return;
           const db = Number(v);
           if (!Number.isFinite(db) || Math.abs(db) > 48) {
             showNotice("Enter a number of decibels between -48 and 48.");
             return;
           }
+          lastAmplifyDb = db;
+          quietRepeats.set("fx.amplify", () => waveAmplify(db));
           await waveAmplify(db);
         },
       }),
@@ -4090,6 +4129,46 @@
           await waveEdit("Add Retake Marker", { op: "add_markers", markers: [m] });
           if (take) showNotice("Retake marked.");
         },
+      }),
+      ov(waveIsOpen, {
+        id: "edit.marker.cut-this",
+        run: async () => {
+          const d = wave.current;
+          if (!d) return;
+          const m = newMarker(uuid(), nextMarkerName(d.markers, "Cut this"), wavePlayhead());
+          await waveEdit("Add Cut this Marker", { op: "add_markers", markers: [m] });
+          if (take) showNotice("Cut this marked.");
+        },
+      }),
+      ov(waveIsOpen, {
+        id: "edit.marker.great-bit",
+        run: async () => {
+          const d = wave.current;
+          if (!d) return;
+          const m = newMarker(uuid(), nextMarkerName(d.markers, "Great bit"), wavePlayhead());
+          await waveEdit("Add Great bit Marker", { op: "add_markers", markers: [m] });
+          if (take) showNotice("Great bit marked.");
+        },
+      }),
+      ov(waveIsOpen, {
+        id: "edit.set-in",
+        run: () => waveInOut((sel, d) => markIn(sel, wavePlayhead(), sessionEnd(d))),
+      }),
+      ov(waveIsOpen, {
+        id: "edit.set-out",
+        run: () => waveInOut((sel) => markOut(sel, wavePlayhead())),
+      }),
+      ov(waveIsOpen, {
+        id: "edit.clear-in",
+        run: () => waveInOut((sel, d) => clearIn(sel, sessionEnd(d))),
+        enabled: () => waveSel() !== null,
+        reason: () => NEED_WAVE_SEL,
+      }),
+      ov(waveIsOpen, {
+        id: "edit.clear-out",
+        run: () => waveInOut((sel, d) => clearOut(sel, sessionEnd(d))),
+        enabled: () => waveSel() !== null,
+        reason: () => NEED_WAVE_SEL,
       }),
       ov(waveIsOpen, {
         id: "edit.marker.subclip",
@@ -4878,6 +4957,50 @@
         enabled: () => session.current !== null,
       }),
       actions.register({
+        id: "edit.marker.cut-this",
+        run: async () => {
+          const doc = session.current;
+          if (!doc) return;
+          const m = newMarker(uuid(), nextMarkerName(doc.markers, "Cut this"), playheadNow());
+          await session.edit("Add Cut this Marker", { op: "add_markers", markers: [m] }, sessionHistory);
+          if (take) showNotice("Cut this marked.");
+        },
+        enabled: () => session.current !== null,
+      }),
+      actions.register({
+        id: "edit.marker.great-bit",
+        run: async () => {
+          const doc = session.current;
+          if (!doc) return;
+          const m = newMarker(uuid(), nextMarkerName(doc.markers, "Great bit"), playheadNow());
+          await session.edit("Add Great bit Marker", { op: "add_markers", markers: [m] }, sessionHistory);
+          if (take) showNotice("Great bit marked.");
+        },
+        enabled: () => session.current !== null,
+      }),
+      actions.register({
+        id: "edit.set-in",
+        run: () => sessionInOut((sel) => markIn(sel, playheadNow(), session.current ? sessionEnd(session.current) : 0)),
+        enabled: () => session.current !== null,
+      }),
+      actions.register({
+        id: "edit.set-out",
+        run: () => sessionInOut((sel) => markOut(sel, playheadNow())),
+        enabled: () => session.current !== null,
+      }),
+      actions.register({
+        id: "edit.clear-in",
+        run: () => sessionInOut((sel) => clearIn(sel, session.current ? sessionEnd(session.current) : 0)),
+        enabled: () => timeSel() !== null,
+        reason: () => "There is no time selection.",
+      }),
+      actions.register({
+        id: "edit.clear-out",
+        run: () => sessionInOut((sel) => clearOut(sel, session.current ? sessionEnd(session.current) : 0)),
+        enabled: () => timeSel() !== null,
+        reason: () => "There is no time selection.",
+      }),
+      actions.register({
         id: "edit.marker.subclip",
         run: async () => {
           const doc = session.current;
@@ -5240,6 +5363,22 @@
       }),
       actions.register({
         id: "edit.repeat-last",
+        run: async () => {
+          const id = actions.repeatTarget();
+          if (!id) return;
+          const quiet = quietRepeats.get(id);
+          if (quiet) await quiet();
+          else await actions.run(id);
+        },
+        enabled: () => {
+          const id = actions.repeatTarget();
+          return id !== null && actions.isEnabled(id);
+        },
+        reason: () => (actions.repeatTarget() === null ? "Run an edit or an effect first." : "That command is not available right now."),
+      }),
+      // Repeat Last Command Dialog: runs the last command the ordinary way, so a dialog opens again with the last choice filled in.
+      actions.register({
+        id: "edit.repeat-last-dialog",
         run: async () => {
           const id = actions.repeatTarget();
           if (id) await actions.run(id);

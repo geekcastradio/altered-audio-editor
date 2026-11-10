@@ -376,7 +376,7 @@
           <fieldset>
             <legend>Playback</legend>
             <label><input type="checkbox" bind:checked={d.editor.followPlayhead} /> Scroll to follow the playhead</label>
-            <label class="off"><input type="checkbox" disabled /> Play audio while scrubbing <span class="why">Planned.</span></label>
+            <label><input type="checkbox" bind:checked={d.app.scrubAudio} /> Play audio while scrubbing <span class="why">Drag the playhead along the ruler to hear it. Approximate: playback restarts at the pointer every moment.</span></label>
           </fieldset>
           <fieldset>
             <legend>Meters turn yellow and red at</legend>
