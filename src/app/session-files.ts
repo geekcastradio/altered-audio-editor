@@ -230,6 +230,8 @@ export class SessionFiles {
   async open(path?: string): Promise<boolean> {
     const target = path ?? (await this.d.backend.pickOpen());
     if (!target) return false;
+    // A .sesx in Open Recent is imported again, as a new unsaved session.
+    if (/\.sesx$/i.test(target)) return this.importSesx(target);
     // Already open: bring it to the front.
     const key = (p: string | null) => (p ?? "").replace(/\\/g, "/").toLowerCase();
     if (key(this.d.session.path) === key(target)) return true;
@@ -253,9 +255,16 @@ export class SessionFiles {
     if (!(await this.makeRoom())) return false;
     const target = path ?? (await this.d.backend.pickSesx());
     if (!target) return false;
-    const r = await this.d.backend.importSesx(target);
+    let r: SessionResult<SessionDoc> & { report: SesxReport };
+    try {
+      r = await this.d.backend.importSesx(target);
+    } catch (e) {
+      this.dropRecent(target);
+      throw e;
+    }
     // The summary replaces the generic missing-files notice.
     await this.replace({ ...r, missing: [] }, "Import Session", true);
+    this.addRecent(target);
     this.d.notice(sesxSummary(r.report));
     return true;
   }

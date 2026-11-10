@@ -4,7 +4,7 @@
 
 /** Marker kinds, their names and colors, and making new markers. */
 
-import type { MarkerDoc, MarkerKind } from "../../stores/session";
+import type { MarkerChange, MarkerDoc, MarkerKind } from "../../stores/session";
 
 export const KIND_LABELS: Record<MarkerKind, string> = {
   cue: "Cue",
@@ -80,6 +80,40 @@ export function markersBetween(markers: readonly MarkerDoc[], a: string, b: stri
 /** The undo label for deleting `n` markers. */
 export function deleteLabel(n: number): string {
   return n === 1 ? "Delete Marker" : `Delete ${n} Markers`;
+}
+
+/** Where a marker ends, in samples: its start for a point marker. */
+export function markerEnd(m: Pick<MarkerDoc, "position" | "duration">): number {
+  return m.position + Math.max(0, m.duration);
+}
+
+/** The markers that match what was typed in the search box: name, description or type, any case. Empty text keeps all. */
+export function filterMarkers(markers: readonly MarkerDoc[], query: string): MarkerDoc[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [...markers];
+  return markers.filter((m) => m.name.toLowerCase().includes(q) || m.description.toLowerCase().includes(q) || KIND_LABELS[m.kind].toLowerCase().includes(q));
+}
+
+/**
+ * How long a point marker becomes when converted to a range: up to the end of the time selection
+ * when one reaches past it, else five seconds.
+ */
+export function rangeLengthFor(m: Pick<MarkerDoc, "position">, selection: { start: number; end: number } | null | undefined, rate: number): number {
+  if (selection && selection.end > m.position) return Math.round(selection.end - m.position);
+  return Math.round(5 * rate);
+}
+
+/** The change that gives a marker a new type. Only ad slots carry a contracted length, so it is added or dropped with the type. */
+export function kindChange(m: Pick<MarkerDoc, "kind" | "duration" | "contracted_duration">, kind: MarkerKind, rate: number): Omit<MarkerChange, "id"> {
+  if (kind === "ad_slot") return { kind, contracted_duration: m.contracted_duration ?? (m.duration || 30 * rate) };
+  return m.contracted_duration !== null ? { kind, clear_contracted: true } : { kind };
+}
+
+/** The playlist with the marker added at the end, or taken out when it is already there. Point markers never join. */
+export function togglePlaylist(playlist: readonly string[] | undefined, m: Pick<MarkerDoc, "id" | "duration">): string[] {
+  const list = playlist ?? [];
+  if (list.includes(m.id)) return list.filter((id) => id !== m.id);
+  return m.duration > 0 ? [...list, m.id] : [...list];
 }
 
 /** The marker whose flag is under `x` (pixels), nearest first, within `tolerance`. */
