@@ -151,6 +151,7 @@ pub fn run() {
             commands::controllers::controller_ports,
             commands::controllers::controller_open,
             commands::controllers::controller_events,
+            commands::controllers::controller_send,
             commands::devices::audio_inputs,
             commands::devices::audio_outputs,
             commands::devices::set_audio_output,

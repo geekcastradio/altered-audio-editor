@@ -131,3 +131,85 @@ describe("Controller", () => {
     expect(s.c.handle(msg("cc", 5, 99, 1))).toBe(false);
   });
 });
+
+describe("Controller feedback", () => {
+  function surface(feedback = true) {
+    const tracks = Array.from({ length: 10 }, (_, i) => ({ id: `t${i}`, name: `T${i}`, volume_db: 0, pan: 0, muted: false, solo: false, record_armed: false, hidden: false }));
+    const doc = { sample_rate: 48_000, tracks, buses: [], master: { volume_db: 0 } } as unknown as SessionDoc;
+    const sent: { port: string; messages: number[][] }[] = [];
+    const timers: { fn: () => void; ms: number }[] = [];
+    const c = new Controller({
+      doc: () => doc,
+      edit: async (_label, op) => {
+        // The screen follows the edit, as the session does.
+        if (op.op === "set_track" && typeof op.changes.volume_db === "number") tracks.find((t) => t.id === op.id)!.volume_db = op.changes.volume_db;
+      },
+      autoTake: { control: () => false } as unknown as AutoTake,
+      runAction: () => {},
+      send: (port, messages) => void sent.push({ port, messages }),
+      feedback: () => feedback,
+      ports: () => ["p"],
+      setTimer: (fn, ms) => {
+        timers.push({ fn, ms });
+        return timers.length;
+      },
+      clearTimer: () => {},
+    });
+    c.setBindings(mackiePreset());
+    return { c, tracks, sent, timers };
+  }
+  const fader = (s: ReturnType<typeof surface>, ch: number) => s.sent.flatMap((x) => x.messages).filter((m) => m[0] === (0xe0 | ch));
+
+  it("sends nothing when feedback is off", () => {
+    const s = surface(false);
+    s.c.sync(true);
+    expect(s.sent).toEqual([]);
+  });
+
+  it("sends every fader, light and ring once, then only what changed", () => {
+    const s = surface();
+    s.c.sync(true);
+    expect(s.sent.length).toBe(1);
+    const first = s.sent[0]!.messages.length;
+    expect(first).toBeGreaterThan(8);
+    s.c.sync();
+    expect(s.sent.length).toBe(1);
+    s.tracks[1]!.volume_db = -96;
+    s.c.sync();
+    expect(fader(s, 1).at(-1)).toEqual([0xe1, 0, 0]);
+    expect(s.sent[1]!.messages.length).toBe(1);
+  });
+
+  it("leaves a touched fader alone and puts it where the screen has it when it is let go", () => {
+    const s = surface();
+    s.c.sync(true);
+    s.sent.length = 0;
+    s.c.handle(msg("note", 0, 104, 127)); // touch fader 1
+    s.c.handle(msg("bend", 0, 0, 8000));
+    s.tracks[0]!.volume_db = -20;
+    s.c.sync();
+    expect(fader(s, 0)).toEqual([]);
+    s.c.handle(msg("note", 0, 104, 0)); // let go
+    expect(fader(s, 0).length).toBe(1);
+  });
+
+  it("a fader without a touch sensor is left alone while it moves and sent its position after it stops", () => {
+    const s = surface();
+    s.c.sync(true);
+    s.sent.length = 0;
+    s.c.handle(msg("bend", 3, 0, 9000));
+    s.c.sync();
+    expect(fader(s, 3)).toEqual([]);
+    s.timers.at(-1)!.fn(); // the idle timer runs out
+    expect(fader(s, 3).length).toBe(1);
+  });
+
+  it("paging the tracks shows the new tracks on the surface", () => {
+    const s = surface();
+    s.tracks[8]!.volume_db = 12;
+    s.c.sync(true);
+    s.sent.length = 0;
+    s.c.handle(msg("note", 0, 47, 127)); // next 8 tracks
+    expect(fader(s, 0).at(-1)).toEqual([0xe0, 127, 127]); // track 9, at +12 dB
+  });
+});

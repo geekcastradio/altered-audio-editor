@@ -1300,6 +1300,11 @@ export function controllerOpen(names: string[]): Promise<string[]> {
   return invoke<string[]>("controller_open", { names });
 }
 
+/** Sends short MIDI messages back to a device (fader positions, lights); resolves false when it has no output. */
+export function controllerSend(port: string, messages: number[][]): Promise<boolean> {
+  return invoke<boolean>("controller_send", { port, messages });
+}
+
 /** What the controllers sent since the last call, oldest first. */
 export function controllerEvents(): Promise<import("./controller/map").Message[]> {
   return invoke<import("./controller/map").Message[]>("controller_events");

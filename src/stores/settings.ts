@@ -111,6 +111,8 @@ export interface AppSettings {
   controllerPorts: string[];
   /** What each control on them does. */
   controllerBindings: Binding[];
+  /** Send fader positions and button and ring lights back to those devices (motorized faders). */
+  controllerFeedback: boolean;
   /** The newest welcome page the person has seen (0: none). See app/welcome.ts. */
   welcomeRev: number;
   /** 3D Space: dots snap to speakers, the center lines and a grid; turns snap to 15 degrees. */
@@ -214,6 +216,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   lastUpdateCheck: 0,
   controllerPorts: [],
   controllerBindings: [],
+  controllerFeedback: false,
   welcomeRev: 0,
   spaceSnap: true,
   metronome: { on: false, muted: false, when: "always", levelDb: -6, sound: "tick", accent: true, subdivide: "none" },
@@ -324,6 +327,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
     metronome: metronomePrefs(o.metronome),
     controllerPorts: Array.isArray(o.controllerPorts) ? o.controllerPorts.filter((p): p is string => typeof p === "string" && p.length > 0 && p.length < 200).slice(0, 16) : d.controllerPorts,
     controllerBindings: cleanBindings(o.controllerBindings),
+    controllerFeedback: o.controllerFeedback === true,
     welcomeRev:
       typeof o.welcomeRev === "number" && Number.isFinite(o.welcomeRev)
         ? Math.max(0, Math.floor(o.welcomeRev))
