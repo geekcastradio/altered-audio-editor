@@ -9,6 +9,7 @@
 
 use std::collections::VecDeque;
 
+use super::true_peak::{LimiterSettings, TruePeakLimiter};
 use super::{db_to_gain, num, toggle, EffectInfo, Params, Processor};
 use crate::dsp::biquad::{Coeffs, Shape, StereoBiquad};
 
@@ -71,13 +72,14 @@ pub fn limiter_info() -> EffectInfo {
         id: "altaudio.limiter",
         name: "Limiter",
         category: "Dynamics",
-        description: "Keeps peaks from going over the ceiling, looking ahead so it never clips.",
+        description: "Keeps peaks from going over the ceiling, looking ahead so it never clips. Turn on True peak to also catch the peaks between samples that a converter or an encoder can reconstruct.",
         params: vec![
             num("ceiling", "Ceiling", "dB", -24.0, 0.0, -6.0, 0.1),
             num("input_boost", "Input boost", "dB", 0.0, 24.0, 0.0, 0.1),
             num("lookahead", "Look-ahead", "ms", 0.0, 20.0, 5.0, 0.1),
             num("release", "Release", "ms", 10.0, 1000.0, 100.0, 1.0).log(),
             toggle("linked", "Link channels", true),
+            toggle("true_peak", "True peak", false),
         ],
     }
 }
@@ -420,6 +422,9 @@ pub struct Limiter {
     paths: [LimitPath; 2],
     delay: Vec<f32>,
     delay_at: usize,
+    /// With True peak on: the oversampled limiter that does the work. It
+    /// always links the channels, and keeps its look-ahead between 0.5 and 5 ms.
+    true_peak: Option<TruePeakLimiter>,
 }
 
 impl Limiter {
@@ -434,6 +439,17 @@ impl Limiter {
             paths: [LimitPath::new(lookahead), LimitPath::new(lookahead)],
             delay: vec![0.0; lookahead * 2],
             delay_at: 0,
+            true_peak: p.on("true_peak").then(|| {
+                TruePeakLimiter::new(
+                    2,
+                    rate,
+                    LimiterSettings {
+                        ceiling_db: p.get("ceiling") as f32,
+                        release_ms: p.get("release") as f32,
+                        lookahead_ms: p.get("lookahead") as f32,
+                    },
+                )
+            }),
         }
     }
 
@@ -448,6 +464,15 @@ impl Limiter {
 
 impl Processor for Limiter {
     fn process(&mut self, buf: &mut [f32]) {
+        if let Some(tp) = self.true_peak.as_mut() {
+            for f in buf.as_chunks_mut::<2>().0 {
+                let mut out = [0.0f32; 2];
+                tp.push(&[f[0] * self.boost, f[1] * self.boost], &mut out);
+                f[0] = out[0];
+                f[1] = out[1];
+            }
+            return;
+        }
         let n = self.delay.len();
         for f in buf.as_chunks_mut::<2>().0 {
             let l = f[0] * self.boost;
@@ -480,7 +505,9 @@ impl Processor for Limiter {
         }
     }
     fn latency(&self) -> usize {
-        self.lookahead
+        self.true_peak
+            .as_ref()
+            .map_or(self.lookahead, TruePeakLimiter::latency)
     }
     fn reset(&mut self) {
         for p in &mut self.paths {
@@ -488,6 +515,9 @@ impl Processor for Limiter {
         }
         self.delay.fill(0.0);
         self.delay_at = 0;
+        if let Some(tp) = self.true_peak.as_mut() {
+            tp.reset();
+        }
     }
 }
 
@@ -794,6 +824,35 @@ mod tests {
         let quiet = sine(500.0, 0.1, 0.1);
         let out = run("altaudio.limiter", &[("lookahead", 0.0)], quiet.clone());
         assert_eq!(out, quiet);
+    }
+
+    #[test]
+    fn true_peak_limiter_catches_peaks_between_samples() {
+        // A tone at a quarter of the sample rate, 45 degrees off: the stored
+        // samples reach about 1.06 but the waveform they describe reaches 1.5.
+        let b: Vec<f32> = (0..96_000)
+            .flat_map(|i| {
+                let v = 1.5 * (PI / 2.0 * i as f32 + PI / 4.0).sin();
+                [v, v]
+            })
+            .collect();
+        let slot = slot("altaudio.limiter", &[("ceiling", -1.0), ("true_peak", 1.0)]);
+        let mut p = build(&slot, 48_000).unwrap();
+        assert!(p.latency() > 0);
+        let mut out = b;
+        for chunk in out.chunks_mut(2 * 777) {
+            p.process(chunk);
+        }
+        // The stored samples reach only about 1.06, so a limiter that looks at
+        // samples alone would leave them near the ceiling (0.89). Allowing for
+        // the 1.5 peak between them takes them down to about 0.6.
+        let left: Vec<f32> = out.iter().step_by(2).copied().collect();
+        let tail = peak(&left[4000..]);
+        assert!(
+            tail < 0.75,
+            "samples left at {tail}: the peak between them was not counted"
+        );
+        assert!(tail > 0.5, "limited far more than needed: {tail}");
     }
 
     #[test]
