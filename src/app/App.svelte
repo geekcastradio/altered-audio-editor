@@ -239,6 +239,7 @@
     automationLiveClear,
     controllerEvents,
     controllerOpen,
+    controllerSend,
     batchConvert,
     type BatchProgress,
   } from "./core";
@@ -2991,13 +2992,29 @@
     edit: (label, op) => session.edit(label, op, sessionHistory),
     autoTake,
     runAction: (id) => void actions.run(id),
+    send: (port, messages) => void controllerSend(port, messages).catch(() => {}),
+    feedback: () => settings.current.controllerFeedback,
+    ports: () => settings.current.controllerPorts,
   });
   let controllersOpen = $state(false);
-  $effect(() =>
-    settings.subscribe((s) => {
+  $effect(() => {
+    let last = "";
+    const stop = settings.subscribe((s) => {
       controller.setBindings(s.controllerBindings);
-    }),
-  );
+      // Bindings, devices or the feedback switch changed: show the surface where things are now.
+      const now = JSON.stringify([s.controllerBindings, s.controllerPorts, s.controllerFeedback]);
+      if (now !== last) {
+        last = now;
+        controller.sync(true);
+      }
+    });
+    // Mouse moves, automation, undo and track changes all reach the surface.
+    const offSession = session.subscribe(() => controller.sync());
+    return () => {
+      stop();
+      offSession();
+    };
+  });
   // Listen to the chosen devices, and look at what they sent many times a second while any are open.
   $effect(() => {
     let names: string[] = [];

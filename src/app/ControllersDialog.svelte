@@ -99,7 +99,7 @@
 <div class="backdrop" onclick={close}>
   <div class="dialog" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="ctl-title" onclick={(e) => e.stopPropagation()}>
     <h1 id="ctl-title">Controllers</h1>
-    <p class="fine">Use a MIDI fader box or control surface (a Behringer BCF2000, a Mackie Control and the like) to run the faders, pans, mute, solo, arm and transport. Nothing is sent to the device. Motorized faders do not follow the screen yet.</p>
+    <p class="fine">Use a MIDI fader box or control surface (a Behringer BCF2000, a Mackie Control and the like) to run the faders, pans, mute, solo, arm and transport. With feedback on, motorized faders follow the screen and the buttons and pan rings light up.</p>
 
     <h2>Devices</h2>
     <div class="ports">
@@ -110,6 +110,10 @@
       {/each}
       <button type="button" onclick={refresh}>Refresh</button>
     </div>
+    <label class="fb" title="Sends fader positions, button lights and pan rings back to the devices ticked above, in the Mackie Control layout. Leave it off for keyboards and anything that is not a control surface.">
+      <input type="checkbox" checked={current.controllerFeedback} onchange={(e) => save({ controllerFeedback: e.currentTarget.checked })} />
+      Send feedback to the devices (motorized faders and lights). Use with a control surface in its Mackie mode.
+    </label>
     <p class="fine">Last message: {seen}</p>
 
     <h2>What the controls do</h2>
@@ -152,6 +156,13 @@
 </div>
 
 <style>
+  .fb {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    margin: 8px 0 4px;
+    font-size: 12px;
+  }
   .backdrop {
     position: fixed;
     inset: 0;

@@ -18,6 +18,7 @@ import { faderToDb } from "../../panels/mixer/fader";
 import { busOp } from "../../panels/mixer/routing";
 import { trackOp } from "../../panels/mixer/solo";
 import type { AutoTake } from "../auto-take";
+import { frames } from "./feedback";
 import { matches, panAt, position, turn, type Binding, type Message, type Source, type Target } from "./map";
 
 export interface ControllerDeps {
@@ -29,6 +30,12 @@ export interface ControllerDeps {
   runAction: (id: string) => void;
   /** Called when the bank changes, so the screen can say where the surface is. */
   onBank?: (bank: number) => void;
+  /** Sends MIDI messages back to a device (by its input name). Missing: nothing is sent. */
+  send?: (port: string, messages: number[][]) => void;
+  /** Whether the person switched feedback on. */
+  feedback?: () => boolean;
+  /** The devices listened to, which feedback is sent to. */
+  ports?: () => string[];
   /** For tests: the clock and timers. */
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (t: unknown) => void;
@@ -47,11 +54,50 @@ export class Controller {
   private learning: ((s: Source) => void) | null = null;
   private idle = new Map<string, unknown>();
   private held = new Set<string>();
+  /** What was last sent for each control, so a repeat is skipped. */
+  private sent = new Map<string, string>();
+  /** Faders let go since the last sync: send their position even if it matches what was sent. */
+  private flush = new Set<string>();
 
   constructor(private readonly deps: ControllerDeps) {}
 
   setBindings(b: Binding[]): void {
     this.bindings = b;
+    this.sent.clear();
+  }
+
+  /**
+   * Tells the surface where things are now: motorized fader positions and
+   * button and ring lights. Only what changed is sent (`force` sends it all).
+   * A fader being touched or moved is left alone, so it is never fought; it
+   * gets its position once it is let go.
+   */
+  sync(force = false): void {
+    const send = this.deps.send;
+    const ports = this.deps.ports?.() ?? [];
+    if (!send || !this.deps.feedback?.() || ports.length === 0) {
+      this.flush.clear();
+      return;
+    }
+    const doc = this.deps.doc();
+    const strips = this.strips().map((s) => s.doc);
+    const out: number[][] = [];
+    for (const f of frames(this.bindings, strips.slice(this.bank, this.bank + 64), doc?.master?.volume_db ?? 0)) {
+      if (f.hold !== undefined && (this.held.has(f.hold) || this.idle.has(f.hold))) continue;
+      const sig = f.bytes.join(",");
+      const released = f.hold !== undefined && this.flush.has(f.hold);
+      if (!force && !released && this.sent.get(f.key) === sig) continue;
+      this.sent.set(f.key, sig);
+      out.push(f.bytes);
+    }
+    this.flush.clear();
+    if (out.length > 0) for (const p of ports) send(p, out);
+  }
+
+  /** A fader was let go: put the surface's fader where the screen has it. */
+  private letGo(key: string): void {
+    this.flush.add(key);
+    this.sync();
   }
 
   /** The next control touched is reported to `fn` and does nothing else. Returns a way to stop waiting. */
@@ -120,6 +166,7 @@ export class Controller {
     const total = this.strips().length;
     this.bank = Math.max(0, Math.min(Math.max(0, total - 1), this.bank + by));
     this.deps.onBank?.(this.bank);
+    this.sync(true);
   }
 
   private level(t: Extract<Target, { type: "volume" | "pan" }>, b: Binding, m: Message): void {
@@ -161,6 +208,7 @@ export class Controller {
       set(() => {
         this.idle.delete(key);
         this.deps.autoTake.control(id, { type }, "release", value);
+        if (type === "volume") this.letGo(key);
       }, IDLE_RELEASE_MS),
     );
   }
@@ -175,6 +223,7 @@ export class Controller {
       this.deps.autoTake.control(s.doc.id, { type: "volume" }, "grab", s.doc.volume_db);
     } else if (this.held.delete(key)) {
       this.deps.autoTake.control(s.doc.id, { type: "volume" }, "release", s.doc.volume_db);
+      this.letGo(key);
     }
   }
 
