@@ -214,7 +214,7 @@
             Waveform editor records from
             <select class="grow" value={d.app.waveInput ?? ""} onchange={(e) => (d.app.waveInput = e.currentTarget.value || null)}>
               <option value="">System default input</option>
-              {#each inputs ?? [] as dev (dev.name)}
+              {#each inputs ?? [] as dev, n (`${n}:${dev.name}`)}
                 <optgroup label={dev.name}>
                   {#each Array.from({ length: dev.channels }, (_, i) => i + 1) as c (c)}<option value={`Mono: ${dev.name} ${c}`}>Mono, channel {c}</option>{/each}
                   {#each Array.from({ length: Math.floor(dev.channels / 2) }, (_, i) => i * 2 + 1) as c (c)}<option value={`Stereo: ${dev.name} ${c}-${c + 1}`}>Stereo, channels {c}-{c + 1}</option>{/each}
