@@ -3549,10 +3549,12 @@
     }
     if (!t) return;
     const silent = recPeakMax < 0.0005; // about -66 dBFS: nothing is arriving
-    if (t.mode === "multitrack") await transport.stop();
+    // Stop playing but leave the playhead where the recording ends (moved to the end of the take below).
+    if (t.mode === "multitrack") await transport.pause();
     const usable = takes.filter((k) => k.length > 0);
     takePaths = usable.map((k) => k.path);
     if (usable.length === 0) {
+      if (t.mode === "multitrack") await transport.seek(t.at);
       showNotice("Nothing was recorded.");
       return;
     }
@@ -3573,7 +3575,8 @@
       const d = wave.current;
       if (!d) return;
       const r = insertFile(d, t.at, media(usable[0]!), "Take", uuid);
-      if (r && (await waveEdit("Record", r.op))) waveSetSelection([t.at, t.at + r.length], t.at);
+      // The take stays selected and the playhead rests at its end.
+      if (r && (await waveEdit("Record", r.op))) waveSetSelection([t.at, t.at + r.length], t.at + r.length);
       return;
     }
     const ops: Op[] = [];
@@ -3591,20 +3594,25 @@
         else throw e;
       }
     }
+    let endAt = 0;
     for (const k of usable) {
       const placed = placeTake(plan, { length: k.length, sampleRate: k.sample_rate }, doc?.sample_rate ?? k.sample_rate, opts.offsetMs);
       if (!placed) continue;
+      endAt = Math.max(endAt, placed.start + Math.round(((placed.sourceOut - placed.sourceIn) * (doc?.sample_rate ?? k.sample_rate)) / k.sample_rate));
       const m = media(k);
       ops.push({ op: "add_media", media: m });
       const name = k.path.split(/[\\/]/).pop()?.replace(/\.wav$/i, "") ?? "Take";
       ops.push({ op: "add_clips", track_id: k.key, clips: [{ id: uuid(), name, media_id: m.id, start: placed.start, source_in: placed.sourceIn, source_out: placed.sourceOut }] });
     }
     if (!ops.some((o) => o.op === "add_clips")) {
+      await transport.seek(t.at);
       showNotice("The take was shorter than the recording offset, so nothing was added.");
       return;
     }
     try {
       await session.edit(usable.length === 1 ? "Record" : `Record ${usable.length} Tracks`, { op: "batch", ops }, sessionHistory);
+      // Rest the playhead at the end of what was just recorded, ignoring Return to Start on Stop.
+      await transport.seek(endAt);
       // The takes show in the Files panel too.
       await mediaPool.importPaths(
         usable.map((k) => k.path),

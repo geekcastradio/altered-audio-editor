@@ -359,11 +359,117 @@ struct Shared {
     overruns: AtomicU64,
 }
 
+/// Sent to a running input thread to start or finish a take without closing its streams.
+enum Cmd {
+    Begin {
+        dir: PathBuf,
+        /// New file name per target key.
+        names: HashMap<String, String>,
+        ack: mpsc::Sender<Result<(), String>>,
+    },
+    End {
+        reply: mpsc::Sender<Result<Vec<Take>, String>>,
+    },
+}
+
 struct Running {
     shared: Arc<Shared>,
     /// False when only metering armed inputs.
     writing: bool,
     threads: Vec<JoinHandle<Result<Vec<Take>, String>>>,
+    /// One sender per thread, in the same order.
+    cmds: Vec<mpsc::Sender<Cmd>>,
+    /// What the open streams were set up for (see [`signature`]).
+    signature: String,
+}
+
+impl Running {
+    /// Finishes the take on every thread and leaves the streams open.
+    fn end(&self) -> Result<Vec<Take>, String> {
+        let mut replies = Vec::new();
+        for tx in &self.cmds {
+            let (a, b) = mpsc::channel();
+            if tx.send(Cmd::End { reply: a }).is_ok() {
+                replies.push(b);
+            }
+        }
+        let mut takes = Vec::new();
+        let mut first_err = None;
+        for b in replies {
+            match b.recv_timeout(Duration::from_secs(10)) {
+                Ok(Ok(v)) => takes.extend(v),
+                Ok(Err(e)) => first_err = first_err.or(Some(e)),
+                Err(_) => {
+                    first_err =
+                        first_err.or(Some("The recording thread stopped unexpectedly.".into()))
+                }
+            }
+        }
+        match first_err {
+            Some(e) if takes.is_empty() => Err(e),
+            _ => Ok(takes),
+        }
+    }
+
+    /// Starts a take on every thread without reopening anything. On any
+    /// failure the take is abandoned and its files removed.
+    fn begin(&self, dir: &Path, names: &HashMap<String, String>) -> Result<(), String> {
+        let mut acks = Vec::new();
+        let mut err = None;
+        for tx in &self.cmds {
+            let (a, b) = mpsc::channel();
+            let cmd = Cmd::Begin {
+                dir: dir.to_path_buf(),
+                names: names.clone(),
+                ack: a,
+            };
+            if tx.send(cmd).is_err() {
+                err = Some("The audio input closed.".to_string());
+                break;
+            }
+            acks.push(b);
+        }
+        for b in acks {
+            match b.recv_timeout(Duration::from_secs(5)) {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => err = err.or(Some(e)),
+                Err(_) => err = err.or(Some("The audio input did not respond.".to_string())),
+            }
+        }
+        match err {
+            None => Ok(()),
+            Some(e) => {
+                if let Ok(v) = self.end() {
+                    for take in v {
+                        let _ = std::fs::remove_file(&take.path);
+                    }
+                }
+                Err(e)
+            }
+        }
+    }
+}
+
+/// What a set of open input streams was built for: devices, channels,
+/// monitoring and the monitor chain, but not the file names. When it
+/// matches, Record starts a take on the streams already open.
+fn signature(groups: &[DeviceGroup]) -> String {
+    groups
+        .iter()
+        .map(|(d, list)| {
+            let inner: Vec<String> = list
+                .iter()
+                .map(|(t, c)| {
+                    format!(
+                        "{}|{:?}|{}|{}|{:?}|{:?}",
+                        t.key, t.input, t.channels, t.monitor, t.chain, c
+                    )
+                })
+                .collect();
+            format!("{d:?}:{}", inner.join(";"))
+        })
+        .collect::<Vec<_>>()
+        .join("#")
 }
 
 /// One input device and the targets (with their channels) it feeds.
@@ -399,19 +505,13 @@ impl Recorder {
     /// no `dir`, only opens the inputs for their meters.
     pub fn start(&self, targets: Vec<RecordTarget>, dir: Option<PathBuf>) -> Result<(), String> {
         let mut cur = self.current.lock().map_err(|e| e.to_string())?;
-        match cur.as_ref() {
-            Some(r) if r.writing => return Err("Already recording.".into()),
-            Some(_) => {
-                // Close the meters first: some systems open an input only once.
-                if let Some(r) = cur.take() {
-                    r.shared.stop.store(true, Ordering::SeqCst);
-                    for t in r.threads {
-                        let _ = t.join();
-                    }
-                }
-            }
-            None => {}
+        if cur.as_ref().is_some_and(|r| r.writing) {
+            return Err("Already recording.".into());
         }
+        let names: HashMap<String, String> = targets
+            .iter()
+            .map(|t| (t.key.clone(), t.name.clone()))
+            .collect();
         let writing = dir.is_some();
         // Group targets by device.
         let mut groups: Vec<DeviceGroup> = Vec::new();
@@ -422,6 +522,31 @@ impl Recorder {
             match groups.iter_mut().find(|(d, _)| *d == r.device) {
                 Some((_, v)) => v.push((t, r.channels)),
                 None => groups.push((r.device, vec![(t, r.channels)])),
+            }
+        }
+        let sig = signature(&groups);
+        // Inputs already open for these same tracks: keep them. Closing and
+        // reopening an interface is slow on some systems and loses the first
+        // moments of the take.
+        if let Some(r) = cur.as_mut() {
+            if r.signature == sig && !groups.is_empty() {
+                match dir.as_deref() {
+                    None => return Ok(()),
+                    Some(d) => {
+                        if r.begin(d, &names).is_ok() {
+                            r.writing = true;
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+        }
+        // Otherwise close the meters first (some systems open an input only
+        // once) and open fresh.
+        if let Some(r) = cur.take() {
+            r.shared.stop.store(true, Ordering::SeqCst);
+            for t in r.threads {
+                let _ = t.join();
             }
         }
         if groups.is_empty() {
@@ -437,17 +562,22 @@ impl Recorder {
             overruns: AtomicU64::new(0),
         });
         let mut threads = Vec::new();
+        let mut cmds = Vec::new();
         for (i, (device, list)) in groups.into_iter().enumerate() {
             let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
+            let (cmd_tx, cmd_rx) = mpsc::channel::<Cmd>();
             let s = shared.clone();
             let dir = dir.clone();
             let first = i == 0;
             let handle = thread::Builder::new()
                 .name("record".into())
-                .spawn(move || run(device, list, dir, s, first, ready_tx))
+                .spawn(move || run(device, list, dir, s, first, ready_tx, cmd_rx))
                 .map_err(|e| e.to_string())?;
             match ready_rx.recv_timeout(Duration::from_secs(5)) {
-                Ok(Ok(())) => threads.push(handle),
+                Ok(Ok(())) => {
+                    threads.push(handle);
+                    cmds.push(cmd_tx);
+                }
                 Ok(Err(e)) => {
                     shared.stop.store(true, Ordering::SeqCst);
                     let _ = handle.join();
@@ -469,6 +599,8 @@ impl Recorder {
             shared,
             writing,
             threads,
+            cmds,
+            signature: sig,
         });
         Ok(())
     }
@@ -491,6 +623,23 @@ impl Recorder {
     /// Stops and returns the takes.
     pub fn stop(&self) -> Result<Vec<Take>, String> {
         let mut cur = self.current.lock().map_err(|e| e.to_string())?;
+        // Finish the take but leave the inputs open for their meters.
+        if let Some(r) = cur.as_mut() {
+            if r.writing {
+                r.writing = false;
+                let res = r.end();
+                if res.is_err() {
+                    // A thread is unhealthy: close everything; the interface reopens the meters.
+                    if let Some(r) = cur.take() {
+                        r.shared.stop.store(true, Ordering::SeqCst);
+                        for t in r.threads {
+                            let _ = t.join();
+                        }
+                    }
+                }
+                return res;
+            }
+        }
         let Some(r) = cur.take() else {
             return Ok(Vec::new());
         };
@@ -608,6 +757,7 @@ fn run(
     shared: Arc<Shared>,
     first: bool,
     ready: mpsc::Sender<Result<(), String>>,
+    cmds: mpsc::Receiver<Cmd>,
 ) -> Result<Vec<Take>, String> {
     let fail = |e: String| {
         let _ = ready.send(Err(e.clone()));
@@ -721,11 +871,59 @@ fn run(
             }
         }
     };
-    let started = Instant::now();
+    let mut started = Instant::now();
     let mut got = 0u64;
     let mut quiet = Vec::new();
     let mut result = Ok(0);
+    let mut no_writer: Option<TakeWriter> = None;
     while !shared.stop.load(Ordering::SeqCst) {
+        // Start or finish a take without closing the streams.
+        while let Ok(cmd) = cmds.try_recv() {
+            match cmd {
+                Cmd::Begin { dir, names, ack } => {
+                    // Whatever arrived before now is not part of the take.
+                    if let Err(e) = drain(&mut consumer, &mut no_writer, &mut tap, &mut monitor) {
+                        let _ = ack.send(Err(e.clone()));
+                        result = Err(e);
+                        break;
+                    }
+                    let mut named = targets.clone();
+                    for (t, _) in named.iter_mut() {
+                        if let Some(n) = names.get(&t.key) {
+                            t.name = n.clone();
+                        }
+                    }
+                    match TakeWriter::create(&dir, &named, rate, channels) {
+                        Ok(w) => {
+                            writer = Some(w);
+                            started = Instant::now();
+                            got = 0;
+                            if first {
+                                shared.frames.store(0, Ordering::Relaxed);
+                            }
+                            let _ = ack.send(Ok(()));
+                        }
+                        Err(e) => {
+                            let _ =
+                                ack.send(Err(format!("Could not create the recording file: {e}")));
+                        }
+                    }
+                }
+                Cmd::End { reply } => {
+                    let r =
+                        drain(&mut consumer, &mut writer, &mut tap, &mut monitor).and_then(|_| {
+                            match writer.take() {
+                                Some(w) => w.finish(),
+                                None => Ok(Vec::new()),
+                            }
+                        });
+                    let _ = reply.send(r);
+                }
+            }
+        }
+        if result.is_err() {
+            break;
+        }
         match drain(&mut consumer, &mut writer, &mut tap, &mut monitor) {
             Ok(n) => got += n,
             Err(e) => {
@@ -733,7 +931,7 @@ fn run(
                 break;
             }
         }
-        if loopback {
+        if loopback && writer.is_some() {
             let elapsed = (started.elapsed().as_secs_f64() * f64::from(rate)) as u64;
             let pad = silence_to_add(elapsed, got, rate);
             if pad > 0 {
@@ -895,6 +1093,31 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn open_inputs_are_reused_only_for_the_same_setup() {
+        let mk = |name: &str, monitor: bool| -> Vec<DeviceGroup> {
+            let t = RecordTarget {
+                key: "a".into(),
+                input: None,
+                channels: 1,
+                name: name.into(),
+                monitor,
+                chain: None,
+            };
+            vec![(None, vec![(t, vec![0])])]
+        };
+        // A new file name does not change what the streams were opened for.
+        assert_eq!(
+            signature(&mk("Take 1", true)),
+            signature(&mk("Take 2", true))
+        );
+        // Turning monitoring on or off does.
+        assert_ne!(
+            signature(&mk("Take 1", true)),
+            signature(&mk("Take 1", false))
+        );
+    }
 
     #[test]
     fn routes_follow_the_track_input() {
