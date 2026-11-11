@@ -34,6 +34,7 @@ pub mod shaped;
 mod space;
 mod stereo;
 mod suite;
+mod true_peak;
 pub mod tube;
 pub mod vocal;
 

@@ -31,7 +31,8 @@
     onRegion: (id: string) => void;
     onMeasure: () => void;
     onCancel: () => void;
-    onApply: (rows: MatchRow[]) => void;
+    /** `limit` is the ceiling in dBTP when the limiter option is on, else null. */
+    onApply: (rows: MatchRow[], limit: number | null) => void;
     onClose: () => void;
   }
 
@@ -40,14 +41,29 @@
   const target = $derived(targetById(targetId, region));
   const targets = $derived(targetsFor(region));
   let skip = $state<ReadonlySet<string>>(new Set());
+  /** Add a True Peak limiter to the tracks whose peaks would go over the limit. */
+  let limit = $state(false);
+  /** The limiter's ceiling: the target's own true-peak limit, or the level chosen for the match (never above full scale). */
+  const limitCeiling = $derived(basis === "loudness" ? target.peak : basis === "rms" ? -1 : Math.min(0, level));
   $effect(() => {
-    // New measurements: untick rows that would clip or cannot change.
-    skip = new Set((rows ?? []).filter((r) => !r.measurable || r.peakWarning).map((r) => r.key));
+    // New measurements: untick rows that would clip or cannot change (rows a limiter will catch stay ticked).
+    skip = new Set((rows ?? []).filter((r) => !r.measurable || (r.peakWarning && !limit)).map((r) => r.key));
   });
   const chosen = $derived((rows ?? []).filter((r) => r.measurable && !skip.has(r.key) && r.change !== 0));
   const nowUnit = $derived(basis === "loudness" ? "LUFS" : basis === "truepeak" ? "dBTP" : "dB");
   const afterUnit = $derived(basis === "loudness" || basis === "truepeak" ? "dBTP" : "dB");
   const db = (v: number) => (Number.isFinite(v) ? `${v > 0 ? "+" : ""}${v.toFixed(1)}` : "-");
+  function setLimit(on: boolean) {
+    limit = on;
+    // Rows that would clip are ticked while a limiter will catch them, unticked otherwise.
+    const next = new Set(skip);
+    for (const r of rows ?? []) {
+      if (!r.measurable || !r.peakWarning) continue;
+      if (on) next.delete(r.key);
+      else next.add(r.key);
+    }
+    skip = next;
+  }
   function toggle(key: string) {
     const next = new Set(skip);
     if (next.has(key)) next.delete(key);
@@ -119,7 +135,11 @@
         {/each}
       </div>
       {#if rows.some((r) => r.peakWarning)}
-        <p class="note warn">Rows marked in red would peak above {basis === "loudness" ? `${target.peak} dBTP` : basis === "truepeak" ? "full scale (0 dBTP)" : "full scale (0 dB)"}, so they start unticked. Lower their loudest moments or limit them (limiting arrives with effects), or tick them to apply anyway.</p>
+        <p class="note warn">Rows marked in red would peak above {basis === "loudness" ? `${target.peak} dBTP` : basis === "truepeak" ? "full scale (0 dBTP)" : "full scale (0 dB)"}, so they start unticked. Tick the limiter option below to catch those peaks, lower their loudest moments, or tick the rows to apply anyway.</p>
+        <label class="limit">
+          <input type="checkbox" checked={limit} onchange={(e) => setLimit(e.currentTarget.checked)} />
+          <span>Add a True Peak limiter at {limitCeiling} dBTP to the track of every row marked in red. A clip's whole track gets it, and its Limiter can be changed or removed in the track's Voice Chain.</span>
+        </label>
       {/if}
     {:else}
       <p class="note">Measure to see how far each {mode === "clips" ? "clip" : "track"} is from {basis === "loudness" ? `${target.lufs} LUFS` : `${level} ${basis === "truepeak" ? "dBTP true peak" : basis === "peak" ? "dB peak" : "dB RMS"}`}.</p>
@@ -130,7 +150,7 @@
         <button type="button" onclick={onCancel}>Cancel</button>
       {:else}
         <button type="button" onclick={onMeasure}>{rows ? "Measure Again" : "Measure"}</button>
-        <button type="button" class="primary" disabled={chosen.length === 0} onclick={() => onApply(chosen)}>Apply to {chosen.length} {chosen.length === 1 ? "item" : "items"}</button>
+        <button type="button" class="primary" disabled={chosen.length === 0} onclick={() => onApply(chosen, limit && chosen.some((r) => r.peakWarning) ? limitCeiling : null)}>Apply to {chosen.length} {chosen.length === 1 ? "item" : "items"}</button>
         <button type="button" onclick={onClose}>Close</button>
       {/if}
     </footer>
@@ -138,6 +158,13 @@
 </div>
 
 <style>
+  .limit {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    margin: 6px 0 10px;
+    font-size: 12px;
+  }
   .backdrop {
     position: fixed;
     inset: 0;
