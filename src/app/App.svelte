@@ -1980,13 +1980,40 @@
     }
   }
 
-  async function applyMatch(rows: MatchRow[]) {
+  /** Applies the ticked rows. With `limit`, a True Peak limiter at that ceiling is added to the tracks of rows that would peak over. */
+  async function applyMatch(rows: MatchRow[], limit: number | null) {
     const doc = session.current;
     if (!doc) return;
     const changes = matchChanges(doc, rows);
-    if (changes.length === 0) return showNotice("Nothing needed changing.");
-    await session.edit("Loudness Match", { op: "set_clips", changes }, sessionHistory);
-    showNotice(`Clip gain changed on ${changes.length} ${changes.length === 1 ? "clip" : "clips"}. Measuring again.`);
+    const ops: Op[] = [];
+    if (changes.length > 0) ops.push({ op: "set_clips", changes });
+    const limited: string[] = [];
+    const full: string[] = [];
+    if (limit !== null) {
+      fxCatalog ??= await effectsCatalog();
+      const info = fxCatalog.find((e) => e.id === "altaudio.limiter");
+      const over = new Set(rows.filter((r) => r.peakWarning).flatMap((r) => r.clipIds));
+      for (const t of doc.tracks) {
+        if (!info || !t.clips.some((c) => over.has(c.id))) continue;
+        const chain = chainOf(t.effects);
+        if (chain.slots.some((s) => s.effect === "altaudio.limiter" && s.enabled && s.params["true_peak"] === 1)) continue;
+        const slot = newSlot(info, uuid());
+        slot.params = { ...slot.params, true_peak: 1, ceiling: limit };
+        const next = addSlot(chain, slot);
+        if (!next) {
+          full.push(t.name);
+          continue;
+        }
+        ops.push({ op: "set_effects", target: { kind: "track", id: t.id }, chain: next });
+        limited.push(t.name);
+      }
+    }
+    if (ops.length === 0) return showNotice(full.length > 0 ? `${full.join(", ")}: the Voice Chain is full, it holds 16 effects.` : "Nothing needed changing.");
+    await session.edit("Loudness Match", ops.length === 1 ? ops[0]! : { op: "batch", ops }, sessionHistory);
+    const gain = changes.length > 0 ? `Clip gain changed on ${changes.length} ${changes.length === 1 ? "clip" : "clips"}. ` : "";
+    const lim = limited.length > 0 ? `Added a True Peak limiter to ${limited.join(", ")}. ` : "";
+    const skipped = full.length > 0 ? `${full.join(", ")} was skipped because its Voice Chain is full. ` : "";
+    showNotice(`${gain}${lim}${skipped}Measuring again (the check reads clips without their effects).`);
     if (lm) lm = { ...lm, rows: null };
     await measureMatch();
   }
@@ -6315,7 +6342,7 @@
       lmStop = true;
       void exportCancel();
     }}
-    onApply={(rows) => void applyMatch(rows).catch(showError)}
+    onApply={(rows, limit) => void applyMatch(rows, limit).catch(showError)}
     onClose={() => (lm = null)}
   />
 {/if}
