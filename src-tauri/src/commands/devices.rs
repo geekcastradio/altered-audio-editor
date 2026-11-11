@@ -42,6 +42,14 @@ fn retry_if_empty<T>(asio: Option<bool>, mut look: impl FnMut() -> Vec<T>) -> Ve
     found
 }
 
+/// Keeps the first of any devices that share a name. A pick is stored by
+/// name, so twins cannot be told apart, and the pickers key their rows by it.
+fn unique_by_name(mut devices: Vec<AudioInput>) -> Vec<AudioInput> {
+    let mut seen = std::collections::HashSet::new();
+    devices.retain(|d| seen.insert(d.name.clone()));
+    devices
+}
+
 fn list(asio: Option<bool>) -> Vec<AudioInput> {
     let host = crate::engine::host::host_for(asio.unwrap_or_else(crate::engine::host::asio));
     let default = host
@@ -82,7 +90,7 @@ fn list(asio: Option<bool>) -> Vec<AudioInput> {
             out.extend(sys);
         }
     }
-    out
+    unique_by_name(out)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -226,6 +234,26 @@ mod tests {
         });
         assert!(found.is_empty());
         assert_eq!(calls, 1);
+    }
+
+    fn input(name: &str, channels: u16, is_default: bool) -> AudioInput {
+        AudioInput {
+            name: name.into(),
+            channels,
+            is_default,
+        }
+    }
+
+    #[test]
+    fn devices_with_the_same_name_are_listed_once() {
+        let found = unique_by_name(vec![
+            input("Mic", 2, true),
+            input("Line", 2, false),
+            input("System audio: Monitor", 2, false),
+            input("System audio: Monitor", 2, false),
+        ]);
+        let names: Vec<&str> = found.iter().map(|d| d.name.as_str()).collect();
+        assert_eq!(names, ["Mic", "Line", "System audio: Monitor"]);
     }
 
     #[test]
