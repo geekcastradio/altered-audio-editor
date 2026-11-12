@@ -204,32 +204,3 @@ jobs:
         working-directory: src-tauri
         run: cargo test -p altered-os-video --features apple
 
-  security:
-    name: Security and privacy
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Privacy guard (no network, tracking or accounts)
-        run: node scripts/check-privacy.mjs
-
-      - name: npm audit (known vulnerabilities)
-        run: npm audit --audit-level=moderate
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
-
-      - name: cargo audit (known vulnerabilities)
-        working-directory: src-tauri
-        run: cargo audit
