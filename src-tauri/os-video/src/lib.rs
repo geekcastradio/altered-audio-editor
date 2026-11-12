@@ -415,6 +415,11 @@ mod tests {
     #[test]
     fn opening_says_why_when_unavailable() {
         let e = VideoReader::open(Path::new("nothing.mp4")).err().unwrap();
-        assert_eq!(e, UNAVAILABLE);
+        if AVAILABLE {
+            // A real decoder reports the file it could not open.
+            assert!(!e.is_empty() && e != UNAVAILABLE, "{e}");
+        } else {
+            assert_eq!(e, UNAVAILABLE);
+        }
     }
 }
