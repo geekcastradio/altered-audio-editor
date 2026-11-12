@@ -636,14 +636,22 @@ pub async fn file_pick_open(app: AppHandle) -> Result<Vec<PathBuf>, String> {
     spawn_blocking(move || {
         let mut all: Vec<&str> = vec![EXTENSION, "sesx"];
         all.extend_from_slice(crate::codecs::SUPPORTED_EXTENSIONS);
+        // Video files open as a reference picture (and their sound, when there is some).
+        let video = ["mp4", "m4v", "mov", "wmv", "avi"];
+        for v in video {
+            if !all.contains(&v) {
+                all.push(v);
+            }
+        }
         let mut d = app
             .dialog()
             .file()
             .set_title("Open")
-            .add_filter("Sessions and audio files", &all)
+            .add_filter("Sessions, audio and video files", &all)
             .add_filter("Altered Audio session", &[EXTENSION])
             .add_filter("Multitrack session (.sesx)", &["sesx"])
-            .add_filter("Audio files", crate::codecs::SUPPORTED_EXTENSIONS);
+            .add_filter("Audio files", crate::codecs::SUPPORTED_EXTENSIONS)
+            .add_filter("Video files", &video);
         if let Some(w) = parent.as_ref() {
             d = d.set_parent(w);
         }

@@ -23,6 +23,8 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # AAC export through the encoder built into the OS (see os-aac/).
 altered-os-aac = { path = "os-aac" }
+# Video pictures through the decoders built into the OS (see os-video/).
+altered-os-video = { path = "os-video" }
 tauri = { version = "2", features = [] }
 # VST3 plug-in hosting, run in a separate process (see plughost/).
 altered-plughost = { path = "plughost" }
@@ -73,6 +75,8 @@ unsafe_code = "forbid"
 # ASIO drivers on Windows. Needs LLVM (for bindgen) to build; the ASIO SDK
 # is fetched by cpal's build script. Release builds turn it on.
 asio = ["cpal/asio"]
+# Video pictures on macOS (AVFoundation). Off until the decoder has been built on a Mac.
+apple-video = ["altered-os-video/apple"]
 
 # Dev builds: the audio crates (decoders, resampler, FFT, audio I/O)
 # are optimized and our own code lightly, so playback and mixdowns run

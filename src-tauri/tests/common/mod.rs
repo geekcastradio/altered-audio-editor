@@ -216,6 +216,7 @@ pub fn session() -> Session {
         tempo: Default::default(),
         pan_law: Default::default(),
         loudness_target: None,
+        video: None,
         space: None,
         media: vec![MediaRef {
             id: id(100),

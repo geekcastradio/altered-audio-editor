@@ -30,7 +30,8 @@ export type PanelId =
   | "loudness-match"
   | "properties"
   | "phase-wheel"
-  | "space";
+  | "space"
+  | "video";
 
 export type Side = "left" | "right" | "above" | "below";
 
@@ -151,6 +152,13 @@ export const PANELS: readonly PanelDef[] = [
   {
     id: "history",
     title: "History",
+    inDefault: false,
+    home: LEFT_TABS,
+    pending: null,
+  },
+  {
+    id: "video",
+    title: "Video",
     inDefault: false,
     home: LEFT_TABS,
     pending: null,
@@ -501,6 +509,7 @@ export const MIN_SIZE: Record<PanelId, { w: number; h: number }> = {
   "sound-types": { w: 280, h: 160 },
   "time-info": { w: 220, h: 110 },
   history: { w: 220, h: 120 },
+  video: { w: 320, h: 220 },
   "drive-manager": { w: 260, h: 140 },
   libraries: { w: 260, h: 200 },
   markers: { w: 260, h: 140 },

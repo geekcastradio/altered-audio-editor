@@ -30,9 +30,22 @@ pub struct UpdateInfo {
     pub can_install: bool,
 }
 
-/// True when this copy was put in place by the Windows installer, which
-/// leaves `uninstall.exe` beside the program. The portable zip has none,
-/// so an update would install a second copy instead of replacing it.
+/// Whether `exe` sits inside a macOS app bundle (`Something.app/Contents/MacOS/...`).
+/// The updater replaces the whole bundle, so a bare binary (a development
+/// build) has nothing to replace.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn inside_app_bundle(exe: &std::path::Path) -> bool {
+    exe.ancestors()
+        .skip(1)
+        .any(|a| a.extension().is_some_and(|e| e == "app"))
+}
+
+/// Whether this copy can replace itself.
+/// - Windows: put in place by the installer, which leaves `uninstall.exe`
+///   beside the program. The portable zip has none, so an update would
+///   install a second copy instead of replacing it.
+/// - macOS: running from an app bundle.
+/// - Linux: running as an AppImage (the `.deb` is updated by the system).
 fn can_install() -> bool {
     #[cfg(windows)]
     {
@@ -41,7 +54,17 @@ fn can_install() -> bool {
             .and_then(|exe| exe.parent().map(|dir| dir.join("uninstall.exe").is_file()))
             .unwrap_or(false)
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        std::env::current_exe()
+            .map(|exe| inside_app_bundle(&exe))
+            .unwrap_or(false)
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::env::var_os("APPIMAGE").is_some_and(|p| !p.is_empty())
+    }
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     {
         false
     }
@@ -93,4 +116,22 @@ pub async fn update_install(
         .await
         .map_err(|e| e.to_string())?;
     app.restart()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::inside_app_bundle;
+    use std::path::Path;
+
+    #[test]
+    fn a_binary_inside_an_app_bundle_can_update_and_a_loose_one_cannot() {
+        assert!(inside_app_bundle(Path::new(
+            "/Applications/Altered Audio Editor.app/Contents/MacOS/altered-audio-editor"
+        )));
+        assert!(!inside_app_bundle(Path::new(
+            "/Users/x/src/target/debug/altered-audio-editor"
+        )));
+        // The file itself being called x.app does not count; only a folder around it does.
+        assert!(!inside_app_bundle(Path::new("/tmp/thing.app")));
+    }
 }

@@ -1,0 +1,87 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) The GeekCast Radio Network, LLC.
+# This file is part of Altered Audio Editor.
+
+# Makes the version-bump branch for a release without a computer: run it from
+# the Actions tab (it works from the GitHub mobile site), then open the pull
+# request it points to, wait for CI, merge, and tag. It runs the same
+# `npm run bump` as docs/RELEASING.md and pushes one commit to a new branch
+# named v<version>-release. It never touches main and never tags.
+
+name: Prepare release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "patch, minor, major, or an exact version like 0.24.0"
+        required: true
+        default: minor
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    name: Bump version on a release branch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Only from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Run this from the main branch."
+          exit 1
+
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Check the input
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          if ! printf '%s' "$BUMP" | grep -Eq '^(patch|minor|major|[0-9]+\.[0-9]+\.[0-9]+)$'; then
+            echo "Use patch, minor, major or a version like 0.24.0."
+            exit 1
+          fi
+
+      - name: Bump
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: node scripts/bump-version.mjs "$BUMP"
+
+      - name: Commit to a release branch
+        id: push
+        run: |
+          version=$(node -p "require('./package.json').version")
+          branch="v${version}-release"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "Branch $branch already exists. Delete it or pick another version."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v${version}" >/dev/null 2>&1; then
+            echo "Tag v${version} already exists. A tag is never reused; pick the next version."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+          git status --short
+          git commit -m "Release ${version}"
+          git push origin "$branch"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Next step
+        run: |
+          {
+            echo "Version ${{ steps.push.outputs.version }} is on branch ${{ steps.push.outputs.branch }}."
+            echo ""
+            echo "Open the pull request: https://github.com/${{ github.repository }}/compare/main...${{ steps.push.outputs.branch }}?expand=1"
+            echo ""
+            echo "Then: wait for CI, merge, and tag v${{ steps.push.outputs.version }} from the main branch."
+          } >> "$GITHUB_STEP_SUMMARY"

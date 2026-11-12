@@ -70,6 +70,11 @@ pub struct Session {
     /// follow it. Files from before MIDI tracks get the default.
     #[serde(default, skip_serializing_if = "Tempo::is_default")]
     pub tempo: Tempo,
+    /// A video the session is scored against: shown in the Video panel and on a
+    /// reference lane, never mixed. Its picture is read from the file each time.
+    /// Left out of the file when there is none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video: Option<VideoRef>,
     /// 3D Space sessions: the speaker layout the mix is placed onto, each
     /// track and bus at a spot in the room instead of a pan. None for an
     /// ordinary stereo (or mono) session.
@@ -100,6 +105,17 @@ impl Document for Session {
     const SCHEMA_FILE: &'static str = "session.schema.json";
 }
 
+/// The reference video of a session.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct VideoRef {
+    /// Where the file is.
+    pub path: PathBuf,
+    /// Session time, in seconds, at which the video's first picture plays.
+    /// Negative when the session starts partway into the video.
+    #[serde(default)]
+    pub offset: f64,
+}
+
 impl Session {
     /// Creates an empty session at the given sample rate.
     pub fn new(name: impl Into<String>, sample_rate: u32) -> Self {
@@ -120,6 +136,7 @@ impl Session {
             pan_law: PanLaw::default(),
             loudness_target: None,
             tempo: Tempo::default(),
+            video: None,
             space: None,
             markers: Vec::new(),
             playlist: Vec::new(),

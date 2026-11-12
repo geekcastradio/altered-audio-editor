@@ -223,9 +223,20 @@ describe("planOpen", () => {
       session: "C:/a/EP1.altaudio",
       sesx: null,
       audio: ["C:/a/host.WAV", "C:/a/g.mp3"],
+      video: [],
       skipped: ["C:/a/notes.txt", "C:/a/b.altaudio", "C:/a/old.sesx"],
     });
-    expect(planOpen(["/x/old.sesx", "/x/a.flac"])).toEqual({ session: null, sesx: "/x/old.sesx", audio: ["/x/a.flac"], skipped: [] });
+    expect(planOpen(["/x/old.sesx", "/x/a.flac"])).toEqual({ session: null, sesx: "/x/old.sesx", audio: ["/x/a.flac"], video: [], skipped: [] });
+  });
+
+  it("sets files that may hold a picture aside for the video check", () => {
+    expect(planOpen(["/x/ep.MP4", "/x/b.mov", "/x/a.flac"])).toEqual({
+      session: null,
+      sesx: null,
+      audio: ["/x/a.flac"],
+      video: ["/x/ep.MP4", "/x/b.mov"],
+      skipped: [],
+    });
   });
 });
 
