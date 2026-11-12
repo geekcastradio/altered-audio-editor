@@ -21,6 +21,7 @@ pub mod keymap;
 pub mod library;
 pub mod links;
 pub mod media;
+pub mod mix;
 pub mod musicfit;
 pub mod peaks;
 pub mod plugins;

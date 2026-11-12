@@ -287,6 +287,7 @@ export const MENUS: readonly Menu[] = [
       sep,
       item("multitrack.speaker-balance", "Speaker Balance"),
       item("multitrack.duck-music", "Duck Music Under Voice..."),
+      item("multitrack.mic-mix", "Auto Mic Mix and Talk Time..."),
       item("multitrack.space", "3D Space..."),
       sub("Host Profile", [
         item("multitrack.profile.close-mic", "Close Mic"),

@@ -5,6 +5,7 @@
 //! Signal processing: effects, filters, spectral tools and time stretch.
 
 pub mod align;
+pub mod automix;
 pub mod binaural;
 pub mod biquad;
 pub mod channels;
