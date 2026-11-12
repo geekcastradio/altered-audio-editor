@@ -110,6 +110,7 @@ jobs:
     # glibc it was built against, so building on the newest runner locks out older distributions.
     runs-on: ubuntu-22.04
     continue-on-error: true
+    timeout-minutes: 60
     env:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -128,9 +129,12 @@ jobs:
           workspaces: src-tauri
 
       - name: Install system libraries
+        timeout-minutes: 10
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential file xdg-utils libxdo-dev libssl-dev libfuse2 libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev patchelf
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::Retries=3 install -y build-essential file xdg-utils libxdo-dev libssl-dev libfuse2 libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev patchelf
 
       - name: Install frontend dependencies
         run: npm ci
@@ -149,6 +153,8 @@ jobs:
           out="$RUNNER_TEMP/release"
           mkdir -p "$out"
           cp src-tauri/target/release/bundle/appimage/*.AppImage "$out/Altered-Audio-Editor-$tag-x86_64.AppImage"
+          # The AppImage is what the in-app updater replaces; its signature goes with it.
+          cp src-tauri/target/release/bundle/appimage/*.AppImage.sig "$out/Altered-Audio-Editor-$tag-x86_64.AppImage.sig" || echo "::warning::No AppImage signature, so Linux will not update itself."
           cp src-tauri/target/release/bundle/deb/*.deb "$out/Altered-Audio-Editor-$tag-linux-amd64.deb"
 
       - uses: actions/upload-artifact@v6
@@ -195,6 +201,9 @@ jobs:
           out="$RUNNER_TEMP/release"
           mkdir -p "$out"
           cp src-tauri/target/release/bundle/dmg/*.dmg "$out/Altered-Audio-Editor-$tag-macos-arm64.dmg"
+          # The archive and signature the in-app updater uses to replace the app.
+          cp src-tauri/target/release/bundle/macos/*.app.tar.gz "$out/Altered-Audio-Editor-$tag-macos-arm64.app.tar.gz" || echo "::warning::No updater archive, so this Mac will not update itself."
+          cp src-tauri/target/release/bundle/macos/*.app.tar.gz.sig "$out/Altered-Audio-Editor-$tag-macos-arm64.app.tar.gz.sig" || true
 
       - uses: actions/upload-artifact@v6
         with:
@@ -202,9 +211,61 @@ jobs:
           path: ${{ runner.temp }}/release/*
           if-no-files-found: error
 
+  # Intel Macs. Built on the Apple silicon runner by cross-compiling, so it needs no
+  # Intel runner. Experimental like the other non-Windows builds: if it fails, the
+  # draft still gets the rest.
+  macos-intel:
+    name: macOS Intel (experimental, unsigned)
+    needs: verify
+    runs-on: macos-latest
+    continue-on-error: true
+    timeout-minutes: 60
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: intel
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build
+        env:
+          APPLE_SIGNING_IDENTITY: "-"
+        run: npm run tauri build -- --target x86_64-apple-darwin --bundles app,dmg
+
+      - name: Package
+        run: |
+          tag="${{ github.ref_name }}"
+          out="$RUNNER_TEMP/release"
+          mkdir -p "$out"
+          cp src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg "$out/Altered-Audio-Editor-$tag-macos-intel.dmg"
+          cp src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz "$out/Altered-Audio-Editor-$tag-macos-intel.app.tar.gz" || echo "::warning::No updater archive, so this Mac will not update itself."
+          cp src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig "$out/Altered-Audio-Editor-$tag-macos-intel.app.tar.gz.sig" || true
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: macos-intel
+          path: ${{ runner.temp }}/release/*
+          if-no-files-found: error
+
   draft:
     name: Draft release
-    needs: [windows, linux, macos]
+    needs: [windows, linux, macos, macos-intel]
     # Runs when Windows built, whatever happened to Linux and macOS.
     if: always() && needs.windows.result == 'success'
     runs-on: ubuntu-24.04
@@ -228,13 +289,26 @@ jobs:
           tag="${{ github.ref_name }}"
           cd files
           if [ -f NO-ASIO.txt ]; then echo "::warning::The ASIO build failed; the Windows installer has no ASIO."; rm NO-ASIO.txt; fi
-          # The manifest the in-app updater reads (Windows only: the other builds are experimental).
+          # The manifest the in-app updater reads. Windows is required; each other platform is
+          # listed only when its file and signature both built.
           setup="Altered-Audio-Editor-$tag-setup.exe"
+          base="https://github.com/$GH_REPO/releases/download/$tag"
           # What changed: this version's release notes from the repo, shown in the update dialog and on the release page.
           notesfile="../src/docs/release-notes-${tag#v}.md"
           if [ -f "$notesfile" ]; then cp "$notesfile" ../notes.md; else echo "See the release page for what changed." > ../notes.md; fi
           if [ -f "$setup.sig" ]; then
-            jq -n --rawfile notes ../notes.md --arg version "${tag#v}" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg sig "$(cat "$setup.sig")" --arg url "https://github.com/$GH_REPO/releases/download/$tag/$setup" '{version: $version, notes: $notes, pub_date: $date, platforms: {"windows-x86_64": {signature: $sig, url: $url}}}' > latest.json
+            platforms=$(jq -n --arg sig "$(cat "$setup.sig")" --arg url "$base/$setup" '{"windows-x86_64": {signature: $sig, url: $url}}')
+            add_platform() {
+              key="$1"; file="$2"
+              if [ -f "$file" ] && [ -f "$file.sig" ]; then
+                platforms=$(jq --arg k "$key" --arg sig "$(cat "$file.sig")" --arg url "$base/$file" '. + {($k): {signature: $sig, url: $url}}' <<< "$platforms")
+              fi
+            }
+            add_platform darwin-aarch64 "Altered-Audio-Editor-$tag-macos-arm64.app.tar.gz"
+            add_platform darwin-x86_64 "Altered-Audio-Editor-$tag-macos-intel.app.tar.gz"
+            add_platform linux-x86_64 "Altered-Audio-Editor-$tag-x86_64.AppImage"
+            jq -n --rawfile notes ../notes.md --arg version "${tag#v}" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson platforms "$platforms" '{version: $version, notes: $notes, pub_date: $date, platforms: $platforms}' > latest.json
+            jq '.platforms | keys' latest.json
           else
             echo "::warning::No installer signature, so no latest.json: the in-app updater will not see this release."
           fi

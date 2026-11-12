@@ -18,7 +18,7 @@ use super::model::{
     AudioType, Bus, ChannelLayout, ChannelMix, ChapterInfo, Clip, ClipLoop, ClipStretch,
     EffectChain, EffectSlot, Envelope, EnvelopePoint, EnvelopeTarget, Fade, Id, Marker, MarkerKind,
     MediaRef, MidiClip, MixRole, Output, PanLaw, RecordMode, Send, Session, SessionView, Space,
-    SpacePos, Tempo, Track, TrackKind, TrackRole, STRETCH_MAX, STRETCH_MIN,
+    SpacePos, Tempo, Track, TrackKind, TrackRole, VideoRef, STRETCH_MAX, STRETCH_MIN,
 };
 
 /// Points for one effect setting's envelope on a clip.
@@ -425,6 +425,11 @@ pub enum Op {
     /// treated as None.
     SetLoudnessTarget {
         target: Option<String>,
+    },
+    /// The reference video, or None to take it away. `offset` is the session
+    /// time of the video's first picture, kept within a day either way.
+    SetVideo {
+        video: Option<VideoRef>,
     },
     /// Master output level in dB.
     SetMasterVolume {
@@ -1051,6 +1056,24 @@ fn apply_one(s: &mut Session, op: &Op) -> Result<Op, OpError> {
             });
             let old = std::mem::replace(&mut s.loudness_target, clean.map(str::to_string));
             Ok(Op::SetLoudnessTarget { target: old })
+        }
+        Op::SetVideo { video } => {
+            let clean = video.as_ref().and_then(|v| {
+                if v.path.as_os_str().is_empty() {
+                    return None;
+                }
+                let offset = if v.offset.is_finite() {
+                    v.offset.clamp(-86_400.0, 86_400.0)
+                } else {
+                    0.0
+                };
+                Some(VideoRef {
+                    path: v.path.clone(),
+                    offset,
+                })
+            });
+            let old = std::mem::replace(&mut s.video, clean);
+            Ok(Op::SetVideo { video: old })
         }
         Op::SetMasterVolume { volume_db } => {
             let old = std::mem::replace(&mut s.master.volume_db, volume_db.clamp(-96.0, 24.0));
@@ -2416,6 +2439,47 @@ mod tests {
         )
         .unwrap();
         assert_eq!(s.loudness_target, None);
+    }
+
+    #[test]
+    fn a_video_reference_sets_undoes_and_stays_out_of_files_when_unset() {
+        let mut s = Session::new("Test", 48_000);
+        assert!(!serde_json::to_string(&s).unwrap().contains("\"video\""));
+        roundtrip(
+            &mut s,
+            Op::SetVideo {
+                video: Some(VideoRef {
+                    path: "clip.mp4".into(),
+                    offset: 1.5,
+                }),
+            },
+        );
+        let json = serde_json::to_string(&s).unwrap();
+        let back: Session = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.video.as_ref().map(|v| v.offset), Some(1.5));
+        // An empty path is the same as taking it away; a wild offset is held in range.
+        apply(
+            &mut s,
+            &Op::SetVideo {
+                video: Some(VideoRef {
+                    path: "clip.mp4".into(),
+                    offset: f64::NAN,
+                }),
+            },
+        )
+        .unwrap();
+        assert_eq!(s.video.as_ref().map(|v| v.offset), Some(0.0));
+        apply(
+            &mut s,
+            &Op::SetVideo {
+                video: Some(VideoRef {
+                    path: "".into(),
+                    offset: 0.0,
+                }),
+            },
+        )
+        .unwrap();
+        assert!(s.video.is_none());
     }
 
     #[test]

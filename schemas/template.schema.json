@@ -1308,6 +1308,17 @@
             "$ref": "#/$defs/Track"
           }
         },
+        "video": {
+          "description": "A video the session is scored against: shown in the Video panel and on a\nreference lane, never mixed. Its picture is read from the file each time.\nLeft out of the file when there is none.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VideoRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "view": {
           "description": "Where the user left off in the editor.",
           "$ref": "#/$defs/SessionView"
@@ -1850,6 +1861,25 @@
           "type": "string",
           "const": "guest"
         }
+      ]
+    },
+    "VideoRef": {
+      "description": "The reference video of a session.",
+      "type": "object",
+      "properties": {
+        "offset": {
+          "description": "Session time, in seconds, at which the video's first picture plays.\nNegative when the session starts partway into the video.",
+          "type": "number",
+          "format": "double",
+          "default": 0.0
+        },
+        "path": {
+          "description": "Where the file is.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
       ]
     }
   }

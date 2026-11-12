@@ -23,6 +23,13 @@ export interface MediaRefDoc {
   length: number;
 }
 
+/** The reference video of a session. */
+export interface VideoRefDoc {
+  path: string;
+  /** Session time, in seconds, at which the video's first picture plays. */
+  offset: number;
+}
+
 export interface FadeDoc {
   length: number;
   shape: string;
@@ -343,6 +350,8 @@ export interface SessionDoc {
   pan_law?: PanLawId;
   /** The loudness target Check Loudness uses for this session, by id. Missing means the choice in Settings. */
   loudness_target?: string | null;
+  /** The reference video, if any. Missing means none. */
+  video?: VideoRefDoc | null;
   media: MediaRefDoc[];
   tracks: TrackDoc[];
   /** Bus tracks, in mixer order. */
@@ -538,6 +547,7 @@ export type Op =
   | { op: "set_session_info"; name?: string; bit_depth?: number }
   | { op: "set_pan_law"; pan_law: PanLawId }
   | { op: "set_loudness_target"; target: string | null }
+  | { op: "set_video"; video: VideoRefDoc | null }
   | { op: "set_clips"; changes: ClipChange[] }
   | { op: "add_markers"; markers: MarkerDoc[] }
   | { op: "remove_markers"; ids: string[] }

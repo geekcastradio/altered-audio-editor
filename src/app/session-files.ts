@@ -382,6 +382,13 @@ export class SessionFiles {
 }
 
 const AUDIO_EXTENSIONS = new Set(["wav", "wave", "aif", "aiff", "aifc", "mp3", "flac", "m4a", "mp4", "aac", "ogg", "oga", "opus"]);
+/** Files that may carry a picture. An .mp4 with no picture is still opened as audio. */
+const VIDEO_EXTENSIONS = new Set(["mp4", "m4v", "mov", "wmv", "avi"]);
+
+const extOf = (p: string) => p.slice(p.lastIndexOf(".") + 1).toLowerCase();
+
+/** Whether the importer reads this file as audio. */
+export const isAudioFile = (p: string): boolean => AUDIO_EXTENSIONS.has(extOf(p));
 
 export interface OpenPlan {
   /** Session to open (.altaudio). Only the first one picked is opened. */
@@ -389,18 +396,20 @@ export interface OpenPlan {
   /** .sesx session to import, when no .altaudio was picked. */
   sesx: string | null;
   audio: string[];
+  /** Files that may hold a picture. The caller tries them as video, and an .mp4 with no picture falls back to audio. */
+  video: string[];
   /** Picked files that are not opened: extra sessions and unknown types. */
   skipped: string[];
 }
 
 /** Sorts files picked in File > Open by what happens to them. */
 export function planOpen(paths: readonly string[]): OpenPlan {
-  const plan: OpenPlan = { session: null, sesx: null, audio: [], skipped: [] };
-  const ext = (p: string) => p.slice(p.lastIndexOf(".") + 1).toLowerCase();
+  const plan: OpenPlan = { session: null, sesx: null, audio: [], video: [], skipped: [] };
   for (const p of paths) {
-    const e = ext(p);
+    const e = extOf(p);
     if (e === "altaudio" && !plan.session) plan.session = p;
     else if (e === "sesx" && !plan.sesx) plan.sesx = p;
+    else if (VIDEO_EXTENSIONS.has(e)) plan.video.push(p);
     else if (AUDIO_EXTENSIONS.has(e)) plan.audio.push(p);
     else plan.skipped.push(p);
   }

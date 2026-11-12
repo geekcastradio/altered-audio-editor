@@ -19,6 +19,8 @@
     minimizeWindow,
     openLink,
     pickMediaFiles,
+    videoProbe,
+    videoSupport,
     tagsRead,
     tagsWrite,
     type FileTags,
@@ -48,6 +50,7 @@
   import UpdateDialog from "./UpdateDialog.svelte";
   import { updateCheck, updateDue, updateInstall, type UpdateInfo } from "./update";
   import HistoryPanel from "../panels/history/HistoryPanel.svelte";
+  import VideoPanel from "../panels/video/VideoPanel.svelte";
   import EditorPanel from "../panels/editor/EditorPanel.svelte";
   import { peaks, session, transport } from "../stores/open-session";
   import PhaseWheelPanel from "../panels/phase/PhaseWheelPanel.svelte";
@@ -155,7 +158,7 @@
   import { exactSamples } from "../stores/exact-samples";
   import { channelLabel, editTake, oneChannel, pasteTake, soloChannel, someOff, waveChannels, type ChannelTake } from "../panels/editor/wave-channels";
   import { pathsIgnoreCase } from "../lib/platform";
-  import { SessionFiles, displayName, planOpen, type Choice } from "./session-files";
+  import { SessionFiles, displayName, isAudioFile, planOpen, type Choice } from "./session-files";
   import { RECENT_SLOTS, WORKSPACE_SLOTS } from "./menus/model";
   import {
     sessionAutosave,
@@ -695,11 +698,49 @@
     const plan = planOpen(picked);
     if (plan.session && !(await files.open(plan.session))) return;
     if (plan.sesx && !(await files.importSesx(plan.sesx))) return;
+    for (const p of plan.video) {
+      if (await openVideo(p)) continue;
+      // No picture (an audio-only .mp4, or a system that can't show one): the old behavior.
+      if (isAudioFile(p)) plan.audio.push(p);
+      else plan.skipped.push(p);
+    }
     if (plan.audio.length > 0) await openAudio(plan.audio);
     if (plan.skipped.length > 0) {
       const names = plan.skipped.map((p) => p.split(/[\\/]/).pop()).join(", ");
       showNotice(`Not opened: ${names}. Pick one session at a time, plus any audio files.`);
     }
+  }
+
+  /**
+   * Opens a video as the session's reference: the Video panel shows, and its sound goes
+   * onto the first track when the session has no audio yet. False when the file has no
+   * picture or this system can't show one, so the caller can treat it as audio.
+   */
+  async function openVideo(path: string): Promise<boolean> {
+    const doc = session.current;
+    if (!doc) return false;
+    let hasAudio = false;
+    try {
+      await videoSupport();
+      hasAudio = (await videoProbe(path)).has_audio;
+    } catch {
+      return false;
+    }
+    await session.edit("Open Video", { op: "set_video", video: { path, offset: 0 } }, sessionHistory);
+    if (!openPanels.has("video")) dock.toggle("video");
+    if (!hasAudio) return true;
+    if (doc.tracks.every((t) => t.clips.length === 0)) {
+      try {
+        await placeFiles([path], doc.tracks[0]?.id ?? null, 0);
+        await actions.run("view.zoom-session");
+      } catch (e) {
+        showNotice("The picture is open, but its sound could not be read.");
+        console.error(e);
+      }
+    } else {
+      showNotice("Video opened. Its sound was not added because this session already has audio; use Import Files to add it.");
+    }
+    return true;
   }
 
   async function openAudio(paths: string[]): Promise<void> {
@@ -2328,6 +2369,8 @@
           component: asComponent(HistoryPanel),
           props: { stack: sessionHistory, waveStack: waveHistory, shortcutFor, onError: showError },
         };
+      case "video":
+        return { component: asComponent(VideoPanel), props: { session, transport, runner: sessionHistory, onError: showError } };
       case "files":
         return {
           component: asComponent(FilesPanel),

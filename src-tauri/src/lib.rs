@@ -55,6 +55,7 @@ pub fn run() {
         .manage(commands::session::ParkedSessions::default())
         .manage(commands::wave::Playing::default())
         .manage(commands::update::PendingUpdate::default())
+        .manage(commands::video::Videos::default())
         .setup(|app| {
             // Settings from older versions are moved to the Altered Audio folder first.
             paths::migrate_settings(app.handle());
@@ -152,6 +153,12 @@ pub fn run() {
             commands::controllers::controller_open,
             commands::controllers::controller_events,
             commands::controllers::controller_send,
+            commands::video::video_support,
+            commands::video::video_pick,
+            commands::video::video_probe,
+            commands::video::video_open,
+            commands::video::video_frame,
+            commands::video::video_close,
             commands::devices::audio_inputs,
             commands::devices::audio_outputs,
             commands::devices::set_audio_output,

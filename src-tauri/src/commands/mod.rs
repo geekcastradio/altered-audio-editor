@@ -33,6 +33,7 @@ pub mod spectral;
 pub mod template;
 pub mod transport;
 pub mod update;
+pub mod video;
 pub mod wave;
 pub mod wave_fx;
 pub mod workspace;

@@ -11,6 +11,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { OutputFormat } from "./output-format";
 import { invoke } from "@tauri-apps/api/core";
 import type { EffectChainDoc, EffectSlotDoc, MediaRefDoc } from "../stores/session";
+import type { VideoMeta } from "./video";
 import type { SpectralMask } from "../panels/editor/spectrum";
 
 export interface AppInfo {
@@ -1298,6 +1299,36 @@ export function controllerPorts(): Promise<string[]> {
 /** Listens to exactly these inputs; resolves to the ones that opened. */
 export function controllerOpen(names: string[]): Promise<string[]> {
   return invoke<string[]>("controller_open", { names });
+}
+
+/** Resolves when this build can show video pictures, rejects with the reason when it can't. */
+export function videoSupport(): Promise<void> {
+  return invoke<void>("video_support");
+}
+
+/** Looks at a file: its picture size, rate, length and whether it has sound. Rejects when it has no picture. */
+export function videoProbe(path: string): Promise<VideoMeta> {
+  return invoke<VideoMeta>("video_probe", { path });
+}
+
+/** Shows the Open Video dialog. Resolves to null on cancel. */
+export function videoPick(): Promise<string | null> {
+  return invoke<string | null>("video_pick");
+}
+
+/** Opens a video for frame requests. */
+export function videoOpen(path: string): Promise<{ id: number; meta: VideoMeta }> {
+  return invoke<{ id: number; meta: VideoMeta }>("video_open", { path });
+}
+
+/** The picture at `seconds` in the video, at most `maxWidth` wide, as the raw bytes `decodePicture` reads. */
+export function videoFrame(id: number, seconds: number, maxWidth: number): Promise<ArrayBuffer> {
+  return invoke<ArrayBuffer>("video_frame", { id, seconds, maxWidth });
+}
+
+/** Lets go of an open video. */
+export function videoClose(id: number): Promise<void> {
+  return invoke<void>("video_close", { id });
 }
 
 /** Sends short MIDI messages back to a device (fader positions, lights); resolves false when it has no output. */
