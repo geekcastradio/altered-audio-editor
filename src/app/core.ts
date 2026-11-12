@@ -1406,6 +1406,11 @@ export function phaseAlign(reference: string, other: string, maxMs: number): Pro
   return invoke("phase_align", { reference, other, maxMs });
 }
 
+/** Auto Mic Mix and Talk Time for these tracks, read from the audio a minute at a time. */
+export function mixAnalyze(tracks: string[], options?: import("./multitrack").MixOptions): Promise<import("./multitrack").MixAnalysis> {
+  return invoke("mix_analyze", { tracks, options });
+}
+
 /** Plans Music Fit for the part of `path` from `start` to `end` seconds: up to three plans, best first, joining in different places. */
 export function musicFit(path: string, start: number, end: number, target: number, xfade: number): Promise<import("../panels/editor/musicfit").FitPlan[]> {
   return invoke("music_fit", { path, start, end, target, xfade });

@@ -69,6 +69,7 @@ describe("menu model", () => {
       "edit.settings",
       "multitrack.speaker-balance",
       "multitrack.duck-music",
+      "multitrack.mic-mix",
       "multitrack.space",
       "multitrack.profile.close-mic",
       "multitrack.profile.standard-mic",

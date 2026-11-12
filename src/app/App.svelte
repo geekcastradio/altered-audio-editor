@@ -80,6 +80,8 @@
   import ExportProgress from "./ExportProgress.svelte";
   import LoudnessDialog from "./LoudnessDialog.svelte";
   import MatchEqDialog from "./MatchEqDialog.svelte";
+  import MicMixDialog from "./MicMixDialog.svelte";
+  import { describeMix, micTracks, mixOps, type MixAnalysis, type MixOptions } from "./multitrack";
   import { matchEq, type MatchFit } from "./match-eq";
   import AnalysisDialog from "./AnalysisDialog.svelte";
   import TagsDialog from "./TagsDialog.svelte";
@@ -209,6 +211,7 @@
     waveSpectralEdit,
     waveApplyChain,
     phaseAlign,
+    mixAnalyze,
     setAudioOutput,
     setOutputMap,
     setAudioDriver,
@@ -1895,6 +1898,25 @@
 
   // Effects > Match EQ: tone of one track moved toward another's, as a Parametric EQ on the first.
   let matchOpen = $state(false);
+  let micMixOpen = $state(false);
+
+  async function measureMicMix(ids: string[], options: MixOptions): Promise<MixAnalysis | string> {
+    try {
+      return await mixAnalyze(ids, options);
+    } catch (e) {
+      return String(e);
+    }
+  }
+
+  async function writeMicMix(a: MixAnalysis) {
+    const d = session.current;
+    micMixOpen = false;
+    if (!d) return;
+    const op = mixOps(d, a);
+    if (!op) return showNotice("Nothing to write.");
+    await session.edit("Auto Mic Mix", op, sessionHistory);
+    showNotice(describeMix(a));
+  }
 
   async function measureEqMatch(sourceId: string, referenceId: string): Promise<MatchFit | string> {
     const r = timeSel();
@@ -5586,6 +5608,14 @@
         },
       }),
       actions.register({
+        id: "multitrack.mic-mix",
+        run: () => {
+          micMixOpen = true;
+        },
+        enabled: () => !inWave() && session.current !== null && micTracks(session.current).length >= 2,
+        reason: () => (inWave() ? "Auto Mic Mix works across the tracks of a Multitrack session." : "Needs two or more tracks with audio on them, one per mic."),
+      }),
+      actions.register({
         id: "multitrack.duck-music",
         run: () => void runDuck().catch(showError),
         enabled: () => {
@@ -6225,6 +6255,15 @@
     onMeasure={() => void runAnalysis()}
     onCancel={() => void exportCancel()}
     onClose={() => (analysis = null)}
+  />
+{/if}
+
+{#if micMixOpen && session.current}
+  <MicMixDialog
+    tracks={micTracks(session.current).map((t) => ({ id: t.id, name: t.name }))}
+    onAnalyze={measureMicMix}
+    onApply={(a) => void writeMicMix(a)}
+    onClose={() => (micMixOpen = false)}
   />
 {/if}
 
