@@ -93,7 +93,9 @@ jobs:
           $sig = "$($setup.FullName).sig"
           if (Test-Path $sig) { Copy-Item $sig (Join-Path $out "Altered-Audio-Editor-$tag-setup.exe.sig") } else { Write-Warning "No .sig file next to the installer, so there will be no updater manifest." }
           Copy-Item src-tauri/target/release/altered-audio-editor.exe (Join-Path $portable "Altered Audio Editor.exe")
-          Copy-Item LICENSE, README.md $portable
+          Copy-Item LICENSE, README.md, ATTRIBUTION.md $portable
+          New-Item -ItemType Directory -Force -Path (Join-Path $portable "licenses") | Out-Null
+          Copy-Item docs/THIRD-PARTY-*.md (Join-Path $portable "licenses")
           Compress-Archive -Path (Join-Path $portable "*") -DestinationPath (Join-Path $out "Altered-Audio-Editor-$tag-portable.zip")
           if ("${{ steps.asio.outcome }}" -ne "success") { "ASIO build failed; this installer has no ASIO." | Set-Content (Join-Path $out "NO-ASIO.txt") }
 

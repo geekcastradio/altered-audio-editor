@@ -18,11 +18,13 @@
     scope: string;
     onTab: (t: AnalysisTab) => void;
     onMeasure: () => void;
+    /** Adds the effect a finding suggests, with its settings. */
+    onFix: (effect: string, params: Record<string, number>) => void;
     onCancel: () => void;
     onClose: () => void;
   }
 
-  const { report, progress, tab, scope, onTab, onMeasure, onCancel, onClose }: Props = $props();
+  const { report, progress, tab, scope, onTab, onMeasure, onFix, onCancel, onClose }: Props = $props();
 
   const tabs: { id: AnalysisTab; label: string }[] = [
     { id: "frequency", label: "Frequency" },
@@ -119,6 +121,9 @@
               <strong>{f.text}</strong>
               {#if f.at.length > 0}<span class="at">At {f.at.join(", ")}</span>{/if}
               {#if f.found}<span class="fix">{f.advice}</span>{/if}
+              {#if f.found && f.fix}
+                <button type="button" class="fixbtn" onclick={() => onFix(f.fix!.effect, f.fix!.params)}>{f.fix.label}</button>
+              {/if}
             </li>
           {/each}
         </ul>
@@ -314,6 +319,17 @@
   .finds .at,
   .finds .fix {
     color: var(--text-faint);
+  }
+
+  .fixbtn {
+    justify-self: start;
+    height: 24px;
+    padding: 0 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
+    background: var(--surface-1);
+    color: var(--text);
+    font: inherit;
   }
 
   .advice {
