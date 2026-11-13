@@ -12,6 +12,7 @@ use tauri::State;
 use super::effects::{isolate, render};
 use super::session::OpenSession;
 use crate::dsp::align::{align, Alignment};
+use crate::dsp::sync::{sync, SyncResult};
 use crate::session::model::{Id, Session};
 
 /// Longest stretch compared, from where the two clips start to overlap.
@@ -80,4 +81,90 @@ pub async fn phase_align(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Rate the two tracks are compared at: speech lives well below 8 kHz, and a lower rate keeps
+/// half an hour of two tracks small.
+const SYNC_RATE: u32 = 16_000;
+/// Longest stretch of each track Sync Tracks listens to.
+const SYNC_MAX_SECONDS: u64 = 1_800;
+const SYNC_CHUNK_SECONDS: u64 = 60;
+
+/// Where the last clip on a track ends.
+fn track_end(session: &Session, id: Id) -> Option<u64> {
+    let track = session.tracks.iter().find(|t| t.id == id)?;
+    track
+        .clips
+        .iter()
+        .map(|c| {
+            let rate = session
+                .media
+                .iter()
+                .find(|m| m.id == c.media_id)
+                .map_or(session.sample_rate, |m| m.sample_rate);
+            c.start + c.timeline_length(rate, session.sample_rate)
+        })
+        .max()
+}
+
+/// Stereo to mono at `1 / factor` of the rate, averaging each block of frames.
+fn decimate(stereo: &[f32], factor: usize) -> Vec<f32> {
+    let scale = 1.0 / (2 * factor) as f32;
+    stereo
+        .chunks_exact(2 * factor)
+        .map(|c| c.iter().sum::<f32>() * scale)
+        .collect()
+}
+
+/// One track's audio from the start of the session to `end`, mono and decimated, rendered a
+/// minute at a time so long sessions stay small.
+fn render_track(session: &Session, id: Id, end: u64, factor: usize) -> Result<Vec<f32>, String> {
+    let only = isolate(session, Some(id), None);
+    let step = factor as u64;
+    let chunk = (SYNC_CHUNK_SECONDS * u64::from(session.sample_rate) / step) * step;
+    let mut out = Vec::with_capacity((end / step) as usize);
+    let mut at = 0;
+    while at < end {
+        let to = (at + chunk).min(end);
+        out.extend(decimate(&render(&only, at, to)?, factor));
+        at = to;
+    }
+    Ok(out)
+}
+
+/// Multitrack > Sync Tracks: how far `other` trails `reference`, and how fast the gap grows.
+/// Measures only; the interface moves the track.
+#[tauri::command]
+pub async fn sync_tracks(
+    open: State<'_, OpenSession>,
+    reference: Id,
+    other: Id,
+) -> Result<SyncResult, String> {
+    let session = open.0.lock().map_err(|e| e.to_string())?.session.clone();
+    spawn_blocking(move || {
+        let rate = session.sample_rate;
+        let a = track_end(&session, reference).ok_or("The first track has no audio.")?;
+        let b = track_end(&session, other).ok_or("The second track has no audio.")?;
+        let end = a.max(b).min(SYNC_MAX_SECONDS * u64::from(rate));
+        let factor = (rate / SYNC_RATE).max(1) as usize;
+        let ra = render_track(&session, reference, end, factor)?;
+        let rb = render_track(&session, other, end, factor)?;
+        let mut found = sync(&ra, &rb, rate / factor as u32).map_err(|e| e.to_string())?;
+        found.offset *= factor as i64;
+        Ok(found)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decimate_averages_blocks_of_frames() {
+        let stereo = [1.0, 1.0, 3.0, 3.0, 5.0, 5.0, 7.0, 9.0];
+        assert_eq!(decimate(&stereo, 2), vec![2.0, 6.5]);
+        assert_eq!(decimate(&stereo, 3), vec![3.0]);
+    }
 }

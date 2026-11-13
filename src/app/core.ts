@@ -1416,6 +1416,11 @@ export function musicFit(path: string, start: number, end: number, target: numbe
   return invoke("music_fit", { path, start, end, target, xfade });
 }
 
+/** Sync Tracks: how far track `other` trails track `reference`, and how fast the gap grows. Measures only. */
+export function syncTracks(reference: string, other: string): Promise<import("./sync-tracks").TrackSync> {
+  return invoke("sync_tracks", { reference, other });
+}
+
 /** Clicks or clipped spots found in one clip, as [first, last] timeline samples. */
 export interface ClipSpots {
   clipId: string;

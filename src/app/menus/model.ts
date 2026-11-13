@@ -290,6 +290,7 @@ export const MENUS: readonly Menu[] = [
       item("multitrack.mic-mix", "Auto Mic Mix and Talk Time..."),
       item("multitrack.close-dead-space", "Close Dead Space..."),
       item("multitrack.isolated-clips", "Find Isolated Short Clips..."),
+      item("multitrack.sync-tracks", "Sync Tracks..."),
       item("multitrack.space", "3D Space..."),
       sub("Host Profile", [
         item("multitrack.profile.close-mic", "Close Mic"),

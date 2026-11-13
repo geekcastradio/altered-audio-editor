@@ -214,6 +214,7 @@ pub fn run() {
             commands::effects::effect_meter,
             commands::effects::vox_tone_curve,
             commands::align::phase_align,
+            commands::align::sync_tracks,
             commands::mix::mix_analyze,
             commands::musicfit::music_fit,
             commands::export::export_pick_path,
