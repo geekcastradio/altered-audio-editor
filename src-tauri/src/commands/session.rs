@@ -637,7 +637,7 @@ pub async fn file_pick_open(app: AppHandle) -> Result<Vec<PathBuf>, String> {
         let mut all: Vec<&str> = vec![EXTENSION, "sesx"];
         all.extend_from_slice(crate::codecs::SUPPORTED_EXTENSIONS);
         // Video files open as a reference picture (and their sound, when there is some).
-        let video = ["mp4", "m4v", "mov", "wmv", "avi"];
+        let video = ["mp4", "m4v", "mov", "wmv", "avi", "mkv"];
         for v in video {
             if !all.contains(&v) {
                 all.push(v);
