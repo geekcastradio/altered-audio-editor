@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { ClipDoc, SessionDoc, TrackDoc } from "../../stores/session";
-import { clipsAt, copyClips, copyMoved, fadeClip, gapAt, gapToClose, rippleTracks, LockedError, MIN_CLIP, moveClips, nearest, pasteClips, previewTracks, rippleDeleteClips, rippleDeleteRange, snapTargets, trimToRange, splitClips, trimClip, trimToPlayhead, withCrossfades, fadeShapeChanges, withGroups, withLayers, TOP_LAYER, withVolume, withEnvelope, envelopeId, loopChanges } from "./clip-edit";
+import { snapToMarkers, clipsAt, copyClips, copyMoved, fadeClip, gapAt, gapToClose, rippleTracks, LockedError, MIN_CLIP, moveClips, nearest, pasteClips, previewTracks, rippleDeleteClips, rippleDeleteRange, snapTargets, trimToRange, splitClips, trimClip, trimToPlayhead, withCrossfades, fadeShapeChanges, withGroups, withLayers, TOP_LAYER, withVolume, withEnvelope, envelopeId, loopChanges } from "./clip-edit";
 
 const fade = () => ({ length: 0, shape: "linear" as const, curve: 0 });
 
@@ -121,6 +121,22 @@ describe("trimToPlayhead", () => {
     const doc = session([track("A", [clip("a", 0)])]);
     expect(trimToPlayhead(doc, ["a"], 12_000, "start")).toEqual([{ id: "a", start: 12_000, source_in: 12_000 }]);
     expect(trimToPlayhead(doc, ["a"], 12_000, "end")).toEqual([{ id: "a", source_out: 12_000 }]);
+  });
+});
+
+describe("snapToMarkers", () => {
+  const markers = [
+    { position: 1000, duration: 0 },
+    { position: 5000, duration: 2000 },
+  ];
+  it("lands on a point marker, or either end of a range, within the tolerance", () => {
+    expect(snapToMarkers(1004, markers, 10)).toBe(1000);
+    expect(snapToMarkers(4995, markers, 10)).toBe(5000);
+    expect(snapToMarkers(7003, markers, 10)).toBe(7000);
+  });
+  it("leaves a position alone when no marker is near, and with no markers", () => {
+    expect(snapToMarkers(3000, markers, 10)).toBe(3000);
+    expect(snapToMarkers(3000, [], 10)).toBe(3000);
   });
 });
 

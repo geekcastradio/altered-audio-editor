@@ -165,6 +165,12 @@ export function snapTargets(
   return out;
 }
 
+/** Where a position lands when it snaps to a marker (its start, or its end for a range): the nearest one within `tolerance`, else the position itself. */
+export function snapToMarkers(position: number, markers: readonly { position: number; duration: number }[], tolerance: number): number {
+  const targets = markers.flatMap((m) => (m.duration > 0 ? [m.position, m.position + m.duration] : [m.position]));
+  return nearest(position, targets, tolerance) ?? position;
+}
+
 /** The target nearest `value` within `tolerance`, or null. */
 export function nearest(value: number, targets: readonly number[], tolerance: number): number | null {
   let best: number | null = null;
