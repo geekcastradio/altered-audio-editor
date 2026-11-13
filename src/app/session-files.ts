@@ -378,14 +378,24 @@ export class SessionFiles {
     this.d.recent.set(list);
   }
 
+  /** Puts a file in Open Recent: a session or an audio file opened on its own. */
+  noteRecent(path: string): void {
+    this.addRecent(path);
+  }
+
+  /** Takes a file out of Open Recent, as when it can no longer be opened. */
+  forgetRecent(path: string): void {
+    this.dropRecent(path);
+  }
+
   private dropRecent(path: string): void {
     this.d.recent.set(this.d.recent.get().filter((p) => p !== path));
   }
 }
 
-const AUDIO_EXTENSIONS = new Set(["wav", "wave", "aif", "aiff", "aifc", "mp3", "flac", "m4a", "mp4", "aac", "ogg", "oga", "opus"]);
+const AUDIO_EXTENSIONS = new Set(["wav", "wave", "aif", "aiff", "aifc", "mp3", "flac", "m4a", "mp4", "aac", "ogg", "oga", "opus", "mkv"]);
 /** Files that may carry a picture. An .mp4 with no picture is still opened as audio. */
-const VIDEO_EXTENSIONS = new Set(["mp4", "m4v", "mov", "wmv", "avi"]);
+const VIDEO_EXTENSIONS = new Set(["mp4", "m4v", "mov", "wmv", "avi", "mkv"]);
 
 const extOf = (p: string) => p.slice(p.lastIndexOf(".") + 1).toLowerCase();
 

@@ -7,7 +7,7 @@ import { UndoStack } from "../commands";
 import { MediaPool } from "../stores/media-pool";
 import { SessionStore, type SessionDoc } from "../stores/session";
 import type { Recoverable, SessionResult } from "./core";
-import { displayName, isBlank, planOpen, SessionFiles, sesxSummary, type Choice, type SessionFileBackend } from "./session-files";
+import { displayName, isAudioFile, isBlank, planOpen, SessionFiles, sesxSummary, type Choice, type SessionFileBackend } from "./session-files";
 
 function doc(name = "Untitled Session", media: SessionDoc["media"] = []): SessionDoc {
   return {
@@ -294,6 +294,27 @@ describe("several open sessions", () => {
     await files.switchTo(files.others[0]!.id);
     expect(seen.length).toBeGreaterThan(0);
     for (const ids of seen) expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("planOpen with .mkv", () => {
+  it("tries an .mkv as video first, and it is also a file whose sound can be opened", () => {
+    const plan = planOpen(["C:\\Clips\\scene.MKV", "C:\\Clips\\take.wav"]);
+    expect(plan.video).toEqual(["C:\\Clips\\scene.MKV"]);
+    expect(plan.audio).toEqual(["C:\\Clips\\take.wav"]);
+    expect(isAudioFile("scene.mkv")).toBe(true);
+  });
+});
+
+describe("Open Recent", () => {
+  it("holds audio files beside sessions, newest first, each once", () => {
+    const { files, recent } = setup();
+    files.noteRecent("C:\\Audio\\a.wav");
+    files.noteRecent("C:\\Shows\\Ep.altaudio");
+    files.noteRecent("c:/audio/A.wav");
+    expect(recent()).toEqual(["c:/audio/A.wav", "C:\\Shows\\Ep.altaudio"]);
+    files.forgetRecent("C:\\Shows\\Ep.altaudio");
+    expect(recent()).toEqual(["c:/audio/A.wav"]);
   });
 });
 

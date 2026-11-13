@@ -82,8 +82,8 @@ export const MENUS: readonly Menu[] = [
             placeholder: true,
           }),
         ),
-        item("file.recent.none", "No recent sessions", {
-          pending: "Sessions you save or open appear here.",
+        item("file.recent.none", "No recent files", {
+          pending: "Sessions and audio files you open or save appear here.",
           placeholder: true,
         }),
       ]),

@@ -79,6 +79,7 @@ mod tests {
     fn checks_extensions_without_case() {
         assert!(is_supported(Path::new("C:/a/Interview.WAV")));
         assert!(is_supported(Path::new("bumper.m4a")));
+        assert!(is_supported(Path::new("scene.MKV")));
         assert!(!is_supported(Path::new("notes.txt")));
         assert!(!is_supported(Path::new("no_extension")));
     }

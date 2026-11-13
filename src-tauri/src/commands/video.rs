@@ -72,7 +72,7 @@ pub async fn video_pick(app: AppHandle) -> Result<Option<PathBuf>, String> {
             .dialog()
             .file()
             .set_title("Open Video Reference")
-            .add_filter("Video files", &["mp4", "m4v", "mov", "wmv", "avi"])
+            .add_filter("Video files", &["mp4", "m4v", "mov", "wmv", "avi", "mkv"])
             .add_filter("All files", &["*"]);
         if let Some(w) = parent.as_ref() {
             dialog = dialog.set_parent(w);

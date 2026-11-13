@@ -725,6 +725,12 @@
     let hasAudio = false;
     try {
       await videoSupport();
+    } catch (e) {
+      // macOS and Linux cannot show the picture yet: say so, and let the caller open the sound.
+      showNotice(e instanceof Error ? e.message : String(e));
+      return false;
+    }
+    try {
       hasAudio = (await videoProbe(path)).has_audio;
     } catch {
       return false;
@@ -752,6 +758,7 @@
       const imported = await mediaPool.importPaths(paths, sessionHistory);
       mediaPool.setSelection(imported.ids);
       await openInWaveform(paths[0]!);
+      files.noteRecent(paths[0]!);
       return;
     }
     const doc = session.current;
@@ -5949,7 +5956,7 @@
         run: () => {},
         enabled: () => false,
         visible: () => files.recentPaths().length === 0,
-        reason: () => "Sessions you save or open appear here.",
+        reason: () => "Sessions and audio files you open or save appear here.",
       }),
     );
     for (let i = 0; i < RECENT_SLOTS; i++) {
@@ -5958,7 +5965,14 @@
           id: `file.recent.${i + 1}`,
           run: async () => {
             const p = files.recentPaths()[i];
-            if (p) await files.open(p);
+            if (!p) return;
+            // A session opens as before; an audio file opens in the Waveform editor like File > Open.
+            try {
+              await openPaths([p]);
+            } catch (e) {
+              files.forgetRecent(p);
+              showError(e);
+            }
           },
           visible: () => files.recentPaths()[i] !== undefined,
           label: () => {

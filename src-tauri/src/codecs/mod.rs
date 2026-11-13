@@ -20,4 +20,5 @@ pub use unzip::extract_audio;
 /// File extensions the Files panel accepts, lowercase, without the dot.
 pub const SUPPORTED_EXTENSIONS: &[&str] = &[
     "wav", "wave", "aif", "aiff", "aifc", "mp3", "flac", "m4a", "mp4", "aac", "ogg", "oga", "opus",
+    "mkv",
 ];
