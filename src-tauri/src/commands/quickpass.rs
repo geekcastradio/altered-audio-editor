@@ -10,7 +10,8 @@
 
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use tauri::async_runtime::spawn_blocking;
@@ -31,6 +32,56 @@ struct ScanProgress {
     /// clipping). `None` for level scans, whose findings are worked out
     /// after every clip has been measured.
     found: Option<usize>,
+}
+
+/// The stop flag of the scan that is running, so Cancel can really stop it and a new scan
+/// never waits behind an old one.
+static CURRENT: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
+
+const STOPPED: &str = "Scan stopped.";
+
+/// Starts a scan: stops any scan still running and hands back the flag for the new one.
+fn begin_scan() -> Arc<AtomicBool> {
+    let flag = Arc::new(AtomicBool::new(false));
+    let mut current = CURRENT.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(old) = current.replace(flag.clone()) {
+        old.store(true, Ordering::Relaxed);
+    }
+    flag
+}
+
+/// Stops the scan that is running. Does nothing when none is.
+#[tauri::command]
+pub fn quickpass_cancel() {
+    if let Some(flag) = CURRENT.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        flag.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Clips that could not be rendered. A scan that read nothing at all must say so, not look like
+/// "nothing found".
+#[derive(Default)]
+struct Failures {
+    count: usize,
+    first: Option<String>,
+}
+
+impl Failures {
+    fn note(&mut self, error: String) {
+        self.count += 1;
+        self.first.get_or_insert(error);
+    }
+
+    fn verdict(&self, read: usize) -> Result<(), String> {
+        match (&self.first, read) {
+            (Some(e), 0) => Err(format!(
+                "The scan could not read {} clip{}: {e}",
+                self.count,
+                if self.count == 1 { "" } else { "s" }
+            )),
+            _ => Ok(()),
+        }
+    }
 }
 
 /// Floor reported for digital silence, in dBFS.
@@ -87,7 +138,11 @@ pub fn window_db(stereo: &[f32], window: usize) -> Vec<f32> {
 
 /// One clip as it plays (gain and Voice Chain included), stereo at the
 /// session rate, with its timeline start.
-fn render_clip(session: &Session, id: Id) -> Option<(u64, Vec<f32>)> {
+fn render_clip(
+    session: &Session,
+    id: Id,
+    cancel: &AtomicBool,
+) -> Result<Option<(u64, Vec<f32>)>, String> {
     let mut s = session.clone();
     let mut start = None;
     for t in &mut s.tracks {
@@ -96,10 +151,12 @@ fn render_clip(session: &Session, id: Id) -> Option<(u64, Vec<f32>)> {
             start = Some(c.start);
         }
     }
-    let start = start?;
+    let Some(start) = start else {
+        return Ok(None);
+    };
     let end = mixdown::session_end(&s);
     if end <= start {
-        return None;
+        return Ok(None);
     }
     let req = MixdownRequest {
         range: Some((start, end)),
@@ -110,27 +167,34 @@ fn render_clip(session: &Session, id: Id) -> Option<(u64, Vec<f32>)> {
     mixdown::render_mix(
         &s,
         &req,
-        &AtomicBool::new(false),
+        cancel,
         |_, _| {},
         |block| {
             audio.extend_from_slice(block);
             Ok(())
         },
     )
-    .ok()?;
-    Some((start, audio))
+    .map_err(|e| e.to_string())?;
+    Ok(Some((start, audio)))
 }
 
-fn measure(session: &Session, id: Id, window_ms: u32) -> Option<ClipLevels> {
-    let (start, audio) = render_clip(session, id)?;
+fn measure(
+    session: &Session,
+    id: Id,
+    window_ms: u32,
+    cancel: &AtomicBool,
+) -> Result<Option<ClipLevels>, String> {
+    let Some((start, audio)) = render_clip(session, id, cancel)? else {
+        return Ok(None);
+    };
     let window = (u64::from(session.sample_rate) * u64::from(window_ms) / 1000).max(1);
-    Some(ClipLevels {
+    Ok(Some(ClipLevels {
         clip_id: id,
         start,
         window,
         db: window_db(&audio, window as usize),
         peak: window_peak(&audio, window as usize),
-    })
+    }))
 }
 
 /// Clicks or clipped spots found in one clip.
@@ -173,6 +237,7 @@ pub async fn quickpass_spots(
 ) -> Result<Vec<ClipSpots>, String> {
     let session = pick_session(&open, &wave_doc, wave.unwrap_or(false))?;
     let wanted: HashSet<Id> = clip_ids.into_iter().collect();
+    let cancel = begin_scan();
     spawn_blocking(move || {
         let rate = session.sample_rate;
         let mut ids: Vec<Id> = session
@@ -184,33 +249,43 @@ pub async fn quickpass_spots(
         ids.sort();
         let total = ids.len();
         let mut so_far = 0usize;
-        ids.into_iter()
-            .enumerate()
-            .filter_map(|(n, id)| {
-                let found = render_clip(&session, id).map(|(start, audio)| {
-                    let spans = find_spots(&audio, 2, rate, spots)
+        let mut out: Vec<ClipSpots> = Vec::new();
+        let mut failed = Failures::default();
+        for (n, id) in ids.into_iter().enumerate() {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(STOPPED.to_string());
+            }
+            match render_clip(&session, id, &cancel) {
+                Ok(Some((start, audio))) => {
+                    let spans: Vec<[u64; 2]> = find_spots(&audio, 2, rate, spots)
                         .into_iter()
                         .map(|(a, b)| [start + a, start + b])
                         .collect();
-                    ClipSpots { clip_id: id, spans }
-                });
-                if let Some(f) = &found {
-                    so_far += f.spans.len();
+                    so_far += spans.len();
+                    out.push(ClipSpots { clip_id: id, spans });
                 }
-                let _ = app.emit(
-                    "quickpass-progress",
-                    ScanProgress {
-                        done: n + 1,
-                        total,
-                        found: Some(so_far),
-                    },
-                );
-                found
-            })
-            .collect()
+                Ok(None) => {}
+                Err(e) => {
+                    if cancel.load(Ordering::Relaxed) {
+                        return Err(STOPPED.to_string());
+                    }
+                    failed.note(e);
+                }
+            }
+            let _ = app.emit(
+                "quickpass-progress",
+                ScanProgress {
+                    done: n + 1,
+                    total,
+                    found: Some(so_far),
+                },
+            );
+        }
+        failed.verdict(out.len())?;
+        Ok(out)
     })
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?
 }
 
 /// QuickPass repair: copies source frames `from..to` of `source` to a new
@@ -271,6 +346,7 @@ pub async fn quickpass_levels(
 ) -> Result<Vec<ClipLevels>, String> {
     let session = pick_session(&open, &wave_doc, wave.unwrap_or(false))?;
     let wanted: HashSet<Id> = clip_ids.into_iter().collect();
+    let cancel = begin_scan();
     spawn_blocking(move || {
         let window_ms = window_ms.clamp(5, 500);
         let mut ids: Vec<Id> = session
@@ -281,29 +357,63 @@ pub async fn quickpass_levels(
             .collect();
         ids.sort();
         let total = ids.len();
-        ids.into_iter()
-            .enumerate()
-            .filter_map(|(n, id)| {
-                let found = measure(&session, id, window_ms);
-                let _ = app.emit(
-                    "quickpass-progress",
-                    ScanProgress {
-                        done: n + 1,
-                        total,
-                        found: None,
-                    },
-                );
-                found
-            })
-            .collect()
+        let mut out: Vec<ClipLevels> = Vec::new();
+        let mut failed = Failures::default();
+        for (n, id) in ids.into_iter().enumerate() {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(STOPPED.to_string());
+            }
+            match measure(&session, id, window_ms, &cancel) {
+                Ok(Some(levels)) => out.push(levels),
+                Ok(None) => {}
+                Err(e) => {
+                    if cancel.load(Ordering::Relaxed) {
+                        return Err(STOPPED.to_string());
+                    }
+                    failed.note(e);
+                }
+            }
+            let _ = app.emit(
+                "quickpass-progress",
+                ScanProgress {
+                    done: n + 1,
+                    total,
+                    found: None,
+                },
+            );
+        }
+        failed.verdict(out.len())?;
+        Ok(out)
     })
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_new_scan_stops_the_old_one_and_cancel_stops_the_current_one() {
+        let first = begin_scan();
+        assert!(!first.load(Ordering::Relaxed));
+        let second = begin_scan();
+        assert!(first.load(Ordering::Relaxed));
+        assert!(!second.load(Ordering::Relaxed));
+        quickpass_cancel();
+        assert!(second.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn a_scan_that_read_nothing_says_why() {
+        let mut failed = Failures::default();
+        assert!(failed.verdict(0).is_ok());
+        failed.note("no such file".into());
+        failed.note("other".into());
+        let e = failed.verdict(0).unwrap_err();
+        assert!(e.contains("2 clips") && e.contains("no such file"), "{e}");
+        assert!(failed.verdict(3).is_ok());
+    }
 
     #[test]
     fn silence_reads_as_the_floor() {

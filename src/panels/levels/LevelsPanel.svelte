@@ -6,13 +6,16 @@
   Levels panel: the output level, left and right, on a dB scale from
   -60 to 0. It follows whatever is playing: the multitrack session, the
   Waveform editor's file, or a preview from Files, Drive Manager or
-  Libraries. Click a red over light to clear it.
+  Libraries. Click a red over light to clear it. Docked to the side of the
+  window the bars stand up with the scale on the right; docked along the top
+  or bottom they lie down.
 -->
 <script lang="ts">
   import type { PreviewMeter, PreviewMeterState } from "../../stores/preview-meter";
   import { meterFraction, type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
   import type { SessionStore, SpaceLayout } from "../../stores/session";
   import { channelNames } from "../space/space";
+  import { levelsOrientation, type LevelsOrientation } from "./orientation";
 
   interface Props {
     transport: TransportStore;
@@ -24,6 +27,14 @@
   }
 
   const { transport, wave = null, preview = null, session = null }: Props = $props();
+
+  let boxW = $state(0);
+  let boxH = $state(0);
+  let orientation = $state<LevelsOrientation>("horizontal");
+  $effect(() => {
+    orientation = levelsOrientation(boxW, boxH, orientation);
+  });
+  const vertical = $derived(orientation === "vertical");
 
   let space = $state<SpaceLayout | null>(null);
   $effect(() =>
@@ -84,7 +95,48 @@
   }
 </script>
 
-<section class="levels" class:many={rows.length > 2} style:--rows={rows.length} aria-label="Levels">
+<section
+  class="levels"
+  class:many={rows.length > 2 && !vertical}
+  class:vertical
+  style:--rows={rows.length}
+  aria-label="Levels"
+  bind:clientWidth={boxW}
+  bind:clientHeight={boxH}
+>
+  {#if vertical}
+    {#each rows as row, k (row.label)}
+      {@const m = row.m}
+      <button
+        type="button"
+        class="over vover"
+        class:on={m?.over}
+        style:grid-column={k + 1}
+        title="Went over full scale. Click to clear."
+        aria-label="Clear over light"
+        onclick={clearOver}
+      ></button>
+      <div
+        class="vbar"
+        style:grid-column={k + 1}
+        role="meter"
+        aria-label={row.name}
+        aria-valuemin={-60}
+        aria-valuemax={0}
+        aria-valuenow={m && m.peak > 0 ? Math.max(-60, Math.round(20 * Math.log10(m.peak))) : -60}
+      >
+        <div class="vcover" style:height="{(1 - meterFraction(m?.level ?? 0)) * 100}%"></div>
+        {#if m && m.peak > 0}<div class="vpeak" style:bottom="{meterFraction(m.peak) * 100}%"></div>{/if}
+      </div>
+      <span class="ch vch" style:grid-column={k + 1}>{row.label}</span>
+      <span class="val vval" style:grid-column={k + 1}>{db(m)}</span>
+    {/each}
+    <div class="vscale" style:grid-column={rows.length + 1} aria-hidden="true">
+      {#each TICKS as t (t)}
+        <span style:bottom="{pos(t)}%">{t}</span>
+      {/each}
+    </div>
+  {:else}
   {#each rows as row (row.label)}
     {@const m = row.m}
     <div class="row">
@@ -119,6 +171,7 @@
       {/each}
     </div>
   </div>
+  {/if}
 </section>
 
 <style>
@@ -130,6 +183,75 @@
     padding: 6px 12px;
     box-sizing: border-box;
     background: var(--surface-1);
+  }
+
+  /* Docked to the side: the bars stand up, the scale runs down the right, readouts sit underneath. */
+  .levels.vertical {
+    grid-template-columns: repeat(var(--rows), minmax(26px, 1fr)) 24px;
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    align-content: stretch;
+    justify-items: stretch;
+    column-gap: 4px;
+    row-gap: 3px;
+    padding: 8px 8px;
+    overflow: hidden;
+  }
+
+  .levels.vertical .vover {
+    grid-row: 1;
+    width: 100%;
+    height: 8px;
+  }
+
+  .vbar {
+    grid-row: 2;
+    position: relative;
+    min-height: 0;
+    overflow: hidden;
+    background: linear-gradient(to top, #3d8f6a 0 var(--meter-yellow, 80%), #c9b33f var(--meter-yellow, 80%) var(--meter-red, 95%), #e5534b var(--meter-red, 95%) 100%);
+  }
+
+  .vcover {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: var(--surface-0);
+  }
+
+  .vpeak {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: var(--text);
+    transform: translateY(1px);
+  }
+
+  .vch {
+    grid-row: 3;
+    text-align: center;
+  }
+
+  .vval {
+    grid-row: 4;
+    font-size: 9px;
+    text-align: center;
+  }
+
+  .vscale {
+    grid-row: 2;
+    position: relative;
+    min-height: 0;
+  }
+
+  .vscale span {
+    position: absolute;
+    left: 2px;
+    color: var(--text-faint);
+    font-size: 9px;
+    line-height: 1;
+    transform: translateY(50%);
   }
 
   /* Every speaker channel shares the panel's height, so all of them fit. */

@@ -16,6 +16,7 @@
 -->
 <script lang="ts">
   import Knob from "../../app/Knob.svelte";
+  import ValueField from "./ValueField.svelte";
   import { presetMenu } from "./preset-menu";
   import { exportText, effectsCatalog, learnNoisePrint, pluginOpenWindow, pluginRestart, pluginsRegistry, type EffectInfo, type EffectParamInfo, type LearnSource } from "../../app/core";
   import { markStopped, pluginsVersion, stoppedPlugins } from "../../stores/plugins";
@@ -1044,7 +1045,14 @@
               }}
               oncommit={(t) => setChain(key, `Voice Chain ${p.name} Gain`, fromSlider(p, t))}
             />
-            <span class="val" title={formatParam(p, cur)}>{cur > 0 ? "+" : ""}{cur.toFixed(1)}</span>
+            <span class="val">
+              <ValueField
+                param={p}
+                value={cur}
+                oninput={(v) => dragChain(key, `Voice Chain ${p.name} Gain`, v, v)}
+                oncommit={(v) => setChain(key, `Voice Chain ${p.name} Gain`, v)}
+              />
+            </span>
             {@render bars(k === 0 ? "In" : "Out", k)}
           </div>
         {/each}
@@ -1070,7 +1078,14 @@
             title="Double-click for 100 %"
           />
           <span class="end">Wet</span>
-          <span class="val">{formatParam(MIX, mixShown)}</span>
+          <span class="val">
+            <ValueField
+              param={MIX}
+              value={mixShown}
+              oninput={(v) => dragChain("mix", "Voice Chain Mix", v, v / 100)}
+              oncommit={(v) => setChain("mix", "Voice Chain Mix", v / 100)}
+            />
+          </span>
         </div>
       {/if}
       {#if inWave}
@@ -1572,7 +1587,7 @@
   }
   .io {
     display: grid;
-    grid-template-columns: 46px 20px 32px minmax(0, 1fr);
+    grid-template-columns: 46px 20px 56px minmax(0, 1fr);
     gap: 4px;
     align-items: center;
   }
@@ -1602,7 +1617,7 @@
     text-align: right;
   }
   .io.mixrow {
-    grid-template-columns: 46px auto minmax(0, 1fr) auto 40px;
+    grid-template-columns: 46px auto minmax(0, 1fr) auto 52px;
   }
   .end {
     color: var(--text-faint);

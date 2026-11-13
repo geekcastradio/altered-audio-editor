@@ -13,7 +13,7 @@
 <script lang="ts">
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import { listen } from "@tauri-apps/api/event";
-  import { quickpassLevels, quickpassSpots, type ClipLevels, type SpotsRequest } from "../../app/core";
+  import { quickpassCancel, quickpassLevels, quickpassSpots, type ClipLevels, type SpotsRequest } from "../../app/core";
   import { editor } from "../../stores/editor";
   import type { CommandRunner } from "../../stores/media-pool";
   import type { Preferences } from "../../stores/preferences";
@@ -120,9 +120,10 @@
     found = [];
     done = {};
     scanned = false;
-    // A scan still running belongs to the old type: let it finish unseen.
+    // A scan still running belongs to the old type: stop it.
     scanToken++;
     busy = false;
+    void quickpassCancel().catch(() => {});
   }
   const isBuiltin = $derived(BUILTIN_PRESETS.some((p) => p.name === preset));
   const known = $derived(allPresets.some((p) => p.name === preset && p.settings.scan === s.scan));
@@ -257,10 +258,11 @@
   /** Counts scans, so a scan that was stopped (or whose type changed) never writes its answer. */
   let scanToken = 0;
 
-  /** Stops waiting for the scan. The count keeps going in the background, but its answer is dropped. */
+  /** Stops the scan. The measuring is told to quit, and whatever it still answers is dropped. */
   function cancelScan() {
     scanToken++;
     busy = false;
+    void quickpassCancel().catch(() => {});
     onNotice("Scan stopped.");
   }
 
@@ -510,7 +512,7 @@
     <div class="bar">
       <button type="button" class="go" disabled={busy} onclick={scan}>{busy ? scanLabel(progress) : "Scan"}</button>
       {#if busy}
-        <button type="button" onclick={cancelScan} title="Stop waiting for the scan. Nothing changes.">Cancel</button>
+        <button type="button" onclick={cancelScan} title="Stop the scan. Nothing changes.">Cancel</button>
       {/if}
       <span class="grow"></span>
       <button type="button" disabled={target.length === 0} onclick={() => void fix(target)}>{VERB[s.action]}</button>

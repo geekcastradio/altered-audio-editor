@@ -1112,6 +1112,11 @@ export function quickpassLevels(clipIds: string[], windowMs: number, wave = fals
   return invoke("quickpass_levels", { clipIds, windowMs, wave });
 }
 
+/** Stops a QuickPass scan that is running. Safe to call when none is. */
+export function quickpassCancel(): Promise<void> {
+  return invoke("quickpass_cancel");
+}
+
 export interface GenerateRequest {
   kind: "tone" | "white" | "pink" | "silence";
   seconds: number;

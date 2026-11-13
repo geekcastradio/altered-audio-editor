@@ -266,6 +266,9 @@
   import { setFxCatalog } from "../panels/editor/envelope";
   import type { Finding } from "../panels/quickpass/quickpass";
   import { closeDeadSpace } from "../panels/quickpass/dead-space";
+  import { clipById } from "../panels/editor/clip-lookup";
+  import { revealScroll } from "../panels/editor/reveal";
+  import { tracksWithRoom } from "./place-track";
   import { moveTrack, type TrackSync } from "./sync-tracks";
   import SyncTracksDialog from "./SyncTracksDialog.svelte";
   import { isolatedClips, removeIsolated } from "../panels/quickpass/isolated-clips";
@@ -412,7 +415,9 @@
     if (items.length > 1 && settings.current.dropMany === "tracks") {
       // Side by side: the first on the track under the pointer, the rest on
       // the audio tracks below it, then on new tracks, all from the same time.
-      const below = first ? audio.slice(audio.findIndex((t) => t.id === first)) : [];
+      const widest = Math.max(...items.map((it) => Math.round((it!.info!.length * doc.sample_rate) / it!.info!.sampleRate)));
+      const roomy = new Set(tracksWithRoom(doc, start, widest));
+      const below = first ? audio.slice(audio.findIndex((t) => t.id === first)) : audio.filter((t) => roomy.has(t.id));
       let target = first ?? "";
       items.forEach((it, k) => {
         addMedia(it);
@@ -425,7 +430,8 @@
       });
       return { ops, clips, target };
     }
-    const target = first ?? newTrack(items[0]!, false);
+    const span = items.reduce((n, it) => n + Math.round((it!.info!.length * doc.sample_rate) / it!.info!.sampleRate), 0);
+    const target = first ?? tracksWithRoom(doc, start, span)[0] ?? newTrack(items[0]!, false);
     const list = [];
     let pos = start;
     for (const it of items) {
@@ -1354,15 +1360,11 @@
   // Clip > Time Stretch.
   // Clip > Fit Music to Length.
   let fitFor = $state<string | null>(null);
-  const fitClip = $derived.by(() => {
-    const doc = session.current;
-    if (!doc || !fitFor) return null;
-    for (const t of doc.tracks) for (const c of t.clips) if (c.id === fitFor) return { clip: c, trackId: t.id };
-    return null;
-  });
+  // A plain function, read fresh each time: the cached version kept answering "no clip" and the dialog never opened.
+  const fitClip = () => clipById(session.current, fitFor);
   function planFit(seconds: number): Promise<FitPlan[]> {
     const doc = session.current;
-    const f = fitClip;
+    const f = fitClip();
     const m = f ? doc?.media.find((x) => x.id === f.clip.media_id) : undefined;
     if (!doc || !f || !m) return Promise.reject(new Error("The clip is gone."));
     const rate = m.sample_rate || doc.sample_rate;
@@ -1458,7 +1460,7 @@
 
   async function applyFit(plan: FitPlan) {
     const doc = session.current;
-    const f = fitClip;
+    const f = fitClip();
     const m = f ? doc?.media.find((x) => x.id === f.clip.media_id) : undefined;
     fitFor = null;
     if (!doc || !f || !m) return;
@@ -1468,16 +1470,11 @@
   }
 
   let stretchFor = $state<string | null>(null);
-  const stretchClip = $derived.by(() => {
-    const doc = session.current;
-    if (!doc || !stretchFor) return null;
-    for (const t of doc.tracks) for (const c of t.clips) if (c.id === stretchFor) return c;
-    return null;
-  });
+  const stretchClip = () => clipById(session.current, stretchFor)?.clip ?? null;
 
   async function applyStretch(seconds: number, keepPitch: boolean, toSelection: boolean) {
     const doc = session.current;
-    const clip = stretchClip;
+    const clip = stretchClip();
     if (!doc || !clip) return;
     const m = doc.media.find((x) => x.id === clip.media_id);
     const r = stretchTo(clip, m, doc.sample_rate, Math.round(seconds * doc.sample_rate), keepPitch);
@@ -4548,6 +4545,14 @@
       }),
     ];
     const view = () => session.current?.view;
+    /** Moves the playhead, and scrolls the Editor to it when it jumped out of view. */
+    const seekAndShow = async (to: number, at = 0.5) => {
+      await transport.seek(to);
+      const v = view();
+      if (!v) return;
+      const scroll = revealScroll(v.scroll, Math.round(editor.current().width * v.samples_per_pixel), to, at);
+      if (scroll !== null) session.setView({ ...v, scroll });
+    };
     const zoomBy = (factor: number) => {
       const v = view();
       if (!v) return;
@@ -4577,7 +4582,7 @@
       const slack = Math.max(1, Math.round(doc.sample_rate / 1000));
       const list = [...edges].filter((e) => (dir < 0 ? e < here - slack : e > here + slack));
       const to = list.length ? (dir < 0 ? Math.max(...list) : Math.min(...list)) : dir < 0 ? 0 : contentEnd();
-      return transport.seek(to);
+      return seekAndShow(to);
     };
     /** Where the session's last clip (audio or MIDI) ends. */
     const contentEnd = () => {
@@ -4830,8 +4835,8 @@
       actions.register({ id: "view.zoom-in", run: () => zoomBy(0.5), enabled: () => session.current !== null }),
       actions.register({ id: "view.zoom-out", run: () => zoomBy(2), enabled: () => session.current !== null }),
       actions.register({ id: "view.editor.toggle", run: async () => void (await actions.run(inWave() ? "view.editor.multitrack" : "view.editor.waveform")) }),
-      actions.register({ id: "transport.go-start", run: () => transport.seek(0), enabled: () => session.current !== null }),
-      actions.register({ id: "transport.go-end", run: () => transport.seek(contentEnd()), enabled: () => session.current !== null }),
+      actions.register({ id: "transport.go-start", run: () => seekAndShow(0), enabled: () => session.current !== null }),
+      actions.register({ id: "transport.go-end", run: () => seekAndShow(contentEnd(), 0.9), enabled: () => session.current !== null }),
       actions.register({ id: "transport.prev-edge", run: () => jumpEdge(-1, false), enabled: () => session.current !== null }),
       actions.register({ id: "transport.next-edge", run: () => jumpEdge(1, false), enabled: () => session.current !== null }),
       actions.register({ id: "transport.prev-marker", run: () => jumpEdge(-1, true), enabled: () => session.current !== null }),
@@ -6483,14 +6488,15 @@
   />
 {/if}
 
-{#if fitClip && session.current}
+{#if session.current && fitClip()}
   {@const doc = session.current}
+  {@const fit = fitClip()!}
   {@const sel = timeSel()}
-  {@const fm = doc.media.find((x) => x.id === fitClip.clip.media_id)}
+  {@const fm = doc.media.find((x) => x.id === fit.clip.media_id)}
   <MusicFitDialog
-    clipName={fitClip.clip.name}
-    origin={fitClip.clip.source_in / (fm?.sample_rate || doc.sample_rate)}
-    current={clipEnd(fitClip.clip, mediaOf(doc), doc.sample_rate) / doc.sample_rate - fitClip.clip.start / doc.sample_rate}
+    clipName={fit.clip.name}
+    origin={fit.clip.source_in / (fm?.sample_rate || doc.sample_rate)}
+    current={clipEnd(fit.clip, mediaOf(doc), doc.sample_rate) / doc.sample_rate - fit.clip.start / doc.sample_rate}
     selection={sel ? (sel.end - sel.start) / doc.sample_rate : null}
     plan={planFit}
     onApply={(p) => void applyFit(p).catch(showError)}
@@ -6498,20 +6504,21 @@
   />
 {/if}
 
-{#if stretchClip && session.current}
+{#if session.current && stretchClip()}
   {@const doc = session.current}
-  {@const m = doc.media.find((x) => x.id === stretchClip.media_id)}
+  {@const sc = stretchClip()!}
+  {@const m = doc.media.find((x) => x.id === sc.media_id)}
   {@const sel = timeSel()}
   <StretchDialog
-    clipName={stretchClip.name}
-    natural={naturalLength(stretchClip, m, doc.sample_rate) / doc.sample_rate}
-    current={clipEnd(stretchClip, mediaOf(doc), doc.sample_rate) / doc.sample_rate - stretchClip.start / doc.sample_rate}
-    keepPitch={stretchClip.stretch?.keep_pitch ?? true}
+    clipName={sc.name}
+    natural={naturalLength(sc, m, doc.sample_rate) / doc.sample_rate}
+    current={clipEnd(sc, mediaOf(doc), doc.sample_rate) / doc.sample_rate - sc.start / doc.sample_rate}
+    keepPitch={sc.stretch?.keep_pitch ?? true}
     selection={sel ? (sel.end - sel.start) / doc.sample_rate : null}
-    stretched={!!stretchClip.stretch}
+    stretched={!!sc.stretch}
     onApply={(secs, pitch, toSel) => void applyStretch(secs, pitch, toSel).catch(showError)}
     onReset={() => {
-      const id = stretchClip.id;
+      const id = sc.id;
       stretchFor = null;
       void removeStretch([id]).catch(showError);
     }}
