@@ -211,6 +211,7 @@
     waveSpectralEdit,
     waveApplyChain,
     phaseAlign,
+    syncTracks,
     mixAnalyze,
     setAudioOutput,
     setOutputMap,
@@ -265,6 +266,8 @@
   import { setFxCatalog } from "../panels/editor/envelope";
   import type { Finding } from "../panels/quickpass/quickpass";
   import { closeDeadSpace } from "../panels/quickpass/dead-space";
+  import { moveTrack, type TrackSync } from "./sync-tracks";
+  import SyncTracksDialog from "./SyncTracksDialog.svelte";
   import { isolatedClips, removeIsolated } from "../panels/quickpass/isolated-clips";
   import IsolatedClipsDialog from "../panels/quickpass/IsolatedClipsDialog.svelte";
   import FilesPanel from "../panels/files/FilesPanel.svelte";
@@ -1910,6 +1913,7 @@
   let matchOpen = $state(false);
   let micMixOpen = $state(false);
   let isolatedOpen = $state(false);
+  let syncOpen = $state(false);
 
   async function measureMicMix(ids: string[], options: MixOptions): Promise<MixAnalysis | string> {
     try {
@@ -1960,6 +1964,31 @@
     if (!op) return showNotice("Those clips are locked. Unlock them first (Clip > Lock Position).");
     await session.edit("Remove Isolated Clips", op, sessionHistory);
     showNotice(`Removed ${ids.length} clip${ids.length === 1 ? "" : "s"}. The gaps stay; Close Dead Space can tighten them.`);
+  }
+
+  async function measureSync(firstId: string, secondId: string): Promise<TrackSync | string> {
+    try {
+      return await syncTracks(firstId, secondId);
+    } catch (e) {
+      return String(e);
+    }
+  }
+
+  async function applySync(secondId: string, r: TrackSync) {
+    const d = session.current;
+    if (!d) return;
+    let op: ReturnType<typeof moveTrack>;
+    try {
+      op = moveTrack(d, secondId, r.offset);
+    } catch (e) {
+      if (e instanceof LockedError) return showNotice(e.message);
+      throw e;
+    }
+    if (op === "before-start") return showNotice("Moving that track would push a clip before the start of the session. Move everything later first, then sync.");
+    if (op === "blocked") return showNotice("That track has MIDI clips, which cannot be moved this way yet. Nothing changed.");
+    if (!op) return showNotice("Nothing to move.");
+    await session.edit("Sync Tracks", op, sessionHistory);
+    showNotice(`Moved the track ${(Math.abs(r.offset) / d.sample_rate).toFixed(3)} s ${r.offset > 0 ? "earlier" : "later"}.`);
   }
 
   async function measureEqMatch(sourceId: string, referenceId: string): Promise<MatchFit | string> {
@@ -5672,6 +5701,14 @@
         reason: () => (inWave() ? "Close Dead Space works across the tracks of a Multitrack session." : "Needs clips on the tracks."),
       }),
       actions.register({
+        id: "multitrack.sync-tracks",
+        run: () => {
+          syncOpen = true;
+        },
+        enabled: () => !inWave() && session.current !== null && session.current.tracks.filter((t) => t.clips.length > 0).length >= 2,
+        reason: () => (inWave() ? "Sync Tracks works across the tracks of a Multitrack session." : "Needs two tracks with audio on them."),
+      }),
+      actions.register({
         id: "multitrack.isolated-clips",
         run: () => {
           isolatedOpen = true;
@@ -6337,6 +6374,17 @@
     onAnalyze={measureMicMix}
     onApply={(a) => void writeMicMix(a)}
     onClose={() => (micMixOpen = false)}
+  />
+{/if}
+
+{#if syncOpen && session.current}
+  <SyncTracksDialog
+    tracks={session.current.tracks.filter((t) => t.clips.length > 0).map((t) => ({ id: t.id, name: t.name }))}
+    rate={session.current.sample_rate}
+    initialSecond={editor.current().selectedTrack}
+    onMeasure={measureSync}
+    onApply={applySync}
+    onClose={() => (syncOpen = false)}
   />
 {/if}
 
