@@ -173,7 +173,9 @@ export class SessionFiles {
 
   /** Sessions open behind the one in front, oldest first. */
   get others(): readonly ParkedSession[] {
-    return this.parked;
+    // While a session is being set aside it is briefly both in front and in this list; the Files panel keys rows by id, so list it once.
+    const front = this.d.session.current?.id;
+    return this.parked.filter((p) => p.id !== front);
   }
 
   /** Several sessions can be open at once (the core supports setting them aside). */

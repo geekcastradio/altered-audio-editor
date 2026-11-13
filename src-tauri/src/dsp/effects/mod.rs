@@ -32,6 +32,7 @@ mod restore;
 pub mod reverb;
 pub mod shaped;
 mod space;
+mod speech_denoiser;
 mod stereo;
 mod suite;
 mod true_peak;
@@ -218,6 +219,7 @@ pub fn catalog() -> Vec<EffectInfo> {
         stereo::expander_info(),
         stereo::distortion_info(),
         restore::noise_info(),
+        speech_denoiser::info(),
         print::print_info(),
         print::eraser_info(),
         shaped::shaped_info(),
@@ -452,6 +454,7 @@ pub fn build(slot: &EffectSlot, rate: u32) -> Option<Box<dyn Processor>> {
         "altaudio.speech_leveler" => Box::new(SpeechLeveler::new(&p, rate)),
         "altaudio.gain" => Box::new(Gain(db_to_gain(p.get("gain")))),
         "altaudio.noise_reducer" => Box::new(restore::noise_reducer(&p, rate)),
+        speech_denoiser::ID => Box::new(speech_denoiser::SpeechDenoiser::new(&p, rate)?),
         "altaudio.noise_print" => Box::new(print::print_reducer(&p, rate)),
         "altaudio.sound_eraser" => Box::new(print::sound_eraser(&p, rate)),
         shaped::SHAPED_NOISE => Box::new(shaped::shaped_reducer(&p, rate)),
