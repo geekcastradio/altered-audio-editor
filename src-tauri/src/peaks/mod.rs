@@ -2,29 +2,25 @@
 // Copyright (c) The GeekCast Radio Network, LLC.
 // This file is part of Altered Audio Editor.
 
-//! Waveform peak cache (`.alpk`).
+//! Waveform peaks, kept in memory.
 //!
-//! For each media file we store the minimum and maximum sample of every
+//! For each media file we keep the minimum and maximum sample of every
 //! block of 256 frames, plus coarser levels of 4,096 and 65,536 frames
 //! for zoomed-out views. Values are 16-bit. Every channel is kept, up
 //! to 64.
 //!
-//! The cache is a rebuildable file, not a document, so it is compact
-//! binary rather than JSON. It carries a version and the source file's
-//! size and modified time, and is rebuilt whenever either changes.
-//!
-//! Layout, little-endian:
-//! ```text
-//! magic "ALPK", version u32,
-//! source size u64, source modified (ms since 1970) u64,
-//! sample rate u32, channels u16, reserved u16, length (frames) u64,
-//! level count u32, then per level: block u32, block count u64,
-//! then each level's data: per block, per channel: min i16, max i16.
-//! ```
+//! Nothing is written to disk: the peaks are built the first time a file
+//! is drawn and held while it is in use, so there are no cache files to
+//! pile up or go stale. Each entry carries the source file's size and
+//! modified time and is built again when either changes, so a file that
+//! was saved over is never drawn from its old peaks. A file that changes
+//! while it is being read is not remembered, and neither is an empty
+//! result. Entries are dropped oldest-used first past a memory budget.
 
+use std::collections::HashMap;
 use std::fs;
-use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
@@ -32,11 +28,10 @@ use thiserror::Error;
 
 use crate::codecs::{AudioReader, ProbeError};
 
-const MAGIC: &[u8; 4] = b"ALPK";
-/// 2: shorter files get a finer first level, so zooming in stays smooth.
-const VERSION: u32 = 2;
 /// Frames per block at each level, finest first.
 pub const LEVELS: [u32; 3] = [256, 4096, 65536];
+/// The most memory the held peaks may use, in bytes.
+const BUDGET: usize = 256 * 1024 * 1024;
 
 /// The levels for a file of `length` frames at `rate`: the standard three,
 /// with a finer one in front for files short enough that it stays small
@@ -57,9 +52,9 @@ pub fn levels_for(length: u64, rate: u32) -> Vec<u32> {
 pub enum PeakError {
     #[error("{0}")]
     Decode(#[from] ProbeError),
-    #[error("Peak cache: {0}")]
+    #[error("Peaks: {0}")]
     Io(#[from] std::io::Error),
-    #[error("Peak cache file is damaged.")]
+    #[error("That level of the peaks does not exist.")]
     Corrupt,
     #[error("Cancelled")]
     Cancelled,
@@ -82,34 +77,88 @@ pub struct PeakSummary {
     pub levels: Vec<LevelInfo>,
 }
 
-struct Header {
-    source_size: u64,
-    source_modified: u64,
+/// The built peaks of one file.
+struct Entry {
+    stamp: (u64, u64),
     summary: PeakSummary,
-    data_offset: u64,
+    levels: Vec<Vec<i16>>,
 }
 
-/// FNV-1a, stable across Rust versions, for cache file names.
-fn fnv1a(bytes: &[u8]) -> u64 {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in bytes {
-        h ^= u64::from(*b);
-        h = h.wrapping_mul(0x0100_0000_01b3);
+impl Entry {
+    fn bytes(&self) -> usize {
+        self.levels.iter().map(|l| l.len() * 2).sum()
     }
-    h
 }
 
-/// Where the cache for `source` lives inside `cache_dir`.
-pub fn cache_path(cache_dir: &Path, source: &Path) -> PathBuf {
-    let key = fs::canonicalize(source).unwrap_or_else(|_| source.to_path_buf());
-    let name = source
-        .file_stem()
-        .map(|s| s.to_string_lossy().chars().take(40).collect::<String>())
-        .unwrap_or_default();
-    cache_dir.join(format!(
-        "{name}-{:016x}.alpk",
-        fnv1a(key.to_string_lossy().as_bytes())
-    ))
+struct Slot {
+    entry: Arc<Entry>,
+    used: u64,
+}
+
+#[derive(Default)]
+struct Store {
+    map: HashMap<PathBuf, Slot>,
+    tick: u64,
+}
+
+fn store() -> &'static Mutex<Store> {
+    static STORE: OnceLock<Mutex<Store>> = OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(Store::default()))
+}
+
+fn key_of(source: &Path) -> PathBuf {
+    fs::canonicalize(source).unwrap_or_else(|_| source.to_path_buf())
+}
+
+/// The held entry for a file, if it was built from the file as it is now.
+fn lookup(key: &Path, stamp: (u64, u64)) -> Option<Arc<Entry>> {
+    let mut guard = store().lock().ok()?;
+    let s = &mut *guard;
+    s.tick += 1;
+    let tick = s.tick;
+    let slot = s.map.get_mut(key)?;
+    if slot.entry.stamp == stamp {
+        slot.used = tick;
+        return Some(slot.entry.clone());
+    }
+    // Built from an older version of the file.
+    s.map.remove(key);
+    None
+}
+
+/// Holds an entry, dropping the least recently used ones past the budget.
+fn keep(key: PathBuf, entry: Arc<Entry>) {
+    // An empty result is never held: the file may still be being written.
+    if entry.summary.length == 0 || entry.levels.iter().all(|l| l.is_empty()) {
+        return;
+    }
+    let Ok(mut guard) = store().lock() else {
+        return;
+    };
+    let s = &mut *guard;
+    s.tick += 1;
+    let tick = s.tick;
+    s.map.insert(key.clone(), Slot { entry, used: tick });
+    let mut total: usize = s.map.values().map(|x| x.entry.bytes()).sum();
+    while total > BUDGET {
+        let oldest = s
+            .map
+            .iter()
+            .filter(|(k, _)| **k != key)
+            .min_by_key(|(_, x)| x.used)
+            .map(|(k, _)| k.clone());
+        let Some(k) = oldest else { break };
+        if let Some(gone) = s.map.remove(&k) {
+            total -= gone.entry.bytes();
+        }
+    }
+}
+
+/// Lets go of a file's held peaks.
+pub fn release(source: &Path) {
+    if let Ok(mut s) = store().lock() {
+        s.map.remove(&key_of(source));
+    }
 }
 
 fn source_stamp(source: &Path) -> Result<(u64, u64), PeakError> {
@@ -126,33 +175,44 @@ fn source_stamp(source: &Path) -> Result<(u64, u64), PeakError> {
     Ok((meta.len(), modified))
 }
 
-/// Returns the summary from a valid cache, building it first if needed.
+/// The peaks for a file as it is now: held ones if they match, otherwise built.
+/// `progress` gets values from 0 to 1 and returns false to cancel.
+fn entry_for(
+    source: &Path,
+    progress: &mut impl FnMut(f64) -> bool,
+) -> Result<Arc<Entry>, PeakError> {
+    let key = key_of(source);
+    let mut last = None;
+    // A file saved over while it is read is read again, a few times at most.
+    for _ in 0..3 {
+        let stamp = source_stamp(source)?;
+        if let Some(e) = lookup(&key, stamp) {
+            return Ok(e);
+        }
+        let entry = Arc::new(build(source, stamp, &mut *progress)?);
+        if source_stamp(source).is_ok_and(|now| now == stamp) {
+            keep(key.clone(), entry.clone());
+            return Ok(entry);
+        }
+        last = Some(entry);
+    }
+    Ok(last.expect("the loop ran"))
+}
+
+/// The summary of a file's peaks, building them first if needed.
 /// `progress` gets values from 0 to 1 and returns false to cancel.
 pub fn ensure(
-    cache_dir: &Path,
     source: &Path,
     mut progress: impl FnMut(f64) -> bool,
 ) -> Result<PeakSummary, PeakError> {
-    let cache = cache_path(cache_dir, source);
-    let stamp = source_stamp(source)?;
-    if let Ok(h) = read_header(&cache) {
-        // Caches made before every channel was kept hold two of a
-        // multichannel file's channels: those are made again.
-        let partial =
-            h.summary.channels == 2 && crate::codecs::probe(source).is_ok_and(|i| i.channels > 2);
-        if (h.source_size, h.source_modified) == stamp && !partial {
-            return Ok(h.summary);
-        }
-    }
-    build(source, &cache, stamp, &mut progress)
+    Ok(entry_for(source, &mut progress)?.summary.clone())
 }
 
 fn build(
     source: &Path,
-    cache: &Path,
     stamp: (u64, u64),
     progress: &mut impl FnMut(f64) -> bool,
-) -> Result<PeakSummary, PeakError> {
+) -> Result<Entry, PeakError> {
     let info = crate::codecs::probe(source)?;
     let channels = usize::from(info.channels).clamp(1, 64);
     let mut reader = AudioReader::open(source, channels, None)?;
@@ -231,9 +291,12 @@ fn build(
             })
             .collect(),
     };
-    write(cache, stamp, &summary, &levels)?;
     progress(1.0);
-    Ok(summary)
+    Ok(Entry {
+        stamp,
+        summary,
+        levels,
+    })
 }
 
 pub(crate) fn to_i16(v: f32) -> i16 {
@@ -262,111 +325,11 @@ fn merge(prev: &[i16], channels: usize, factor: usize) -> Vec<i16> {
     out
 }
 
-fn write(
-    path: &Path,
-    stamp: (u64, u64),
-    summary: &PeakSummary,
-    levels: &[Vec<i16>],
-) -> Result<(), PeakError> {
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir)?;
-    }
-    let tmp = path.with_extension("alpk.tmp");
-    {
-        let mut w = BufWriter::new(fs::File::create(&tmp)?);
-        w.write_all(MAGIC)?;
-        w.write_all(&VERSION.to_le_bytes())?;
-        w.write_all(&stamp.0.to_le_bytes())?;
-        w.write_all(&stamp.1.to_le_bytes())?;
-        w.write_all(&summary.sample_rate.to_le_bytes())?;
-        w.write_all(&summary.channels.to_le_bytes())?;
-        w.write_all(&0u16.to_le_bytes())?;
-        w.write_all(&summary.length.to_le_bytes())?;
-        w.write_all(&(summary.levels.len() as u32).to_le_bytes())?;
-        for l in &summary.levels {
-            w.write_all(&l.block.to_le_bytes())?;
-            w.write_all(&l.count.to_le_bytes())?;
-        }
-        for data in levels {
-            for v in data {
-                w.write_all(&v.to_le_bytes())?;
-            }
-        }
-        w.flush()?;
-        w.get_ref().sync_all()?;
-    }
-    fs::rename(&tmp, path)?;
-    Ok(())
-}
-
-fn read_header(path: &Path) -> Result<Header, PeakError> {
-    let mut f = fs::File::open(path)?;
-    let mut fixed = [0u8; 4 + 4 + 8 + 8 + 4 + 2 + 2 + 8 + 4];
-    f.read_exact(&mut fixed).map_err(|_| PeakError::Corrupt)?;
-    if &fixed[0..4] != MAGIC {
-        return Err(PeakError::Corrupt);
-    }
-    let u32_at = |i: usize| u32::from_le_bytes(fixed[i..i + 4].try_into().expect("4 bytes"));
-    let u64_at = |i: usize| u64::from_le_bytes(fixed[i..i + 8].try_into().expect("8 bytes"));
-    if u32_at(4) != VERSION {
-        return Err(PeakError::Corrupt);
-    }
-    let source_size = u64_at(8);
-    let source_modified = u64_at(16);
-    let sample_rate = u32_at(24);
-    let channels = u16::from_le_bytes([fixed[28], fixed[29]]);
-    let length = u64_at(32);
-    let level_count = u32_at(40) as usize;
-    if !(1..=8).contains(&level_count) || !(1..=64).contains(&channels) {
-        return Err(PeakError::Corrupt);
-    }
-    let mut levels = Vec::with_capacity(level_count);
-    for _ in 0..level_count {
-        let mut b = [0u8; 12];
-        f.read_exact(&mut b).map_err(|_| PeakError::Corrupt)?;
-        levels.push(LevelInfo {
-            block: u32::from_le_bytes(b[0..4].try_into().expect("4 bytes")),
-            count: u64::from_le_bytes(b[4..12].try_into().expect("8 bytes")),
-        });
-    }
-    let data_offset = (fixed.len() + level_count * 12) as u64;
-    let expected: u64 = levels
-        .iter()
-        .map(|l| l.count * u64::from(channels) * 4)
-        .sum();
-    if f.metadata()?.len() != data_offset + expected {
-        return Err(PeakError::Corrupt);
-    }
-    Ok(Header {
-        source_size,
-        source_modified,
-        summary: PeakSummary {
-            sample_rate,
-            channels,
-            length,
-            levels,
-        },
-        data_offset,
-    })
-}
-
 /// Raw bytes of one level: per block, per channel, min then max, i16 LE.
-pub fn read_level(cache_dir: &Path, source: &Path, level: usize) -> Result<Vec<u8>, PeakError> {
-    use std::io::{Seek, SeekFrom};
-    let path = cache_path(cache_dir, source);
-    let h = read_header(&path)?;
-    let ch = u64::from(h.summary.channels);
-    let li = h.summary.levels.get(level).ok_or(PeakError::Corrupt)?;
-    let offset: u64 = h.data_offset
-        + h.summary.levels[..level]
-            .iter()
-            .map(|l| l.count * ch * 4)
-            .sum::<u64>();
-    let mut f = fs::File::open(&path)?;
-    f.seek(SeekFrom::Start(offset))?;
-    let mut out = vec![0u8; (li.count * ch * 4) as usize];
-    f.read_exact(&mut out)?;
-    Ok(out)
+pub fn read_level(source: &Path, level: usize) -> Result<Vec<u8>, PeakError> {
+    let entry = entry_for(source, &mut |_| true)?;
+    let data = entry.levels.get(level).ok_or(PeakError::Corrupt)?;
+    Ok(data.iter().flat_map(|v| v.to_le_bytes()).collect())
 }
 
 #[cfg(test)]
@@ -394,11 +357,11 @@ mod tests {
     }
 
     #[test]
-    fn builds_reads_and_reuses_the_cache() {
-        let dir = tempfile::tempdir().unwrap();
+    fn builds_reads_and_reuses_the_peaks() {
         let src = media("stereo_48k_16.wav");
+        release(&src);
         let mut calls = 0;
-        let s = ensure(dir.path(), &src, |_| {
+        let s = ensure(&src, |_| {
             calls += 1;
             true
         })
@@ -422,7 +385,7 @@ mod tests {
         assert_eq!(s.levels[2].count, 6);
         assert_eq!(s.levels[3].count, 1);
 
-        let bytes = read_level(dir.path(), &src, 1).unwrap();
+        let bytes = read_level(&src, 1).unwrap();
         assert_eq!(bytes.len(), 94 * 2 * 4);
         let vals: Vec<i16> = bytes
             .as_chunks::<2>()
@@ -433,9 +396,9 @@ mod tests {
         // A sine tone swings both ways in every block.
         assert!(vals[0] < -1000 && vals[1] > 1000, "{:?}", &vals[..4]);
 
-        // Second call uses the cache: no progress reports.
+        // Second call uses what is held: no progress reports.
         let mut again = 0;
-        let s2 = ensure(dir.path(), &src, |_| {
+        let s2 = ensure(&src, |_| {
             again += 1;
             true
         })
@@ -447,11 +410,10 @@ mod tests {
 
     #[test]
     fn coarse_levels_cover_fine_levels() {
-        let dir = tempfile::tempdir().unwrap();
         let src = media("tone.mp3");
-        ensure(dir.path(), &src, |_| true).unwrap();
-        let fine = read_level(dir.path(), &src, 0).unwrap();
-        let coarse = read_level(dir.path(), &src, 2).unwrap();
+        ensure(&src, |_| true).unwrap();
+        let fine = read_level(&src, 0).unwrap();
+        let coarse = read_level(&src, 2).unwrap();
         let v = |b: &[u8], i: usize| i16::from_le_bytes([b[i * 2], b[i * 2 + 1]]);
         let fine_min = (0..fine.len() / 2)
             .step_by(2)
@@ -461,19 +423,79 @@ mod tests {
         assert_eq!(v(&coarse, 0), fine_min);
     }
 
-    #[test]
-    fn damaged_cache_is_rebuilt() {
-        let dir = tempfile::tempdir().unwrap();
-        let src = media("tone.flac");
-        ensure(dir.path(), &src, |_| true).unwrap();
-        fs::write(cache_path(dir.path(), &src), b"ALPKgarbage").unwrap();
-        let s = ensure(dir.path(), &src, |_| true).unwrap();
-        assert_eq!(s.channels, 1);
-        assert!(read_level(dir.path(), &src, 0).is_ok());
+    fn write_wav(path: &Path, frames: usize, amp: i16) {
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 48_000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut w = hound::WavWriter::create(path, spec).unwrap();
+        for i in 0..frames {
+            w.write_sample(if i % 2 == 0 { amp } else { -amp }).unwrap();
+        }
+        w.finalize().unwrap();
     }
 
     #[test]
-    fn multichannel_cache_reads_back() {
+    fn a_file_saved_over_is_drawn_from_its_new_contents() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("take.wav");
+        write_wav(&src, 4_800, 1_000);
+        let first = ensure(&src, |_| true).unwrap();
+        assert_eq!(first.length, 4_800);
+        write_wav(&src, 9_600, 8_000);
+        // The summary and the levels both come from the new file.
+        let second = ensure(&src, |_| true).unwrap();
+        assert_eq!(second.length, 9_600);
+        let level = read_level(&src, 1).unwrap();
+        assert_eq!(level.len() as u64, second.levels[1].count * 4);
+        let max = i16::from_le_bytes([level[2], level[3]]);
+        assert!(max > 4_000, "{max}");
+    }
+
+    #[test]
+    fn nothing_is_written_beside_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("take.wav");
+        write_wav(&src, 4_800, 1_000);
+        ensure(&src, |_| true).unwrap();
+        read_level(&src, 0).unwrap();
+        // Only the audio file is in the folder: no cache files anywhere.
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn an_empty_result_is_not_held() {
+        let key = PathBuf::from("never-held-empty.wav");
+        let entry = Entry {
+            stamp: (1, 1),
+            summary: PeakSummary {
+                sample_rate: 48_000,
+                channels: 1,
+                length: 0,
+                levels: vec![],
+            },
+            levels: vec![vec![]],
+        };
+        keep(key.clone(), Arc::new(entry));
+        assert!(lookup(&key, (1, 1)).is_none());
+    }
+
+    #[test]
+    fn release_lets_go_and_the_next_call_builds_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("a.wav");
+        write_wav(&src, 4_800, 1_000);
+        ensure(&src, |_| true).unwrap();
+        assert!(lookup(&key_of(&src), source_stamp(&src).unwrap()).is_some());
+        release(&src);
+        assert!(lookup(&key_of(&src), source_stamp(&src).unwrap()).is_none());
+        assert_eq!(ensure(&src, |_| true).unwrap().length, 4_800);
+    }
+
+    #[test]
+    fn multichannel_peaks_read_back() {
         // A 12-channel file: each channel at its own level, so a mix-up shows.
         let dir = tempfile::tempdir().unwrap();
         let src = dir.path().join("twelve.wav");
@@ -491,17 +513,9 @@ mod tests {
             }
         }
         w.finalize().unwrap();
-        let s = ensure(dir.path(), &src, |_| true).unwrap();
+        let s = ensure(&src, |_| true).unwrap();
         assert_eq!(s.channels, 12);
-        // Read again from the cache, not a fresh build.
-        assert_eq!(
-            read_header(&cache_path(dir.path(), &src))
-                .unwrap()
-                .summary
-                .channels,
-            12
-        );
-        let level = read_level(dir.path(), &src, 0).unwrap();
+        let level = read_level(&src, 0).unwrap();
         let max =
             |c: usize| i16::from_le_bytes([level[(c * 2 + 1) * 2], level[(c * 2 + 1) * 2 + 1]]);
         assert!(max(11) > max(0) * 10);

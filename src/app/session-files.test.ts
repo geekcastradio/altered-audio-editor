@@ -273,6 +273,28 @@ describe("several open sessions", () => {
     expect(session.current!.id).toBe(first);
     expect(files.others).toEqual([]);
   });
+  it("never lists the session in front a second time while another is being set aside (each_key_duplicate)", async () => {
+    const { files, session } = setup();
+    const parked = new Map<string, { s: SessionDoc; p: string | null }>();
+    const b = (files as unknown as { d: { backend: SessionFileBackend; onSessions?: () => void } }).d.backend;
+    b.park = async () => void parked.set(session.current!.id, { s: session.current!, p: session.path });
+    b.resume = async (id) => {
+      const x = parked.get(id)!;
+      parked.delete(id);
+      return result(x.s, x.p);
+    };
+    b.open = async (p) => result(withContent(doc(p)), p);
+    const seen: string[][] = [];
+    (files as unknown as { d: { onSessions?: () => void } }).d.onSessions = () => {
+      const ids = [session.current!.id, ...files.others.map((o) => o.id)];
+      seen.push(ids);
+    };
+    await files.open("C:\\Shows\\Two.altaudio");
+    await files.open("C:\\Shows\\Three.altaudio");
+    await files.switchTo(files.others[0]!.id);
+    expect(seen.length).toBeGreaterThan(0);
+    for (const ids of seen) expect(new Set(ids).size).toBe(ids.length);
+  });
 });
 
 describe("sesxSummary", () => {

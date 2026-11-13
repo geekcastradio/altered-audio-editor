@@ -2306,6 +2306,11 @@
   async function closeEverything(): Promise<void> {
     if (!(await files.closeAll())) return;
     for (const r of [...get(waveRowStore)]) if (!(await closeWaveRow(r.path))) return;
+    // Every session is closed, so nothing uses the imported or recorded files any more: clear the list without asking.
+    // Closing the file the Waveform editor has open asks first if it has unsaved edits.
+    const ids = mediaPool.current.items.map((it) => it.id);
+    if (ids.length) await closeWaveIfRemoved(ids, async () => mediaPool.replaceAll([]));
+    actions.invalidate();
   }
   /**
    * File > Close Session and its Media: closes the session in front (asking to save first), then
@@ -5848,12 +5853,10 @@
       }),
       actions.register({
         id: "files.close-all",
-        run: async () => {
-          const ids = mediaPool.current.items.map((it) => it.id);
-          await closeWaveIfRemoved(ids, () => removeFiles(ids));
-        },
-        enabled: () => mediaPool.size > 0,
-        reason: () => "No files in the Files panel.",
+        // The same as File > Close All: every session and every file, asking only to save what has unsaved changes.
+        run: () => closeEverything(),
+        enabled: () => mediaPool.size > 0 || get(sessionRows).length > 0 || get(waveRowStore).length > 0,
+        reason: () => "Nothing is open.",
       }),
       actions.register({
         id: "files.link-media",

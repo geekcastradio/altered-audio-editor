@@ -46,6 +46,8 @@ cpal = "0.18.2"
 # Hardware controllers (MIDI in): faders, buttons, knobs. Local only (see controllers.rs).
 midir = "0.11"
 rubato = "5.0.1"
+# Speech Denoiser: a Rust port of Xiph.Org RNNoise, BSD-3-Clause (see docs/THIRD-PARTY-nnnoiseless.md).
+nnnoiseless = { version = "0.5.2", default-features = false }
 rtrb = "0.4"
 audioadapter-buffers = "5.2"
 symphonia = { version = "0.6.1", default-features = false, features = ["opt-simd", "wav", "aiff", "pcm", "adpcm", "mp3", "flac", "isomp4", "aac", "alac", "ogg", "vorbis", "id3v2"] }

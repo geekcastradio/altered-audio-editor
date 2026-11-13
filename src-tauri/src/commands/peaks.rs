@@ -14,8 +14,14 @@ use tauri::{AppHandle, Emitter};
 
 use crate::peaks::{self, PeakSummary};
 
-fn cache_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(crate::commands::cache::cache_root(app)?.join("peaks"))
+/// The waveform files older versions kept on disk are removed once per run: peaks live in memory now.
+fn remove_old_peak_files(app: &AppHandle) {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        if let Ok(root) = crate::commands::cache::cache_root(app) {
+            let _ = std::fs::remove_dir_all(root.join("peaks"));
+        }
+    });
 }
 
 #[derive(Clone, Serialize)]
@@ -25,13 +31,13 @@ struct Progress {
     progress: f64,
 }
 
-/// Makes sure the peak cache for a file exists and returns its summary.
+/// Builds a file's waveform peaks if they are not held already and returns their summary.
 #[tauri::command]
 pub async fn peaks_ensure(app: AppHandle, path: PathBuf) -> Result<PeakSummary, String> {
-    let dir = cache_dir(&app)?;
+    remove_old_peak_files(&app);
     spawn_blocking(move || {
         let p = path.clone();
-        peaks::ensure(&dir, &path, |progress| {
+        peaks::ensure(&path, |progress| {
             let _ = app.emit(
                 "peaks-progress",
                 Progress {
@@ -48,21 +54,13 @@ pub async fn peaks_ensure(app: AppHandle, path: PathBuf) -> Result<PeakSummary, 
 }
 
 /// One level of peaks as raw little-endian i16 pairs (min, max per channel).
+/// If the file changed since the summary was made, the peaks are built again first.
 #[tauri::command]
-pub async fn peaks_level(app: AppHandle, path: PathBuf, level: usize) -> Result<Response, String> {
-    let dir = cache_dir(&app)?;
-    spawn_blocking(move || {
-        // A cleared cache (Settings > Media and Cache) is rebuilt here.
-        peaks::read_level(&dir, &path, level)
-            .or_else(|_| {
-                peaks::ensure(&dir, &path, |_| true)
-                    .and_then(|_| peaks::read_level(&dir, &path, level))
-            })
-            .map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
-    .map(Response::new)
+pub async fn peaks_level(path: PathBuf, level: usize) -> Result<Response, String> {
+    spawn_blocking(move || peaks::read_level(&path, level).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
+        .map(Response::new)
 }
 
 /// The most frames [`media_frames`] reads at once.
