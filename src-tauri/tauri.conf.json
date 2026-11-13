@@ -71,6 +71,10 @@
       }
     },
     "licenseFile": "../LICENSE",
+    "resources": {
+      "../ATTRIBUTION.md": "licenses/ATTRIBUTION.md",
+      "../docs/THIRD-PARTY-nnnoiseless.md": "licenses/THIRD-PARTY-nnnoiseless.md"
+    },
     "macOS": {
       "entitlements": "Entitlements.plist",
       "hardenedRuntime": true
