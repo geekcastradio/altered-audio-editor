@@ -177,6 +177,7 @@ pub fn run() {
             commands::quickpass::quickpass_levels,
             commands::quickpass::quickpass_spots,
             commands::quickpass::quickpass_repair_copy,
+            commands::quickpass::quickpass_cancel,
             commands::generate::generate_audio,
             commands::spectral::wave_spectrogram,
             commands::spectral::wave_spectral_edit,
