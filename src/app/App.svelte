@@ -264,6 +264,9 @@
   import { effectWindowRequest, hideEffectWindows } from "../panels/voice-chain/effect-window";
   import { setFxCatalog } from "../panels/editor/envelope";
   import type { Finding } from "../panels/quickpass/quickpass";
+  import { closeDeadSpace } from "../panels/quickpass/dead-space";
+  import { isolatedClips, removeIsolated } from "../panels/quickpass/isolated-clips";
+  import IsolatedClipsDialog from "../panels/quickpass/IsolatedClipsDialog.svelte";
   import FilesPanel from "../panels/files/FilesPanel.svelte";
   import DriveManagerPanel from "../panels/drive-manager/DriveManagerPanel.svelte";
   import { prefs } from "../stores/prefs";
@@ -1906,6 +1909,7 @@
   // Effects > Match EQ: tone of one track moved toward another's, as a Parametric EQ on the first.
   let matchOpen = $state(false);
   let micMixOpen = $state(false);
+  let isolatedOpen = $state(false);
 
   async function measureMicMix(ids: string[], options: MixOptions): Promise<MixAnalysis | string> {
     try {
@@ -1923,6 +1927,39 @@
     if (!op) return showNotice("Nothing to write.");
     await session.edit("Auto Mic Mix", op, sessionHistory);
     showNotice(describeMix(a));
+  }
+
+  /** Closes the empty stretches that no track fills, leaving a short pause, as one undo step. */
+  async function runCloseDeadSpace() {
+    const d = session.current;
+    if (!d) return;
+    const withClips = d.tracks.filter((t) => t.clips.length > 0 || (t.midi_clips?.length ?? 0) > 0).map((t) => t.id);
+    if (withClips.length === 0) return showNotice("There is no audio on the tracks yet.");
+    const answer = await promptText("Close Dead Space", "Pause to leave where nobody is talking, in seconds (0 to 2). Stretches where every track is empty get shortened to this.", "0.5");
+    if (answer === null) return;
+    const secs = Number(answer.trim());
+    if (!Number.isFinite(secs) || secs < 0 || secs > 2) return showNotice("Enter a pause between 0 and 2 seconds.");
+    let r;
+    try {
+      r = closeDeadSpace(d, withClips, { pause: Math.round(secs * d.sample_rate), minRemove: Math.round(0.1 * d.sample_rate) });
+    } catch (e) {
+      if (e instanceof LockedError) return showNotice(e.message);
+      throw e;
+    }
+    if (r === "blocked") return showNotice("A track has MIDI clips, which cannot be moved this way yet. Nothing changed.");
+    if (!r) return showNotice("There is no dead space longer than the pause. Nothing changed.");
+    await session.edit("Close Dead Space", r.op, sessionHistory);
+    const n = r.spaces.length;
+    showNotice(`Closed ${n} stretch${n === 1 ? "" : "es"}, ${(r.removed / d.sample_rate).toFixed(1)} s shorter in all.`);
+  }
+
+  async function removeIsolatedClips(ids: string[]) {
+    const d = session.current;
+    if (!d) return;
+    const op = removeIsolated(d, ids);
+    if (!op) return showNotice("Those clips are locked. Unlock them first (Clip > Lock Position).");
+    await session.edit("Remove Isolated Clips", op, sessionHistory);
+    showNotice(`Removed ${ids.length} clip${ids.length === 1 ? "" : "s"}. The gaps stay; Close Dead Space can tighten them.`);
   }
 
   async function measureEqMatch(sourceId: string, referenceId: string): Promise<MatchFit | string> {
@@ -5629,6 +5666,20 @@
         reason: () => (inWave() ? "Auto Mic Mix works across the tracks of a Multitrack session." : "Needs two or more tracks with audio on them, one per mic."),
       }),
       actions.register({
+        id: "multitrack.close-dead-space",
+        run: () => void runCloseDeadSpace().catch(showError),
+        enabled: () => !inWave() && session.current !== null && session.current.tracks.some((t) => t.clips.length > 0),
+        reason: () => (inWave() ? "Close Dead Space works across the tracks of a Multitrack session." : "Needs clips on the tracks."),
+      }),
+      actions.register({
+        id: "multitrack.isolated-clips",
+        run: () => {
+          isolatedOpen = true;
+        },
+        enabled: () => !inWave() && session.current !== null && session.current.tracks.some((t) => t.clips.length > 0),
+        reason: () => (inWave() ? "Find Isolated Short Clips works across the tracks of a Multitrack session." : "Needs clips on the tracks."),
+      }),
+      actions.register({
         id: "multitrack.duck-music",
         run: () => void runDuck().catch(showError),
         enabled: () => {
@@ -6286,6 +6337,16 @@
     onAnalyze={measureMicMix}
     onApply={(a) => void writeMicMix(a)}
     onClose={() => (micMixOpen = false)}
+  />
+{/if}
+
+{#if isolatedOpen && session.current}
+  <IsolatedClipsDialog
+    rate={session.current.sample_rate}
+    find={(maxS, gapS) => (session.current ? isolatedClips(session.current, { maxLen: Math.round(maxS * session.current.sample_rate), gap: Math.round(gapS * session.current.sample_rate) }) : [])}
+    onPlay={(c) => void transport.play(Math.max(0, c.start - (session.current?.sample_rate ?? 48000))).catch(showError)}
+    onRemove={removeIsolatedClips}
+    onClose={() => (isolatedOpen = false)}
   />
 {/if}
 
