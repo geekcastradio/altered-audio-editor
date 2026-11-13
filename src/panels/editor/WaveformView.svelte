@@ -29,6 +29,7 @@
   import { laneWidths } from "../time-info/time-info";
   import { timeDisplayItems } from "./time-menu";
   import { levelAt, pointsOf } from "./envelope";
+  import { snapToMarkers } from "./clip-edit";
   import { fit, formatIn, peakRange, pickLevel, rulerTicks, ticksFor, sampleAt, SAMPLE_SPP, xOf, zoomAround, type Viewport } from "./timeline";
   import { mediaFrames, waveZeroCrossings } from "../../app/core";
   import TransportBar from "./TransportBar.svelte";
@@ -587,7 +588,13 @@
     e.preventDefault();
     const clamp = (s: number) => Math.max(0, Math.min(total, s));
     const v = view;
-    const at = (cx: number) => clamp(Math.round(sampleAt(cx - el.getBoundingClientRect().left, v)));
+    // With Snap on and Markers ticked, a click or a drag edge within 8 pixels of a marker lands on it.
+    const sn = editor.current().snap;
+    const snapOn = sn.on && sn.markers;
+    const at = (cx: number) => {
+      const s = clamp(Math.round(sampleAt(cx - el.getBoundingClientRect().left, v)));
+      return snapOn && doc ? clamp(snapToMarkers(s, doc.markers ?? [], Math.round(8 * v.spp))) : s;
+    };
     const anchor = e.shiftKey && selection ? (Math.abs(at(e.clientX) - selection.start) < Math.abs(at(e.clientX) - selection.end) ? selection.end : selection.start) : at(e.clientX);
     let dragged = e.shiftKey && !!selection;
     const move = (ev: PointerEvent) => {
