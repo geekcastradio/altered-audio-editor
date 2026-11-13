@@ -99,6 +99,18 @@ export interface Finding {
   advice: string;
   /** Places to look, as m:ss.mmm. */
   at: string[];
+  /** An effect that deals with it, with the settings the finding calls for. */
+  fix?: { label: string; effect: string; params: Record<string, number> };
+}
+
+/**
+ * Hum Cut settings for a hum finding: the mains frequency it found and enough overtones to reach
+ * the highest tone that stands out (at least two, at most ten).
+ */
+export function humCutFix(h: NonNullable<AnalysisReport["problems"]["hum"]>): NonNullable<Finding["fix"]> {
+  const loud = h.tones.filter((t) => t.excessDb >= 8).map((t) => Math.round(t.hz / h.baseHz));
+  const harmonics = Math.max(2, Math.min(10, Math.max(1, ...loud)));
+  return { label: `Add Hum Cut at ${h.baseHz} Hz`, effect: "altaudio.hum_cut", params: { mains: h.baseHz === 50 ? 1 : 0, harmonics } };
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
@@ -138,6 +150,7 @@ export function findings(report: Pick<AnalysisReport, "problems" | "left" | "rig
           text: `Possible ${h.baseHz} Hz mains hum: tones at ${h.tones.filter((t) => t.excessDb >= 8).map((t) => `${t.hz} Hz`).join(", ")}, the strongest ${h.strengthDb.toFixed(0)} dB above the sound around it.`,
           advice: `Hum Cut (Effects, Filter and EQ) set to ${h.baseHz} Hz removes it with narrow notches. Music with a steady bass note can look like hum, so listen first.`,
           at: [],
+          fix: humCutFix(h),
         }
       : { id: "hum", found: false, text: "No mains hum found.", advice: "", at: [] },
   );

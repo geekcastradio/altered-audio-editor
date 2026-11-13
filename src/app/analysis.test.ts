@@ -3,7 +3,7 @@
 // This file is part of Altered Audio Editor.
 
 import { describe, expect, it } from "vitest";
-import { binDb, dbY, findings, fmtAt, fmtDb, fmtHz, histogramBars, logX, type AnalysisReport } from "./analysis";
+import { binDb, dbY, findings, fmtAt, fmtDb, fmtHz, histogramBars, humCutFix, logX, type AnalysisReport } from "./analysis";
 
 describe("analysis helpers", () => {
   it("formats levels and silence", () => {
@@ -40,6 +40,13 @@ describe("analysis helpers", () => {
     expect(binDb(12)).toBe(-12);
   });
 
+  it("sets Hum Cut for 50 Hz mains and keeps the overtones in range", () => {
+    const only = (tones: { hz: number; excessDb: number }[], baseHz: number) => humCutFix({ baseHz, strengthDb: 20, tones });
+    expect(only([{ hz: 50, excessDb: 20 }, { hz: 100, excessDb: 15 }], 50).params).toEqual({ mains: 1, harmonics: 2 });
+    expect(only([{ hz: 60, excessDb: 20 }], 60).params).toEqual({ mains: 0, harmonics: 2 });
+    expect(only([{ hz: 60, excessDb: 20 }, { hz: 960, excessDb: 20 }], 60).params.harmonics).toBe(10);
+  });
+
   it("reports clicks, flattened peaks, hum and DC offset in plain words", () => {
     const side = { dcOffset: 0, peakDb: -3 };
     const clean = { left: side, right: side, problems: { clicks: 0, clickTimes: [], clipRegions: 0, clipSamples: 0, clipTimes: [], hum: null } } as unknown as AnalysisReport;
@@ -62,6 +69,8 @@ describe("analysis helpers", () => {
     expect(f[1]?.text).toBe("120 flattened peaks (400 samples at full scale), the first 2 listed.");
     expect(f[2]?.text).toBe("Possible 60 Hz mains hum: tones at 60 Hz, 180 Hz, the strongest 24 dB above the sound around it.");
     expect(f[3]?.text).toContain("0.0200");
+    expect(f[2]?.fix).toEqual({ label: "Add Hum Cut at 60 Hz", effect: "altaudio.hum_cut", params: { mains: 0, harmonics: 3 } });
+    expect(f[0]?.fix).toBeUndefined();
     expect(fmtAt(0.0004)).toBe("0:00.000");
     expect(fmtAt(3725.0126)).toBe("62:05.013");
   });

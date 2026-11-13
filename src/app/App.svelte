@@ -2826,13 +2826,14 @@
     },
   };
 
-  async function addEffectFromMenu(effect: string) {
+  async function addEffectFromMenu(effect: string, values?: Record<string, number>) {
     const at = fxTarget();
     if (!at) return;
     fxCatalog ??= await effectsCatalog();
     const info = fxCatalog.find((e) => e.id === effect);
     if (!info) return;
-    const slot = newSlot(info, uuid());
+    const made = newSlot(info, uuid());
+    const slot = values ? { ...made, params: { ...made.params, ...values } } : made;
     const next = addSlot(chainOf(at.chain), slot);
     if (!next) {
       showNotice("That Voice Chain is full: it holds 16 effects.");
@@ -6270,6 +6271,10 @@
       if (analysis) analysis = { ...analysis, tab: t };
     }}
     onMeasure={() => void runAnalysis()}
+    onFix={(effect, values) => {
+      analysis = null;
+      void addEffectFromMenu(effect, values);
+    }}
     onCancel={() => void exportCancel()}
     onClose={() => (analysis = null)}
   />
