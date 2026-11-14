@@ -6,6 +6,7 @@
   Help > User Guide: sections on the left, search on top, the text on the right.
 -->
 <script lang="ts">
+  import Dialog from "./Dialog.svelte";
   import guideSource from "./guide/guide.md?raw";
   import { parseGuide, searchGuide, type Span } from "./guide/guide";
 
@@ -30,86 +31,48 @@
   {#each list as r, i (i)}{#if r.bold}<strong>{r.text}</strong>{:else if r.code}<code>{r.text}</code>{:else}{r.text}{/if}{/each}
 {/snippet}
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && onClose()} />
-
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="backdrop" onclick={onClose}>
-  <div class="dialog" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="guide-title" onclick={(e) => e.stopPropagation()}>
-    <header>
-      <h1 id="guide-title">User Guide</h1>
-      <!-- svelte-ignore a11y_autofocus -->
-      <input type="search" placeholder="Search the guide" aria-label="Search the guide" bind:value={query} autofocus />
-      <button type="button" onclick={onClose}>Close</button>
-    </header>
-    <div class="body">
-      <nav aria-label="Guide sections">
-        {#each shown as s (s.id)}
-          <button type="button" class:on={current?.id === s.id} onclick={() => (picked = s.id)}>{s.title}</button>
-        {:else}
-          <p class="none">No section has all of those words.</p>
+<Dialog title="User Guide" width={900} {onClose}>
+  <input type="search" placeholder="Search the guide" aria-label="Search the guide" bind:value={query} data-autofocus />
+  <div class="reader">
+    <nav aria-label="Guide sections">
+      {#each shown as s (s.id)}
+        <button type="button" class:on={current?.id === s.id} onclick={() => (picked = s.id)}>{s.title}</button>
+      {:else}
+        <p class="none">No section has all of those words.</p>
+      {/each}
+    </nav>
+    <article>
+      {#if current}
+        <h2>{current.title}</h2>
+        {#each current.blocks as b, i (i)}
+          {#if b.kind === "p"}
+            <p>{@render runs(b.spans)}</p>
+          {:else if b.kind === "img"}
+            <figure>
+              {@html picture(b.name)}
+              <figcaption>{b.alt}</figcaption>
+            </figure>
+          {:else if b.kind === "ul"}
+            <ul>{#each b.items as it, j (j)}<li>{@render runs(it)}</li>{/each}</ul>
+          {:else}
+            <ol>{#each b.items as it, j (j)}<li>{@render runs(it)}</li>{/each}</ol>
+          {/if}
         {/each}
-      </nav>
-      <article>
-        {#if current}
-          <h2>{current.title}</h2>
-          {#each current.blocks as b, i (i)}
-            {#if b.kind === "p"}
-              <p>{@render runs(b.spans)}</p>
-            {:else if b.kind === "img"}
-              <figure>
-                {@html picture(b.name)}
-                <figcaption>{b.alt}</figcaption>
-              </figure>
-            {:else if b.kind === "ul"}
-              <ul>{#each b.items as it, j (j)}<li>{@render runs(it)}</li>{/each}</ul>
-            {:else}
-              <ol>{#each b.items as it, j (j)}<li>{@render runs(it)}</li>{/each}</ol>
-            {/if}
-          {/each}
-        {/if}
-      </article>
-    </div>
+      {/if}
+    </article>
   </div>
-</div>
+  {#snippet footer()}
+    <button type="button" onclick={onClose}>Close</button>
+  {/snippet}
+</Dialog>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 5000;
-    display: grid;
-    place-items: center;
-    background: rgba(0, 0, 0, 0.5);
-  }
-  .dialog {
+  .reader {
     display: flex;
-    flex-direction: column;
-    width: min(900px, 94vw);
-    height: min(640px, 90vh);
-    border: 1px solid var(--border-strong);
-    background: var(--surface-2);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
-  }
-  header {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    padding: 10px 14px;
-    border-bottom: 1px solid var(--border);
-  }
-  h1 {
-    margin: 0;
-    font-size: 15px;
-    flex: none;
-  }
-  input {
-    flex: 1;
-    min-width: 0;
-  }
-  .body {
-    display: flex;
-    flex: 1;
-    min-height: 0;
+    height: min(520px, calc(100vh - 210px));
+    min-height: 200px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
   }
   nav {
     display: flex;

@@ -82,13 +82,15 @@
   import MatchEqDialog from "./MatchEqDialog.svelte";
   import MicMixDialog from "./MicMixDialog.svelte";
   import { describeMix, micTracks, mixOps, type MixAnalysis, type MixOptions } from "./multitrack";
-  import { matchEq, type MatchFit } from "./match-eq";
+  import { matchEq, voiceTargetEq, type MatchFit } from "./match-eq";
   import AnalysisDialog from "./AnalysisDialog.svelte";
   import TagsDialog from "./TagsDialog.svelte";
   import { TAGGABLE } from "./tags";
   import type { AnalysisReport, AnalysisTab } from "./analysis";
   import LoudnessMatchDialog from "./LoudnessMatchDialog.svelte";
   import ExportMarkersDialog from "./ExportMarkersDialog.svelte";
+  import InterchangeDialog from "./InterchangeDialog.svelte";
+  import { exportInterchange, type InterchangeKind } from "./core";
   import StretchDialog from "./StretchDialog.svelte";
   import PitchDialog from "./PitchDialog.svelte";
   import { DEFAULT_CHOICES, describeReport, editFor, sanitizeChoices, type PitchChoices, type PitchMode } from "./pitch-edit";
@@ -1537,6 +1539,18 @@
   // File > Export > Markers and Chapters.
   const KEY_CHAPTER_FORMAT = "export.chapters-format";
   let markersExport = $state<{ format: ChapterFormat } | null>(null);
+  const KEY_INTERCHANGE = "export.interchange";
+  let interchangeOpen = $state(false);
+  function interchangeInitial() {
+    const s = prefs.raw(KEY_INTERCHANGE) as { kind?: unknown; rate?: unknown; start?: unknown; color?: unknown } | null;
+    const kinds = ["edl", "marker-edl", "otio"];
+    return {
+      kind: (kinds.includes(s?.kind as string) ? s?.kind : "edl") as InterchangeKind,
+      rate: typeof s?.rate === "string" ? s.rate : "29.97",
+      start: typeof s?.start === "string" ? s.start : "00:00:00:00",
+      color: typeof s?.color === "string" ? s.color : "Blue",
+    };
+  }
 
   /** The document whose markers File > Export > Markers and Chapters writes: the open file in the Waveform editor, else the session. */
   const markerDoc = () => (inWave() ? wave.current : session.current);
@@ -1988,14 +2002,15 @@
     showNotice(`Moved the track ${(Math.abs(r.offset) / d.sample_rate).toFixed(3)} s ${r.offset > 0 ? "earlier" : "later"}.`);
   }
 
-  async function measureEqMatch(sourceId: string, referenceId: string): Promise<MatchFit | string> {
+  async function measureEqMatch(sourceId: string, referenceId: string | null): Promise<MatchFit | string> {
     const r = timeSel();
     const range = r ? { range: [r.start, r.end] as [number, number] } : {};
     try {
       const a = await analyzeAudio({ track: sourceId, ...range });
-      const b = await analyzeAudio({ track: referenceId, ...range });
-      if (a.cancelled || b.cancelled) return "Cancelled. Nothing changed.";
-      const fit = matchEq({ hz: a.spectrumHz, db: a.spectrumDb }, { hz: b.spectrumHz, db: b.spectrumDb });
+      const b = referenceId === null ? null : await analyzeAudio({ track: referenceId, ...range });
+      if (a.cancelled || b?.cancelled) return "Cancelled. Nothing changed.";
+      const src = { hz: a.spectrumHz, db: a.spectrumDb };
+      const fit = b === null ? voiceTargetEq(src) : matchEq(src, { hz: b.spectrumHz, db: b.spectrumDb });
       return fit ?? "There was not enough audio on those tracks to measure.";
     } catch (e) {
       return String(e);
@@ -5108,6 +5123,14 @@
         enabled: () => (markerDoc()?.markers.length ?? 0) > 0,
         reason: () => "Add markers first (Edit > Markers).",
       }),
+      actions.register({
+        id: "file.export.interchange",
+        run: () => {
+          interchangeOpen = true;
+        },
+        enabled: () => !inWave() && (session.current?.tracks.length ?? 0) > 0,
+        reason: () => (inWave() ? "Edit lists need a multitrack session." : "The session has no tracks."),
+      }),
       ...FX_MENU.map((short) =>
         actions.register({
           id: `fx.add.${short}`,
@@ -6523,6 +6546,20 @@
       void removeStretch([id]).catch(showError);
     }}
     onClose={() => (stretchFor = null)}
+  />
+{/if}
+
+{#if interchangeOpen && session.current}
+  <InterchangeDialog
+    hasClips={session.current.tracks.some((t) => t.clips.length > 0)}
+    hasMarkers={session.current.markers.length > 0}
+    initial={interchangeInitial()}
+    run={async (req) => {
+      const folder = await exportPickFolder(sessionFolder(), "Export Edit Lists To");
+      return folder ? await exportInterchange(folder, req) : null;
+    }}
+    onRemember={(v) => prefs.set(KEY_INTERCHANGE, v)}
+    onClose={() => (interchangeOpen = false)}
   />
 {/if}
 

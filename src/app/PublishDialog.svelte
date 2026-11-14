@@ -22,6 +22,7 @@
 </script>
 
 <script lang="ts">
+  import Dialog from "./Dialog.svelte";
   import OutputFormatFields from "./OutputFormatFields.svelte";
   import { describeFormat } from "./output-format";
   import { targetsFor, type LoudnessReport } from "./loudness";
@@ -42,11 +43,6 @@
 
   // svelte-ignore state_referenced_locally
   let s = $state<PublishSettings>({ ...initial, episode: { ...initial.episode }, format: { ...initial.format } });
-  let input = $state<HTMLInputElement | null>(null);
-  $effect(() => {
-    input?.focus();
-  });
-
   const targets = targetsFor();
   const problems = $derived(episodeProblems(s.episode));
   const ok = $derived(problems.length === 0 && s.folder !== "");
@@ -68,28 +64,14 @@
     if (ok) onDone({ ...s, episode: { ...s.episode, title: s.episode.title.trim() } });
   }
 
-  function key(e: KeyboardEvent) {
-    e.stopPropagation();
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onDone(null);
-    } else if (e.key === "Enter" && e.target instanceof HTMLInputElement && e.target.type === "text") {
-      e.preventDefault();
-      done();
-    }
-  }
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="backdrop" onclick={() => onDone(null)}>
-  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="pub-title" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={key}>
-    <h1 id="pub-title">Publish Package</h1>
-
+<Dialog title="Publish Package" width={560} onEnter={done} onClose={() => onDone(null)}>
     <section>
       <h2>Episode</h2>
       <label class="line">
         <span>Title</span>
-        <input type="text" spellcheck="true" maxlength={TITLE_MAX + 50} bind:value={s.episode.title} bind:this={input} />
+        <input type="text" spellcheck="true" maxlength={TITLE_MAX + 50} bind:value={s.episode.title} data-autofocus />
       </label>
       <label class="top">
         <span>Description</span>
@@ -111,7 +93,7 @@
       </div>
       {#each problems as p (p)}<p class="problem">{p}</p>{/each}
     </section>
-
+  
     <section>
       <h2>Save to</h2>
       <div class="line">
@@ -123,7 +105,7 @@
       </div>
       {#if s.folder}<p class="summary">Everything goes into <strong>{where}</strong></p>{/if}
     </section>
-
+  
     <section>
       <h2>Audio</h2>
       <OutputFormatFields bind:format={s.format} sourceLabel="Session" />
@@ -142,41 +124,13 @@
         The finished file is read back and checked.
       </p>
     </section>
-
-    <footer>
-      <button type="button" onclick={() => onDone(null)}>Cancel</button>
-      <button type="button" class="primary" disabled={!ok} onclick={done}>Make Package</button>
-    </footer>
-  </div>
-</div>
+  {#snippet footer()}
+    <button type="button" onclick={() => onDone(null)}>Cancel</button>
+    <button type="button" class="primary" disabled={!ok} onclick={done}>Make Package</button>
+  {/snippet}
+</Dialog>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 5000;
-    display: grid;
-    place-items: center;
-    background: rgba(0, 0, 0, 0.5);
-  }
-
-  .dialog {
-    display: grid;
-    gap: 12px;
-    width: min(560px, 92vw);
-    max-height: 92vh;
-    overflow: auto;
-    padding: 14px;
-    border: 1px solid var(--border-strong);
-    background: var(--surface-2);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
-  }
-
-  h1 {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 600;
-  }
 
   h2 {
     margin: 0;
@@ -194,7 +148,7 @@
     padding: 10px;
     border: 1px solid var(--border);
     border-radius: 3px;
-    background: var(--surface-1);
+    background: transparent;
   }
 
   .line {
@@ -251,26 +205,8 @@
     min-width: 0;
   }
 
-  input[type="text"],
-  textarea,
-  select {
-    min-width: 0;
-    padding: 0 8px;
-    border: 1px solid var(--border-strong);
-    border-radius: 2px;
-    background: var(--surface-0);
-    color: var(--text);
-    font: inherit;
-  }
-
-  input[type="text"] {
+  .folder input {
     flex: 1;
-    height: 24px;
-  }
-
-  textarea {
-    padding: 6px 8px;
-    resize: vertical;
   }
 
   input[readonly] {
@@ -288,29 +224,4 @@
     word-break: break-all;
   }
 
-  footer {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-  }
-
-  button {
-    height: 26px;
-    padding: 0 14px;
-    border: 1px solid var(--border-strong);
-    border-radius: 2px;
-    background: var(--surface-3);
-    color: var(--text);
-    font: inherit;
-  }
-
-  button.primary {
-    border-color: var(--accent);
-    background: var(--accent);
-    color: var(--accent-text, #fff);
-  }
-
-  button:disabled {
-    opacity: 0.5;
-  }
 </style>

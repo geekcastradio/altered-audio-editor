@@ -112,6 +112,7 @@ export const MENUS: readonly Menu[] = [
         item("file.export.stems", "Track Stems..."),
         sep,
         item("file.export.markers", "Markers and Chapters..."),
+        item("file.export.interchange", "Edit Lists (EDL, OTIO)..."),
         item("file.export.sesx", "Multitrack Session (.sesx)..."),
       ]),
       item("file.check-loudness", "Check Loudness..."),

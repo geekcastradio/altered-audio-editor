@@ -9,6 +9,7 @@
   limit are flagged and left unticked. Applying is one undoable step.
 -->
 <script lang="ts">
+  import Dialog from "./Dialog.svelte";
   import { BROADCAST_REGIONS, targetById, targetsFor } from "./loudness";
   import type { MatchBasis, MatchRow } from "./loudness-match";
 
@@ -72,12 +73,7 @@
   }
 </script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && progress === null && onClose()} />
-
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="backdrop" onclick={() => progress === null && onClose()}>
-  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="lm-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
-    <h1 id="lm-title">Loudness Match</h1>
+<Dialog title="Loudness Match" width={560} labelWidth={72} canClose={progress === null} {onClose}>
     <p class="note">
       {mode === "clips" ? "Each selected clip is measured on its own and its gain set to reach the target." : "Each track is measured as a whole and the same gain change goes to every clip on it. Select clips first to match them one by one."}
     </p>
@@ -103,12 +99,14 @@
         <span class="hint">dB. Items already this close are left alone.</span>
       </span>
     </label>
-    <label class="row" hidden={basis !== "loudness"}>
-      <span>Target</span>
-      <select value={targetId} disabled={progress !== null} onchange={(e) => onTarget(e.currentTarget.value)}>
-        {#each targets as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
-      </select>
-    </label>
+    {#if basis === "loudness"}
+      <label class="row">
+        <span>Target</span>
+        <select value={targetId} disabled={progress !== null} onchange={(e) => onTarget(e.currentTarget.value)}>
+          {#each targets as t (t.id)}<option value={t.id}>{t.name}</option>{/each}
+        </select>
+      </label>
+    {/if}
     {#if basis === "loudness" && target.id === "broadcast"}
       <label class="row">
         <span>Region</span>
@@ -117,7 +115,7 @@
         </select>
       </label>
     {/if}
-
+  
     {#if progress !== null}
       <div class="bar"><div style:width="{Math.round(progress * 100)}%"></div></div>
       <p class="note">Measuring... {Math.round(progress * 100)}%</p>
@@ -144,18 +142,16 @@
     {:else}
       <p class="note">Measure to see how far each {mode === "clips" ? "clip" : "track"} is from {basis === "loudness" ? `${target.lufs} LUFS` : `${level} ${basis === "truepeak" ? "dBTP true peak" : basis === "peak" ? "dB peak" : "dB RMS"}`}.</p>
     {/if}
-
-    <footer>
-      {#if progress !== null}
-        <button type="button" onclick={onCancel}>Cancel</button>
-      {:else}
-        <button type="button" onclick={onMeasure}>{rows ? "Measure Again" : "Measure"}</button>
-        <button type="button" class="primary" disabled={chosen.length === 0} onclick={() => onApply(chosen, limit && chosen.some((r) => r.peakWarning) ? limitCeiling : null)}>Apply to {chosen.length} {chosen.length === 1 ? "item" : "items"}</button>
-        <button type="button" onclick={onClose}>Close</button>
-      {/if}
-    </footer>
-  </div>
-</div>
+  {#snippet footer()}
+    {#if progress !== null}
+      <button type="button" onclick={onCancel}>Cancel</button>
+    {:else}
+      <button type="button" onclick={onClose}>Close</button>
+      <button type="button" onclick={onMeasure}>{rows ? "Measure Again" : "Measure"}</button>
+      <button type="button" class="primary" disabled={chosen.length === 0} onclick={() => onApply(chosen, limit && chosen.some((r) => r.peakWarning) ? limitCeiling : null)}>Apply to {chosen.length} {chosen.length === 1 ? "item" : "items"}</button>
+    {/if}
+  {/snippet}
+</Dialog>
 
 <style>
   .limit {
@@ -165,38 +161,8 @@
     margin: 6px 0 10px;
     font-size: 12px;
   }
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 5000;
-    display: grid;
-    place-items: center;
-    background: rgba(0, 0, 0, 0.5);
-  }
-  .dialog {
-    display: grid;
-    gap: 10px;
-    width: min(560px, 94vw);
-    max-height: 86vh;
-    padding: 14px;
-    border: 1px solid var(--border-strong);
-    background: var(--surface-2);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
-  }
-  h1 {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 600;
-  }
   .note {
     margin: 0;
-    color: var(--text-dim);
-  }
-  .row {
-    display: grid;
-    grid-template-columns: 72px minmax(0, 1fr);
-    gap: 8px;
-    align-items: center;
     color: var(--text-dim);
   }
   .tol {
@@ -209,14 +175,6 @@
   }
   .hint {
     color: var(--text-faint);
-  }
-  select {
-    height: 24px;
-    padding: 0 6px;
-    border: 1px solid var(--border-strong);
-    border-radius: 2px;
-    background: var(--surface-1);
-    color: var(--text);
   }
   .bar {
     height: 6px;
@@ -257,13 +215,5 @@
   }
   .off {
     color: var(--text-faint);
-  }
-  footer {
-    display: flex;
-    gap: 6px;
-    justify-content: flex-end;
-  }
-  .primary {
-    border-color: var(--accent);
   }
 </style>

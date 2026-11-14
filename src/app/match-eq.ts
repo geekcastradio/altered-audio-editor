@@ -122,7 +122,9 @@ const BAND_RANGES: [number, number][] = [
 const Q_CHOICES = [0.7, 1.2, 2.2];
 
 /** The Parametric EQ settings that move `source` toward `reference`. */
-export function matchEq(source: Spectrum, reference: Spectrum): MatchFit | null {
+export function matchEq(source: Spectrum, reference: Spectrum, opts: MatchOptions = {}): MatchFit | null {
+  const cap = opts.capDb ?? MAX_GAIN_DB;
+  const strength = opts.strength ?? 1;
   const hz = [...source.hz];
   if (hz.length < 8 || source.db.length !== hz.length) return null;
   const ref = resample(reference, hz);
@@ -138,7 +140,7 @@ export function matchEq(source: Spectrum, reference: Spectrum): MatchFit | null 
   // Keep the overall level: the speech band (200 Hz to 5 kHz) averages zero.
   const band = hz.map((f, i) => (f >= 200 && f <= 5000 ? i : -1)).filter((i) => i >= 0);
   const mean = band.length ? band.reduce((s, i) => s + target[i]!, 0) / band.length : 0;
-  target = target.map((v) => Math.max(-MAX_GAIN_DB, Math.min(MAX_GAIN_DB, v - mean)));
+  target = target.map((v) => Math.max(-cap, Math.min(cap, (v - mean) * strength)));
 
   const weight = hz.map((f) => (inRange(f) ? 1 : 0));
   const rms = (r: readonly number[]) => {
@@ -171,7 +173,7 @@ export function matchEq(source: Spectrum, reference: Spectrum): MatchFit | null 
       num += weight[i]! * residual[i]! * unit[i]!;
       den += weight[i]! * unit[i]! * unit[i]!;
     });
-    const g = den > 0 ? Math.max(-MAX_GAIN_DB, Math.min(MAX_GAIN_DB, num / den)) : 0;
+    const g = den > 0 ? Math.max(-cap, Math.min(cap, num / den)) : 0;
     const gain = Math.abs(g) < MIN_BAND_DB ? 0 : Math.round(g * 10) / 10;
     params[`${key}_freq`] = f0;
     params[`${key}_gain`] = gain;
@@ -193,7 +195,7 @@ export function matchEq(source: Spectrum, reference: Spectrum): MatchFit | null 
       return;
     }
     const f0 = hz[best]!;
-    const gain = Math.round(Math.max(-MAX_GAIN_DB, Math.min(MAX_GAIN_DB, sm[best]! * 1.05)) * 10) / 10;
+    const gain = Math.round(Math.max(-cap, Math.min(cap, sm[best]! * 1.05)) * 10) / 10;
     // Pick the width that leaves the least error.
     let bestQ = Q_CHOICES[0]!;
     let bestErr = Infinity;
@@ -212,4 +214,48 @@ export function matchEq(source: Spectrum, reference: Spectrum): MatchFit | null 
   });
 
   return { params, target, fitted, hz, errorBefore, errorAfter: rms(residual) };
+}
+/** Options for a gentler or capped match. */
+export interface MatchOptions {
+  /** Largest boost or cut asked of any band, dB. Default {@link MAX_GAIN_DB}. */
+  capDb?: number;
+  /** 0 to 1: how much of the difference to apply. Default 1. */
+  strength?: number;
+}
+
+/** Voice AutoEQ: a gentle, capped suggestion, so a stronger fix is a choice and not a default. */
+export const VOICE_TARGET_OPTS: Required<MatchOptions> = { capDb: 6, strength: 0.8 };
+
+/** Relative level of the built-in neutral speech target, dB re 1 kHz: a mild speech tilt. It is a starting point, not tuned by ear. */
+const NEUTRAL: readonly (readonly [number, number])[] = [
+  [50, -9],
+  [100, 6],
+  [200, 6],
+  [400, 3],
+  [1000, 0],
+  [2000, -2],
+  [4000, -4],
+  [8000, -8],
+  [12000, -12],
+  [16000, -18],
+  [20000, -24],
+];
+
+/** The neutral speech target on a log grid from 50 Hz to 20 kHz. */
+export function voiceTarget(points = 64): Spectrum {
+  const hz = Array.from({ length: points }, (_, i) => 50 * Math.pow(400, i / (points - 1)));
+  const db = hz.map((f) => {
+    for (let k = 0; k < NEUTRAL.length - 1; k++) {
+      const [f0, g0] = NEUTRAL[k]!;
+      const [f1, g1] = NEUTRAL[k + 1]!;
+      if (f >= f0 && f <= f1) return g0 + ((g1 - g0) * Math.log(f / f0)) / Math.log(f1 / f0);
+    }
+    return NEUTRAL[0]![1];
+  });
+  return { hz, db };
+}
+
+/** The Parametric EQ settings that move `source` toward the neutral speech target. */
+export function voiceTargetEq(source: Spectrum): MatchFit | null {
+  return matchEq(source, voiceTarget(), VOICE_TARGET_OPTS);
 }
