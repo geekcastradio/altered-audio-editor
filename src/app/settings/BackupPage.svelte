@@ -205,16 +205,95 @@
 </div>
 
 <style>
-  .page { display: flex; flex-direction: column; gap: 10px; }
-  .note, .why { color: var(--muted, #9aa0aa); font-size: 12px; }
-  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .check { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
-  .box { border: 1px solid var(--border, #444); border-radius: 4px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
-  .msg { color: var(--accent, #6aa9ff); }
-  h4 { margin: 8px 0 0; }
-  code { word-break: break-all; }
-  table { border-collapse: collapse; width: 100%; font-size: 12px; }
-  td { padding: 3px 6px; border-bottom: 1px solid var(--border, #333); }
-  .num { text-align: right; font-variant-numeric: tabular-nums; }
-  input.num { width: 56px; }
+  /* Same look as the other Settings pages. Those styles live in SettingsDialog and do not reach this component. */
+  .page {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .note {
+    margin: 0;
+    color: var(--text-dim);
+  }
+  .why {
+    color: var(--text-faint);
+    font-style: italic;
+  }
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .check {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .box {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding: 4px 10px 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+  }
+  legend {
+    padding: 0 4px;
+    color: var(--text-dim);
+  }
+  .msg {
+    margin: 0;
+    color: var(--accent);
+  }
+  h4 {
+    margin: 8px 0 0;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  code {
+    font-family: var(--font-mono);
+    word-break: break-all;
+  }
+  input[type="number"],
+  button {
+    height: 22px;
+    padding: 0 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--surface-1);
+    color: var(--text);
+    font: inherit;
+  }
+  input[type="number"] {
+    width: 64px;
+  }
+  button {
+    flex-shrink: 0;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) {
+    border-color: var(--text-faint);
+  }
+  button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  td {
+    padding: 3px 8px 3px 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+  td.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
 </style>

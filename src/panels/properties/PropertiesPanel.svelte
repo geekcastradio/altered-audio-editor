@@ -3,7 +3,12 @@
   Copyright (c) The GeekCast Radio Network, LLC.
   This file is part of Altered Audio Editor.
 
-  Properties: the selected clip's details and its stretch and pitch.
+  Properties: the selected clip's details, and collapsible sections for
+  Stretch, Remix and Source Channels, laid out as collapsible sections: a
+  header with its state on the right, the settings under it. Remix sets
+  a target length for a music clip and joins it at musical points (the
+  Fit Music engine); Clip > Time Stretch and Clip > Fit Music to Length
+  open these sections.
   Stretch makes a clip play longer or shorter; pitch moves it up or down
   in semitones without changing its length. Source Channels sets how
   much of each of the file's channels goes to the left and right. The type picks how: a
@@ -17,7 +22,11 @@
   import { editor, type EditorState } from "../../stores/editor";
   import { clipLength, type ClipChange, type ClipDoc, type SessionDoc, type SessionStore } from "../../stores/session";
   import { formatIn } from "../editor/timeline";
-  import { naturalLength } from "../editor/stretch";
+  import { naturalLength, parseSeconds } from "../editor/stretch";
+  import { describeJoins, describePlan, sameLength, type FitPlan } from "../editor/musicfit";
+  import { formatSeconds, planDuration } from "./remix";
+  import { isFresh, sectionRequests, type PropertiesSection } from "./focus";
+  import { untrack } from "svelte";
   import { changeFor, settingsOf, varispeedSemitones, type StretchSettings } from "./clip-props";
   import { channelLabels, mixOf, presetFor, presets } from "./channel-mix";
   import type { ChannelMixDoc } from "../../stores/session";
@@ -26,9 +35,16 @@
     session: SessionStore;
     onEdit: (label: string, changes: ClipChange[]) => Promise<void>;
     onError?: (e: unknown) => void;
+    /** Plans for a clip: where to cut or repeat it to reach a length. Leave out to hide Remix. */
+    onFitPlan?: (clipId: string, seconds: number) => Promise<FitPlan[]>;
+    onFitApply?: (clipId: string, plan: FitPlan) => Promise<void>;
+    /** Stretch a clip to a length, optionally moving it onto the time selection. */
+    onStretchTo?: (clipId: string, seconds: number, keepPitch: boolean, toSelection: boolean) => Promise<void>;
+    /** Seconds of the time selection, or null. */
+    selectionSeconds?: () => number | null;
   }
 
-  const { session, onEdit, onError = console.error }: Props = $props();
+  const { session, onEdit, onError = console.error, onFitPlan, onFitApply, onStretchTo, selectionSeconds = () => null }: Props = $props();
 
   let doc = $state<SessionDoc | null>(null);
   $effect(() => session.subscribe((d) => (doc = d)));
@@ -46,6 +62,82 @@
   const t = (s: number) => formatIn(s, rate, ed.timeFormat);
   const st = $derived<StretchSettings | null>(first ? settingsOf(first.clip) : null);
   const looped = $derived(picked.some((p) => p.clip.looped));
+
+  // Sections open and close; a menu command can open one.
+  const sections = $state<Record<PropertiesSection, boolean>>({ stretch: true, remix: false, channels: true });
+  $effect(() =>
+    sectionRequests.subscribe((r) => {
+      if (isFresh(r)) sections[r.section] = true;
+    }),
+  );
+  // The time selection, read again whenever the session changes.
+  const sel = $derived.by(() => {
+    void doc;
+    return selectionSeconds();
+  });
+
+  // Remix: a target length, the plans found for it, and the one picked.
+  const curSecs = $derived(first ? clipLength(first.clip, media, rate) / rate : 0);
+  const origin = $derived(first ? first.clip.source_in / (media?.sample_rate || rate) : 0);
+  let remixFor = $state<string | null>(null);
+  let remixText = $state("");
+  let plans = $state<FitPlan[]>([]);
+  let pick = $state(0);
+  let busy = $state(false);
+  let remixError = $state<string | null>(null);
+  let planned = $state<number | null>(null);
+  const target = $derived(parseSeconds(remixText));
+  const same = $derived(target !== null && sameLength(target, curSecs));
+  const chosen = $derived(plans[pick] ?? null);
+  // A new length needs a new plan.
+  const stale = $derived(chosen !== null && planned !== target);
+  const remixable = $derived(picked.length === 1 && !!first && !first.clip.looped && !first.clip.locked);
+  // A different clip starts with its own length and no plans.
+  $effect(() => {
+    const id = first?.clip.id ?? null;
+    if (id === untrack(() => remixFor)) return;
+    remixFor = id;
+    remixText = formatSeconds(untrack(() => curSecs));
+    plans = [];
+    pick = 0;
+    planned = null;
+    remixError = null;
+  });
+
+  async function findJoins() {
+    const c = first;
+    if (!c || !onFitPlan || target === null || same || busy) return;
+    busy = true;
+    remixError = null;
+    plans = [];
+    pick = 0;
+    try {
+      plans = await onFitPlan(c.clip.id, target);
+      planned = target;
+    } catch (e) {
+      remixError = e instanceof Error ? e.message : String(e);
+    } finally {
+      busy = false;
+    }
+  }
+  async function applyRemix() {
+    const c = first;
+    const p = chosen;
+    if (!c || !p || stale || !onFitApply) return;
+    try {
+      await onFitApply(c.clip.id, p);
+    } catch (e) {
+      onError(e);
+    }
+    plans = [];
+    planned = null;
+  }
+  async function fitToSelection() {
+    const c = first;
+    if (!c || !st || sel === null || !onStretchTo) return;
+    await onStretchTo(c.clip.id, sel, st.type !== "varispeed", true).catch(onError);
+  }
+  const modeText = (m: string) => (m === "live" ? "Real-time" : m === "rendered" ? "Rendered" : "Off");
 
   async function apply(patch: Partial<StretchSettings>, label = "Clip Stretch") {
     const d = doc;
@@ -115,8 +207,10 @@
       <dt>File</dt><dd title={media?.path ?? ""}>{media?.path.split(/[\\/]/).pop() ?? "Missing"}</dd>
     </dl>
 
-    <h2>Stretch</h2>
-    {#if looped}
+    {@render head("stretch", "Stretch", looped ? "Off" : modeText(st.mode))}
+    {#if !sections.stretch}
+      <!-- collapsed -->
+    {:else if looped}
       <p class="note">Looped clips cannot stretch. Turn off Loop Clip first.</p>
     {:else}
       <div class="grid">
@@ -157,6 +251,11 @@
           <button type="button" onclick={() => void apply({ percent: 100, pitch: 0 })}>Reset</button>
         </div>
       {/if}
+      {#if sel !== null && picked.length === 1 && onStretchTo && !first.clip.locked}
+        <div class="quick">
+          <button type="button" title="Stretch the clip to the time selection and move it there" onclick={() => void fitToSelection()}>Fit to Time Selection ({formatSeconds(sel)} s)</button>
+        </div>
+      {/if}
 
       <details>
         <summary>Advanced</summary>
@@ -177,9 +276,70 @@
       </details>
     {/if}
 
+    {#if onFitPlan && onFitApply}
+      {@render head("remix", "Remix", chosen && !stale ? `${formatSeconds(planDuration(chosen))} s` : "Off")}
+      {#if sections.remix}
+        {#if picked.length > 1}
+          <p class="note">Select one clip to remix.</p>
+        {:else if first.clip.looped}
+          <p class="note">Looped clips cannot be remixed. Turn off Loop Clip first.</p>
+        {:else if first.clip.locked}
+          <p class="note">The clip is locked. Unlock it first (Clip > Lock Position).</p>
+        {:else}
+          <p class="note">Makes a music clip an exact length by cutting out or repeating whole sections where the music lines up, so the speed and pitch stay the same.</p>
+          <div class="grid">
+            <span class="lbl">Current Duration</span>
+            <span class="val">{formatSeconds(curSecs)} s</span>
+            <label for="pp-rt">Target Duration</label>
+            <span class="field">
+              <input id="pp-rt" class="target" type="text" spellcheck="false" aria-label="Target length in seconds, or minutes:seconds" bind:value={remixText} onkeydown={(e) => e.key === "Enter" && void findJoins()} />
+              <span class="unit">s</span>
+            </span>
+          </div>
+          <div class="quick">
+            {#each [15, 30, 60] as q (q)}<button type="button" onclick={() => (remixText = formatSeconds(q))}>{q} s</button>{/each}
+            {#if sel !== null}<button type="button" title="Use the length of the time selection" onclick={() => (remixText = formatSeconds(sel))}>Selection</button>{/if}
+          </div>
+          {#if target === null}<p class="warn">Type a length like 30 or 1:15.5.</p>{:else if same}<p class="note">That is already this clip's length. Type the length you want.</p>{/if}
+          <div class="quick">
+            <button type="button" disabled={target === null || same || busy} onclick={() => void findJoins()}>Find Joins</button>
+          </div>
+          {#if busy}
+            <p class="note">Listening for the beat and the sections…</p>
+          {:else if remixError}
+            <p class="warn">{remixError}</p>
+          {:else if chosen}
+            {#if stale}<p class="note">The length changed: find joins again.</p>{/if}
+            <div class="plans" role="radiogroup" aria-label="Plans" class:dim={stale}>
+              {#each plans as p, k (k)}
+                <label class="plan">
+                  <input type="radio" name="pp-plan" value={k} bind:group={pick} disabled={stale} />
+                  <span>
+                    <strong>{k === 0 ? "Best" : `Option ${k + 1}`}</strong>: {describePlan(p)}
+                    <span class="joins">{describeJoins(p, origin)}</span>
+                  </span>
+                </label>
+              {/each}
+            </div>
+            <div class="grid">
+              <span class="lbl">Remix Duration</span>
+              <span class="val">{formatSeconds(planDuration(chosen))} s</span>
+            </div>
+            {#if chosen.quality < 0.8 && !stale}<p class="warn">The join is not a close match and may be heard. A length a few seconds either way, or one that fits whole bars, often joins cleaner.</p>{/if}
+            <div class="quick">
+              <button type="button" class="main" disabled={stale || busy} onclick={() => void applyRemix()}>Apply Remix</button>
+            </div>
+            <p class="note">Apply puts the pieces on the track, joined with short crossfades, as one undo.</p>
+          {/if}
+        {/if}
+      {/if}
+    {/if}
+
     {#if multi}
-    <h2>Source Channels</h2>
-    {#if !mix}
+    {@render head("channels", "Source Channels", `${chans} channels`)}
+    {#if !sections.channels}
+      <!-- collapsed -->
+    {:else if !mix}
       <p class="note">The clip's file is missing.</p>
     {:else if !sameChans}
       <p class="note">The selected clips' files have different channels. Select clips of one kind to set their Source Channels.</p>
@@ -218,6 +378,14 @@
     {/if}
   {/if}
 </section>
+
+{#snippet head(key: PropertiesSection, title: string, summary: string)}
+  <button type="button" class="sec" aria-expanded={sections[key]} onclick={() => (sections[key] = !sections[key])}>
+    <span class="chev" aria-hidden="true">{sections[key] ? "▾" : "▸"}</span>
+    <span class="title">{title}</span>
+    <span class="state">{summary}</span>
+  </button>
+{/snippet}
 
 <style>
   .props {
@@ -262,13 +430,74 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  h2 {
+  .sec {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    width: 100%;
+    height: auto;
     margin: 4px 0 0;
-    padding-top: 6px;
+    padding: 6px 0 2px;
+    border: 0;
     border-top: 1px solid var(--border);
+    border-radius: 0;
+    background: transparent;
     color: var(--text);
-    font-size: inherit;
     font-weight: 600;
+    text-align: left;
+  }
+  .sec .chev {
+    width: 10px;
+    color: var(--text-dim);
+  }
+  .sec .title {
+    flex: 1;
+  }
+  .sec .state {
+    color: var(--text-dim);
+    font-weight: normal;
+  }
+  .lbl {
+    color: var(--text-dim);
+  }
+  .val {
+    font-family: var(--font-mono);
+  }
+  .warn {
+    margin: 0;
+    color: var(--danger);
+  }
+  input.target {
+    width: 96px;
+    color: var(--accent);
+    font-family: var(--font-mono);
+  }
+  .quick {
+    flex-wrap: wrap;
+  }
+  button.main {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent, #fff);
+  }
+  .plans {
+    display: grid;
+    gap: 4px;
+  }
+  .plan {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+  }
+  .plan input {
+    margin: 2px 0 0;
+  }
+  .joins {
+    display: block;
+    color: var(--text-dim);
+  }
+  .dim {
+    color: var(--text-faint);
   }
   .grid {
     display: grid;

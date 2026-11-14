@@ -56,6 +56,7 @@
   import PhaseWheelPanel from "../panels/phase/PhaseWheelPanel.svelte";
   import SpacePanel from "../panels/space/SpacePanel.svelte";
   import PropertiesPanel from "../panels/properties/PropertiesPanel.svelte";
+  import { requestSection } from "../panels/properties/focus";
   import LevelsPanel from "../panels/levels/LevelsPanel.svelte";
   import { PreviewMeter } from "../stores/preview-meter";
   import QuickPassPanel from "../panels/quickpass/QuickPassPanel.svelte";
@@ -1363,10 +1364,10 @@
   // Clip > Fit Music to Length.
   let fitFor = $state<string | null>(null);
   // A plain function, read fresh each time: the cached version kept answering "no clip" and the dialog never opened.
-  const fitClip = () => clipById(session.current, fitFor);
-  function planFit(seconds: number): Promise<FitPlan[]> {
+  const fitClip = (id: string | null = fitFor) => clipById(session.current, id);
+  function planFit(seconds: number, id: string | null = fitFor): Promise<FitPlan[]> {
     const doc = session.current;
-    const f = fitClip();
+    const f = fitClip(id);
     const m = f ? doc?.media.find((x) => x.id === f.clip.media_id) : undefined;
     if (!doc || !f || !m) return Promise.reject(new Error("The clip is gone."));
     const rate = m.sample_rate || doc.sample_rate;
@@ -1460,9 +1461,9 @@
     showNotice(describeAlign(a, now.sample_rate, clip?.name ?? "the clip", track?.name ?? "its track"));
   }
 
-  async function applyFit(plan: FitPlan) {
+  async function applyFit(plan: FitPlan, id: string | null = fitFor) {
     const doc = session.current;
-    const f = fitClip();
+    const f = fitClip(id);
     const m = f ? doc?.media.find((x) => x.id === f.clip.media_id) : undefined;
     fitFor = null;
     if (!doc || !f || !m) return;
@@ -1472,11 +1473,11 @@
   }
 
   let stretchFor = $state<string | null>(null);
-  const stretchClip = () => clipById(session.current, stretchFor)?.clip ?? null;
+  const stretchClip = (id: string | null = stretchFor) => clipById(session.current, id)?.clip ?? null;
 
-  async function applyStretch(seconds: number, keepPitch: boolean, toSelection: boolean) {
+  async function applyStretch(seconds: number, keepPitch: boolean, toSelection: boolean, id: string | null = stretchFor) {
     const doc = session.current;
-    const clip = stretchClip();
+    const clip = stretchClip(id);
     if (!doc || !clip) return;
     const m = doc.media.find((x) => x.id === clip.media_id);
     const r = stretchTo(clip, m, doc.sample_rate, Math.round(seconds * doc.sample_rate), keepPitch);
@@ -2562,7 +2563,22 @@
           },
         };
       case "properties":
-        return { component: asComponent(PropertiesPanel), props: { session, onEdit: editClips, onError: showError } };
+        return {
+          component: asComponent(PropertiesPanel),
+          props: {
+            session,
+            onEdit: editClips,
+            onError: showError,
+            onFitPlan: (id: string, seconds: number) => planFit(seconds, id),
+            onFitApply: (id: string, plan: FitPlan) => applyFit(plan, id),
+            onStretchTo: (id: string, seconds: number, keepPitch: boolean, toSelection: boolean) => applyStretch(seconds, keepPitch, toSelection, id),
+            selectionSeconds: () => {
+              const s = timeSel();
+              const d = session.current;
+              return s && d ? (s.end - s.start) / d.sample_rate : null;
+            },
+          },
+        };
       case "playlist":
         return {
           component: asComponent(PlaylistPanel),
@@ -5701,7 +5717,11 @@
         id: "clip.stretch",
         run: () => {
           const c = selectedClipDocs();
-          if (c.length === 1) stretchFor = c[0]!.id;
+          // Stretch lives in the Properties panel: show it with its section open.
+          if (c.length === 1) {
+            dock.show("properties");
+            requestSection("stretch");
+          }
         },
         enabled: () => {
           const c = selectedClipDocs();
@@ -5786,7 +5806,11 @@
         id: "clip.music-fit",
         run: () => {
           const c = selectedClipDocs();
-          if (c.length === 1) fitFor = c[0]!.id;
+          // Remix (Fit Music to Length) lives in the Properties panel: show it with its section open.
+          if (c.length === 1) {
+            dock.show("properties");
+            requestSection("remix");
+          }
         },
         enabled: () => {
           const c = selectedClipDocs();
