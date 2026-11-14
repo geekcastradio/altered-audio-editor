@@ -6488,7 +6488,7 @@
   />
 {/if}
 
-{#if session.current && fitClip()}
+{#if fitFor && session.current && fitClip()}
   {@const doc = session.current}
   {@const fit = fitClip()!}
   {@const sel = timeSel()}
@@ -6504,7 +6504,7 @@
   />
 {/if}
 
-{#if session.current && stretchClip()}
+{#if stretchFor && session.current && stretchClip()}
   {@const doc = session.current}
   {@const sc = stretchClip()!}
   {@const m = doc.media.find((x) => x.id === sc.media_id)}

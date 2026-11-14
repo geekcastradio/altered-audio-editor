@@ -67,5 +67,5 @@ Run on the installer build from the draft release. Tick each line.
 - [ ] Drag a panel tab over another panel. Outlined zones appear on that panel: a strip down each side, a strip across the top and bottom, and a box in the middle.
 - [ ] The blue block still shows where the panel will land, and the zone under the pointer matches the block.
 - [ ] Drop in the middle: it joins as a tab. Drop in a side strip: it docks beside. Drop in the top strip: it docks above.
-- [ ] The lines are visible on a narrow panel such as Essential Sound and a wide one such as the Multitrack.
+- [ ] The lines are visible on a narrow side panel and on a wide one such as the Multitrack.
 - [ ] Nothing is left on screen after the drop or after cancelling the drag.
