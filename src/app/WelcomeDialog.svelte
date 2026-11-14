@@ -6,6 +6,7 @@
   Shown on a fresh install, and again when a release adds a page worth stopping for.
 -->
 <script lang="ts">
+  import Dialog from "./Dialog.svelte";
   import type { WelcomePage } from "./welcome";
 
   interface Props {
@@ -29,54 +30,25 @@
   const picture = $derived(pictureOf(page.image));
 </script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && onClose()} />
-
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="backdrop" onclick={onClose}>
-  <div class="dialog" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="welcome-title" onclick={(e) => e.stopPropagation()}>
-    {#if kind === "upgrade"}<p class="kicker">What's new</p>{/if}
-    <h1 id="welcome-title">{page.title}</h1>
-    {#if picture}<img src={picture} alt="" />{/if}
-    {#each page.body as para}<p>{para}</p>{/each}
-    {#if pages.length > 1}<p class="dots" aria-label="Page {at + 1} of {pages.length}">{at + 1} / {pages.length}</p>{/if}
-    <div class="actions">
-      <button type="button" onclick={onGuide}>Open the User Guide</button>
-      <span class="grow"></span>
-      {#if at > 0}<button type="button" onclick={() => (at -= 1)}>Back</button>{/if}
-      {#if last}
-        <button type="button" class="primary" onclick={onClose}>{kind === "install" ? "Start Editing" : "Got It"}</button>
-      {:else}
-        <button type="button" class="primary" onclick={() => (at += 1)}>Next</button>
-      {/if}
-    </div>
-  </div>
-</div>
+<Dialog title={page.title} width={480} {onClose}>
+  {#if kind === "upgrade"}<p class="kicker">What's new</p>{/if}
+  {#if picture}<img src={picture} alt="" />{/if}
+  {#each page.body as para}<p class="para">{para}</p>{/each}
+  {#if pages.length > 1}<p class="hint" aria-label="Page {at + 1} of {pages.length}">{at + 1} / {pages.length}</p>{/if}
+  {#snippet footer()}
+    <button type="button" class="start" onclick={onGuide}>Open the User Guide</button>
+    {#if at > 0}<button type="button" onclick={() => (at -= 1)}>Back</button>{/if}
+    {#if last}
+      <button type="button" class="primary" onclick={onClose}>{kind === "install" ? "Start Editing" : "Got It"}</button>
+    {:else}
+      <button type="button" class="primary" onclick={() => (at += 1)}>Next</button>
+    {/if}
+  {/snippet}
+</Dialog>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 5000;
-    display: grid;
-    place-items: center;
-    background: rgba(0, 0, 0, 0.5);
-  }
-  .dialog {
-    width: 480px;
-    max-width: calc(100vw - 32px);
-    max-height: calc(100vh - 32px);
-    overflow: auto;
-    padding: 20px 24px 16px;
-    border: 1px solid var(--border-strong);
-    background: var(--surface-2);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
-  }
-  h1 {
-    margin: 0 0 10px;
-    font-size: 17px;
-  }
   .kicker {
-    margin: 0 0 2px;
+    margin: 0;
     color: var(--text-dim);
     font-size: 11px;
     text-transform: uppercase;
@@ -85,23 +57,10 @@
   img {
     display: block;
     width: 100%;
-    margin: 0 0 12px;
     border: 1px solid var(--border-strong);
   }
-  p {
-    margin: 0 0 8px;
+  .para {
+    margin: 0;
     line-height: 1.45;
-  }
-  .dots {
-    color: var(--text-dim);
-    font-size: 12px;
-  }
-  .actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
-  }
-  .grow {
-    flex: 1;
   }
 </style>

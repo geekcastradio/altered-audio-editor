@@ -231,6 +231,7 @@ pub fn run() {
             commands::export::export_verify,
             commands::export::publish_write_files,
             commands::export::export_pick_folder,
+            commands::interchange::export_interchange,
             commands::export::paths_exist,
             commands::batch::batch_convert,
             commands::batch::batch_cancel,

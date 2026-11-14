@@ -1,0 +1,174 @@
+/*
+  SPDX-License-Identifier: GPL-3.0-or-later
+  Copyright (c) The GeekCast Radio Network, LLC.
+  This file is part of Altered Audio Editor.
+
+  Shared look for every dialog built on src/app/Dialog.svelte: one panel,
+  one set of fields and buttons, Cancel on the left and the main action
+  last. A dialog adds only what is its own. Colors come from tokens.css.
+*/
+
+.dlg-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.dlg {
+  --dlg-label: 96px;
+  display: grid;
+  gap: 10px;
+  max-width: 94vw;
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  outline: none;
+}
+
+.dlg h1 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dlg .note,
+.dlg .hint,
+.dlg .warn {
+  margin: 0;
+}
+.dlg .note {
+  color: var(--text-dim);
+}
+.dlg .hint {
+  color: var(--text-faint);
+  font-size: var(--font-size-small);
+}
+.dlg .warn {
+  color: var(--danger);
+}
+
+/* A label above its field. */
+.dlg .stack {
+  display: grid;
+  gap: 4px;
+  color: var(--text-dim);
+}
+
+/* A label on the left, its field on the right. */
+.dlg .row {
+  display: grid;
+  grid-template-columns: var(--dlg-label) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  color: var(--text-dim);
+}
+
+.dlg input[type="text"],
+.dlg input[type="number"],
+.dlg input[type="search"],
+.dlg input[type="password"],
+.dlg select {
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text);
+  font: inherit;
+}
+.dlg textarea {
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
+.dlg textarea:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+.dlg input[type="number"].short {
+  width: 76px;
+}
+.dlg input:focus-visible,
+.dlg select:focus-visible,
+.dlg button:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.dlg fieldset {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* Buttons. Same height and shape everywhere; only the main action is colored. */
+.dlg button {
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.dlg button:hover:not(:disabled) {
+  border-color: var(--text-faint);
+  background: var(--surface-1);
+}
+.dlg button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.dlg button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent, #fff);
+}
+.dlg button.primary:hover:not(:disabled) {
+  background: var(--accent);
+  filter: brightness(1.1);
+}
+
+/* Quick values under a field: lines up with the field, smaller than the action buttons. */
+.dlg .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-left: calc(var(--dlg-label) + 8px);
+}
+.dlg .chips button {
+  height: 22px;
+  padding: 0 8px;
+}
+
+/* Action row: Cancel, then anything secondary, then the main action last. */
+.dlg footer {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+.dlg footer button {
+  min-width: 76px;
+}
+/* A button that belongs on the left, such as a destructive "Remove Stretch". */
+.dlg footer .start {
+  margin-right: auto;
+}

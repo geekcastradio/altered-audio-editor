@@ -1534,3 +1534,26 @@ export function launchPaths(): Promise<string[]> {
 export function onOpenPaths(fn: (paths: string[]) => void): Promise<() => void> {
   return listen<string[]>("open-paths", (e) => fn(e.payload));
 }
+
+/** File > Export > Edit Lists. */
+export type InterchangeKind = "edl" | "marker-edl" | "otio";
+
+export interface InterchangeRequest {
+  kind: InterchangeKind;
+  /** `23.976`, `24`, `25`, `29.97`, `29.97df` or `30`. */
+  rate: string;
+  /** Timecode of the session start, for example `01:00:00:00`. */
+  start: string;
+  /** Resolve marker color name. */
+  color: string;
+}
+
+export interface InterchangeResult {
+  files: string[];
+  warnings: string[];
+}
+
+/** Writes the open session as edit lists into `folder`. Existing files are never overwritten. */
+export function exportInterchange(folder: string, request: InterchangeRequest): Promise<InterchangeResult> {
+  return invoke<InterchangeResult>("export_interchange", { folder, request });
+}

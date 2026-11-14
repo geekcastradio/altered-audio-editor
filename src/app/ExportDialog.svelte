@@ -45,6 +45,7 @@
 </script>
 
 <script lang="ts">
+  import Dialog from "./Dialog.svelte";
   import OutputFormatFields from "./OutputFormatFields.svelte";
   import InfoTip from "./InfoTip.svelte";
   import { PLATFORM } from "../lib/platform";
@@ -74,14 +75,8 @@
 
   // svelte-ignore state_referenced_locally
   let s = $state<ExportSettings>({ ...initial, format: { ...initial.format }, formats: { ...(initial.formats ?? {}) } });
-  let input = $state<HTMLInputElement | null>(null);
   /** The small window that is open, if any. */
   let sub = $state<null | "type" | "settings" | "mix">(null);
-
-  $effect(() => {
-    input?.focus();
-    input?.select();
-  });
 
   const current = $derived(scopes.find((x) => x.scope === s.scope));
   /** A layout with more than two speakers is written as a WAV with one channel per speaker. */
@@ -142,29 +137,17 @@
     if (f) s.folder = f;
   }
 
-  function key(e: KeyboardEvent) {
-    e.stopPropagation();
-    if (e.key === "Enter" && !(e.target instanceof HTMLSelectElement) && !(e.target instanceof HTMLButtonElement)) {
-      e.preventDefault();
-      if (sub) sub = null;
-      else done();
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      if (sub) sub = null;
-      else onDone(null);
-    }
+  function enter() {
+    if (sub) sub = null;
+    else done();
   }
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="backdrop" onclick={() => onDone(null)}>
-  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="export-title" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={key}>
-    <h1 id="export-title">Export Mixdown</h1>
-
+<Dialog title="Export Mixdown" width={520} labelWidth={76} onEnter={enter} onClose={() => onDone(null)}>
     <label class="line">
       <span>File name</span>
       <span class="name">
-        <input type="text" spellcheck="false" bind:value={s.name} bind:this={input} />
+        <input type="text" spellcheck="false" bind:value={s.name} data-autofocus />
         <span class="ext">.{ext}</span>
       </span>
     </label>
@@ -252,80 +235,48 @@
         </div>
       {/if}
     </section>
+  {#snippet footer()}
+    <button type="button" onclick={() => onDone(null)}>Cancel</button>
+    <button type="button" class="primary" disabled={!ok} onclick={done}>Export</button>
+  {/snippet}
+</Dialog>
 
-    <footer>
-      <button type="button" onclick={() => onDone(null)}>Cancel</button>
-      <button type="button" class="primary" disabled={!ok} onclick={done}>Export</button>
-    </footer>
-
-    {#if sub}
-      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-      <div class="sub-backdrop" onclick={() => (sub = null)}>
-        <div class="dialog sub" role="dialog" aria-modal="true" aria-labelledby="export-sub-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
-          {#if sub === "type"}
-            <h1 id="export-sub-title">Sample type</h1>
-            <OutputFormatFields bind:format={s.format} sourceLabel="Same as the session" parts="type" />
-            <p class="note">"Same as the session" keeps what the mix already is. {FORMAT_KINDS.find((k) => k.value === s.format.kind)?.lossy ? "This format is lossy, so it has no bit depth to choose." : ""}</p>
-          {:else if sub === "settings"}
-            <h1 id="export-sub-title">Format settings</h1>
-            <OutputFormatFields bind:format={s.format} sourceLabel="Same as the session" parts="settings" />
-            {#if s.format.kind === "m4a" || s.format.kind === "aac"}
-              <p class="note">AAC is written at 44.1 or 48 kHz, mono or stereo, using the encoder built into Windows.</p>
-            {/if}
-          {:else}
-            <h1 id="export-sub-title">Mixdown options</h1>
-            <div class="scopes" role="radiogroup" aria-label="What to mix">
-              {#each scopes as x (x.scope)}
-                <label class="radio" class:off={x.seconds === null} title={x.seconds === null ? x.reason : ""}>
-                  <input type="radio" name="scope" value={x.scope} bind:group={s.scope} disabled={x.seconds === null} />
-                  {x.label}{x.seconds !== null ? ` (${clock(x.seconds)})` : ""}
-                </label>
-              {/each}
-            </div>
-            {#if spaceLayout}
-              <label class="line wide" title="The same session plays in any layout: pick one for this file. Layouts with more than two speakers are written as WAV with one channel per speaker, labeled for other software. Headphones writes a stereo binaural mix.">
-                <span>Speaker layout</span>
-                <select bind:value={s.speakers}>
-                  {#each SPACE_LAYOUTS as l (l)}<option value={l}>{LAYOUT_NAMES[l]}{l === spaceLayout ? " (the session's)" : ""}</option>{/each}
-                  <option value="binaural">Headphones (binaural stereo)</option>
-                </select>
-              </label>
-            {/if}
-          {/if}
-          <footer><button type="button" class="primary" onclick={() => (sub = null)}>OK</button></footer>
-        </div>
+{#if sub}
+  <Dialog title={sub === "type" ? "Sample type" : sub === "settings" ? "Format settings" : "Mixdown options"} width={440} raised onEnter={enter} onClose={() => (sub = null)}>
+  {#if sub === "type"}
+      <OutputFormatFields bind:format={s.format} sourceLabel="Same as the session" parts="type" />
+      <p class="note">"Same as the session" keeps what the mix already is. {FORMAT_KINDS.find((k) => k.value === s.format.kind)?.lossy ? "This format is lossy, so it has no bit depth to choose." : ""}</p>
+    {:else if sub === "settings"}
+      <OutputFormatFields bind:format={s.format} sourceLabel="Same as the session" parts="settings" />
+      {#if s.format.kind === "m4a" || s.format.kind === "aac"}
+        <p class="note">AAC is written at 44.1 or 48 kHz, mono or stereo, using the encoder built into Windows.</p>
+      {/if}
+    {:else}
+      <div class="scopes" role="radiogroup" aria-label="What to mix">
+        {#each scopes as x (x.scope)}
+          <label class="radio" class:off={x.seconds === null} title={x.seconds === null ? x.reason : ""}>
+            <input type="radio" name="scope" value={x.scope} bind:group={s.scope} disabled={x.seconds === null} />
+            {x.label}{x.seconds !== null ? ` (${clock(x.seconds)})` : ""}
+          </label>
+        {/each}
       </div>
+      {#if spaceLayout}
+        <label class="line wide" title="The same session plays in any layout: pick one for this file. Layouts with more than two speakers are written as WAV with one channel per speaker, labeled for other software. Headphones writes a stereo binaural mix.">
+          <span>Speaker layout</span>
+          <select bind:value={s.speakers}>
+            {#each SPACE_LAYOUTS as l (l)}<option value={l}>{LAYOUT_NAMES[l]}{l === spaceLayout ? " (the session's)" : ""}</option>{/each}
+            <option value="binaural">Headphones (binaural stereo)</option>
+          </select>
+        </label>
+      {/if}
     {/if}
-  </div>
-</div>
+    {#snippet footer()}
+      <button type="button" class="primary" onclick={() => (sub = null)}>OK</button>
+    {/snippet}
+  </Dialog>
+{/if}
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 5000;
-    display: grid;
-    place-items: center;
-    background: rgba(0, 0, 0, 0.5);
-  }
-
-  .dialog {
-    display: grid;
-    gap: 12px;
-    width: min(520px, 92vw);
-    max-height: 92vh;
-    overflow: auto;
-    padding: 14px;
-    border: 1px solid var(--border-strong);
-    background: var(--surface-2);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
-  }
-
-  h1 {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 600;
-  }
 
   h2 {
     margin: 0;
@@ -349,7 +300,7 @@
     padding: 10px;
     border: 1px solid var(--border);
     border-radius: 3px;
-    background: var(--surface-1);
+    background: transparent;
   }
 
   .scopes {
@@ -379,16 +330,11 @@
     font-family: var(--font-mono);
   }
 
-  input[type="text"] {
+  .name input,
+  .folder input,
+  .name select {
     flex: 1;
     min-width: 0;
-    height: 24px;
-    padding: 0 8px;
-    border: 1px solid var(--border-strong);
-    border-radius: 2px;
-    background: var(--surface-0);
-    color: var(--text);
-    font: inherit;
   }
 
   input[readonly] {
@@ -421,36 +367,6 @@
     gap: 6px;
   }
 
-  footer {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-  }
-
-  button {
-    height: 26px;
-    padding: 0 14px;
-    border: 1px solid var(--border-strong);
-    border-radius: 2px;
-    background: var(--surface-3);
-    color: var(--text);
-    font: inherit;
-  }
-
-  button.primary {
-    border-color: var(--accent);
-    background: var(--accent);
-    color: var(--accent-text, #fff);
-  }
-
-  button:disabled {
-    opacity: 0.5;
-  }
-
-  .dialog {
-    position: relative;
-  }
-
   .line > label,
   .line > span:first-child {
     color: var(--text-dim);
@@ -462,18 +378,6 @@
 
   .line.wide {
     grid-template-columns: 110px 1fr;
-  }
-
-  select {
-    flex: 1;
-    min-width: 0;
-    height: 24px;
-    padding: 0 6px;
-    border: 1px solid var(--border-strong);
-    border-radius: 2px;
-    background: var(--surface-0);
-    color: var(--text);
-    font: inherit;
   }
 
   .boxes {
@@ -513,17 +417,4 @@
     padding-left: 22px;
   }
 
-  .sub-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 5100;
-    display: grid;
-    place-items: center;
-    background: rgba(0, 0, 0, 0.45);
-  }
-
-  .dialog.sub {
-    width: min(440px, 90vw);
-    max-height: 80vh;
-  }
 </style>

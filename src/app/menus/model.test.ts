@@ -280,6 +280,7 @@ describe("menu model", () => {
       "clip.to-track-above",
       "clip.to-track-below",
       "file.export.markers",
+      "file.export.interchange",
       "edit.marker.chapter",
       "clip.stretch",
       "clip.properties",

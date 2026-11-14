@@ -98,9 +98,12 @@ pub fn session_from(path: &Path, name: &str) -> Result<Session, String> {
 #[tauri::command]
 pub async fn template_list(app: AppHandle) -> Result<Vec<TemplateEntry>, String> {
     let dir = templates_dir(&app)?;
-    spawn_blocking(move || list_in(&dir))
-        .await
-        .map_err(|e| e.to_string())
+    spawn_blocking(move || {
+        super::template_starters::seed_in(&dir);
+        list_in(&dir)
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// File > Save as Session Template: the open session as a template.

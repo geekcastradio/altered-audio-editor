@@ -8,6 +8,7 @@
   gain when that alone would reach the target safely.
 -->
 <script lang="ts">
+  import Dialog from "./Dialog.svelte";
   import { acxCheck } from "./delivery";
   import { BROADCAST_REGIONS, DEFAULT_TARGET, evaluate, regionById, targetById, targetsFor, type Grade, type LoudnessReport } from "./loudness";
 
@@ -42,150 +43,101 @@
   const time = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 </script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && progress === null && onClose()} />
-
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="backdrop" onclick={() => progress === null && onClose()}>
-  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="loud-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
-    <h1 id="loud-title">Check Loudness</h1>
-    <label class="target">
-      <span>Target</span>
-      <select value={targetId} onchange={(e) => onTarget(e.currentTarget.value)} disabled={progress !== null}>
-        {#each targets as t (t.id)}
-          <option value={t.id}>{t.name}</option>
+<Dialog title="Check Loudness" width={440} labelWidth={60} canClose={progress === null} {onClose}>
+  <label class="row">
+    <span>Target</span>
+    <select value={targetId} onchange={(e) => onTarget(e.currentTarget.value)} disabled={progress !== null}>
+      {#each targets as t (t.id)}
+        <option value={t.id}>{t.name}</option>
+      {/each}
+      <option value={ACX_ID}>Audiobook, ACX (RMS, peak, noise floor)</option>
+    </select>
+  </label>
+  {#if target.id === "broadcast"}
+    <label class="row">
+      <span>Region</span>
+      <select value={region} onchange={(e) => onRegion(e.currentTarget.value)} disabled={progress !== null}>
+        {#each BROADCAST_REGIONS as r (r.id)}
+          <option value={r.id}>{r.name}: {r.standard}, {r.lufs} LUFS, peaks {r.peak} dBTP</option>
         {/each}
-        <option value={ACX_ID}>Audiobook, ACX (RMS, peak, noise floor)</option>
       </select>
     </label>
-    {#if target.id === "broadcast"}
-      <label class="target">
-        <span>Region</span>
-        <select value={region} onchange={(e) => onRegion(e.currentTarget.value)} disabled={progress !== null}>
-          {#each BROADCAST_REGIONS as r (r.id)}
-            <option value={r.id}>{r.name}: {r.standard}, {r.lufs} LUFS, peaks {r.peak} dBTP</option>
-          {/each}
-        </select>
-      </label>
-      <p class="scope">Broadcasters can set their own rules. Check the delivery spec you were given; {regionById(region).standard} is the usual starting point.</p>
-    {/if}
-    {#if acxOn}
-      <p class="scope">Measuring: {scope}. Narration is judged on average level, peak and room tone, not LUFS. Measure the whole finished file, with room tone at the start and end.</p>
-    {:else}
-      <p class="scope">Measuring: {scope}. True peaks should stay at or below {target.peak} dBTP.</p>
-    {/if}
+    <p class="scope">Broadcasters can set their own rules. Check the delivery spec you were given; {regionById(region).standard} is the usual starting point.</p>
+  {/if}
+  {#if acxOn}
+    <p class="scope">Measuring: {scope}. Narration is judged on average level, peak and room tone, not LUFS. Measure the whole finished file, with room tone at the start and end.</p>
+  {:else}
+    <p class="scope">Measuring: {scope}. True peaks should stay at or below {target.peak} dBTP.</p>
+  {/if}
 
-    {#if progress !== null}
-      <div class="bar"><div style:width="{Math.round(progress * 100)}%"></div></div>
-      <p class="scope">Measuring the mix... {Math.round(progress * 100)}%</p>
-    {:else if acx && report}
-      <div class="cards three">
-        {#each acx.rules as rule (rule.id)}
-          <div class="card {rule.grade}">
-            <span class="k">{rule.name}</span>
-            <span class="v">{n(rule.value, "dB")}</span>
-            <span class="s">{rule.limit}</span>
-            <span class="badge">{label[rule.grade]}</span>
-          </div>
-        {/each}
-      </div>
-      {#each acx.advice as line (line)}
-        <p class="advice">{line}</p>
+  {#if progress !== null}
+    <div class="bar"><div style:width="{Math.round(progress * 100)}%"></div></div>
+    <p class="scope">Measuring the mix... {Math.round(progress * 100)}%</p>
+  {:else if acx && report}
+    <div class="cards three">
+      {#each acx.rules as rule (rule.id)}
+        <div class="card {rule.grade}">
+          <span class="k">{rule.name}</span>
+          <span class="v">{n(rule.value, "dB")}</span>
+          <span class="s">{rule.limit}</span>
+          <span class="badge">{label[rule.grade]}</span>
+        </div>
       {/each}
-      <p class="scope">Length {time(report.seconds)}. A pass here is a good sign, not a guarantee: ACX also listens.</p>
-    {:else if verdict && report}
-      <div class="cards">
-        <div class="card {verdict.loudness}">
-          <span class="k">Integrated{target.mono ? " (mono)" : ""}</span>
-          <span class="v">{n(verdict.measured, "LUFS")}</span>
-          <span class="s">{verdict.offset > 0 ? "+" : ""}{verdict.offset.toFixed(1)} LU from {target.lufs}</span>
-          <span class="badge">{label[verdict.loudness]}</span>
-        </div>
-        <div class="card {verdict.peak}">
-          <span class="k">True peak</span>
-          <span class="v">{n(report.truePeak, "dBTP")}</span>
-          <span class="s">limit {target.peak} dBTP</span>
-          <span class="badge">{label[verdict.peak]}</span>
-        </div>
+    </div>
+    {#each acx.advice as line (line)}
+      <p class="advice">{line}</p>
+    {/each}
+    <p class="scope">Length {time(report.seconds)}. A pass here is a good sign, not a guarantee: ACX also listens.</p>
+  {:else if verdict && report}
+    <div class="cards">
+      <div class="card {verdict.loudness}">
+        <span class="k">Integrated{target.mono ? " (mono)" : ""}</span>
+        <span class="v">{n(verdict.measured, "LUFS")}</span>
+        <span class="s">{verdict.offset > 0 ? "+" : ""}{verdict.offset.toFixed(1)} LU from {target.lufs}</span>
+        <span class="badge">{label[verdict.loudness]}</span>
       </div>
-      <dl>
-        <dt>Loudness range</dt>
-        <dd>{n(report.range, "LU")}</dd>
-        <dt>Sample peak</dt>
-        <dd>{n(report.samplePeak, "dBFS")}</dd>
-        <dt>{target.mono ? "Stereo integrated" : "Mono integrated"}</dt>
-        <dd>{n(target.mono ? report.integrated : report.integratedMono, "LUFS")}</dd>
-        <dt>Length</dt>
-        <dd>{time(report.seconds)}</dd>
-      </dl>
-      <p class="advice">{verdict.advice}</p>
+      <div class="card {verdict.peak}">
+        <span class="k">True peak</span>
+        <span class="v">{n(report.truePeak, "dBTP")}</span>
+        <span class="s">limit {target.peak} dBTP</span>
+        <span class="badge">{label[verdict.peak]}</span>
+      </div>
+    </div>
+    <dl>
+      <dt>Loudness range</dt>
+      <dd>{n(report.range, "LU")}</dd>
+      <dt>Sample peak</dt>
+      <dd>{n(report.samplePeak, "dBFS")}</dd>
+      <dt>{target.mono ? "Stereo integrated" : "Mono integrated"}</dt>
+      <dd>{n(target.mono ? report.integrated : report.integratedMono, "LUFS")}</dd>
+      <dt>Length</dt>
+      <dd>{time(report.seconds)}</dd>
+    </dl>
+    <p class="advice">{verdict.advice}</p>
+  {:else}
+    <p class="scope">Measure the mix to see how it compares with the target.</p>
+  {/if}
+  {#snippet footer()}
+    {#if progress !== null}
+      <button type="button" onclick={onCancel}>Cancel</button>
     {:else}
-      <p class="scope">Measure the mix to see how it compares with the target.</p>
-    {/if}
-
-    <footer>
-      {#if progress !== null}
-        <button type="button" onclick={onCancel}>Cancel</button>
-      {:else}
-        {#if acx && acx.gainToTarget !== null && acx.gainIsSafe && acx.rules[0]?.grade !== "pass"}
-          <button type="button" onclick={() => onApplyGain(acx.gainToTarget ?? 0)}>
-            {acx.gainToTarget > 0 ? "Raise" : "Lower"} Master {Math.abs(acx.gainToTarget).toFixed(1)} dB
-          </button>
-        {/if}
-        {#if verdict && verdict.loudness !== "pass" && verdict.gainIsSafe}
-          <button type="button" onclick={() => onApplyGain(verdict.gainToTarget)}>
-            {verdict.gainToTarget > 0 ? "Raise" : "Lower"} Master {Math.abs(verdict.gainToTarget).toFixed(1)} dB
-          </button>
-        {/if}
-        <button type="button" onclick={onMeasure}>{report ? "Measure Again" : "Measure"}</button>
-        <button type="button" class="primary" onclick={onClose}>Close</button>
+      <button type="button" onclick={onClose}>Close</button>
+      {#if acx && acx.gainToTarget !== null && acx.gainIsSafe && acx.rules[0]?.grade !== "pass"}
+        <button type="button" onclick={() => onApplyGain(acx.gainToTarget ?? 0)}>
+          {acx.gainToTarget > 0 ? "Raise" : "Lower"} Master {Math.abs(acx.gainToTarget).toFixed(1)} dB
+        </button>
       {/if}
-    </footer>
-  </div>
-</div>
+      {#if verdict && verdict.loudness !== "pass" && verdict.gainIsSafe}
+        <button type="button" onclick={() => onApplyGain(verdict.gainToTarget)}>
+          {verdict.gainToTarget > 0 ? "Raise" : "Lower"} Master {Math.abs(verdict.gainToTarget).toFixed(1)} dB
+        </button>
+      {/if}
+      <button type="button" class:primary={!report} onclick={onMeasure}>{report ? "Measure Again" : "Measure"}</button>
+    {/if}
+  {/snippet}
+</Dialog>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 5000;
-    display: grid;
-    place-items: center;
-    background: rgba(0, 0, 0, 0.5);
-  }
-
-  .dialog {
-    display: grid;
-    gap: 10px;
-    width: min(440px, 92vw);
-    padding: 14px;
-    border: 1px solid var(--border-strong);
-    background: var(--surface-2);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
-  }
-
-  h1 {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 600;
-  }
-
-  .target {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 8px;
-    align-items: center;
-    color: var(--text-dim);
-  }
-
-  select {
-    height: 24px;
-    padding: 0 6px;
-    border: 1px solid var(--border-strong);
-    border-radius: 2px;
-    background: var(--surface-1);
-    color: var(--text);
-    font: inherit;
-  }
 
   .scope {
     margin: 0;
@@ -304,28 +256,4 @@
     font-size: var(--font-size-small);
   }
 
-  footer {
-    display: flex;
-    gap: 6px;
-    justify-content: flex-end;
-  }
-
-  button {
-    min-width: 72px;
-    height: 22px;
-    padding: 0 10px;
-    border: 1px solid var(--border-strong);
-    border-radius: 2px;
-    background: var(--surface-3);
-    color: var(--text);
-    font: inherit;
-  }
-
-  button:hover {
-    border-color: var(--accent);
-  }
-
-  button.primary {
-    border-color: var(--accent);
-  }
 </style>
