@@ -133,6 +133,8 @@ export interface ClipDoc {
   stretch?: StretchDoc | null;
   /** What the clip holds. */
   audio_type?: AudioType | null;
+  /** One take of a set of takes. Only the active one plays. */
+  take?: TakeDoc | null;
   /** Source Channels: how much of each of the file's channels goes left and right. Missing uses the default. */
   channel_mix?: ChannelMixDoc | null;
   /** Plays backwards (from a reversed copy; the file is unchanged). */
@@ -188,6 +190,13 @@ export const STRETCH_MAX = 4;
 export function stretchOf(clip: ClipDoc): number {
   if (clip.looped || !clip.stretch) return 1;
   return Math.max(STRETCH_MIN, Math.min(STRETCH_MAX, clip.stretch.ratio));
+}
+
+/** Marks a clip as one take of a set. */
+export interface TakeDoc {
+  set: string;
+  number: number;
+  active: boolean;
 }
 
 export interface LoopDoc {
@@ -449,6 +458,10 @@ export interface ClipChange {
   audio_type?: AudioType;
   /** Clears the audio type. */
   clear_audio_type?: boolean;
+  /** Marks the clip as a take, or changes which take is chosen. */
+  take?: TakeDoc;
+  /** Takes the clip out of its set of takes. */
+  clear_take?: boolean;
   /** Sets the Source Channels. */
   channel_mix?: ChannelMixDoc;
   /** Back to the default Source Channels for the file. */

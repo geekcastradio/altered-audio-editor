@@ -16,6 +16,10 @@ Your first episode in five steps:
 
 Save often with File > Save. While there are unsaved changes the program also keeps a recovery copy, and offers to recover it if it did not close normally.
 
+Opening files: one audio file opens in the Waveform Editor as itself, and two or more build a Multitrack session. A video file opens as a picture to cut against (see Video). With two or more sessions open, a tab for each runs along the top of the Multitrack. File > Open Recent keeps sessions and audio files. Sessions saved by other editors open too: File > Import Session (.sesx) reads Audition's session files, and File > Import Session (.rpp) reads projects from another editor, bringing tracks, clips, fades, markers and regions (plug-ins, sends and automation are left out, and the notice says what was left behind).
+
+New sessions can start from a template. File > New Session offers Two-Host Show, Solo Voiceover and Audiobook, and File > Save as Session Template makes your own. Templates are ordinary: rename, change or delete them.
+
 If you open a session made by an older version, nothing changes until you save. Saving upgrades it and keeps the original in the Backups folder, named with the old version, and a notice says so. Older versions of Altered Audio cannot open a session once it is upgraded. If the backup cannot be made, the save is stopped and your file is left as it was.
 
 ## Privacy
@@ -29,6 +33,10 @@ Add a track with Multitrack > Add > Mono Track or Stereo Track, then arm it with
 Recording Options (Multitrack > Recording Options) holds pre-roll, punch-in and the recording offset. With a time selection, Record starts a pre-roll before it, stops by itself at the end and replaces what was there on the recorded tracks (punch-in). The offset trims a few milliseconds from the start of each take so takes line up with what they were played against.
 
 To record a call, each output device is also offered as an input named "System audio" followed by the device. It records what the computer plays, while microphones record on their own tracks.
+
+**Marking while you record.** Three quick marks drop a numbered marker at the playhead: Add Retake Marker (F9), Add Cut This Marker (Shift+F9) and Add Great Bit Marker (Ctrl+F9). They work in the Multitrack and in the Waveform Editor, and every key can be changed in Keyboard Shortcuts. Window > Review lists your Cut this, Retake and Great bit marks in time order, with Previous and Next to step through them and a filter to show one kind.
+
+**Scrubbing.** Settings > Playback and Recording has Play audio while scrubbing. With it on, dragging the playhead along the ruler plays what is under it. It is approximate: playback restarts at the pointer every moment. It is off by default.
 
 ## Tracks, clips and editing
 
@@ -53,9 +61,39 @@ A **track** holds clips. A **clip** is a piece of an audio file placed on the ti
 
 If a Sync Lock track has audio in the space you are closing, the program stops and says so, because closing it would cut or misalign that track. Turn Sync Lock off for that track to close the gap on one track only.
 
+Press **I** to set the start of the time selection at the playhead and **O** to set the end. Shift+I and Shift+O clear them. With no end set the selection runs to the end of the content. They work in both editors.
+
 Markers (Edit > Add Marker) can mark cues, chapters, ad slots and social clips. Chapters and ad slots can be exported from File > Export > Markers and Chapters.
 
-In the Markers panel, click a marker to pick it and jump to it. Ctrl+click adds or removes one, and Shift+click picks a run. Edit > Markers > Rename Selected Marker, Delete Selected Markers and Delete All Markers work on the pick, and Undo brings them back.
+In the Markers panel, click a marker to pick it and jump to it. Right-click a marker flag on the ruler, or a row in the panel, for Go to Marker, Rename, Convert to Range or Point, Change Marker Type and Delete. The panel has End and Description columns, a search box and resizable columns. Ctrl+click adds or removes one, and Shift+click picks a run. Edit > Markers > Rename Selected Marker, Delete Selected Markers and Delete All Markers work on the pick, and Undo brings them back.
+
+## Takes and comping
+
+When you record a line more than once, put the takes on one track over the same stretch, select those clips and choose Clip > Make Takes from Selected Clips. They become a set of takes: only one plays, and the others stay on the track, drawn dim. The **Takes** panel (Window > Takes) lists each set.
+
+To comp, make a time selection over the part you like and press **Use over selection** beside that take. The editor cuts the takes at the edges of the selection and switches which one plays, as one undo step. With no selection, **Use** plays that take over the whole stretch. A take is cut back to the audio it actually has, so nothing goes silent by accident. Each piece is an ordinary clip, so you can still move, trim, fade or split it.
+
+**Flatten** removes the takes that are not playing and turns the rest into ordinary clips. **Delete** removes one take. Settings > Multitrack turns the take commands off if you never use them; sessions that already have takes still play the chosen ones. Mixdowns and .sesx exports leave out takes that are not playing. A session that has takes plays every take at once in older versions of the program.
+
+## Multi-mic shows and double-enders
+
+These tools are for a conversation recorded with one mic per person, or a call recorded twice. Each works on the whole session and is one undo step.
+
+- **Reduce Bleed** (Multitrack > Reduce Bleed) cleans one mic's track against another's, taking out the other voice that leaked in while keeping the voice on this mic, even when both talk at once. Each clip is cleaned into a copy in a Bleed Reduced folder beside your session. Your originals are not changed. Run it before Auto Mic Mix, and use Sync Tracks first if the tracks are not in step.
+- **Auto Mic Mix and Talk Time** (Multitrack > Auto Mic Mix and Talk Time) finds who is talking and writes a volume lane on each mic that turns it down while someone else speaks. When nobody talks every mic stays open, so the room sound stays even. The same measurement reports how long each voice spoke. The lanes are ordinary automation you can edit.
+- **Sync Tracks** (Multitrack > Sync Tracks) lines up two recordings of the same conversation, such as a call recording against a local mic. It reports how far the second track trails the first and how fast their clocks drift apart, then moves the second track into line. It needs at least two minutes of shared audio. It measures drift but does not correct it yet.
+- **Close Dead Space** (Multitrack > Close Dead Space) shortens every stretch where no track has audio to a pause you pick. Everything after moves left together, so tracks stay in step.
+- **Find Isolated Short Clips** (Multitrack > Find Isolated Short Clips) lists stray bumps, coughs and breaths left behind as tiny clips. You tick the ones to remove.
+
+## Process chains
+
+A process chain is a small text file that lists steps to run on a session in order. Multitrack > Run Process Chain runs one as a single undo step. A chain is checked before anything changes: a step that is unknown, out of range or names a preset or track that does not exist stops it with a message saying which. A step that fails takes back what already ran, unless the chain marks it to be skipped.
+
+The steps are Auto Mic Mix, Close Dead Space, Loudness Target (sets the Master so the mix reaches a target, and stops short rather than push peaks past its limit), Voice Chain Preset (gives a track or every track a preset by name) and QuickPass (runs a preset that removes or turns down what it finds). Example chains are in the docs/chains folder that comes with the program.
+
+## Music, stretching and fitting
+
+Select a clip and open the **Properties** panel. Stretch changes a clip's speed and pitch, with a mode of Off, Real-time or Rendered (HQ), and can fit a clip to the time selection. Remix is for music: set a target length and it finds up to three ways to cut or repeat the music where it lines up, shows the length you would get, and puts the one you pick on the track with short crossfades as one undo. Source Channels sets how much of each channel of the file goes left and right. Clip > Time Stretch and Clip > Fit Music to Length open these sections. Remix applies once: change the length later and you find joins again.
 
 ## Voice Chain and effects
 
@@ -63,7 +101,9 @@ The **Voice Chain** panel (Window > Voice Chain) is a row of effects that every 
 
 Presets are in the Voice Chain's Presets menu. Presets you save appear under Yours.
 
-The built-in effects cover the usual spoken-word jobs: noise reduction and noise print, de-essing, hum cut, compression, limiting, EQ, click and clip repair, and speech leveling. For more, plug-ins are described below.
+The built-in effects cover the usual spoken-word jobs: noise reduction and noise print, de-essing, hum cut, compression, limiting, EQ, click and clip repair, and speech leveling.
+
+The **Speech Denoiser** (under Restoration) takes steady background noise out of a voice, such as fans, hiss and air conditioning. It has one control, Amount, from 0 to 100 percent, starting at 80. Use it on speech only: on music it thins the sound. The **Limiter** has a True peak switch that holds the peaks between samples under the ceiling, which matters for MP3 and AAC encoders and phone speakers. **Match EQ** can match another track or a neutral voice target, which builds a gentle EQ that moves no band more than 6 dB. For more, plug-ins are described below.
 
 **QuickPass** (Effects > QuickPass) scans your clips for silences, short noises such as coughs and bumps, clicks and clipping, and lists what it found before changing anything. Its Remove Silence scan is the quick way to tighten an episode: pick a preset, set how quiet is silent and how long it must last, and choose what to do with each one. Remove cuts it out and can close the gap on that track or on every track, Split cuts the clip in two at each end, Turn Down only lowers it, and Mark adds a range marker. Remove keeps a short pad at each end so words do not run together, and Undo puts everything back in one step.
 
@@ -117,7 +157,7 @@ A MIDI fader box or control surface can run the faders, pans, mute, solo, arm an
 
 Faders recorded in Write, Latch or Touch mode work with a real fader. A Mackie fader with a touch sensor grabs the moment you touch it. Other faders count as let go a moment after they stop moving.
 
-Motorized faders do not follow the screen yet, so after you change tracks the faders sit where your hands left them. Connecting a device sends nothing to it.
+Motorized faders can follow the screen. Tick **Send feedback to the devices** for a control surface in its Mackie layout and the faders move when you move one with the mouse, undo, or change banks. Mute, solo and arm lights follow the tracks and the pan rings show each pan. A fader you are touching is left alone. This is experimental: it was built from the Mackie Control message layout and has not been tried on every surface, so reports are welcome. Nothing is sent to a device unless the option is on and the device is ticked. Faders do not follow automation while a session plays.
 
 ## Plug-ins
 
@@ -133,6 +173,14 @@ Edits here change the file when you save it. Changes to a file used by a session
 
 New audio files you make (File > New Audio File, Paste to New File, Mix Down to New File) appear at the top of the Files panel until you save them.
 
+## Video
+
+File > Open takes video files (MP4, M4V, MOV, WMV, AVI, and MKV where the system can show them). The video becomes the session's reference: the **Video** panel (Window > Video) shows the picture at the playhead with a timecode, and a Video Reference bar under the ruler follows the zoom. Drag the bar to change when the picture starts. The picture is a reference to cut against, not a frame-accurate player. The session remembers which video it uses and where it starts. If the video had sound and the session is empty, the sound goes onto the first track.
+
+Pictures need Windows for now. On Mac and Linux the Video panel says so, and a video's sound still imports. The video file itself is not changed or mixed in.
+
+**Mixdown Into Video** (File > Export > Mixdown Into Video) mixes your session from the video's first picture on and writes a copy of the video with that mix as its sound. The picture is copied without re-encoding, so it is fast and loses nothing. It works for H.264 files in MP4, M4V and MOV, on Windows.
+
 ## Exporting
 
 File > Export has these choices:
@@ -141,17 +189,24 @@ File > Export has these choices:
 - **Time Selection** exports just the selected stretch.
 - **Track Stems** writes one file per track.
 - **Markers and Chapters** writes your chapters and cues.
+- **Edit Lists** writes your cut for other editors: EDLs (one file per track), a marker list, or an OpenTimelineIO file. Choose the frame rate and starting timecode. Fades, automation and effects stay behind, and the dialog lists what could not be carried.
 - **Multitrack Session (.sesx)** writes an Audition session file. Routing and some effects may be left out, and the export tells you what.
 
-Check Loudness (File > Check Loudness) measures your episode against a target. Loudness Match (Effects > Loudness Match, or right-click a clip and choose Loudness Match) sets clip gain so each selected clip, or each track when none are selected, reaches a goal. Match by Loudness (LUFS), Peak, True Peak or Total RMS. The Tolerance box leaves alone anything already within that many dB of the goal, so a clip that is close enough is not touched. Rows that would peak over full scale start unticked, and applying is one undo step.
+Very long recordings are fine: WAV exports and multichannel exports switch to RF64 by themselves past 4 GB, and RF64, BW64 and Wave64 files open.
+
+Check Loudness (File > Check Loudness) measures your episode against a target. Loudness Match (Effects > Loudness Match, or right-click a clip and choose Loudness Match) sets clip gain so each selected clip, or each track when none are selected, reaches a goal. If a match would push a track over its peak limit, it can add a True Peak limiter at that limit instead of leaving the row unticked. Match by Loudness (LUFS), Peak, True Peak or Total RMS. The Tolerance box leaves alone anything already within that many dB of the goal, so a clip that is close enough is not touched. Rows that would peak over full scale start unticked, and applying is one undo step.
 
 Each session can have its own loudness target. Set it in Multitrack > Session Properties under Loudness target, and Check Loudness uses it for that session instead of the choice in Settings. It is saved with the session, so a session template made from it (File > Save as Session Template) starts every new episode with the same target. Leave it on "Use my Settings choice" to keep one target for everything.
 
 ## Files, folders and settings
 
-Open Settings with Edit > Settings. Pages cover audio hardware, playback and recording, appearance, colors and where files go. The cache, recordings and other working files each have a place you can change.
+Open Settings with Edit > Settings. Pages cover audio hardware, playback and recording, appearance, colors and where files go. Every setting you see does something. Channel Routing has a Mono option that plays both sides together on one output, for a single speaker. The cache, recordings and other working files each have a place you can change.
 
-The Files panel lists the media in your session. Collect Session Media (File > Collect Session Media) copies everything a session uses into one folder, which is the safe way to move a session to another computer.
+The **Libraries** panel (Window > Libraries) holds a show's reusable sounds, such as intros, ads, promos, beds and legal reads, sorted into colored bins. Drop files on it to copy them in, drag items onto a bin to file them, or drag them out onto tracks. You can tag items, several at once. Click the show badge to set its color and cover picture. Closing a library only hides it, and Remove Library from List never deletes files. Find Libraries in Folder adds every library it finds, and Export and Import Library List moves your list to another computer (the audio is copied separately).
+
+The Files panel lists the media in your session. Multitrack > Insert Session as Clip mixes another saved session down and places it at the playhead as one clip on a new track, handy for a theme or a reused segment. The clip is a copy as the session was saved: later changes to that session do not reach it.
+
+Collect Session Media (File > Collect Session Media) copies everything a session uses into one folder, which is the safe way to move a session to another computer.
 
 Keyboard shortcuts are listed in Help > Keyboard Shortcuts, and you can change them in Edit > Keyboard Shortcuts. They follow Audition's wherever the same command exists.
 

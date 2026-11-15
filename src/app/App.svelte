@@ -51,6 +51,8 @@
   import { updateCheck, updateDue, updateInstall, type UpdateInfo } from "./update";
   import HistoryPanel from "../panels/history/HistoryPanel.svelte";
   import VideoPanel from "../panels/video/VideoPanel.svelte";
+  import TakesPanel from "../panels/takes/TakesPanel.svelte";
+  import { deleteTakeOps, flattenOps, makeTakesOps, pickRangeOps, silentGaps } from "../panels/editor/takes";
   import EditorPanel from "../panels/editor/EditorPanel.svelte";
   import { peaks, session, transport } from "../stores/open-session";
   import PhaseWheelPanel from "../panels/phase/PhaseWheelPanel.svelte";
@@ -2062,6 +2064,69 @@
     }
   }
 
+  /** Clip > Make Takes from Selected Clips: the chosen clips on one track become takes of one passage. */
+  async function makeTakes(): Promise<void> {
+    const doc = session.current;
+    if (!doc) return;
+    const op = makeTakesOps(doc, editor.current().selectedClips, uuid);
+    if (!op) {
+      showNotice("Select two or more clips on one track that are not locked and not takes yet.");
+      return;
+    }
+    await session.edit("Make Takes", op, sessionHistory);
+    dock.show("takes");
+  }
+
+  /** Takes panel: the chosen take plays over the time selection, or over its whole stretch when nothing is selected. */
+  async function pickTake(set: string, number: number): Promise<void> {
+    const doc = session.current;
+    if (!doc) return;
+    const sel = doc.view.selection;
+    const found = doc.tracks.flatMap((t) => t.clips).filter((c) => c.take?.set === set);
+    if (found.length === 0) return;
+    const media = mediaOf(doc);
+    const a = sel ? sel.start : Math.min(...found.map((c) => c.start));
+    const b = sel ? sel.end : Math.max(...found.map((c) => clipEnd(c, media, doc.sample_rate)));
+    try {
+      const ops = pickRangeOps(doc, set, number, a, b, uuid);
+      if (ops.length === 0) {
+        showNotice("That take has no audio in the selected stretch.");
+        return;
+      }
+      await session.edit(`Use Take ${number}`, { op: "batch", ops }, sessionHistory);
+    } catch (e) {
+      if (e instanceof LockedError) return showNotice(e.message);
+      throw e;
+    }
+  }
+
+  /** Flatten Takes: drops the takes that are not playing and turns the rest into ordinary clips. */
+  async function flattenTakes(sets: string[]): Promise<void> {
+    const doc = session.current;
+    if (!doc) return;
+    const ops = sets.flatMap((s) => flattenOps(doc, s));
+    if (ops.length === 0) return;
+    await session.edit("Flatten Takes", { op: "batch", ops }, sessionHistory);
+  }
+
+  /** Takes panel: removes every piece of one take. */
+  async function deleteTake(set: string, number: number): Promise<void> {
+    const doc = session.current;
+    if (!doc) return;
+    const ops = deleteTakeOps(doc, set, number);
+    if (ops.length === 0) return;
+    await session.edit(`Delete Take ${number}`, { op: "batch", ops }, sessionHistory);
+    const after = session.current;
+    if (after && silentGaps(after, set).length > 0) showNotice("Part of that stretch now has no take playing, so it is silent. Undo brings the take back.");
+  }
+
+  /** The sets of takes that the selected clips belong to. */
+  const selectedTakeSets = () => {
+    const doc = session.current;
+    if (!doc) return [];
+    return [...new Set(findClips(doc, editor.current().selectedClips).flatMap((f) => (f.clip.take ? [f.clip.take.set] : [])))];
+  };
+
   /**
    * Multitrack > Insert Session as Clip: another saved session is mixed down to one file in a folder
    * beside this session, and that file is placed at the playhead on a new track. The clip is a copy as
@@ -2595,6 +2660,17 @@
         return {
           component: asComponent(HistoryPanel),
           props: { stack: sessionHistory, waveStack: waveHistory, shortcutFor, onError: showError },
+        };
+      case "takes":
+        return {
+          component: asComponent(TakesPanel),
+          props: {
+            session,
+            onMake: () => void makeTakes().catch(showError),
+            onPick: (set: string, number: number) => void pickTake(set, number).catch(showError),
+            onFlatten: (set: string) => void flattenTakes([set]).catch(showError),
+            onDelete: (set: string, number: number) => void deleteTake(set, number).catch(showError),
+          },
         };
       case "video":
         return { component: asComponent(VideoPanel), props: { session, transport, runner: sessionHistory, onError: showError } };
@@ -5934,6 +6010,18 @@
         },
         enabled: () => !inWave() && session.current !== null && session.current.tracks.filter((t) => t.clips.length > 0).length >= 2,
         reason: () => (inWave() ? "Reduce Bleed works across the tracks of a Multitrack session." : "Needs two tracks with audio on them."),
+      }),
+      actions.register({
+        id: "clip.make-takes",
+        run: () => makeTakes().catch(showError),
+        enabled: () => !inWave() && settings.current.takeLanes && session.current !== null && makeTakesOps(session.current, editor.current().selectedClips, () => "x") !== null,
+        reason: () => (settings.current.takeLanes ? "Select two or more clips on one track first." : "Take lanes are off in Settings > Multitrack."),
+      }),
+      actions.register({
+        id: "clip.flatten-takes",
+        run: () => flattenTakes(selectedTakeSets()).catch(showError),
+        enabled: () => !inWave() && settings.current.takeLanes && selectedTakeSets().length > 0,
+        reason: () => (settings.current.takeLanes ? "Select a clip that is one of a set of takes first." : "Take lanes are off in Settings > Multitrack."),
       }),
       actions.register({
         id: "multitrack.insert-session",
