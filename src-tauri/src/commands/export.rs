@@ -204,6 +204,124 @@ pub async fn export_mixdown(
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoMixResult {
+    pub peak: f32,
+    pub video_samples: u32,
+    pub audio_samples: u32,
+    pub dropped_audio_tracks: usize,
+    pub shifted_seconds: f64,
+}
+
+/// Save dialog for a video written by Mixdown Into Video.
+#[tauri::command]
+pub async fn export_pick_video_path(
+    app: AppHandle,
+    name: String,
+    folder: Option<PathBuf>,
+) -> Result<Option<PathBuf>, String> {
+    let parent = app.get_webview_window("main");
+    spawn_blocking(move || {
+        let mut d = app
+            .dialog()
+            .file()
+            .set_title("Mixdown Into Video")
+            .set_file_name(format!("{name}.mp4"))
+            .add_filter("Video (MP4)", &["mp4"]);
+        if let Some(f) = folder.filter(|f| f.is_dir()) {
+            d = d.set_directory(f);
+        }
+        if let Some(w) = parent.as_ref() {
+            d = d.set_parent(w);
+        }
+        d.blocking_save_file()
+            .and_then(|f| f.as_path().map(|p| p.to_path_buf()))
+            .map(|p| {
+                if p.extension().is_none() {
+                    p.with_extension("mp4")
+                } else {
+                    p
+                }
+            })
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Mixes the session from the video's first picture onward to AAC, then writes a copy of the
+/// video with that sound in place of its own. `request.format` must be M4A. Emits
+/// `export-progress`. None when cancelled.
+#[tauri::command]
+pub async fn export_mix_into_video(
+    app: AppHandle,
+    open: State<'_, OpenSession>,
+    cancel: State<'_, ExportCancel>,
+    path: PathBuf,
+    request: MixdownRequest,
+) -> Result<Option<VideoMixResult>, String> {
+    let session = open.0.lock().map_err(|e| e.to_string())?.session.clone();
+    let video = session.video.clone().ok_or("This session has no video.")?;
+    if video.offset < 0.0 {
+        return Err("The session starts partway into the video. Move the video so its first picture plays at or after the start of the session, then try again.".into());
+    }
+    if path == video.path {
+        return Err("Pick a new file name. The video cannot be replaced by its own copy.".into());
+    }
+    if !matches!(
+        request.format.as_ref().map(|f| f.kind),
+        Some(FormatKind::M4a)
+    ) {
+        return Err("The sound for a video is written as AAC (M4A).".into());
+    }
+    let start = (video.offset * f64::from(session.sample_rate)).round() as u64;
+    let end = mixdown::session_end(&session);
+    if end <= start {
+        return Err("Nothing in the session plays after the video's first picture.".into());
+    }
+    let mut request = request;
+    request.range = Some((start, end));
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "video".into());
+    let temp = path.with_file_name(format!("{stem}.audio-tmp.m4a"));
+    let flag = cancel.0.clone();
+    flag.store(false, Ordering::Relaxed);
+    spawn_blocking(move || {
+        let mut last = 0u64;
+        let done = mixdown::mixdown(&session, &request, &temp, &flag, |done, total| {
+            if done == total || done - last >= total / 100 {
+                last = done;
+                let _ = app.emit("export-progress", Progress { done, total });
+            }
+        });
+        let result = match done {
+            Ok(r) if r.cancelled => {
+                let _ = std::fs::remove_file(&temp);
+                return Ok(None);
+            }
+            Ok(r) => r,
+            Err(e) => {
+                let _ = std::fs::remove_file(&temp);
+                return Err(e.to_string());
+            }
+        };
+        let muxed = crate::export::mp4mux::mux(&video.path, &temp, &path);
+        let _ = std::fs::remove_file(&temp);
+        let m = muxed.map_err(|e| e.to_string())?;
+        Ok(Some(VideoMixResult {
+            peak: result.peak,
+            video_samples: m.video_samples,
+            audio_samples: m.audio_samples,
+            dropped_audio_tracks: m.dropped_audio_tracks,
+            shifted_seconds: m.shifted_seconds,
+        }))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[derive(Serialize)]
 pub struct MergeResult {
     pub path: PathBuf,
     #[serde(flatten)]

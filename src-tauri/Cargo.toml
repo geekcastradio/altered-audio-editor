@@ -23,6 +23,8 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # AAC export through the encoder built into the OS (see os-aac/).
 altered-os-aac = { path = "os-aac" }
+# Copies a video's picture into a new mp4 with the mix as its sound (MIT).
+mp4 = "0.14"
 # Video pictures through the decoders built into the OS (see os-video/).
 altered-os-video = { path = "os-video" }
 tauri = { version = "2", features = [] }

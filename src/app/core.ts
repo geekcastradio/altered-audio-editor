@@ -571,6 +571,22 @@ export function sessionImportRpp<T>(path: string): Promise<SessionResult<T> & { 
   return invoke<SessionResult<T> & { report: RppReport }>("session_import_rpp", { path });
 }
 
+export interface ChainLoadedDoc {
+  chain: import("./chains").ChainFile;
+  problems: { step: number | null; message: string }[];
+  resolved: Record<string, unknown>[];
+}
+
+/** Opens the picker for process chain files. */
+export function chainPickOpen(): Promise<string | null> {
+  return invoke<string | null>("chain_pick_open");
+}
+
+/** Reads a process chain file and checks it. */
+export function chainLoad(path: string): Promise<ChainLoadedDoc> {
+  return invoke<ChainLoadedDoc>("chain_load", { path });
+}
+
 export interface TransportStatus {
   playing: boolean;
   /** Session samples. */
@@ -735,6 +751,24 @@ export function exportMixdown(path: string, request: MixdownRequest): Promise<Mi
       normalize: request.normalize ?? null,
     },
   });
+}
+
+export interface VideoMixResult {
+  peak: number;
+  videoSamples: number;
+  audioSamples: number;
+  droppedAudioTracks: number;
+  shiftedSeconds: number;
+}
+
+/** Save dialog for a video written by Mixdown Into Video. Null on cancel. */
+export function exportPickVideoPath(name: string, folder: string | null): Promise<string | null> {
+  return invoke<string | null>("export_pick_video_path", { name, folder });
+}
+
+/** Mixes from the video's first picture, then writes a copy of the video with the mix as its sound. Null when cancelled. */
+export function exportMixIntoVideo(path: string, format: OutputFormat): Promise<VideoMixResult | null> {
+  return invoke<VideoMixResult | null>("export_mix_into_video", { path, request: { format } });
 }
 
 export interface MergeResult extends MixdownResult {

@@ -17,6 +17,7 @@ pub mod interchange;
 pub mod loudness;
 pub mod m4a_tags;
 pub mod mixdown;
+pub mod mp4mux;
 pub mod otio;
 pub mod region;
 pub mod tags;

@@ -179,7 +179,11 @@
     sessionOpen,
     sessionPickOpen,
     filePickOpen,
+    chainPickOpen,
+    chainLoad,
     exportPickPath,
+    exportPickVideoPath,
+    exportMixIntoVideo,
     exportText,
     exportEmbedChapters,
     exportEmbedMarkers,
@@ -271,6 +275,8 @@
   import { setFxCatalog } from "../panels/editor/envelope";
   import type { Finding } from "../panels/quickpass/quickpass";
   import { closeDeadSpace } from "../panels/quickpass/dead-space";
+  import { ChainCommand, chainSummary, preflight } from "./chains";
+  import { chainHandlers } from "./chain-actions";
   import { clipById } from "../panels/editor/clip-lookup";
   import { revealScroll } from "../panels/editor/reveal";
   import { tracksWithRoom } from "./place-track";
@@ -5113,6 +5119,38 @@
         reason: () => "The session has no clips yet.",
       }),
       actions.register({
+        id: "file.export.video-mix",
+        run: async () => {
+          const doc = session.current;
+          if (!doc?.video || exporting) return;
+          const path = await exportPickVideoPath(doc.name, sessionFolder());
+          if (!path) return;
+          exporting = { title: "Writing the video", progress: 0, floating: true };
+          let off: (() => void) | null = null;
+          try {
+            off = await listen<{ done: number; total: number }>("export-progress", (e) => {
+              if (exporting) exporting = { ...exporting, progress: e.payload.total > 0 ? e.payload.done / e.payload.total : 0 };
+            });
+            await pluginSync.captureAll().catch(showError);
+            const r = await exportMixIntoVideo(path, { ...DEFAULT_FORMAT, kind: "m4a", sampleRate: 48_000, channels: 2, aacBitrate: 192 });
+            if (!r) {
+              showNotice("Export cancelled.");
+              return;
+            }
+            const own = r.droppedAudioTracks ? " The video's own sound is not in the copy." : "";
+            const hot = r.peak > 1 ? " The mix goes above 0 dBFS, so it may be clipped in the file." : "";
+            showNotice(`Video written. The picture is copied as it was, with your mix as the sound.${own}${hot}`);
+          } catch (e) {
+            showError(e);
+          } finally {
+            off?.();
+            exporting = null;
+          }
+        },
+        enabled: () => exporting === null && !!session.current?.video && contentEnd() > 0,
+        reason: () => (!session.current?.video ? "Open a video first, so the session has a picture." : "The session has no clips yet."),
+      }),
+      actions.register({
         id: "file.export.sesx",
         run: async () => {
           try {
@@ -5745,6 +5783,26 @@
         },
         enabled: () => !inWave() && session.current !== null && micTracks(session.current).length >= 2,
         reason: () => (inWave() ? "Auto Mic Mix works across the tracks of a Multitrack session." : "Needs two or more tracks with audio on them, one per mic."),
+      }),
+      actions.register({
+        id: "multitrack.run-chain",
+        run: async () => {
+          try {
+            const path = await chainPickOpen();
+            if (!path) return;
+            const loaded = await chainLoad(path);
+            const handlers = chainHandlers(mixAnalyze);
+            const why = preflight(loaded, handlers);
+            if (why) return showNotice(why);
+            const run = new ChainCommand(loaded, { doc: () => session.current, apply: (op) => session.apply(op), handlers });
+            await sessionHistory.execute(run);
+            showNotice(chainSummary(loaded.chain.name, run.reports));
+          } catch (e) {
+            showError(e);
+          }
+        },
+        enabled: () => !inWave() && session.current !== null && session.current.tracks.some((t) => t.clips.length > 0),
+        reason: () => (inWave() ? "Process chains work on a Multitrack session." : "Needs clips on the tracks."),
       }),
       actions.register({
         id: "multitrack.close-dead-space",
