@@ -368,6 +368,7 @@
             <label><input type="radio" bind:group={d.app.soloExclusive} value={false} /> Several tracks can be soloed at once</label>
             <label><input type="radio" bind:group={d.app.soloExclusive} value={true} /> Soloing a track unsolos the others</label>
           </fieldset>
+          <label><input type="checkbox" bind:checked={d.app.takeLanes} /> Take lanes and comping: show the Takes panel and the Make Takes and Flatten Takes commands <span class="why">Off hides them. Sessions that already have takes still play the chosen takes.</span></label>
         {:else if page === "Clips"}
           <label><input type="checkbox" bind:checked={d.editor.autoCrossfade} /> Crossfade clips that overlap on a track</label>
         {:else if page === "Playback and Recording"}

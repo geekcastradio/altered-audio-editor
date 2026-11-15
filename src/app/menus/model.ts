@@ -339,6 +339,8 @@ export const MENUS: readonly Menu[] = [
       item("clip.unique", "Make Unique Copy"),
       item("clip.split-channels", "Split Channels to Tracks"),
       item("clip.split-bands", "Split into Frequency Bands..."),
+      item("clip.make-takes", "Make Takes from Selected Clips"),
+      item("clip.flatten-takes", "Flatten Takes"),
       item("clip.edit-source", "Open in Waveform Editor"),
       sep,
       item("clip.gain", "Clip Gain..."),

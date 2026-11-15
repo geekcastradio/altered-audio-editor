@@ -365,6 +365,8 @@ describe("menu model", () => {
       "clip.nudge-right",
       "clip.split-channels",
       "clip.split-bands",
+      "clip.make-takes",
+      "clip.flatten-takes",
       "fx.capture-noise-print",
       "fx.add.echo",
       "fx.quickpass",

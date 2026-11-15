@@ -15,7 +15,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use super::model::{
-    AudioType, Bus, ChannelLayout, ChannelMix, ChapterInfo, Clip, ClipLoop, ClipStretch,
+    AudioType, Bus, ChannelLayout, ChannelMix, ChapterInfo, Clip, ClipLoop, ClipStretch, ClipTake,
     EffectChain, EffectSlot, Envelope, EnvelopePoint, EnvelopeTarget, Fade, Id, Marker, MarkerKind,
     MediaRef, MidiClip, MixRole, Output, PanLaw, RecordMode, Send, Session, SessionView, Space,
     SpacePos, Tempo, Track, TrackKind, TrackRole, VideoRef, STRETCH_MAX, STRETCH_MIN,
@@ -265,6 +265,12 @@ pub struct ClipChange {
     /// Clears the clip's audio type.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clear_audio_type: Option<bool>,
+    /// Marks the clip as one take of a set, or changes which take is chosen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub take: Option<ClipTake>,
+    /// Takes the clip out of its set of takes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clear_take: Option<bool>,
     /// Sets the clip's Source Channels.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel_mix: Option<ChannelMix>,
@@ -1468,6 +1474,17 @@ fn set_clip(s: &mut Session, ch: &ClipChange) -> Result<ClipChange, OpError> {
         match std::mem::replace(&mut c.audio_type, new) {
             Some(old) => inv.audio_type = Some(old),
             None => inv.clear_audio_type = Some(true),
+        }
+    }
+    if ch.take.is_some() || ch.clear_take == Some(true) {
+        let new = if ch.clear_take == Some(true) {
+            None
+        } else {
+            ch.take.clone()
+        };
+        match std::mem::replace(&mut c.take, new) {
+            Some(old) => inv.take = Some(old),
+            None => inv.clear_take = Some(true),
         }
     }
     if ch.channel_mix.is_some() || ch.clear_channel_mix == Some(true) {
@@ -2896,6 +2913,64 @@ mod tests {
             },
         );
         assert!(zero.is_err(), "a loop needs a length");
+    }
+
+    #[test]
+    fn take_marks_round_trip_through_undo() {
+        let mut s = Session::new("Test", 48_000);
+        let (t, m, c) = (new_id(), new_id(), new_id());
+        apply(
+            &mut s,
+            &Op::Batch {
+                ops: vec![
+                    Op::AddMedia { media: media(m) },
+                    Op::AddTrack {
+                        id: t,
+                        name: "A".into(),
+                        stereo: false,
+                        index: 0,
+                        midi: false,
+                    },
+                    Op::AddClips {
+                        track_id: t,
+                        clips: vec![ClipSpec {
+                            id: c,
+                            name: "c".into(),
+                            media_id: m,
+                            start: 0,
+                            source_in: 0,
+                            source_out: 48_000,
+                        }],
+                    },
+                ],
+            },
+        )
+        .unwrap();
+        let set = new_id();
+        let mark = |active| Op::SetClips {
+            changes: vec![ClipChange {
+                id: c,
+                take: Some(ClipTake {
+                    set,
+                    number: 1,
+                    active,
+                }),
+                ..ClipChange::default()
+            }],
+        };
+        roundtrip(&mut s, mark(true));
+        roundtrip(&mut s, mark(false));
+        apply(&mut s, &mark(true)).unwrap();
+        roundtrip(
+            &mut s,
+            Op::SetClips {
+                changes: vec![ClipChange {
+                    id: c,
+                    clear_take: Some(true),
+                    ..ClipChange::default()
+                }],
+            },
+        );
     }
 
     #[test]

@@ -529,7 +529,7 @@ pub fn build(session: &Session, out_rate: u32) -> Plan {
                         len,
                         // A reversed clip's region is kept in the reversed copy's terms.
                         source_start: c.source_in as f64 / f64::from(src_rate),
-                        gain: if c.muted {
+                        gain: if c.muted || off_take(c) {
                             0.0
                         } else {
                             let g = 10f64.powf(c.gain_db.clamp(-96.0, 24.0) / 20.0) as f32;
@@ -837,6 +837,11 @@ fn midi_hash(session: &Session) -> u64 {
     h
 }
 
+/// A take that is not the chosen one of its set: it stays on the track but is silent.
+fn off_take(c: &crate::session::model::Clip) -> bool {
+    c.take.as_ref().is_some_and(|t| !t.active)
+}
+
 fn clip_layout(session: &Session) -> Vec<(Id, Vec<ClipKey>)> {
     session
         .tracks
@@ -847,7 +852,7 @@ fn clip_layout(session: &Session) -> Vec<(Id, Vec<ClipKey>)> {
                 t.clips
                     .iter()
                     .map(|c| {
-                        let gain = if c.muted {
+                        let gain = if c.muted || off_take(c) {
                             f64::NEG_INFINITY
                         } else {
                             c.gain_db
@@ -943,6 +948,23 @@ mod tests {
         )
         .unwrap();
         s
+    }
+
+    #[test]
+    fn an_inactive_take_plans_silent() {
+        use crate::session::model::ClipTake;
+        let mut s = session_with_clip(48_000);
+        let take = |active| {
+            Some(ClipTake {
+                set: new_id(),
+                number: 1,
+                active,
+            })
+        };
+        s.tracks[0].clips[0].take = take(true);
+        assert!(build(&s, 48_000).tracks[0].clips[0].gain > 0.0);
+        s.tracks[0].clips[0].take = take(false);
+        assert_eq!(build(&s, 48_000).tracks[0].clips[0].gain, 0.0);
     }
 
     #[test]

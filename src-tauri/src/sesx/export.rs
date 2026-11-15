@@ -364,7 +364,12 @@ pub fn to_sesx(session: &Session, base: &Path) -> (String, SesxExportReport) {
         );
         let _ = writeln!(tracks, "        </trackAudioParameters>");
         rack_xml(&mut tracks, "        ", &t.effects, &mut report);
-        for c in &t.clips {
+        // A take that is not playing is left out: Audition has no takes, so it would sound on top of the chosen one.
+        for c in t
+            .clips
+            .iter()
+            .filter(|c| c.take.as_ref().is_none_or(|k| k.active))
+        {
             let Some(fi) = media_index(c.media_id) else {
                 continue;
             };

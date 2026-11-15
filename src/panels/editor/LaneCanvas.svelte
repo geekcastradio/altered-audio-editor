@@ -213,12 +213,12 @@
       const color = clipColor(clip);
 
       // Body and title bar.
-      g.globalAlpha = clip.muted ? 0.35 : 1;
+      g.globalAlpha = clip.muted || clip.take?.active === false ? 0.35 : 1;
       g.fillStyle = color;
       g.globalAlpha *= 0.2;
       g.fillRect(left, 1, right - left, lh - 2);
       // No solid title bar (as in Audition): the name floats over the clip, in light text.
-      g.globalAlpha = clip.muted ? 0.35 : 1;
+      g.globalAlpha = clip.muted || clip.take?.active === false ? 0.35 : 1;
       g.fillStyle = "#eef0f4";
       g.font = `11px ${css("--font-ui")}`;
       g.textBaseline = "middle";
@@ -272,7 +272,7 @@
           g.strokeStyle = tone;
           g.fillStyle = tone;
           g.lineWidth = 1.25;
-          g.globalAlpha = clip.muted ? 0.35 : 1;
+          g.globalAlpha = clip.muted || clip.take?.active === false ? 0.35 : 1;
           const laneH = body.height / ch;
           const fA = Math.max(clip.source_in, exact.start, Math.floor(clip.source_in + ((view.scroll + left * view.spp - clip.start) * srcRate) / sessionRate) - 1);
           const fB = Math.min(clip.source_out, exact.start + exact.count, Math.ceil(clip.source_in + ((view.scroll + right * view.spp - clip.start) * srcRate) / sessionRate) + 1);
@@ -310,7 +310,7 @@
         } else if (level) {
           // Much lighter than the clip body so the waveform stands out.
           g.fillStyle = lighten(color, 0.55);
-          g.globalAlpha = clip.muted ? 0.35 : 1;
+          g.globalAlpha = clip.muted || clip.take?.active === false ? 0.35 : 1;
           const laneH = body.height / ch;
           // A looped clip wraps back to the start of its region.
           const region = clip.source_out - clip.source_in;
@@ -531,7 +531,7 @@
       }
 
       // Raised edge: a light top and left, a dark bottom and right, so clips stand off the lane.
-      g.globalAlpha = clip.muted ? 0.35 : 1;
+      g.globalAlpha = clip.muted || clip.take?.active === false ? 0.35 : 1;
       g.fillStyle = "rgba(255, 255, 255, 0.28)";
       g.fillRect(left, 1, right - left, 1);
       if (x0 >= 0) g.fillRect(x0 + 1, 1, 1, lh - 3);
