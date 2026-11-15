@@ -1023,8 +1023,12 @@ fn mix<T>(
             }
             None => {
                 let [ol, or] = routing.stereo;
-                if channels == 1 {
-                    frame[0] = T::from_sample(l);
+                if channels == 1 || ol == or {
+                    // One output for the whole mix (a single speaker, a mono rig): both sides together.
+                    let at = if channels == 1 { 0 } else { ol };
+                    if let Some(s) = frame.get_mut(at) {
+                        *s = T::from_sample((l + r) * 0.5);
+                    }
                 } else {
                     if let Some(s) = frame.get_mut(ol) {
                         *s = T::from_sample(l);
@@ -1258,6 +1262,50 @@ mod tests {
             &mut routing,
         );
         assert_eq!(out, [0.0, 0.0, 0.6, 0.3]);
+    }
+
+    #[test]
+    fn a_mono_pair_sends_both_sides_to_one_output() {
+        let shared = Shared::new(1, &[[1.0, 1.0]], 1.0);
+        let (mut p, c) = RingBuffer::<f32>::new(4);
+        p.push(0.25).unwrap();
+        p.push(0.75).unwrap();
+        let mut routing = Routing {
+            stereo: [2, 2],
+            ..Routing::default()
+        };
+        let mut out = [7f32; 4];
+        mix(
+            &mut out,
+            4,
+            &mut [c],
+            &mut quiet(),
+            &shared,
+            &mut [[0.0; 2]],
+            &mut [[0.0; 2]],
+            &mut routing,
+        );
+        assert_eq!(out, [0.0, 0.0, 0.5, 0.0]);
+    }
+
+    #[test]
+    fn a_one_output_device_plays_both_sides_together() {
+        let shared = Shared::new(1, &[[1.0, 1.0]], 1.0);
+        let (mut p, c) = RingBuffer::<f32>::new(4);
+        p.push(0.25).unwrap();
+        p.push(0.75).unwrap();
+        let mut out = [7f32; 1];
+        mix(
+            &mut out,
+            1,
+            &mut [c],
+            &mut quiet(),
+            &shared,
+            &mut [[0.0; 2]],
+            &mut [[0.0; 2]],
+            &mut Routing::stereo(),
+        );
+        assert_eq!(out, [0.5]);
     }
 
     #[test]

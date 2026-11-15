@@ -72,6 +72,7 @@ describe("menu model", () => {
       "multitrack.mic-mix",
       "multitrack.run-chain",
       "multitrack.reduce-bleed",
+      "multitrack.insert-session",
       "multitrack.close-dead-space",
       "multitrack.isolated-clips",
       "multitrack.sync-tracks",

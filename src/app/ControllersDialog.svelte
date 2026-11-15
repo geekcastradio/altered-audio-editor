@@ -114,6 +114,7 @@
       <input type="checkbox" checked={current.controllerFeedback} onchange={(e) => save({ controllerFeedback: e.currentTarget.checked })} />
       Send feedback to the devices (motorized faders and lights). Use with a control surface in its Mackie mode.
     </label>
+    <p class="fine">Feedback is experimental: it follows the Mackie Control layout but has not been tried on real hardware yet. If you try it on a motorized surface, please tell us how it went (Help > Report a Problem).</p>
     <p class="fine">Last message: {seen}</p>
 
     <h2>What the controls do</h2>

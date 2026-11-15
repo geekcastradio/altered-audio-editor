@@ -33,6 +33,7 @@ pub mod quickpass;
 pub mod record;
 pub mod reverb;
 pub mod session;
+pub mod session_mix;
 pub mod spectral;
 pub mod template;
 pub mod template_starters;

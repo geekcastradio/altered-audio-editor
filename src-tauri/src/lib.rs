@@ -183,6 +183,7 @@ pub fn run() {
             commands::quickpass::quickpass_repair_copy,
             commands::quickpass::quickpass_cancel,
             commands::bleed::bleed_reduce_copy,
+            commands::session_mix::session_mix_copy,
             commands::generate::generate_audio,
             commands::spectral::wave_spectrogram,
             commands::spectral::wave_spectral_edit,
