@@ -940,6 +940,11 @@ export function waveSpectralEdit(mask: SpectralMask, mode: "gain" | "repair", ga
 /** Renders `start..end` of the Waveform editor's file through `chain` into a new file, for replaceRange. */
 /** Waveform editor Stretch: `start..end` made `frames` long, pitch kept. */
 /** Reverse or invert `start..end` of the Waveform editor's file; the result swaps in with replaceRange. */
+/** Builds a file that holds only the sound inside `mask`, for the preview player. */
+export function waveSpectralPlay(mask: SpectralMask): Promise<{ path: string; seconds: number }> {
+  return invoke<{ path: string; seconds: number }>("wave_spectral_play", { mask });
+}
+
 export function waveReverseInvert(start: number, end: number, mode: "reverse" | "invert"): Promise<SpectralResult> {
   return invoke<SpectralResult>("wave_reverse_invert", { start, end, mode });
 }

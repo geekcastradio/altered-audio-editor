@@ -188,6 +188,7 @@ pub fn run() {
             commands::generate::generate_audio,
             commands::spectral::wave_spectrogram,
             commands::spectral::wave_spectral_edit,
+            commands::spectral::wave_spectral_play,
             commands::wave_fx::wave_apply_chain,
             commands::wave_fx::wave_reverse_invert,
             commands::wave_fx::wave_channel_edit,

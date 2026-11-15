@@ -32,7 +32,8 @@ export type PanelId =
   | "phase-wheel"
   | "space"
   | "video"
-  | "takes";
+  | "takes"
+  | "soundboard";
 
 export type Side = "left" | "right" | "above" | "below";
 
@@ -160,6 +161,13 @@ export const PANELS: readonly PanelDef[] = [
   {
     id: "video",
     title: "Video",
+    inDefault: false,
+    home: LEFT_TABS,
+    pending: null,
+  },
+  {
+    id: "soundboard",
+    title: "Soundboard",
     inDefault: false,
     home: LEFT_TABS,
     pending: null,
@@ -519,6 +527,7 @@ export const MIN_SIZE: Record<PanelId, { w: number; h: number }> = {
   history: { w: 220, h: 120 },
   video: { w: 320, h: 220 },
   takes: { w: 260, h: 140 },
+  soundboard: { w: 240, h: 200 },
   "drive-manager": { w: 260, h: 140 },
   libraries: { w: 260, h: 200 },
   markers: { w: 260, h: 140 },

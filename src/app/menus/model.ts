@@ -297,6 +297,9 @@ export const MENUS: readonly Menu[] = [
       item("multitrack.sync-tracks", "Sync Tracks..."),
       item("multitrack.reduce-bleed", "Reduce Bleed..."),
       item("multitrack.insert-session", "Insert Session as Clip..."),
+      sub("Soundboard", [
+        ...Array.from({ length: 9 }, (_, i) => item(`soundboard.pad-${i + 1}`, `Pad ${i + 1}`)),
+      ]),
       item("multitrack.space", "3D Space..."),
       sub("Host Profile", [
         item("multitrack.profile.close-mic", "Close Mic"),
@@ -414,6 +417,7 @@ export const MENUS: readonly Menu[] = [
         item("fx.spectrum.reduce-24", "Reduce Selected Area 24 dB"),
         item("fx.spectrum.remove", "Remove Selected Area"),
         item("fx.spectrum.repair", "Auto Heal Selection"),
+        item("fx.spectrum.play", "Play Selected Area"),
       ]),
       sub("Amplitude", [
         item("fx.add.gain", "Gain (in the Voice Chain)"),

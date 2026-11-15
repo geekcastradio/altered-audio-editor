@@ -52,6 +52,8 @@
   import HistoryPanel from "../panels/history/HistoryPanel.svelte";
   import VideoPanel from "../panels/video/VideoPanel.svelte";
   import TakesPanel from "../panels/takes/TakesPanel.svelte";
+  import SoundboardPanel from "../panels/soundboard/SoundboardPanel.svelte";
+  import { PadsStore, PAD_COUNT, sanitizePads, withPad } from "../panels/soundboard/soundboard";
   import { deleteTakeOps, flattenOps, makeTakesOps, pickRangeOps, silentGaps } from "../panels/editor/takes";
   import EditorPanel from "../panels/editor/EditorPanel.svelte";
   import { peaks, session, transport } from "../stores/open-session";
@@ -220,6 +222,8 @@
     sessionUpgradeNotice,
     setWindowTitle,
     waveSpectralEdit,
+    waveSpectralPlay,
+    previewPlay,
     waveApplyChain,
     phaseAlign,
     syncTracks,
@@ -2065,6 +2069,22 @@
     }
   }
 
+  // Soundboard pads: nine saved sounds that go on the session at the playhead.
+  const KEY_PADS = "soundboard.pads";
+  const soundboard = new PadsStore();
+  async function assignPad(i: number): Promise<void> {
+    const picked = await filePickOpen();
+    const path = picked[0];
+    if (path) soundboard.set(withPad(soundboard.current, i, path));
+  }
+  async function pressPad(i: number): Promise<void> {
+    const pad = soundboard.current[i];
+    if (!pad) return;
+    if (!pad.path) return assignPad(i);
+    if (!session.current) return;
+    await placeFiles([pad.path], editor.current().selectedTrack ?? null, playheadNow());
+  }
+
   /** Clip > Make Takes from Selected Clips: the chosen clips on one track become takes of one passage. */
   async function makeTakes(): Promise<void> {
     const doc = session.current;
@@ -2661,6 +2681,16 @@
         return {
           component: asComponent(HistoryPanel),
           props: { stack: sessionHistory, waveStack: waveHistory, shortcutFor, onError: showError },
+        };
+      case "soundboard":
+        return {
+          component: asComponent(SoundboardPanel),
+          props: {
+            pads: soundboard,
+            onPress: (i: number) => void pressPad(i).catch(showError),
+            onAssign: (i: number) => void assignPad(i).catch(showError),
+            onClear: (i: number) => soundboard.set(withPad(soundboard.current, i, null)),
+          },
         };
       case "takes":
         return {
@@ -3688,6 +3718,20 @@
     }
   }
 
+  /** Effects > Spectrum > Play Selected Area: hear only the sound inside the spectral selection. */
+  async function waveSpectralPlayArea() {
+    const shapes = get(spectralSelection);
+    const mask = shapes ? rasterize(shapes) : null;
+    if (!mask || !wave.current) return;
+    try {
+      const r = await waveSpectralPlay(mask);
+      await previewPlay(r.path, 0);
+      showNotice(`Playing only the selected area (${r.seconds.toFixed(1)} s). The file is not changed.`);
+    } catch (e) {
+      showError(e);
+    }
+  }
+
   // Edit > Settings.
   const KEY_SETTINGS = "app.settings";
   let settingsDraft = $state<SettingsDraft | null>(null);
@@ -4277,7 +4321,7 @@
         enabled: () => waveIsOpen(),
         reason: () => NOT_WAVE,
       }),
-      ...["fx.spectrum.reduce-12", "fx.spectrum.reduce-24", "fx.spectrum.remove", "fx.spectrum.repair"].map((id) =>
+      ...["fx.spectrum.reduce-12", "fx.spectrum.reduce-24", "fx.spectrum.remove", "fx.spectrum.repair", "fx.spectrum.play"].map((id) =>
         actions.register({ id, run: () => {}, enabled: () => false, reason: () => NOT_WAVE }),
       ),
       ...["edit.mix-paste", "edit.crop", "fx.invert", "fx.reverse", "fx.silence", "fx.room-tone", "fx.fade-in", "fx.fade-out", "fx.fade-in-linear", "fx.fade-out-linear", "fx.amplify", "fx.normalize", "fx.pitch-tune", "fx.pitch-curve"].map((id) =>
@@ -4523,6 +4567,12 @@
           reason: () => "Show the spectrum and drag a rectangle on it first.",
         }),
       ),
+      ov(waveIsOpen, {
+        id: "fx.spectrum.play",
+        run: () => waveSpectralPlayArea(),
+        enabled: () => get(spectralSelection) !== null,
+        reason: () => "Show the spectrum and drag a rectangle on it first.",
+      }),
       ov(waveIsOpen, { id: "file.save", run: () => saveWave(false).then(() => undefined), label: () => "Save Audio" }),
       ov(waveIsOpen, { id: "file.save-as", run: () => saveWave(true).then(() => undefined), label: () => "Save Audio As..." }),
       ov(waveIsOpen, {
@@ -6013,6 +6063,18 @@
         enabled: () => !inWave() && session.current !== null && session.current.tracks.filter((t) => t.clips.length > 0).length >= 2,
         reason: () => (inWave() ? "Reduce Bleed works across the tracks of a Multitrack session." : "Needs two tracks with audio on them."),
       }),
+      ...Array.from({ length: PAD_COUNT }, (_, i) =>
+        actions.register({
+          id: `soundboard.pad-${i + 1}`,
+          run: () => pressPad(i).catch(showError),
+          label: () => {
+            const p = soundboard.current[i];
+            return p?.path ? `Pad ${i + 1}: ${p.label}` : `Pad ${i + 1} (empty)`;
+          },
+          enabled: () => !inWave() && session.current !== null,
+          reason: () => (inWave() ? "The Soundboard puts sounds on a Multitrack session." : "Open or start a session first."),
+        }),
+      ),
       actions.register({
         id: "clip.make-takes",
         run: () => makeTakes().catch(showError),
@@ -6503,6 +6565,16 @@
         restoreSettings(prefs.raw(KEY_EDITOR));
         const savedSettings = prefs.raw(KEY_SETTINGS);
         settings.set(sanitizeSettings(savedSettings));
+        soundboard.set(sanitizePads(prefs.raw(KEY_PADS)));
+        let lastPads = JSON.stringify(soundboard.current);
+        offs.push(
+          soundboard.subscribe((v) => {
+            const now = JSON.stringify(v);
+            if (now === lastPads) return;
+            lastPads = now;
+            prefs.set(KEY_PADS, v);
+          }),
+        );
         applyAppSettings(settings.current, false);
         // A welcome on a fresh install, and the new pages only after a release that adds some. Nothing otherwise.
         welcomeOpen = welcomePlan(savedSettings);
