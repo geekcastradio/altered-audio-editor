@@ -222,6 +222,7 @@
     phaseAlign,
     syncTracks,
     bleedReduceCopy,
+    sessionMixCopy,
     mixAnalyze,
     setAudioOutput,
     setOutputMap,
@@ -285,6 +286,7 @@
   import { moveTrack, type TrackSync } from "./sync-tracks";
   import SyncTracksDialog from "./SyncTracksDialog.svelte";
   import ReduceBleedDialog from "./ReduceBleedDialog.svelte";
+  import { insertNotice, mixName } from "./insert-session";
   import { bleedSummary, bleedWork, MIN_REMOVED_DB, replaceOps, type CleanedFile } from "./bleed";
   import { isolatedClips, removeIsolated } from "../panels/quickpass/isolated-clips";
   import IsolatedClipsDialog from "../panels/quickpass/IsolatedClipsDialog.svelte";
@@ -2055,6 +2057,34 @@
       return bleedSummary(keep.map((d) => d.removed), w, keep.length);
     } catch (e) {
       return e instanceof Error ? e.message : String(e);
+    } finally {
+      exporting = null;
+    }
+  }
+
+  /**
+   * Multitrack > Insert Session as Clip: another saved session is mixed down to one file in a folder
+   * beside this session, and that file is placed at the playhead on a new track. The clip is a copy as
+   * the session was saved; later changes to that session do not reach it.
+   */
+  async function insertSessionAsClip(): Promise<void> {
+    if (!session.current || exporting) return;
+    const picked = await sessionPickOpen(false);
+    if (!picked) return;
+    if (picked === session.path) {
+      showNotice("That is the session you are editing. Pick a different one.");
+      return;
+    }
+    const folder = await folderBesideSession("Inserted Sessions", "The mixed-down sound is kept in a folder next to it.");
+    if (!folder) return;
+    exporting = { title: "Mixing the session down", progress: 0 };
+    try {
+      const name = mixName(picked);
+      const r = await sessionMixCopy(picked, folder, name);
+      await placeFiles([r.path], null, session.current?.view.playhead ?? 0);
+      showNotice(insertNotice(name, r));
+    } catch (e) {
+      showError(e);
     } finally {
       exporting = null;
     }
@@ -5904,6 +5934,12 @@
         },
         enabled: () => !inWave() && session.current !== null && session.current.tracks.filter((t) => t.clips.length > 0).length >= 2,
         reason: () => (inWave() ? "Reduce Bleed works across the tracks of a Multitrack session." : "Needs two tracks with audio on them."),
+      }),
+      actions.register({
+        id: "multitrack.insert-session",
+        run: () => insertSessionAsClip().catch(showError),
+        enabled: () => !inWave() && session.current !== null,
+        reason: () => (inWave() ? "Insert Session as Clip works in a Multitrack session." : "Open or start a session first."),
       }),
       actions.register({
         id: "multitrack.isolated-clips",

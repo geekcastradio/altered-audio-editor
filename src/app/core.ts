@@ -521,6 +521,18 @@ export function filePickOpen(): Promise<string[]> {
   return invoke<string[]>("file_pick_open");
 }
 
+export interface SessionMix {
+  path: string;
+  seconds: number;
+  missing: number;
+  peak: number;
+}
+
+/** Insert Session as Clip: mixes the saved session at `sessionPath` to a new WAV in `folder`, named after `name`. */
+export function sessionMixCopy(sessionPath: string, folder: string, name: string): Promise<SessionMix> {
+  return invoke<SessionMix>("session_mix_copy", { sessionPath, folder, name });
+}
+
 export function setWindowTitle(title: string): Promise<void> {
   return invoke<void>("app_set_title", { title });
 }

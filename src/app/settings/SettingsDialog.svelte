@@ -39,6 +39,8 @@
   let cache = $state<CacheInfo | null>(null);
   // Channel Routing: the device's outputs, and every speaker name a 3D Space layout uses.
   let outCount = $state<number | null>(null);
+  /** Both sides of the stereo mix go to one output. */
+  const monoOut = $derived(d.app.outputPair[0] === d.app.outputPair[1]);
   const outs = $derived(Array.from({ length: Math.max(outCount ?? 0, 2, d.app.outputPair[0] + 1, d.app.outputPair[1] + 1, ...Object.values(d.app.speakerOutputs).map((v) => v + 1)) }, (_, i) => i));
   const SPEAKER_NAMES = ["L", "R", "C", "LFE", "Ls", "Rs", "Lrs", "Rrs", "Lss", "Rss", "Ltm", "Rtm", "Ltf", "Rtf", "Ltr", "Rtr"];
   let busy = $state(false);
@@ -261,15 +263,25 @@
             <button type="button" onclick={refreshDevices}>Refresh Devices</button>
           </div>
         {:else if page === "Channel Routing"}
-          <p class="note">Which outputs of {d.app.output ?? "the playback device"} the mix plays on.{outCount ? ` It has ${outCount} outputs.` : ""} Takes effect from the next playback.</p>
+          <p class="note">Which outputs of {d.app.output ?? "the playback device"} the mix plays on.{outCount ? ` It has ${outCount} outputs.` : ""} Takes effect from the next playback. For a single speaker or a mono rig, tick Mono: left and right play together on one output. A playback device with only one output always plays that way.</p>
           <div class="outmap">
             <span class="head">Stereo mix</span>
             {#each ["Left", "Right"] as side, k (side)}
               <span>{side}</span>
-              <select aria-label="{side} output" value={d.app.outputPair[k]} onchange={(e) => (d.app.outputPair[k] = Number(e.currentTarget.value))}>
+              <select aria-label="{side} output" value={d.app.outputPair[k]} disabled={k === 1 && monoOut} onchange={(e) => { const v = Number(e.currentTarget.value); d.app.outputPair = k === 0 ? [v, monoOut ? v : d.app.outputPair[1]] : [d.app.outputPair[0], v]; }}>
                 {#each outs as o (o)}<option value={o}>Output {o + 1}</option>{/each}
               </select>
             {/each}
+            <span>Mono</span>
+            <label>
+              <input
+                type="checkbox"
+                aria-label="Play the whole mix on the left output"
+                checked={monoOut}
+                onchange={(e) => (d.app.outputPair = e.currentTarget.checked ? [d.app.outputPair[0], d.app.outputPair[0]] : [d.app.outputPair[0], Math.min(63, d.app.outputPair[0] + 1)])}
+              />
+              Both sides together on the Left output
+            </label>
             <span class="head">3D Space speakers</span>
             {#each SPEAKER_NAMES as name (name)}
               <span>{name}</span>
