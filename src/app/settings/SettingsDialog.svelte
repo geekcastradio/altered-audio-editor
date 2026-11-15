@@ -5,8 +5,8 @@
 
   Edit > Settings: every app setting on one dialog, page by page. The
   whole dialog is one draft: OK applies it, Cancel or Escape drops it.
-  Settings the app cannot act on yet are shown greyed out with the
-  reason, never faked.
+  Only settings the app acts on are listed. A setting is added with the
+  feature that uses it, never shown greyed out ahead of time.
 -->
 <script lang="ts">
   import { cacheInfo, cacheClearPeaks, cacheSetFolder, libraryPickFolder, openSoundSettings, type CacheInfo } from "../core";
@@ -189,7 +189,6 @@
             <label><input type="radio" bind:group={d.app.fadeShape} value="equal_power" /> Equal power (for crossfades)</label>
           </fieldset>
           <p class="note">The Space bar plays, and stops when playing or recording.</p>
-          <label class="off" title="Warnings with a 'don't ask again' box arrive with the first such warning."><input type="checkbox" disabled /> Show warnings I turned off again <span class="why">No warnings can be turned off yet.</span></label>
         {:else if page === "Appearance"}
           <p class="note">Leave a color on Theme to keep the built-in one. Changes show the next time each view redraws.</p>
           <div class="colors">
@@ -199,7 +198,7 @@
               <button type="button" disabled={!d.app.colors[r.key]} onclick={() => (d.app.colors[r.key] = "")}>Theme</button>
             {/each}
           </div>
-          <label class="off"><select bind:value={d.app.surface}><option value="standard">Standard</option><option value="classic">Classic (darker)</option></select> Panel brightness <span class="why">Standard is closer to Audition's charcoal. Classic is the darker look of earlier versions.</span></label>
+          <label><select bind:value={d.app.surface}><option value="standard">Standard</option><option value="classic">Classic (darker)</option></select> Panel brightness <span class="why">Standard is closer to Audition's charcoal. Classic is the darker look of earlier versions.</span></label>
         {:else if page === "Audio Devices"}
           <label class="row">
             Play through
@@ -320,16 +319,10 @@
           <p class="note">This catches files imported before the session was first saved, and working files such as untitled mixdowns. Recordings already go into the session folder.</p>
           <label><input type="checkbox" bind:checked={d.app.leaveLibraryFiles} /> Leave library files where they are</label>
           <p class="note">Libraries keep their own copies. Untick this to copy library audio in too, so the session folder works without the library. File &gt; Collect Session Media copies everything in at any time.</p>
-        {:else if page === "Editing"}
-          <label class="off"><input type="checkbox" disabled /> Crossfade the edges of cuts and deletes in the Waveform editor <span class="why">Planned with the next Waveform editor batch.</span></label>
-          <label class="off"><input type="number" disabled value="1" /> Files processed at once in Batch Convert <span class="why">One at a time for now.</span></label>
-          <label class="off"><select disabled><option>High</option></select> Sample rate conversion quality <span class="why">Always the high-quality converter.</span></label>
         {:else if page === "Effects"}
           <label><input type="checkbox" bind:checked={d.app.openChainOnAdd} /> Show the Voice Chain when adding an effect from the Effects menu</label>
           <label><input type="checkbox" bind:checked={d.app.realtimePlugins} /> Mix down sessions that use VST3 plug-ins in real time</label>
           <p class="note">Some plug-ins only work while audio plays at normal speed: pitch correction, immersive panners and other tools that follow the clock. With this on, any mixdown, stem export or Mix Down to New File of a session with VST3 plug-ins runs at playback speed, so an hour takes an hour. Built-in effects never need it.</p>
-          <label class="off"><input type="checkbox" disabled checked /> Bypassed effects are skipped on playback <span class="why">Always on: a bypassed effect costs nothing.</span></label>
-          <label class="off"><select disabled><option>By category</option></select> Effects menu order <span class="why">Grouped by category.</span></label>
         {:else if page === "Cache and Files"}
           {#if cache}
             <p class="note">Working files live in <code>{cache.path}</code></p>
@@ -355,9 +348,6 @@
         {:else if page === "Backup and Restore"}
           <BackupPage />
         {:else if page === "Markers"}
-          <label class="off"><input type="checkbox" disabled checked /> Marker changes can be undone <span class="why">Always on.</span></label>
-          <label class="off"><input type="checkbox" disabled checked /> Markers move with cuts, pastes and crops <span class="why">Always on.</span></label>
-          <label class="off"><input type="checkbox" disabled checked /> Write chapters into exported MP3 and FLAC files <span class="why">Chosen in each export.</span></label>
           <label><input type="checkbox" bind:checked={d.app.ampModelAlways} /> Offer the Amp Model in the Add effect menus without Music Mode</label>
           <label class="row">Name for new markers <input type="text" maxlength="40" bind:value={d.app.markerName} /> (numbered after it)</label>
         {:else if page === "Multitrack"}
@@ -366,12 +356,8 @@
             <label><input type="radio" bind:group={d.app.soloExclusive} value={false} /> Several tracks can be soloed at once</label>
             <label><input type="radio" bind:group={d.app.soloExclusive} value={true} /> Soloing a track unsolos the others</label>
           </fieldset>
-          <label class="off"><select disabled><option>-3 dB at center</option></select> Pan law <span class="why">New sessions start with -3 dB at center. Change it per session in Session Properties.</span></label>
-          <label class="off"><input type="checkbox" disabled checked /> New tracks get a color in turn <span class="why">Always on.</span></label>
         {:else if page === "Clips"}
           <label><input type="checkbox" bind:checked={d.editor.autoCrossfade} /> Crossfade clips that overlap on a track</label>
-          <label class="off"><input type="checkbox" disabled /> Files dropped together go on their own tracks <span class="why">Use Insert Files as Tracks for that for now.</span></label>
-          <label class="off"><select disabled><option>Keep pitch</option></select> Time Stretch starts as <span class="why">Picked in the Time Stretch dialog each time.</span></label>
         {:else if page === "Playback and Recording"}
           <fieldset>
             <legend>Playback</legend>
@@ -411,10 +397,6 @@
               </select>
             </label>
           </fieldset>
-        {:else if page === "Spectrum Views"}
-          <label class="off"><select disabled><option>2048</option></select> Spectrum detail <span class="why">Fixed for now, tuned for speech.</span></label>
-          <label class="off"><input type="number" disabled value="100" /> Spectrum range (dB) <span class="why">Fixed for now.</span></label>
-          <label class="off"><input type="checkbox" disabled /> Gridlines on the spectrum <span class="why">Planned.</span></label>
         {:else if page === "Time Display"}
           <label class="row">
             Show times as
@@ -430,7 +412,6 @@
               {#each TIMECODE_RATES as r (r)}<option value={String(r)}>{r} frames a second</option>{/each}
             </select>
           </label>
-          <label class="off"><input type="number" disabled value="120" /> Tempo for bars and beats <span class="why">Arrives with MIDI tracks.</span></label>
         {:else if page === "Loudness"}
           <label class="row">
             Broadcast region
@@ -571,7 +552,6 @@
     flex: 1;
     min-width: 0;
   }
-  .off,
   .dim {
     color: var(--text-faint);
   }

@@ -14,7 +14,7 @@
  *   normally; the user chooses to recover or discard it.
  */
 
-import type { NewSessionOptions, Recoverable, SesxReport, SessionResult } from "./core";
+import type { NewSessionOptions, Recoverable, RppReport, SesxReport, SessionResult } from "./core";
 import type { UndoStack } from "../commands";
 import type { StashedHistory } from "../commands/undo-stack";
 import { sessionEnd } from "../stores/session";
@@ -37,6 +37,8 @@ export interface SessionFileBackend {
   pickOpen(): Promise<string | null>;
   pickSesx(): Promise<string | null>;
   importSesx(path: string): Promise<SessionResult<SessionDoc> & { report: SesxReport }>;
+  pickRpp?(): Promise<string | null>;
+  importRpp?(path: string): Promise<SessionResult<SessionDoc> & { report: RppReport }>;
   /** Sets a copy of the session in front aside, so another can take its place. Without these, one session at a time. */
   park?(): Promise<void>;
   /** Brings a set-aside session to the front. */
@@ -109,6 +111,19 @@ export function sesxSummary(r: SesxReport): string {
     const names = r.skippedNames?.length ? ` (${r.skippedNames.join(", ")})` : "";
     parts.push(`${count(r.skippedEffects, "built-in effect was", "built-in effects were")} left out${names}; rebuild them in Voice Chain.`);
   }
+  if (r.missingFiles.length > 0) {
+    const n = r.missingFiles.length;
+    parts.push(`${n} media ${n === 1 ? "file was" : "files were"} not found.`);
+  }
+  return parts.join(" ");
+}
+
+export function rppSummary(r: RppReport): string {
+  const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const parts = [`Imported ${count(r.tracks, "track", "tracks")} and ${count(r.clips, "clip", "clips")}.`];
+  if (r.markers) parts.push(`${count(r.markers, "marker", "markers")} came across.`);
+  if (r.stretched) parts.push(`${count(r.stretched, "clip keeps its", "clips keep their")} speed change as a stretch.`);
+  if (r.leftOut.length) parts.push(`Left out: ${r.leftOut.join(", ")}.`);
   if (r.missingFiles.length > 0) {
     const n = r.missingFiles.length;
     parts.push(`${n} media ${n === 1 ? "file was" : "files were"} not found.`);
@@ -234,6 +249,7 @@ export class SessionFiles {
     if (!target) return false;
     // A .sesx in Open Recent is imported again, as a new unsaved session.
     if (/\.sesx$/i.test(target)) return this.importSesx(target);
+    if (/\.rpp$/i.test(target)) return this.importRpp(target);
     // Already open: bring it to the front.
     const key = (p: string | null) => (p ?? "").replace(/\\/g, "/").toLowerCase();
     if (key(this.d.session.path) === key(target)) return true;
@@ -268,6 +284,26 @@ export class SessionFiles {
     await this.replace({ ...r, missing: [] }, "Import Session", true);
     this.addRecent(target);
     this.d.notice(sesxSummary(r.report));
+    return true;
+  }
+
+  /** Brings in a .rpp project as a new, unsaved session. */
+  async importRpp(path?: string): Promise<boolean> {
+    const b = this.d.backend;
+    if (!b.pickRpp || !b.importRpp) return false;
+    if (!(await this.makeRoom())) return false;
+    const target = path ?? (await b.pickRpp());
+    if (!target) return false;
+    let r: SessionResult<SessionDoc> & { report: RppReport };
+    try {
+      r = await b.importRpp(target);
+    } catch (e) {
+      this.dropRecent(target);
+      throw e;
+    }
+    await this.replace({ ...r, missing: [] }, "Import Session", true);
+    this.addRecent(target);
+    this.d.notice(rppSummary(r.report));
     return true;
   }
 
@@ -393,7 +429,7 @@ export class SessionFiles {
   }
 }
 
-const AUDIO_EXTENSIONS = new Set(["wav", "wave", "aif", "aiff", "aifc", "mp3", "flac", "m4a", "mp4", "aac", "ogg", "oga", "opus", "mkv"]);
+const AUDIO_EXTENSIONS = new Set(["wav", "wave", "aif", "aiff", "aifc", "mp3", "flac", "m4a", "mp4", "aac", "ogg", "oga", "opus", "mkv", "w64", "rf64", "bwf"]);
 /** Files that may carry a picture. An .mp4 with no picture is still opened as audio. */
 const VIDEO_EXTENSIONS = new Set(["mp4", "m4v", "mov", "wmv", "avi", "mkv"]);
 

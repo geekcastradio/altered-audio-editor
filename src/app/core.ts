@@ -551,6 +551,26 @@ export function sessionImportSesx<T>(path: string): Promise<SessionResult<T> & {
   return invoke<SessionResult<T> & { report: SesxReport }>("session_import_sesx", { path });
 }
 
+export interface RppReport {
+  tracks: number;
+  clips: number;
+  markers: number;
+  stretched: number;
+  /** What the project had that is not brought in. */
+  leftOut: string[];
+  missingFiles: string[];
+}
+
+/** Opens the picker for .rpp projects. */
+export function sessionPickRpp(): Promise<string | null> {
+  return invoke<string | null>("session_pick_rpp");
+}
+
+/** Imports a .rpp project as the new, unsaved session. */
+export function sessionImportRpp<T>(path: string): Promise<SessionResult<T> & { report: RppReport }> {
+  return invoke<SessionResult<T> & { report: RppReport }>("session_import_rpp", { path });
+}
+
 export interface TransportStatus {
   playing: boolean;
   /** Session samples. */

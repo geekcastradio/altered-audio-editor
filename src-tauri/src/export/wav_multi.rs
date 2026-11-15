@@ -5,19 +5,18 @@
 //! Multichannel WAV for 3D Space exports: the extensible WAV header
 //! with its channel mask, so other software knows which channel is
 //! which speaker (left, right, center, low frequency, surrounds,
-//! heights). 16 or 24-bit PCM, or 32-bit float.
+//! heights). 16 or 24-bit PCM, or 32-bit float. A file that grows past
+//! 4 GB becomes RF64, which long multichannel exports reach quickly.
 
 use std::fs::File;
-use std::io::{BufWriter, Seek, SeekFrom, Write};
+use std::io::{BufWriter, Write};
 use std::path::Path;
 
-/// The format GUIDs' shared tail.
-const GUID_TAIL: [u8; 14] = [
-    0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71,
-];
+use crate::codecs::wavlong::{close_header, open_header, Layout};
 
 pub struct MultiWav {
     out: BufWriter<File>,
+    layout: Layout,
     channels: u16,
     bits: u16,
     frames: u64,
@@ -39,29 +38,19 @@ impl MultiWav {
         } else {
             24
         };
+        let layout = Layout {
+            channels,
+            rate,
+            bits,
+            float: bits == 32,
+            mask,
+        };
         let mut out = BufWriter::new(File::create(path)?);
-        let block = channels * (bits / 8);
-        let float = bits == 32;
-        out.write_all(b"RIFF")?;
-        out.write_all(&0u32.to_le_bytes())?; // filled in at the end
-        out.write_all(b"WAVE")?;
-        out.write_all(b"fmt ")?;
-        out.write_all(&40u32.to_le_bytes())?;
-        out.write_all(&0xFFFEu16.to_le_bytes())?; // extensible
-        out.write_all(&channels.to_le_bytes())?;
-        out.write_all(&rate.to_le_bytes())?;
-        out.write_all(&(rate * u32::from(block)).to_le_bytes())?;
-        out.write_all(&block.to_le_bytes())?;
-        out.write_all(&bits.to_le_bytes())?;
-        out.write_all(&22u16.to_le_bytes())?;
-        out.write_all(&bits.to_le_bytes())?; // valid bits
-        out.write_all(&mask.to_le_bytes())?;
-        out.write_all(&(if float { 3u16 } else { 1u16 }).to_le_bytes())?;
-        out.write_all(&GUID_TAIL)?;
-        out.write_all(b"data")?;
-        out.write_all(&0u32.to_le_bytes())?; // filled in at the end
+        // The sizes are filled in at the end, when the length is known.
+        out.write_all(&open_header(&layout))?;
         Ok(MultiWav {
             out,
+            layout,
             channels,
             bits,
             frames: 0,
@@ -105,15 +94,9 @@ impl MultiWav {
         if data % 2 == 1 {
             self.out.write_all(&[0])?;
         }
-        let data = u32::try_from(data)
-            .map_err(|_| std::io::Error::other("The file is too long for WAV (over 4 GB)."))?;
         self.out.flush()?;
         let mut f = self.out.into_inner().map_err(|e| e.into_error())?;
-        let riff = 4 + 8 + 40 + 8 + data + (data % 2);
-        f.seek(SeekFrom::Start(4))?;
-        f.write_all(&riff.to_le_bytes())?;
-        f.seek(SeekFrom::Start(4 + 4 + 4 + 8 + 40 + 4))?;
-        f.write_all(&data.to_le_bytes())?;
+        close_header(&mut f, &self.layout, data)?;
         f.flush()?;
         Ok(self.frames)
     }
@@ -139,8 +122,11 @@ mod tests {
         let s: Vec<f32> = r.into_samples::<f32>().map(Result::unwrap).collect();
         assert_eq!(s[13], 0.05);
         let bytes = std::fs::read(&path).unwrap();
+        // The mask sits 20 bytes into the fmt chunk's body.
+        let fmt = bytes.windows(4).position(|w| w == b"fmt ").unwrap();
+        let at = fmt + 8 + 20;
         assert_eq!(
-            u32::from_le_bytes(bytes[40..44].try_into().unwrap()),
+            u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()),
             0x2D63F
         );
     }

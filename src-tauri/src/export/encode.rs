@@ -520,7 +520,7 @@ enum Inner {
         buf: Vec<i16>,
     },
     Wav {
-        w: hound::WavWriter<BufWriter<File>>,
+        w: crate::codecs::wavlong::WavOut,
         bits: u16,
         dither: Dither,
     },
@@ -649,18 +649,16 @@ impl Writer {
                 buf: Vec::new(),
             },
             FormatKind::Wav => {
-                let spec = hound::WavSpec {
-                    channels: fmt.channels,
-                    sample_rate: fmt.rate,
-                    bits_per_sample: fmt.bits,
-                    sample_format: if fmt.bits == 32 {
-                        hound::SampleFormat::Float
-                    } else {
-                        hound::SampleFormat::Int
-                    },
-                };
+                // Plain WAV while it fits in 4 GB, RF64 beyond.
                 Inner::Wav {
-                    w: hound::WavWriter::create(path, spec).map_err(werr)?,
+                    w: crate::codecs::wavlong::WavOut::create(
+                        path,
+                        fmt.channels,
+                        fmt.rate,
+                        fmt.bits,
+                        fmt.bits == 32,
+                    )
+                    .map_err(werr)?,
                     bits: fmt.bits,
                     dither: Dither::for_format(fmt, fmt.bits),
                 }
@@ -848,17 +846,17 @@ impl Writer {
             Inner::Wav { w, bits, dither } => {
                 if *bits == 32 {
                     for v in data {
-                        w.write_sample(*v).map_err(werr)?;
+                        w.put_f32(*v).map_err(werr)?;
                     }
                 } else {
                     for v in data {
                         let x = dither.int(*v, *bits);
                         if *bits == 8 {
-                            w.write_sample(x as i8).map_err(werr)?;
+                            w.put_i8(x as i8).map_err(werr)?;
                         } else if *bits == 16 {
-                            w.write_sample(x as i16).map_err(werr)?;
+                            w.put_i16(x as i16).map_err(werr)?;
                         } else {
-                            w.write_sample(x).map_err(werr)?;
+                            w.put_i24(x).map_err(werr)?;
                         }
                     }
                 }
@@ -909,7 +907,9 @@ impl Writer {
         match self.inner {
             Inner::Aac { w, .. } => w.finish().map_err(EncodeError::Write)?,
             Inner::Adpcm { w, .. } => w.finish().map_err(werr)?,
-            Inner::Wav { w, .. } => w.finalize().map_err(werr)?,
+            Inner::Wav { w, .. } => {
+                w.finish().map_err(werr)?;
+            }
             Inner::Flac(mut f) => {
                 if !f.pending.is_empty() {
                     let rest = std::mem::take(&mut f.pending);

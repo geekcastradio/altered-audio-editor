@@ -6,11 +6,13 @@
 //! decoded samples at any rate and channel count (`AudioReader`).
 
 pub mod cue;
+mod longwav;
 mod opus;
 mod probe;
 mod reader;
 mod scan;
 mod unzip;
+pub mod wavlong;
 
 pub use probe::{probe, AudioInfo, ProbeError};
 pub use reader::{map_channels, AudioReader};
@@ -20,5 +22,5 @@ pub use unzip::extract_audio;
 /// File extensions the Files panel accepts, lowercase, without the dot.
 pub const SUPPORTED_EXTENSIONS: &[&str] = &[
     "wav", "wave", "aif", "aiff", "aifc", "mp3", "flac", "m4a", "mp4", "aac", "ogg", "oga", "opus",
-    "mkv",
+    "mkv", "w64", "rf64", "bwf",
 ];

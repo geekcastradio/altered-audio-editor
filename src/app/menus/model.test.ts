@@ -150,6 +150,7 @@ describe("menu model", () => {
       "edit.repeat-last",
       "edit.repeat-last-dialog",
       "file.import-sesx",
+      "file.import-rpp",
       "multitrack.play-pause",
       "multitrack.stop",
       "transport.go-start",
