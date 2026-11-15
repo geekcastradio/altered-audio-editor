@@ -11,7 +11,7 @@
 
 It follows the editing workflow that experienced audio editors already know, with its own original design, then adds tools built for podcast production.
 
-> Status: in active development (phase P5, effects). Version 0.9.1 adds Pitch Tune and Pitch Curve (experimental), a Metadata panel with MP3 cover art and saved tag sets, a frequency band splitter, and a snap-to-zero mode. Editing, playback, recording, the Voice Chain effects, conversion and mixdown work today. Transcripts are still to come. Pre-release: keep backups of your recordings.
+> Status: pre-1.0 and in active development, with a new release every few days. Multitrack and Waveform editing, playback, recording, the Voice Chain effects, mixing, takes and comping, multi-mic tools, video reference, conversion and export all work today. Pre-release: keep backups of your recordings.
 
 ![Multitrack editor with a four-track episode: themes, a host and a co-host with the Podcast Voice chain on the host track, a promo, fades, a volume envelope and chapter markers](docs/images/multitrack.png)
 
@@ -42,6 +42,29 @@ A few antivirus scanners may flag the installer with a low-confidence guess. Tha
 
 Early versions are pre-releases. Expect rough edges and keep backups of your recordings.
 
+## User Guide
+
+The full guide is built into the app: choose **Help > User Guide**. It is searchable and has pictures. Its source is [src/app/guide/guide.md](src/app/guide/guide.md), so you can read it here too. It covers, in order:
+
+- Start here, your first episode, and what happens when you open an older session
+- Privacy
+- Recording, marking good and bad takes as you go, and punch-in
+- Tracks, clips, ripple editing, Sync Lock and markers
+- Takes and comping
+- Multi-mic shows and double-enders: Reduce Bleed, Auto Mic Mix, Sync Tracks, Close Dead Space
+- Process chains
+- Music, stretching and fitting to length
+- Voice Chain and effects, QuickPass
+- The Mixer, buses and routing
+- Automation
+- Hardware controllers
+- Plug-ins
+- Waveform Editor
+- Video
+- Exporting, edit lists and loudness
+- Libraries, files and settings
+- When something goes wrong
+
 ## What it does today
 
 - **Multitrack editing:** move, razor, slip and time-selection tools; trim, split, merge, loop and copy clips; fades and crossfades; clip volume and pan envelopes; markers; ripple delete.
@@ -68,9 +91,18 @@ Early versions are pre-releases. Expect rough edges and keep backups of your rec
 - **Export check and Publish Package:** after each export the app reopens the file and confirms it opens, decodes, has the right length and sample rate, is not silent and holds its chapters. A loudness scan shows the result before you export. File > Publish Package exports the MP3 and writes a folder with episode.json (RSS.com API fields), show notes, chapters (JSON and WebVTT), ad positions and soundbites. Nothing is uploaded.
 - **From the Audiform project:** Convolution Reverb, Vox Strip, Reverse and Invert Polarity, fade bending, and searchable effect lists (see ATTRIBUTION.md).
 - **Duck Music Under Voice and the Audio FX Panel:** Multitrack > Duck Music Under Voice turns a music track down while a voice track talks (light, medium or deep), using plain Dynamics effects you can still edit. The Audio FX Panel gives a voice Restoration, Level, Clarity and Polish at Light, Medium or Strong in one step; it writes ordinary Voice Chain effects, so nothing is hidden.
-- **Duck Music Under Voice and the Audio FX Panel:** one step turns the music down while anyone speaks (light, medium or deep), and the Audio FX Panel offers four looks (restoration, level, clarity, polish) in Light, Medium or Strong, written as ordinary Voice Chain effects you can open and tune.
 - **Help > Check for Updates** finds new versions and can install them (installer copies only; the portable zip gets the download page).
-- **Imports `.sesx` sessions:** brings in tracks, clips and positions from `.sesx` multitrack session files.
+- **Imports `.sesx` sessions and `.rpp` projects:** brings in tracks, clips, positions, fades, markers and regions from multitrack session files. What cannot come across (plug-ins, sends, automation) is listed in a notice.
+- **Takes and comping:** stack several takes of a line over one stretch, pick the best part of each over a time selection, and flatten them into ordinary clips. Takes that are not playing stay silent and out of every export.
+- **Multi-mic shows and double-enders:** Auto Mic Mix and Talk Time turns each mic down while someone else speaks and reports who talked how long. Reduce Bleed cleans one mic of the other voices it picked up, with ordinary signal processing and no model. Sync Tracks lines up two recordings of the same conversation. Close Dead Space and Find Isolated Short Clips tighten a long edit.
+- **Process chains:** run a saved list of steps (Auto Mic Mix, Close Dead Space, Loudness Target, a Voice Chain preset, QuickPass) on a session as one undo.
+- **Video reference:** open a video and cut against its picture in the Video panel, with a Video Reference bar under the ruler. Mixdown Into Video writes a copy of an H.264 video with your mix as its sound, without re-encoding the picture (Windows).
+- **Edit lists:** File > Export > Edit Lists writes EDLs, a marker list or an OpenTimelineIO file for other editors.
+- **Very large files:** opens and writes RF64, BW64 and Wave64 audio past 4 GB.
+- **Speech Denoiser:** takes steady background noise out of a voice with the RNNoise model, running on your computer. The Limiter has a true-peak mode.
+- **Marking while recording:** Retake, Cut This and Great Bit markers at the press of a key, and a Review panel that steps through them.
+- **Music Remix:** set a target length for a music clip and pick one of up to three plans that cut or repeat it where the music lines up.
+- **Control surfaces:** map MIDI faders and knobs, with a Mackie Control layout. Motor fader feedback is experimental.
 
 ## Under the hood
 - **A Rust audio engine.** Memory-safe by design, with no `unsafe` code in the app's own engine and file handling.
