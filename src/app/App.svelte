@@ -163,7 +163,7 @@
   import { exactSamples } from "../stores/exact-samples";
   import { channelLabel, editTake, oneChannel, pasteTake, soloChannel, someOff, waveChannels, type ChannelTake } from "../panels/editor/wave-channels";
   import { pathsIgnoreCase } from "../lib/platform";
-  import { SessionFiles, displayName, isAudioFile, planOpen, type Choice } from "./session-files";
+  import { SessionFiles, displayName, isAudioFile, isVideoFile, planOpen, type Choice } from "./session-files";
   import { RECENT_SLOTS, WORKSPACE_SLOTS } from "./menus/model";
   import {
     sessionAutosave,
@@ -373,6 +373,9 @@
     const paths = await withUnzipped(raw);
     if (paths.length === 0) return;
     dock.show("files");
+    // A video dropped on the Files panel also becomes the session's picture.
+    const clip = paths.find(isVideoFile);
+    if (clip) void attachVideo(clip);
     const result = await mediaPool.importPaths(paths, sessionHistory);
     if (result.added === 0) {
       showNotice(result.duplicates > 0 ? "Those files are already in the session." : "No audio files found there.");
@@ -775,6 +778,30 @@
       }
     } else {
       showNotice("Video opened. Its sound was not added because this session already has audio; use Import Files to add it.");
+    }
+    return true;
+  }
+
+  /**
+   * Makes a video the session's picture and shows the Video panel, without touching the
+   * audio. False (quietly) when the file has no picture or this system cannot show one.
+   */
+  async function attachVideo(path: string): Promise<boolean> {
+    if (!session.current) return false;
+    try {
+      await videoSupport();
+      await videoProbe(path);
+    } catch {
+      return false;
+    }
+    try {
+      if (session.current?.video?.path !== path) {
+        await session.edit("Open Video", { op: "set_video", video: { path, offset: 0 } }, sessionHistory);
+      }
+      if (!openPanels.has("video")) dock.toggle("video");
+    } catch (e) {
+      showError(e);
+      return false;
     }
     return true;
   }
@@ -2673,6 +2700,9 @@
             onPlaceFiles: (paths: string[], trackId: string | null, at: number) =>
               void placeFiles(paths, trackId, at).catch(showError),
             onOpenSingle: (path: string) => void openAudio([path]).catch(showError),
+            sessions: sessionRows,
+            onSwitchSession: (id: string) => void files.switchTo(id).then(() => actions.run("view.editor.multitrack")).catch(showError),
+            onCloseSession: (id: string) => void closeSessionRow(id).catch(showError),
             prompt: promptText,
             wave,
             waveFile,
@@ -3093,6 +3123,8 @@
   async function openInWaveform(path: string) {
     // The file open now is set aside with its edits, not closed.
     await transport.stop();
+    // A video opened from the Files panel also shows its picture in the Video panel.
+    if (isVideoFile(path)) void attachVideo(path);
     try {
       await openWaveFile(path);
     } catch (e) {

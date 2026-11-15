@@ -55,6 +55,10 @@
   import { mediaPool } from "../../stores/media";
   import { startScreen } from "../../stores/start";
   import TempoStrip from "./TempoStrip.svelte";
+  import VideoLane from "./VideoLane.svelte";
+  import SessionTabs from "./SessionTabs.svelte";
+  import { showTabs } from "./session-tabs";
+  import type { SessionRow } from "../files/session-row";
   import MetronomeRow from "./MetronomeRow.svelte";
   import AutoLane from "./AutoLane.svelte";
   import { laneHeight, autoAt, autoChoices, autoMode, modeChange, type AutoModeName, autoName, autoRange, autoRest, dropLane, isOrphan, newLane, nextTarget, putLane, setMode, shownLanes, targetKey, type AutoTarget } from "./automation";
@@ -97,6 +101,10 @@
     onShowChain?: () => void;
     /** Takes dial moves while a take records automation. */
     autoTake?: AutoTake;
+    /** The open sessions, for the tab bar along the top of the Multitrack. */
+    sessions?: Readable<SessionRow[]>;
+    onSwitchSession?: (id: string) => void;
+    onCloseSession?: (id: string) => void;
   }
 
   const {
@@ -118,7 +126,17 @@
     onWaveMarkerEdit = () => {},
     onShowChain = () => {},
     autoTake,
+    sessions,
+    onSwitchSession = () => {},
+    onCloseSession = () => {},
   }: Props = $props();
+
+  let sessionRows = $state<SessionRow[]>([]);
+  $effect(() =>
+    sessions?.subscribe((r) => {
+      sessionRows = r;
+    }),
+  );
 
   let wf = $state<WaveFile | null>(null);
   $effect(() =>
@@ -2506,6 +2524,9 @@
   <WaveformView {wave} file={wf} transport={waveTransport} {peaks} {actions} {shortcutFor} onLevel={onWaveLevel} onMarkerEdit={onWaveMarkerEdit} />
 {:else}
 <section class="editor" aria-label="Multitrack" data-area="multitrack">
+  {#if showTabs(sessionRows)}
+    <SessionTabs rows={sessionRows} onSwitch={onSwitchSession} onClose={onCloseSession} />
+  {/if}
   <div class="toolbar">
     <button type="button" class="tool text" title={tip("Add Mono Track", "multitrack.add.mono")} onclick={() => run("multitrack.add.mono")}>+ Mono</button>
     <button type="button" class="tool text" title={tip("Add Stereo Track", "multitrack.add.stereo")} onclick={() => run("multitrack.add.stereo")}>+ Stereo</button>
@@ -2616,6 +2637,14 @@
     <div class="ruler-row tempo-row">
       <div class="corner tempo-corner" style:width="{headerW}px" title="Tempo and time signature changes. The tempo and time signature where the playhead is are next to the metronome, under the tracks.">Tempo</div>
       <TempoStrip {tempo} {view} width={lanesWidth} {rate} onChange={setTempoMap} onMenu={(e, items) => (menu = { x: e.clientX, y: e.clientY, items })} />
+    </div>
+  {/if}
+
+  {#if doc?.video}
+    {@const ref = doc.video}
+    <div class="ruler-row video-row">
+      <div class="corner video-corner" style:width="{headerW}px" title="The video reference. It is part of the session, not a track.">Video Reference</div>
+      <VideoLane video={ref} {view} width={lanesWidth} {rate} onMove={(offset) => void session.edit("Move Video", { op: "set_video", video: { path: ref.path, offset } }, runner).catch(onError)} />
     </div>
   {/if}
 
@@ -3483,6 +3512,7 @@
     min-width: 0;
   }
 
+  .video-corner,
   .tempo-corner {
     height: 16px;
     border-bottom: 1px solid var(--border);

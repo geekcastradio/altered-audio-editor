@@ -99,6 +99,24 @@ jobs:
           Compress-Archive -Path (Join-Path $portable "*") -DestinationPath (Join-Path $out "Altered-Audio-Editor-$tag-portable.zip")
           if ("${{ steps.asio.outcome }}" -ne "success") { "ASIO build failed; this installer has no ASIO." | Set-Content (Join-Path $out "NO-ASIO.txt") }
 
+      # An MSI for schools and managed Windows machines (installs for all users, works with
+      # deployment tools). An extra: if it fails the release still ships without it.
+      - name: Build MSI (optional)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $out = Join-Path $env:RUNNER_TEMP "release"
+          $more = @()
+          if ("${{ steps.asio.outcome }}" -eq "success") { $more = @("--features", "asio") }
+          $env:LIBCLANG_PATH = "C:\Program Files\LLVM\bin"
+          npm run tauri build -- --bundles msi @more
+          if ($LASTEXITCODE -ne 0) { throw "The MSI build failed." }
+          $ver = $tag.TrimStart("v")
+          $msi = Get-ChildItem "src-tauri/target/release/bundle/msi/*_${ver}_*.msi" | Select-Object -First 1
+          if (-not $msi) { throw "No MSI for version $ver in the build output." }
+          Copy-Item $msi.FullName (Join-Path $out "Altered-Audio-Editor-$tag-x64.msi")
+
       - uses: actions/upload-artifact@v6
         with:
           name: windows

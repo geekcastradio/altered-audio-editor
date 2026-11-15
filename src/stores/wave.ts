@@ -56,6 +56,8 @@ export const waveHistory = new UndoStack({ baseLabel: "Open" });
 
 /** Play, pause and stop for the Waveform editor's file. */
 export const waveTransport = new TransportStore({ play: (from) => wavePlay(from, editor.current().playMode), stop: transportStop, status: transportStatus, stopAtEnd: () => editor.current().playMode !== "loop", skipsSelection: () => editor.current().playMode === "skip" }, wave);
+// In the Waveform editor, Stop leaves the cursor where playback stopped, like a file player.
+waveTransport.returnOnStop = false;
 
 function adopt(doc: WaveDocRaw<SessionDoc>): void {
   wave.set(doc.session, doc.path);

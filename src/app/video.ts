@@ -23,8 +23,9 @@ export interface VideoPicture {
 const HEADER = 16;
 
 /** Reads the bytes `video_frame` returns: width u32, height u32, time f64, then RGBA. */
-export function decodePicture(bytes: ArrayBuffer): VideoPicture | null {
-  if (bytes.byteLength < HEADER) return null;
+export function decodePicture(input: ArrayBuffer | ArrayBufferView | readonly number[]): VideoPicture | null {
+  const bytes = toBuffer(input);
+  if (!bytes || bytes.byteLength < HEADER) return null;
   const head = new DataView(bytes, 0, HEADER);
   const width = head.getUint32(0, true);
   const height = head.getUint32(4, true);
@@ -67,4 +68,32 @@ export function needsFrame(last: number | null, next: number | null, fps: number
 export function askWidth(panelWidth: number, ratio: number, videoWidth: number): number {
   const want = Math.round(Math.max(1, panelWidth) * Math.max(1, ratio));
   return Math.min(Math.max(want, 160), Math.max(160, videoWidth), 1920);
+}
+
+/** The bytes of whatever form the bridge handed back (a buffer, a typed array or a plain array), or null. */
+function toBuffer(input: unknown): ArrayBuffer | null {
+  if (input instanceof ArrayBuffer || Object.prototype.toString.call(input) === "[object ArrayBuffer]") return input as ArrayBuffer;
+  if (ArrayBuffer.isView(input)) {
+    const v = input as ArrayBufferView;
+    return new Uint8Array(v.buffer as ArrayBuffer, v.byteOffset, v.byteLength).slice().buffer;
+  }
+  if (Array.isArray(input)) return Uint8Array.from(input as number[]).buffer;
+  return null;
+}
+
+/** A message for an error of any shape; the bridge does not always hand back plain text. */
+export function errorText(e: unknown, fallback: string): string {
+  if (typeof e === "string" && e) return e;
+  if (e instanceof Error && e.message) return e.message;
+  if (e && typeof e === "object") {
+    const m = (e as { message?: unknown }).message;
+    if (typeof m === "string" && m) return m;
+    try {
+      const j = JSON.stringify(e);
+      if (j && j !== "{}") return `${fallback} (${j})`;
+    } catch {
+      // Not printable; the plain fallback below.
+    }
+  }
+  return fallback;
 }

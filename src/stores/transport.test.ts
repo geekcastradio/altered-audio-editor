@@ -134,3 +134,21 @@ describe("where Play starts", () => {
     expect(playStart(500, null, false)).toBe(500);
   });
 });
+
+describe("TransportStore stop", () => {
+  it("puts the playhead back where playback started", async () => {
+    const { t, session } = setup();
+    await t.play();
+    await t.stop();
+    expect(session.current?.view.playhead).toBe(48_000);
+  });
+
+  it("leaves the playhead where playback stopped when returnOnStop is off", async () => {
+    const { t, session } = setup();
+    t.returnOnStop = false;
+    await t.play();
+    await t.stop();
+    expect(t.current.playing).toBe(false);
+    expect(session.current?.view.playhead).toBe(144_000);
+  });
+});
