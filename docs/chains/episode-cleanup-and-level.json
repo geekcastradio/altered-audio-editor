@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Episode cleanup and level",
+  "description": "Turns down the mics nobody is using, tightens long silences, then sets the Master so the mix lands on the podcast loudness target.",
+  "steps": [
+    { "action": "multitrack.auto-mic-mix", "params": { "reduce_db": 12 }, "on_error": "skip" },
+    { "action": "multitrack.close-dead-space", "params": { "pause_seconds": 0.5 } },
+    { "action": "multitrack.loudness-target", "params": { "target": "podcast-stereo" } }
+  ]
+}

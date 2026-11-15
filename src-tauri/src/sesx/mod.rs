@@ -1086,6 +1086,7 @@ pub fn import(path: &Path) -> Result<Imported, SesxError> {
                 channel_mix,
                 reversed: false,
                 inverted: false,
+                take: None,
             });
             report.clips += 1;
         }

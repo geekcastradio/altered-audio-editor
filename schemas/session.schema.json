@@ -472,6 +472,17 @@
               "type": "null"
             }
           ]
+        },
+        "take": {
+          "description": "Take Lanes (0.32.0): this clip is one take among several of the same line. Reserved so\nolder files and newer builds agree on the format before it freezes; nothing sets it yet.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ClipTake"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -553,6 +564,32 @@
       "required": [
         "ratio",
         "keep_pitch"
+      ]
+    },
+    "ClipTake": {
+      "description": "Marks a clip as one take of a set of takes over the same stretch of a track.",
+      "type": "object",
+      "properties": {
+        "active": {
+          "description": "The take that plays in the mix. The others stay on the track, silent, until chosen.",
+          "type": "boolean"
+        },
+        "number": {
+          "description": "1 for the first take recorded or placed in the set.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "set": {
+          "description": "Takes with the same set id belong together.",
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "set",
+        "number",
+        "active"
       ]
     },
     "EffectChain": {

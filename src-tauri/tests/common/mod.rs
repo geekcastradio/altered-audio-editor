@@ -118,6 +118,7 @@ pub fn clip() -> Clip {
         channel_mix: None,
         reversed: false,
         inverted: false,
+        take: None,
     }
 }
 
