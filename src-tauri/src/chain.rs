@@ -81,6 +81,17 @@ fn num(name: &'static str, min: f64, max: f64, default: f64, help: &'static str)
     }
 }
 
+fn text(name: &'static str, default: &str, help: &'static str) -> Param {
+    Param {
+        name,
+        kind: Kind::Text,
+        min: None,
+        max: None,
+        default: Some(json!(default)),
+        help,
+    }
+}
+
 /// The actions a chain can call. A draft list: ids and parameters are matched to the real
 /// commands when the runner is built.
 pub fn registry() -> Vec<Action> {
@@ -126,6 +137,59 @@ pub fn registry() -> Vec<Action> {
                 num("fade_ms", 10.0, 1000.0, 150.0, "Fade back up"),
                 num("attack_ms", 1.0, 200.0, 15.0, "Fade down"),
                 num("hold_ms", 0.0, 1000.0, 250.0, "Hold open after speech"),
+            ],
+        },
+        Action {
+            id: "multitrack.loudness-target",
+            title: "Loudness Target",
+            destructive: true,
+            params: vec![
+                text(
+                    "target",
+                    "podcast-stereo",
+                    "Which target: podcast-stereo, podcast-mono, spotify, broadcast or custom",
+                ),
+                num(
+                    "tolerance_db",
+                    0.0,
+                    3.0,
+                    0.5,
+                    "A mix this close to the target is left alone",
+                ),
+            ],
+        },
+        Action {
+            id: "multitrack.voice-chain-preset",
+            title: "Voice Chain Preset",
+            destructive: true,
+            params: vec![
+                text(
+                    "preset",
+                    "Podcast Voice",
+                    "Name of a built-in or saved Voice Chain preset",
+                ),
+                text(
+                    "tracks",
+                    "all",
+                    "A track's name, or all for every track that has audio",
+                ),
+            ],
+        },
+        Action {
+            id: "multitrack.quickpass",
+            title: "QuickPass",
+            destructive: true,
+            params: vec![
+                text(
+                    "preset",
+                    "Clean Up Podcast Interview",
+                    "Name of a QuickPass preset that removes or turns down what it finds",
+                ),
+                text(
+                    "ripple",
+                    "none",
+                    "After a removal: none keeps every track in step, track closes the gap on that track, all closes it everywhere",
+                ),
             ],
         },
     ]
@@ -298,6 +362,38 @@ mod tests {
         assert_eq!(r["open_db"], json!(8.0));
         assert_eq!(c.steps[1].on_error, OnError::Skip);
         assert_eq!(c.steps[0].on_error, OnError::Stop);
+    }
+
+    #[test]
+    fn the_preset_steps_take_names_and_have_defaults() {
+        let c = chain(
+            r#"{ "version": 1, "name": "x", "steps": [
+                { "action": "multitrack.voice-chain-preset", "params": { "tracks": "Host" } },
+                { "action": "multitrack.quickpass" }
+            ] }"#,
+        );
+        assert!(validate(&c).is_empty(), "{:?}", validate(&c));
+        let a = resolved(&c.steps[0]).unwrap();
+        assert_eq!(a["preset"], json!("Podcast Voice"));
+        assert_eq!(a["tracks"], json!("Host"));
+        let b = resolved(&c.steps[1]).unwrap();
+        assert_eq!(b["preset"], json!("Clean Up Podcast Interview"));
+        assert_eq!(b["ripple"], json!("none"));
+    }
+
+    #[test]
+    fn the_loudness_step_is_in_the_registry_with_its_defaults() {
+        let c = chain(
+            r#"{ "version": 1, "name": "x", "steps": [
+                { "action": "multitrack.loudness-target" },
+                { "action": "multitrack.loudness-target", "params": { "target": 5 } }
+            ] }"#,
+        );
+        let r = resolved(&c.steps[0]).unwrap();
+        assert_eq!(r["target"], json!("podcast-stereo"));
+        assert_eq!(r["tolerance_db"], json!(0.5));
+        let m: Vec<String> = validate(&c).into_iter().map(|p| p.message).collect();
+        assert_eq!(m, ["target must be text"]);
     }
 
     #[test]

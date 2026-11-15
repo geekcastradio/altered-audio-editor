@@ -982,6 +982,21 @@ pub struct Clip {
     /// Plays with its polarity flipped.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub inverted: bool,
+    /// Take Lanes (0.32.0): this clip is one take among several of the same line. Reserved so
+    /// older files and newer builds agree on the format before it freezes; nothing sets it yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub take: Option<ClipTake>,
+}
+
+/// Marks a clip as one take of a set of takes over the same stretch of a track.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ClipTake {
+    /// Takes with the same set id belong together.
+    pub set: Id,
+    /// 1 for the first take recorded or placed in the set.
+    pub number: u32,
+    /// The take that plays in the mix. The others stay on the track, silent, until chosen.
+    pub active: bool,
 }
 
 /// A clip's Source Channels: one entry per channel of its file, in file order.
@@ -1398,6 +1413,24 @@ pub struct EpisodeMetadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_take_marker_round_trips_and_ordinary_clips_do_not_carry_one() {
+        let t = ClipTake {
+            set: new_id(),
+            number: 2,
+            active: true,
+        };
+        let json = serde_json::to_string(&t).unwrap();
+        assert_eq!(serde_json::from_str::<ClipTake>(&json).unwrap(), t);
+        let none: Option<ClipTake> = None;
+        #[derive(Serialize)]
+        struct Holder {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            take: Option<ClipTake>,
+        }
+        assert_eq!(serde_json::to_string(&Holder { take: none }).unwrap(), "{}");
+    }
 
     #[test]
     fn pan_laws_share_the_sound_as_named() {

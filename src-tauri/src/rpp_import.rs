@@ -224,6 +224,7 @@ pub fn build(project: &rpp::Project, name: &str, base: &Path) -> RppImported {
                 channel_mix: None,
                 reversed: false,
                 inverted: false,
+                take: None,
             });
             report.clips += 1;
         }

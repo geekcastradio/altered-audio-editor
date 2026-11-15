@@ -277,6 +277,7 @@
   import { closeDeadSpace } from "../panels/quickpass/dead-space";
   import { ChainCommand, chainSummary, preflight } from "./chains";
   import { chainHandlers } from "./chain-actions";
+  import { chainEnv } from "./chain-env";
   import { clipById } from "../panels/editor/clip-lookup";
   import { revealScroll } from "../panels/editor/reveal";
   import { tracksWithRoom } from "./place-track";
@@ -5791,7 +5792,7 @@
             const path = await chainPickOpen();
             if (!path) return;
             const loaded = await chainLoad(path);
-            const handlers = chainHandlers(mixAnalyze);
+            const handlers = chainHandlers(mixAnalyze, chainEnv());
             const why = preflight(loaded, handlers);
             if (why) return showNotice(why);
             const run = new ChainCommand(loaded, { doc: () => session.current, apply: (op) => session.apply(op), handlers });
