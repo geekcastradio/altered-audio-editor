@@ -210,7 +210,8 @@ fn run(input: Input, shared: Arc<Shared>, ready: mpsc::Sender<Result<u32, String
         }
     };
     let format = supported.sample_format();
-    let config: StreamConfig = supported.config();
+    let config: StreamConfig =
+        super::host::with_buffer(supported.config(), supported.buffer_size());
     let rate = config.sample_rate;
     let channels = usize::from(config.channels);
 

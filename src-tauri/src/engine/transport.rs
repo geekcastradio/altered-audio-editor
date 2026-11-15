@@ -601,7 +601,8 @@ fn run(
         }
     };
     let format = supported.sample_format();
-    let config: StreamConfig = supported.config();
+    let config: StreamConfig =
+        super::host::with_buffer(supported.config(), supported.buffer_size());
     let out_rate = config.sample_rate;
     super::scope::set_rate(out_rate);
     let channels = usize::from(config.channels);
@@ -744,7 +745,10 @@ fn run(
         Err(e) => {
             shared.stop.store(true, Ordering::SeqCst);
             let _ = render.join();
-            let _ = ready.send(Err(format!("Could not start playback: {e}")));
+            let _ = ready.send(Err(format!(
+                "Could not start playback: {e}.{}",
+                super::host::buffer_hint()
+            )));
             return;
         }
     };

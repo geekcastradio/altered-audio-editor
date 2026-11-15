@@ -11,9 +11,11 @@
 //! ASIO is a trademark of Steinberg Media Technologies GmbH. The ASIO
 //! SDK is used under its GPLv3 license option.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 static USE_ASIO: AtomicBool = AtomicBool::new(false);
+/// The buffer size asked for, in frames. 0 leaves it to the driver.
+static BUFFER_FRAMES: AtomicU32 = AtomicU32::new(0);
 
 /// True when this build can talk to ASIO drivers.
 pub const ASIO_BUILT: bool = cfg!(all(target_os = "windows", feature = "asio"));
@@ -25,6 +27,44 @@ pub fn set_asio(on: bool) {
 
 pub fn asio() -> bool {
     USE_ASIO.load(Ordering::Relaxed)
+}
+
+/// Asks for a buffer of `frames` from the next stream opened (0: the driver's own).
+pub fn set_buffer_frames(frames: u32) {
+    BUFFER_FRAMES.store(frames.min(8192), Ordering::Relaxed);
+}
+
+pub fn buffer_frames() -> u32 {
+    BUFFER_FRAMES.load(Ordering::Relaxed)
+}
+
+/// The buffer to open a stream with. Only a device that reports its range is asked
+/// for a size, held inside that range; otherwise the driver's own size is kept.
+pub fn pick_buffer(want: u32, supported: &cpal::SupportedBufferSize) -> cpal::BufferSize {
+    match supported {
+        cpal::SupportedBufferSize::Range { min, max } if want > 0 && min <= max => {
+            cpal::BufferSize::Fixed(want.clamp(*min, *max))
+        }
+        _ => cpal::BufferSize::Default,
+    }
+}
+
+/// `config` with the chosen buffer size, when the device allows one.
+pub fn with_buffer(
+    mut config: cpal::StreamConfig,
+    supported: &cpal::SupportedBufferSize,
+) -> cpal::StreamConfig {
+    config.buffer_size = pick_buffer(buffer_frames(), supported);
+    config
+}
+
+/// A pointer to the setting, added to an error that may come from a buffer the device refused.
+pub fn buffer_hint() -> &'static str {
+    if buffer_frames() > 0 {
+        " If you set a buffer size in Settings > Audio Devices, set it back to Driver default."
+    } else {
+        ""
+    }
 }
 
 /// The host to open devices on now.
@@ -87,5 +127,31 @@ mod tests {
         assert_eq!(asio(), ASIO_BUILT);
         set_asio(false);
         assert!(!asio());
+    }
+
+    #[test]
+    fn buffer_requests_stay_inside_the_device_range() {
+        use cpal::{BufferSize, SupportedBufferSize};
+        let range = SupportedBufferSize::Range {
+            min: 128,
+            max: 1024,
+        };
+        assert_eq!(pick_buffer(0, &range), BufferSize::Default);
+        assert_eq!(pick_buffer(64, &range), BufferSize::Fixed(128));
+        assert_eq!(pick_buffer(256, &range), BufferSize::Fixed(256));
+        assert_eq!(pick_buffer(4096, &range), BufferSize::Fixed(1024));
+        assert_eq!(
+            pick_buffer(256, &SupportedBufferSize::Unknown),
+            BufferSize::Default
+        );
+    }
+
+    #[test]
+    fn buffer_frames_are_capped() {
+        set_buffer_frames(1_000_000);
+        assert_eq!(buffer_frames(), 8192);
+        assert!(!buffer_hint().is_empty());
+        set_buffer_frames(0);
+        assert_eq!(buffer_hint(), "");
     }
 }

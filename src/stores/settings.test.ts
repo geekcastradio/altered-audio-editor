@@ -49,3 +49,13 @@ describe("app settings", () => {
     settings.set(DEFAULT_SETTINGS);
   });
 });
+
+describe("buffer size setting", () => {
+  it("defaults to the driver and keeps only sensible values", () => {
+    expect(DEFAULT_SETTINGS.bufferFrames).toBe(0);
+    expect(sanitizeSettings({ bufferFrames: 256 }).bufferFrames).toBe(256);
+    expect(sanitizeSettings({ bufferFrames: -1 }).bufferFrames).toBe(0);
+    expect(sanitizeSettings({ bufferFrames: 100_000 }).bufferFrames).toBe(0);
+    expect(sanitizeSettings({ bufferFrames: "256" }).bufferFrames).toBe(0);
+  });
+});

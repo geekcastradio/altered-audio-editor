@@ -1064,6 +1064,11 @@ export function setAudioDriver(asio: boolean): Promise<void> {
   return invoke<void>("set_audio_driver", { asio });
 }
 
+/** Experimental: asks the driver for this many frames per buffer from the next stream opened (0: the driver's own). */
+export function setAudioBuffer(frames: number): Promise<void> {
+  return invoke<void>("set_audio_buffer", { frames });
+}
+
 export function setAudioOutput(name: string | null): Promise<void> {
   return invoke<void>("set_audio_output", { name });
 }
