@@ -777,7 +777,8 @@ fn run(
         Err(e) => return fail(format!("The audio input is not available: {e}")),
     };
     let format = supported.sample_format();
-    let config: StreamConfig = supported.config();
+    let config: StreamConfig =
+        super::host::with_buffer(supported.config(), supported.buffer_size());
     let rate = config.sample_rate;
     let channels = usize::from(config.channels);
     let mut writer = match dir {
@@ -799,7 +800,12 @@ fn run(
     };
     let stream = match stream.and_then(|s| s.play().map(|_| s).map_err(|e| e.to_string())) {
         Ok(s) => s,
-        Err(e) => return fail(format!("Could not open the input: {e}")),
+        Err(e) => {
+            return fail(format!(
+                "Could not open the input: {e}.{}",
+                super::host::buffer_hint()
+            ))
+        }
     };
     if first {
         shared.rate.store(rate, Ordering::Relaxed);
@@ -1007,7 +1013,8 @@ fn open_monitor(
         format!("Input monitoring is off: the output does not play at {rate} Hz, the input's rate. Set both to the same rate in the system sound settings.")
     })?;
     let format = supported.sample_format();
-    let config: StreamConfig = supported.config();
+    let config: StreamConfig =
+        super::host::with_buffer(supported.config(), supported.buffer_size());
     // A second of room; the writer keeps it far emptier than that.
     let (producer, consumer) = RingBuffer::<f32>::new((rate as usize * 2).max(8192));
     let stream = match format {

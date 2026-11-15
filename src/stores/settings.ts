@@ -57,6 +57,8 @@ export interface AppSettings {
   customPeak: number;
   /** Audio driver: the system's own, or ASIO (Windows release builds). */
   driver: "system" | "asio";
+  /** Experimental: frames per audio buffer asked of the driver. 0 leaves it to the driver. */
+  bufferFrames: number;
   /** Input the Waveform editor records from, as a track input ("Mono: ..." or "Stereo: ..."); null is the system default. */
   waveInput: string | null;
   /** Hear the input while recording in the Waveform editor. */
@@ -189,6 +191,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   waveInput: null,
   waveMonitor: false,
   driver: "system",
+  bufferFrames: 0,
   meterSpeed: "fast",
   customLufs: -18,
   customPeak: -1,
@@ -276,6 +279,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       ),
     ),
     driver: o.driver === "asio" ? "asio" : "system",
+    bufferFrames: typeof o.bufferFrames === "number" && Number.isInteger(o.bufferFrames) && o.bufferFrames >= 0 && o.bufferFrames <= 8192 ? o.bufferFrames : d.bufferFrames,
     meterSpeed:
       o.meterSpeed === "medium" || o.meterSpeed === "slow"
         ? o.meterSpeed

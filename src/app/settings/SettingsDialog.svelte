@@ -251,9 +251,19 @@
           {:else if d.app.driver === "asio"}
             <p class="note">
               {driver.drivers.length ? `ASIO drivers found: ${driver.drivers.join(", ")}.` : "No ASIO drivers found. Install your interface's ASIO driver."}
-              Sample rate and buffer size are set in the driver's own control panel. Takes effect from the next playback or recording. If the ASIO driver can't open, the system driver plays instead.
+              The sample rate is set in the driver's own control panel; the buffer size can be requested below. Takes effect from the next playback or recording. If the ASIO driver can't open, the system driver plays instead.
             </p>
           {/if}
+          <label class="row" title="Experimental. A request to the audio driver; it may keep its own size.">
+            Buffer size (experimental)
+            <select bind:value={d.app.bufferFrames}>
+              <option value={0}>Driver default</option>
+              {#each [64, 128, 256, 512, 1024, 2048] as n (n)}
+                <option value={n}>{n} frames ({Math.round((n / 48000) * 1000 * 10) / 10} ms at 48 kHz)</option>
+              {/each}
+            </select>
+          </label>
+          <p class="note">Smaller buffers lower the delay when recording and monitoring but can crackle. Larger ones are steadier. This is a request: many drivers keep their own size, and ASIO drivers may use the size from their own control panel. It takes effect from the next playback or recording. If sound stops working, set it back to Driver default. Experimental: tested on few devices.</p>
           <p class="note">ASIO is a trademark of Steinberg Media Technologies GmbH.</p>
           {#if d.app.driver === "asio" && driver && driver.drivers.length > 0 && ((outputs?.length ?? 0) === 0 || (inputs?.length ?? 0) === 0)}
             <p class="note">The ASIO driver is installed but did not open. Another program may be using it, or the last plug-in that failed may have left it busy. Choose Refresh Devices; if it stays empty, restart the app.</p>

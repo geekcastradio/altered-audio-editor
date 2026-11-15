@@ -184,6 +184,13 @@ pub fn set_audio_driver(asio: bool) {
     crate::engine::host::set_asio(asio);
 }
 
+/// Asks the driver for a buffer of this many frames from the next time playback,
+/// recording or a preview starts (0: the driver's own). Experimental.
+#[tauri::command]
+pub fn set_audio_buffer(frames: u32) {
+    crate::engine::host::set_buffer_frames(frames);
+}
+
 /// The audio inputs available now. Empty when there are none.
 #[tauri::command]
 pub async fn audio_inputs(asio: Option<bool>) -> Result<Vec<AudioInput>, String> {

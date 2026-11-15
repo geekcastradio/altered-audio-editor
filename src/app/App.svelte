@@ -229,6 +229,7 @@
     setAudioOutput,
     setOutputMap,
     setAudioDriver,
+    setAudioBuffer,
     launchPaths,
     onOpenPaths,
     recordStart,
@@ -3725,6 +3726,7 @@
     if (isTauri()) {
       // Driver first, so the output name is looked up on the right one.
       void setAudioDriver(s.driver === "asio")
+        .then(() => setAudioBuffer(s.bufferFrames))
         .then(() => setAudioOutput(s.output))
         .then(() => setOutputMap(s.outputPair, s.speakerOutputs))
         .catch(showError);
