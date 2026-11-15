@@ -13,7 +13,7 @@
   import type { SessionDoc, SessionStore, VideoRefDoc } from "../../stores/session";
   import type { TransportState, TransportStore } from "../../stores/transport";
   import { videoClose, videoFrame, videoOpen, videoPick, videoSupport } from "../../app/core";
-  import { askWidth, decodePicture, needsFrame, timecode, videoTime, type VideoMeta } from "../../app/video";
+  import { askWidth, decodePicture, errorText, needsFrame, timecode, videoTime, type VideoMeta } from "../../app/video";
 
   interface Props {
     session: SessionStore;
@@ -73,7 +73,7 @@
         open = { id: o.id, path, meta: o.meta };
       })
       .catch((e) => {
-        if (mine === opening) problem = typeof e === "string" ? e : "Could not open that video.";
+        if (mine === opening) problem = errorText(e, "Could not open that video.");
       });
   });
   // Let go of the file when the panel goes away.
@@ -126,7 +126,12 @@
         }
         try {
           const pic = decodePicture(await videoFrame(w.id, w.time, w.width));
-          if (!pic || !canvas || open?.id !== w.id) continue;
+          if (!pic) {
+            problem = "The decoder sent a picture the panel could not read.";
+            last = w.time;
+            continue;
+          }
+          if (!canvas || open?.id !== w.id) continue;
           if (canvas.width !== pic.width || canvas.height !== pic.height) {
             canvas.width = pic.width;
             canvas.height = pic.height;
@@ -135,7 +140,8 @@
           last = w.time;
           problem = null;
         } catch (e) {
-          problem = typeof e === "string" ? e : "Could not read a picture.";
+          console.error(e);
+          problem = errorText(e, "Could not read a picture.");
           last = w.time;
         }
       }

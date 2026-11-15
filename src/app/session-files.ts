@@ -438,6 +438,9 @@ const extOf = (p: string) => p.slice(p.lastIndexOf(".") + 1).toLowerCase();
 /** Whether the importer reads this file as audio. */
 export const isAudioFile = (p: string): boolean => AUDIO_EXTENSIONS.has(extOf(p));
 
+/** Whether the file may carry a picture (an .mp4 with no picture still opens as audio). */
+export const isVideoFile = (p: string): boolean => VIDEO_EXTENSIONS.has(extOf(p));
+
 export interface OpenPlan {
   /** Session to open (.altaudio). Only the first one picked is opened. */
   session: string | null;

@@ -101,6 +101,8 @@ export class TransportStore {
   private busy: Promise<unknown> = Promise.resolve();
   /** Set while recording, so playback never stops at the end of the old audio. */
   holdAtEnd = false;
+  /** Stop puts the playhead back where playback started. Off: it stays where playback stopped. */
+  returnOnStop = true;
 
   constructor(
     private readonly backend: TransportBackend,
@@ -147,8 +149,9 @@ export class TransportStore {
   stop(): Promise<void> {
     return this.serial(async () => {
       const was = this.state.playing;
-      await this.backend.stop();
-      this.halt(was ? this.startedAt : (this.session.current?.view.playhead ?? 0));
+      const pos = await this.backend.stop();
+      if (was && !this.returnOnStop) this.halt(pos ?? this.state.position);
+      else this.halt(was ? this.startedAt : (this.session.current?.view.playhead ?? 0));
     });
   }
 
