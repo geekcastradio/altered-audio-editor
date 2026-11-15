@@ -8,6 +8,7 @@
 //! and renders the state it gets back.
 
 pub mod backup;
+pub mod bleed_copy;
 pub mod browse;
 pub mod chain;
 pub mod codecs;
@@ -181,6 +182,7 @@ pub fn run() {
             commands::quickpass::quickpass_spots,
             commands::quickpass::quickpass_repair_copy,
             commands::quickpass::quickpass_cancel,
+            commands::bleed::bleed_reduce_copy,
             commands::generate::generate_audio,
             commands::spectral::wave_spectrogram,
             commands::spectral::wave_spectral_edit,

@@ -8,6 +8,7 @@ pub mod align;
 pub mod automix;
 pub mod binaural;
 pub mod biquad;
+pub mod bleed;
 pub mod channels;
 pub mod convolve;
 pub mod diffuse;

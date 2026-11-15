@@ -221,6 +221,7 @@
     waveApplyChain,
     phaseAlign,
     syncTracks,
+    bleedReduceCopy,
     mixAnalyze,
     setAudioOutput,
     setOutputMap,
@@ -283,6 +284,8 @@
   import { tracksWithRoom } from "./place-track";
   import { moveTrack, type TrackSync } from "./sync-tracks";
   import SyncTracksDialog from "./SyncTracksDialog.svelte";
+  import ReduceBleedDialog from "./ReduceBleedDialog.svelte";
+  import { bleedSummary, bleedWork, MIN_REMOVED_DB, replaceOps, type CleanedFile } from "./bleed";
   import { isolatedClips, removeIsolated } from "../panels/quickpass/isolated-clips";
   import IsolatedClipsDialog from "../panels/quickpass/IsolatedClipsDialog.svelte";
   import FilesPanel from "../panels/files/FilesPanel.svelte";
@@ -1935,6 +1938,7 @@
   let micMixOpen = $state(false);
   let isolatedOpen = $state(false);
   let syncOpen = $state(false);
+  let bleedOpen = $state(false);
 
   async function measureMicMix(ids: string[], options: MixOptions): Promise<MixAnalysis | string> {
     try {
@@ -1985,6 +1989,48 @@
     if (!op) return showNotice("Those clips are locked. Unlock them first (Clip > Lock Position).");
     await session.edit("Remove Isolated Clips", op, sessionHistory);
     showNotice(`Removed ${ids.length} clip${ids.length === 1 ? "" : "s"}. The gaps stay; Close Dead Space can tighten them.`);
+  }
+
+  /**
+   * Multitrack > Reduce Bleed: each clip on the chosen mic is copied with the other mic's sound taken
+   * out, and the clip plays the copy. The originals are never changed; one undo puts every clip back.
+   * Returns the notice for the dialog.
+   */
+  async function reduceBleed(targetId: string, referenceId: string): Promise<string> {
+    const doc0 = session.current;
+    if (!doc0 || exporting) return "Nothing to do right now.";
+    const track = doc0.tracks.find((t) => t.id === targetId);
+    if (!track || !doc0.tracks.some((t) => t.id === referenceId)) return "One of those tracks is gone.";
+    const w = bleedWork(track.clips);
+    if (w.work.length === 0) return track.clips.length === 0 ? "That track has no clips." : `Nothing to clean: ${w.locked} locked and ${w.unsuitable} looped or stretched clips are left alone.`;
+    const folder = await folderBesideSession("Bleed Reduced", "Cleaned audio is kept in a folder next to it.");
+    if (!folder) return "Cancelled. Nothing changed.";
+    exporting = { title: w.work.length === 1 ? "Reducing bleed in a clip" : `Reducing bleed in ${w.work.length} clips`, progress: 0 };
+    try {
+      const done: { clip: ClipDoc; path: string; removed: number }[] = [];
+      for (const [i, c] of w.work.entries()) {
+        const r = await bleedReduceCopy(c.id, referenceId, folder, `${c.name} Cleaned`);
+        done.push({ clip: c, path: r.path, removed: r.removed_db });
+        exporting = { ...exporting!, progress: (i + 1) / w.work.length };
+      }
+      const keep = done.filter((d) => d.removed >= MIN_REMOVED_DB);
+      if (keep.length === 0) return bleedSummary([], w, 0);
+      const imported = await mediaPool.importPaths(keep.map((d) => d.path), sessionHistory);
+      await mediaPool.whenIdle();
+      const files: CleanedFile[] = [];
+      for (const [i, d] of keep.entries()) {
+        const it = mediaPool.get(imported.ids[i]!);
+        if (!it || it.status !== "ready" || !it.info) throw new Error(`The cleaned copy of "${d.clip.name}" could not be read back.`);
+        files.push({ clip: d.clip, media: { id: it.id, path: it.path, sampleRate: it.info.sampleRate, channels: it.info.channels, length: it.info.length } });
+      }
+      const known = new Set((session.current ?? doc0).media.map((x) => x.id));
+      await session.edit("Reduce Bleed", { op: "batch", ops: replaceOps(track.id, files, known) }, sessionHistory);
+      return bleedSummary(keep.map((d) => d.removed), w, keep.length);
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    } finally {
+      exporting = null;
+    }
   }
 
   async function measureSync(firstId: string, secondId: string): Promise<TrackSync | string> {
@@ -5820,6 +5866,14 @@
         reason: () => (inWave() ? "Sync Tracks works across the tracks of a Multitrack session." : "Needs two tracks with audio on them."),
       }),
       actions.register({
+        id: "multitrack.reduce-bleed",
+        run: () => {
+          bleedOpen = true;
+        },
+        enabled: () => !inWave() && session.current !== null && session.current.tracks.filter((t) => t.clips.length > 0).length >= 2,
+        reason: () => (inWave() ? "Reduce Bleed works across the tracks of a Multitrack session." : "Needs two tracks with audio on them."),
+      }),
+      actions.register({
         id: "multitrack.isolated-clips",
         run: () => {
           isolatedOpen = true;
@@ -6501,6 +6555,15 @@
     onMeasure={measureSync}
     onApply={applySync}
     onClose={() => (syncOpen = false)}
+  />
+{/if}
+
+{#if bleedOpen && session.current}
+  <ReduceBleedDialog
+    tracks={session.current.tracks.filter((t) => t.clips.length > 0).map((t) => ({ id: t.id, name: t.name }))}
+    initialTarget={editor.current().selectedTrack}
+    onRun={reduceBleed}
+    onClose={() => (bleedOpen = false)}
   />
 {/if}
 

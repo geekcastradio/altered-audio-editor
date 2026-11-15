@@ -295,6 +295,7 @@ export const MENUS: readonly Menu[] = [
       item("multitrack.run-chain", "Run Process Chain..."),
       item("multitrack.isolated-clips", "Find Isolated Short Clips..."),
       item("multitrack.sync-tracks", "Sync Tracks..."),
+      item("multitrack.reduce-bleed", "Reduce Bleed..."),
       item("multitrack.space", "3D Space..."),
       sub("Host Profile", [
         item("multitrack.profile.close-mic", "Close Mic"),

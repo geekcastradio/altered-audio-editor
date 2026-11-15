@@ -1171,6 +1171,29 @@ export function quickpassCancel(): Promise<void> {
   return invoke("quickpass_cancel");
 }
 
+/** What Reduce Bleed can be set to. Anything left out takes the default. */
+export interface BleedSettings {
+  filter_ms?: number;
+  step?: number;
+  max_bleed_db?: number;
+  quiet_db?: number;
+}
+
+/** A cleaned copy of one clip's audio. */
+export interface BleedCopy {
+  path: string;
+  /** How much quieter the clip became overall, in dB. */
+  removed_db: number;
+}
+
+/**
+ * Copies a clip's audio into `folder` and takes the other mic's sound out of the copy.
+ * The original file is untouched; point the clip at the copy to use it.
+ */
+export function bleedReduceCopy(clipId: string, referenceTrack: string, folder: string, name: string, settings: BleedSettings = {}): Promise<BleedCopy> {
+  return invoke<BleedCopy>("bleed_reduce_copy", { clipId, referenceTrack, folder, name, settings });
+}
+
 export interface GenerateRequest {
   kind: "tone" | "white" | "pink" | "silence";
   seconds: number;
