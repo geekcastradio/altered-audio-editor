@@ -192,6 +192,21 @@
     if (x > width - 20 || x < 0) setView({ scroll: tp.position - 20 * view.spp }, true);
   });
 
+  // Recording into this file: keep the end of the new audio in view as it grows,
+  // under the same rule as playback (a hand scroll or zoom holds it until the next take).
+  let wasLive = false;
+  $effect(() => {
+    void live?.tick;
+    const lw = live && live.rate > 0 ? live.waves["wave"] : undefined;
+    const liveNow = !!lw && lw.blocks > 0;
+    if (liveNow && !wasLive) followHeld = false;
+    wasLive = liveNow;
+    if (!live || !lw || !liveNow || width <= 0 || followHeld) return;
+    const head = live.at + Math.round((lw.frames * rate) / live.rate);
+    const x = xOf(head, view);
+    if (x > width - 20 || x < 0) setView({ scroll: head - 20 * view.spp }, true);
+  });
+
   /** Farthest zoom out: the whole file fills the view, with no empty time after it. */
   const outermost = () => fit(total, width, 1).spp;
 
