@@ -6,7 +6,6 @@
 //! rate, channels and exact length. The first packet is decoded so a
 //! file we cannot play is caught at import, not later on the timeline.
 
-use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -86,10 +85,14 @@ pub fn probe(path: &Path) -> Result<AudioInfo, ProbeError> {
         return Err(ProbeError::UnsupportedType);
     }
 
-    let file = File::open(path)?;
-    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+    // RF64, BW64 and Wave64 are shown to the decoder as plain WAV.
+    let opened = super::longwav::open_source(path)?;
+    let long = opened.long;
+    let mss = MediaSourceStream::new(opened.source, Default::default());
     let mut hint = Hint::new();
-    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+    if long.is_some() {
+        hint.with_extension("wav");
+    } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
         hint.with_extension(ext);
     }
 
@@ -108,7 +111,10 @@ pub fn probe(path: &Path) -> Result<AudioInfo, ProbeError> {
             _ => ProbeError::UnknownFormat,
         })?;
 
-    let container = container_label(format.format_info().short_name, path);
+    let container = match long {
+        Some((_, name)) => name.to_string(),
+        None => container_label(format.format_info().short_name, path),
+    };
 
     let track = format
         .default_track(TrackType::Audio)
@@ -167,7 +173,7 @@ pub fn probe(path: &Path) -> Result<AudioInfo, ProbeError> {
     let channels = channels.filter(|c| *c > 0).ok_or(ProbeError::NoAudio)?;
     let time_base = track.time_base;
 
-    let length = match (track.num_frames, track.duration) {
+    let length = match (long.map(|l| l.0).or(track.num_frames), track.duration) {
         (Some(n), _) => n,
         (None, Some(d)) => to_frames(d.get(), time_base, sample_rate),
         (None, None) => {

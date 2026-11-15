@@ -10,7 +10,6 @@
 //! allocates. Run it on a worker thread and hand samples over through a
 //! lock-free queue.
 
-use std::fs::File;
 use std::path::Path;
 
 use audioadapter_buffers::owned::InterleavedOwned;
@@ -73,15 +72,18 @@ impl AudioReader {
         out_channels: usize,
         out_rate: Option<u32>,
     ) -> Result<Self, ProbeError> {
-        let file = File::open(path).map_err(|e| match e.kind() {
+        let opened = super::longwav::open_source(path).map_err(|e| match e.kind() {
             std::io::ErrorKind::NotFound => ProbeError::NotFound,
             _ => ProbeError::Io(e),
         })?;
-        let mss = MediaSourceStream::new(Box::new(file), Default::default());
         let mut hint = Hint::new();
-        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        // RF64, BW64 and Wave64 are shown to the decoder as plain WAV.
+        if opened.long.is_some() {
+            hint.with_extension("wav");
+        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
             hint.with_extension(ext);
         }
+        let mss = MediaSourceStream::new(opened.source, Default::default());
         let format = symphonia::default::get_probe()
             .probe(
                 &hint,
