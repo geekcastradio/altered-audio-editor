@@ -109,6 +109,7 @@ export const MENUS: readonly Menu[] = [
       sep,
       sub("Export", [
         item("file.export.mixdown", "Session Mixdown..."),
+        item("file.export.video-mix", "Mixdown Into Video..."),
         item("file.export.selection", "Time Selection..."),
         item("file.export.stems", "Track Stems..."),
         sep,
@@ -291,6 +292,7 @@ export const MENUS: readonly Menu[] = [
       item("multitrack.duck-music", "Duck Music Under Voice..."),
       item("multitrack.mic-mix", "Auto Mic Mix and Talk Time..."),
       item("multitrack.close-dead-space", "Close Dead Space..."),
+      item("multitrack.run-chain", "Run Process Chain..."),
       item("multitrack.isolated-clips", "Find Isolated Short Clips..."),
       item("multitrack.sync-tracks", "Sync Tracks..."),
       item("multitrack.space", "3D Space..."),

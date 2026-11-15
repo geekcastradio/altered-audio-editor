@@ -9,6 +9,7 @@
 
 pub mod backup;
 pub mod browse;
+pub mod chain;
 pub mod codecs;
 pub mod commands;
 pub mod controllers;
@@ -238,6 +239,8 @@ pub fn run() {
             commands::batch::batch_convert,
             commands::batch::batch_cancel,
             commands::export::export_mixdown,
+            commands::export::export_pick_video_path,
+            commands::export::export_mix_into_video,
             commands::export::clip_reverse_prepare,
             commands::export::export_cancel,
             commands::export::loudness_check,
@@ -270,6 +273,8 @@ pub fn run() {
             commands::workspace::workspace_put,
             commands::workspace::workspace_delete,
             commands::session::session_import_sesx,
+            commands::chain::chain_pick_open,
+            commands::chain::chain_load,
             commands::session::session_pick_rpp,
             commands::session::session_import_rpp,
             commands::session::session_export_sesx,

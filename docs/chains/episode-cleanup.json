@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Episode cleanup",
+  "description": "Turns down the mics nobody is using, then tightens long silences.",
+  "steps": [
+    { "action": "multitrack.auto-mic-mix", "params": { "reduce_db": 12 }, "on_error": "skip" },
+    { "action": "multitrack.close-dead-space", "params": { "pause_seconds": 0.5 } }
+  ]
+}
