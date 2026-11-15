@@ -71,6 +71,7 @@ describe("menu model", () => {
       "multitrack.duck-music",
       "multitrack.mic-mix",
       "multitrack.run-chain",
+      "multitrack.reduce-bleed",
       "multitrack.close-dead-space",
       "multitrack.isolated-clips",
       "multitrack.sync-tracks",
