@@ -357,6 +357,64 @@ pub async fn wave_spectral_edit(
     .map_err(|e| e.to_string())?
 }
 
+/// The longest stretch Play Selected Area will build, in seconds.
+const MAX_PLAY_SECONDS: f64 = 300.0;
+
+/// What Play Selected Area made: a file with only the selected part of the spectrum.
+#[derive(Debug, Serialize)]
+pub struct SpectralPlay {
+    pub path: std::path::PathBuf,
+    pub seconds: f64,
+}
+
+/// Builds a temporary file holding only what is inside `mask` (the sound of the
+/// selected area), over the stretch the mask covers, for the preview player.
+/// Nothing in the open file changes.
+#[tauri::command]
+pub async fn wave_spectral_play(
+    app: AppHandle,
+    wave: State<'_, OpenWave>,
+    mask: Mask,
+) -> Result<SpectralPlay, String> {
+    let session = snapshot(&wave)?;
+    let (m0, m1) = mask.span();
+    if m1 <= m0 || mask.data.iter().all(|v| *v == 0) {
+        return Err("Select an area of the spectrum first.".into());
+    }
+    let rate = session.sample_rate;
+    let start = m0.max(0.0) as u64;
+    let end = m1.max(0.0).ceil() as u64;
+    if (end.saturating_sub(start)) as f64 / f64::from(rate) > MAX_PLAY_SECONDS {
+        return Err("Select a shorter stretch (up to five minutes) to play it.".into());
+    }
+    let dir = crate::commands::cache::cache_root(&app)?.join("spectral");
+    spawn_blocking(move || -> Result<SpectralPlay, String> {
+        let n = FFT_SIZE as u64;
+        // One frame of room each side so the ends rebuild fully.
+        let from = start as i64 - n as i64;
+        let to = end as i64 + n as i64;
+        let (audio, ch) = render_n(&session, from, to);
+        let frames = audio.len() / ch;
+        let mut out = audio.clone();
+        for c in 0..ch {
+            let chan: Vec<f32> = audio.iter().skip(c).step_by(ch).copied().collect();
+            let kept = spectral::keep_inside(&chan, rate, from as f64, &mask);
+            for (i, v) in kept.into_iter().enumerate().take(frames) {
+                out[i * ch + c] = v;
+            }
+        }
+        let skip = (start as i64 - from) as usize;
+        let keep = (end - start) as usize;
+        let media = write_n(&dir, "spectral-play", &out, ch, skip, keep, rate)?;
+        Ok(SpectralPlay {
+            path: media.path,
+            seconds: media.length as f64 / f64::from(rate),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// The pitch line for `start..end`: one value per column, in Hz, 0 where
 /// there is no clear pitch.
 #[tauri::command]

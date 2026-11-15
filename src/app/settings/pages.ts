@@ -37,6 +37,7 @@ export const PAGES = [
   "Playback and Recording",
   "Time Display",
   "Loudness",
+  "Automation",
   "Privacy",
 ] as const;
 

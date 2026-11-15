@@ -84,6 +84,7 @@
     border-right: 1px solid var(--border);
   }
   nav button {
+    flex-shrink: 0;
     padding: 5px 8px;
     border: 0;
     border-radius: 3px;

@@ -491,6 +491,14 @@ pub fn pitch_track(
     out
 }
 
+/// Only what lies inside `mask`: the audio minus the same audio with the mask
+/// removed. The edit is linear, so what is left is exactly what a removal takes out.
+pub fn keep_inside(samples: &[f32], rate: u32, origin: f64, mask: &Mask) -> Vec<f32> {
+    let mut removed = samples.to_vec();
+    process_channel(&mut removed, rate, origin, mask, Action::Gain(0.0));
+    samples.iter().zip(&removed).map(|(a, b)| a - b).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -503,6 +511,30 @@ mod tests {
 
     fn rms(x: &[f32]) -> f32 {
         (x.iter().map(|v| v * v).sum::<f32>() / x.len().max(1) as f32).sqrt()
+    }
+
+    #[test]
+    fn keep_inside_plays_only_the_selected_tone() {
+        let rate = 48_000;
+        let low = sine(1_000.0, rate, 30_000, 0.4);
+        let high = sine(6_000.0, rate, 30_000, 0.4);
+        let both: Vec<f32> = low.iter().zip(&high).map(|(a, b)| a + b).collect();
+        let m = Mask::rect(5_000.0, 25_000.0, 500.0, 2_000.0, 24_000.0);
+        let kept = keep_inside(&both, rate, 0.0, &m);
+        let mid = 10_000..20_000;
+        let want = rms(&low[mid.clone()]);
+        let got = rms(&kept[mid.clone()]);
+        assert!((got - want).abs() < want * 0.1, "kept {got}, wanted {want}");
+        let leak: Vec<f32> = kept[mid.clone()]
+            .iter()
+            .zip(&low[mid])
+            .map(|(a, b)| a - b)
+            .collect();
+        assert!(
+            rms(&leak) < want * 0.15,
+            "the high tone leaked: {}",
+            rms(&leak)
+        );
     }
 
     #[test]
