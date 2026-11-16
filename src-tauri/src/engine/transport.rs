@@ -38,6 +38,7 @@ use super::graph::{self, Graph, GraphMeters, Levels, Mix};
 use super::metronome::Click;
 use super::plan::{self, Owner};
 use super::render::{ChainUpdate, Renderer};
+use super::speed::{self, SpeedStage};
 use crate::session::model::{EffectChain, Id, Session};
 
 /// Meter readings from the render thread kept for the status call, at most.
@@ -175,6 +176,18 @@ impl Shared {
         }
     }
 
+    /// Like `push_meters`, for audio that was stretched: `scale` is output
+    /// frames per timeline frame.
+    fn push_meters_scaled(&self, mix: &mut Mix, scale: f64) {
+        let peaks = mix.graph().take_meters();
+        if let Ok(mut q) = self.chain_meters.lock() {
+            q.push_back(((mix.rendered() as f64 * scale) as u64, peaks));
+            while q.len() > METER_QUEUE {
+                q.pop_front();
+            }
+        }
+    }
+
     /// Render-thread peaks for the audio the device has played since the
     /// last call.
     fn played_meters(&self) -> GraphMeters {
@@ -261,6 +274,8 @@ struct Running {
     jump: Option<Jump>,
     session_rate: u32,
     out_rate: u32,
+    /// Playback speed, 1.0 for normal.
+    speed: f32,
     layout: plan::Layout,
     track_ids: Vec<Id>,
     bus_ids: Vec<Id>,
@@ -273,10 +288,13 @@ struct Running {
 
 impl Running {
     fn position(&self) -> u64 {
-        let elapsed = plan::to_session(
-            self.shared.played.load(Ordering::Relaxed),
-            self.session_rate,
-            self.out_rate,
+        let elapsed = speed::timeline_frames(
+            plan::to_session(
+                self.shared.played.load(Ordering::Relaxed),
+                self.session_rate,
+                self.out_rate,
+            ),
+            self.speed,
         );
         Jump::position(self.jump, self.start, elapsed)
     }
@@ -412,7 +430,10 @@ impl Transport {
         let Some(r) = cur.as_mut() else {
             return Ok(());
         };
-        if r.layout == plan::layout(session) && r.session_rate == session.sample_rate {
+        if r.layout == plan::layout(session)
+            && r.session_rate == session.sample_rate
+            && r.speed == effective_speed(session)
+        {
             let master = plan::master_gain(session);
             if r.routed {
                 r.shared.set_gains(&[[1.0, 1.0]], master);
@@ -507,7 +528,8 @@ impl Drop for Transport {
 fn start(session: Session, from: u64, jump: Option<Jump>) -> Result<Running, String> {
     let from = jump.map_or(from, |j| j.first(from));
     let jump = jump.filter(|j| j.points(from).is_some());
-    let routed = crate::session::routing::is_routed(&session);
+    let speed = effective_speed(&session);
+    let routed = crate::session::routing::is_routed(&session) || speed != 1.0;
     let master = plan::master_gain(&session);
     let layout = plan::layout(&session);
     let chains = plan::chains(&session);
@@ -532,7 +554,7 @@ fn start(session: Session, from: u64, jump: Option<Jump>) -> Result<Running, Str
     let thread_shared = shared.clone();
     let thread = thread::Builder::new()
         .name("transport".into())
-        .spawn(move || run(session, from, jump, thread_shared, ready_tx))
+        .spawn(move || run(session, from, jump, speed, thread_shared, ready_tx))
         .map_err(|e| e.to_string())?;
     // Plug-ins and instruments may still be loading (licence checks,
     // samples): give them longer than a plain session needs.
@@ -555,6 +577,7 @@ fn start(session: Session, from: u64, jump: Option<Jump>) -> Result<Running, Str
         jump,
         session_rate,
         out_rate,
+        speed,
         layout,
         track_ids,
         bus_ids,
@@ -568,6 +591,7 @@ fn run(
     mut session: Session,
     from: u64,
     jump: Option<Jump>,
+    speed: f32,
     shared: Arc<Shared>,
     ready: mpsc::Sender<Result<u32, String>>,
 ) {
@@ -614,7 +638,7 @@ fn run(
             crate::session::model::ChannelLayout::Stereo,
         ));
     }
-    let routed = crate::session::routing::is_routed(&session);
+    let routed = crate::session::routing::is_routed(&session) || speed != 1.0;
     let start_frame = plan::to_out(from, session.sample_rate, out_rate);
     let mut renderer = Renderer::new(plan::build(&session, out_rate), start_frame);
     if let Some((at, to)) = jump.and_then(|j| j.points(from)) {
@@ -667,31 +691,48 @@ fn run(
 
     // Fill ahead before the device starts, so playback starts clean.
     let mut blocks: Vec<Vec<f32>> = vec![Vec::with_capacity(BLOCK * 2); rings];
-    while has_room(&producers, &click_out, bed_prod.as_ref(), nb) {
-        render_block(
+    // At a speed other than 1x the mix is stretched after it renders.
+    let mut slow = (speed != 1.0).then(|| SpeedStage::new(speed, out_rate));
+    if let Some(stage) = slow.as_mut() {
+        while speed_step(
             &mut mix,
             &mut blocks,
-            &mut producers,
-            &mut click,
+            &mut producers[0],
             &mut click_out,
-            bed_prod.as_mut(),
-        );
-        shared.push_meters(&mut mix);
+            stage,
+            &shared,
+        ) {}
+    } else {
+        while has_room(&producers, &click_out, bed_prod.as_ref(), nb) {
+            render_block(
+                &mut mix,
+                &mut blocks,
+                &mut producers,
+                &mut click,
+                &mut click_out,
+                bed_prod.as_mut(),
+            );
+            shared.push_meters(&mut mix);
+        }
     }
 
     let render_shared = shared.clone();
     let render = thread::Builder::new()
         .name("transport-render".into())
         .spawn(move || {
-            render_loop(
-                mix,
-                producers,
-                blocks,
-                click,
-                click_out,
-                bed_prod,
-                render_shared,
-            )
+            if let Some(stage) = slow {
+                render_loop_speed(mix, producers, blocks, click_out, stage, render_shared)
+            } else {
+                render_loop(
+                    mix,
+                    producers,
+                    blocks,
+                    click,
+                    click_out,
+                    bed_prod,
+                    render_shared,
+                )
+            }
         });
     let render = match render {
         Ok(r) => r,
@@ -759,6 +800,71 @@ fn run(
     }
     drop(stream);
     let _ = render.join();
+}
+
+/// The speed playback really uses for `session`: 3D Space sessions
+/// heard on speakers always play at 1x.
+fn effective_speed(session: &Session) -> f32 {
+    let v = speed::speed();
+    let bed = session
+        .space
+        .is_some_and(|sp| sp.listen == crate::session::model::SpaceListen::Speakers);
+    if bed {
+        1.0
+    } else {
+        v
+    }
+}
+
+/// One step of the render thread at a speed other than 1x: moves stretched
+/// audio into the queues, and renders and stretches another block when
+/// less than a block is waiting. False when there was nothing to do.
+fn speed_step(
+    mix: &mut Mix,
+    blocks: &mut [Vec<f32>],
+    ring: &mut Producer<f32>,
+    click_out: &mut Producer<f32>,
+    stage: &mut SpeedStage,
+    shared: &Shared,
+) -> bool {
+    let mut did = stage.flush(ring, click_out) > 0;
+    if stage.buffered() < BLOCK {
+        mix.render(BLOCK, blocks);
+        stage.feed(&blocks[0]);
+        shared.push_meters_scaled(mix, 1.0 / f64::from(stage.speed()));
+        did = true;
+    }
+    did || stage.flush(ring, click_out) > 0
+}
+
+/// The render thread when playing at a speed other than 1x. The mix is
+/// always one queue here, and the metronome is silent.
+fn render_loop_speed(
+    mut mix: Mix,
+    mut producers: Vec<Producer<f32>>,
+    mut blocks: Vec<Vec<f32>>,
+    mut click_out: Producer<f32>,
+    mut stage: SpeedStage,
+    shared: Arc<Shared>,
+) {
+    while !shared.stop.load(Ordering::SeqCst) {
+        if let Some(update) = shared.take_chains() {
+            mix.set_chains(&update);
+        }
+        if let Some(levels) = shared.take_levels() {
+            mix.graph().set_levels(levels);
+        }
+        if !speed_step(
+            &mut mix,
+            &mut blocks,
+            &mut producers[0],
+            &mut click_out,
+            &mut stage,
+            &shared,
+        ) {
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
 }
 
 fn push_all(producers: &mut [Producer<f32>], blocks: &[Vec<f32>]) {

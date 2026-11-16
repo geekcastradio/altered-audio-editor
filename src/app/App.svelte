@@ -234,6 +234,7 @@
     setOutputMap,
     setAudioDriver,
     setAudioBuffer,
+    setPlaybackSpeed,
     launchPaths,
     onOpenPaths,
     recordStart,
@@ -3758,7 +3759,23 @@
     applyAppSettings(settings.current, autosaveChanged);
   }
   /** Puts settings that live outside the interface's own reads into effect. */
+  // Playback speed (Settings > Playback and Recording, off until turned on): 0.5x to 2x, pitch kept.
+  // Listening only. It starts at 1x each run, goes back to 1x when the setting is turned off, and
+  // before a recording starts.
+  const SPEEDS = [50, 75, 100, 125, 150, 200] as const;
+  let speedNow = $state(100);
+  async function chooseSpeed(percent: number): Promise<void> {
+    speedNow = percent;
+    if (isTauri()) await setPlaybackSpeed(percent / 100);
+    actions.invalidate();
+    if (percent !== 100) {
+      const x = percent / 100;
+      showNotice(`Playback speed ${x}x.${percent === 50 || percent === 200 ? " At this speed the sound is smeared." : ""} The metronome is silent until you are back at Normal.`);
+    }
+  }
+
   function applyAppSettings(s: AppSettings, autosave: boolean) {
+    if (!s.playbackSpeed && speedNow !== 100) void chooseSpeed(100).catch(() => {});
     document.documentElement.dataset.surface = s.surface;
     const root = document.documentElement.style;
     for (const k of ["--wave", "--playhead", "--accent", "--lane-selected"]) root.removeProperty(k);
@@ -3845,6 +3862,7 @@
       askNewAudio();
       return;
     }
+    if (speedNow !== 100) await chooseSpeed(100);
     if (!(await countIn())) return;
     try {
       if (inWave()) {
@@ -5113,6 +5131,15 @@
       actions.register({ id: "view.zoom-in", run: () => zoomBy(0.5), enabled: () => session.current !== null }),
       actions.register({ id: "view.zoom-out", run: () => zoomBy(2), enabled: () => session.current !== null }),
       actions.register({ id: "view.editor.toggle", run: async () => void (await actions.run(inWave() ? "view.editor.multitrack" : "view.editor.waveform")) }),
+      ...SPEEDS.map((p) =>
+        actions.register({
+          id: `transport.speed-${p}`,
+          run: () => chooseSpeed(p).catch(showError),
+          enabled: () => settings.current.playbackSpeed,
+          reason: () => "Turn on Playback speed in Settings > Playback and Recording first.",
+          checked: () => speedNow === p,
+        }),
+      ),
       actions.register({ id: "transport.go-start", run: () => seekAndShow(0), enabled: () => session.current !== null }),
       actions.register({ id: "transport.go-end", run: () => seekAndShow(contentEnd(), 0.9), enabled: () => session.current !== null }),
       actions.register({ id: "transport.prev-edge", run: () => jumpEdge(-1, false), enabled: () => session.current !== null }),

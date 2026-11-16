@@ -48,6 +48,12 @@ describe("app settings", () => {
     off();
     settings.set(DEFAULT_SETTINGS);
   });
+
+  it("keeps playback speed off until it is turned on", () => {
+    expect(DEFAULT_SETTINGS.playbackSpeed).toBe(false);
+    expect(sanitizeSettings({ playbackSpeed: true }).playbackSpeed).toBe(true);
+    expect(sanitizeSettings({ playbackSpeed: "yes" }).playbackSpeed).toBe(false);
+  });
 });
 
 describe("buffer size setting", () => {

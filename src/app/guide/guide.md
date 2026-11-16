@@ -38,6 +38,8 @@ To record a call, each output device is also offered as an input named "System a
 
 **Scrubbing.** Settings > Playback and Recording has Play audio while scrubbing. With it on, dragging the playhead along the ruler plays what is under it. It is approximate: playback restarts at the pointer every moment. It is off by default.
 
+**Playback speed.** Settings > Playback and Recording has Playback speed (experimental). With it on, Transport > Playback Speed plays the mix from 0.5x to 2x with the pitch kept, which is handy for reviewing speech. It is for listening only: recording, exports and saved files are not affected. At 0.5x and 2x the sound is smeared, the metronome is silent whenever the speed is not Normal, and it does not apply to 3D Space sessions heard on speakers. Recording puts it back to Normal, and so does starting the program again.
+
 ## Tracks, clips and editing
 
 A **track** holds clips. A **clip** is a piece of an audio file placed on the timeline. Cutting a clip never changes the file on disk.

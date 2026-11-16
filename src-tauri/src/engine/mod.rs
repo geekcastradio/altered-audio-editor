@@ -20,6 +20,7 @@ pub mod record;
 pub mod render;
 pub mod reverse;
 pub mod scope;
+pub mod speed;
 pub mod transport;
 
 pub use preview::{PreviewPlayer, PreviewStatus};

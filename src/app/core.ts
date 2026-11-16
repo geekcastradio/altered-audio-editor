@@ -688,6 +688,11 @@ export function setMonoCheck(on: boolean): Promise<void> {
   return invoke<void>("transport_set_mono_check", { on });
 }
 
+/** Playback speed, 0.5 to 2 with the pitch kept. Playback that is running starts over from where it is. Listening only. */
+export function setPlaybackSpeed(speed: number): Promise<void> {
+  return invoke<void>("transport_set_speed", { speed });
+}
+
 export function transportStatus(): Promise<TransportStatus> {
   return invoke<TransportStatus>("transport_status");
 }
