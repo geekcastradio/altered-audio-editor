@@ -101,6 +101,8 @@ export interface AppSettings {
   returnOnStop: boolean;
   /** Take lanes and comping: the Takes panel and the Make Takes and Flatten Takes commands. Off hides them; sessions with takes still play the chosen takes. */
   takeLanes: boolean;
+  /** Playback speed: the Transport > Playback Speed choices (0.5x to 2x, pitch kept). Off until turned on. */
+  playbackSpeed: boolean;
   /** Dragging the playhead along the ruler plays the audio under it. */
   scrubAudio: boolean;
   /** Offer the Amp Model in the Add effect menus even with Music Mode off (it is a music tool, so off by default). */
@@ -216,6 +218,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   musicMode: false,
   returnOnStop: true,
   takeLanes: true,
+  playbackSpeed: false,
   scrubAudio: false,
   ampModelAlways: false,
   updateCheck: false,
@@ -325,6 +328,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
     musicMode: bool(o.musicMode, d.musicMode),
     returnOnStop: bool(o.returnOnStop, d.returnOnStop),
     takeLanes: bool(o.takeLanes, d.takeLanes),
+    playbackSpeed: bool(o.playbackSpeed, d.playbackSpeed),
     scrubAudio: bool(o.scrubAudio, d.scrubAudio),
     ampModelAlways: bool(o.ampModelAlways, d.ampModelAlways),
     updateCheck: bool(o.updateCheck, d.updateCheck),

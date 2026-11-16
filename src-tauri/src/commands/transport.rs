@@ -78,6 +78,32 @@ pub fn transport_set_mono_check(on: bool) {
     crate::engine::transport::set_mono_check(on);
 }
 
+/// Playback speed (0.5 to 2, pitch kept). Playback that is running starts
+/// over from where it is, at the new speed. Listening only.
+#[tauri::command]
+pub fn transport_set_speed(
+    transport: State<'_, Transport>,
+    open: State<'_, OpenSession>,
+    wave: State<'_, super::wave::OpenWave>,
+    playing: State<'_, super::wave::Playing>,
+    speed: f32,
+) -> Result<(), String> {
+    crate::engine::speed::set_speed(speed);
+    if !transport.is_playing() {
+        return Ok(());
+    }
+    if playing.is(super::wave::PlayingDoc::Wave) {
+        let w = wave.0.lock().map_err(|e| e.to_string())?;
+        if let Some(state) = w.as_ref() {
+            transport.sync(&state.session)?;
+        }
+    } else {
+        let s = open.0.lock().map_err(|e| e.to_string())?;
+        transport.sync(&s.session)?;
+    }
+    Ok(())
+}
+
 /// The metronome's settings, while playing or not.
 #[tauri::command]
 pub fn transport_set_metronome(settings: crate::engine::metronome::Settings) {

@@ -137,7 +137,7 @@
     else if (page === "Appearance") Object.assign(d.app, { colors: { ...NO_COLORS }, surface: def.surface });
     else if (page === "Autosave") Object.assign(d.app, { autosave: def.autosave, autosaveMinutes: def.autosaveMinutes, backups: def.backups, backupCount: def.backupCount });
     else if (page === "Session Media") Object.assign(d.app, { copyMedia: def.copyMedia, mediaFolder: def.mediaFolder, collectOnSave: def.collectOnSave, leaveLibraryFiles: def.leaveLibraryFiles });
-    else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb, meterSpeed: def.meterSpeed, autoThinPercent: def.autoThinPercent });
+    else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb, meterSpeed: def.meterSpeed, autoThinPercent: def.autoThinPercent, playbackSpeed: def.playbackSpeed });
   }
   const resettable = $derived(["General", "Appearance", "Autosave", "Session Media", "Playback and Recording"].includes(page));
 </script>
@@ -385,6 +385,7 @@
           <fieldset>
             <legend>Playback</legend>
             <label><input type="checkbox" bind:checked={d.editor.followPlayhead} /> Scroll to follow the playhead</label>
+            <label><input type="checkbox" bind:checked={d.app.playbackSpeed} /> Playback speed (experimental): adds Transport > Playback Speed, 0.5x to 2x with the pitch kept <span class="why">For listening and reviewing only; recording, exports and saved files are not affected. 0.5x and 2x sound smeared, the metronome is silent while it is not 1x, and it does not apply to 3D Space sessions heard on speakers. Back to 1x each time the program starts.</span></label>
             <label><input type="checkbox" bind:checked={d.app.scrubAudio} /> Play audio while scrubbing <span class="why">Drag the playhead along the ruler to hear it. Approximate: playback restarts at the pointer every moment.</span></label>
           </fieldset>
           <fieldset>
