@@ -39,5 +39,6 @@ Most dependencies are MIT or Apache-2.0 and are listed in `Cargo.lock` and `pack
 | `windows-sys` (Windows only, plug-in host) | MIT or Apache-2.0 | The window a plug-in draws its own controls in. |
 | Symphonia | MPL-2.0 | Decoding WAV, AIFF, FLAC, MP3, AAC, ALAC, Ogg Vorbis and ADPCM. |
 | `nnnoiseless` (RNNoise, Xiph.Org) | BSD-3-Clause, including the trained model weights | Speech Denoiser: removes background noise from speech. The notice is reproduced in `docs/THIRD-PARTY-nnnoiseless.md`; the license forbids using Xiph.Org's name to endorse the app. Compatible with the app's GPL-3.0-or-later. |
+| `deep-filter-rt` (DeepFilterNet3, Hendrik Schröter), with `tract` | MIT or Apache-2.0, including the trained model weights | Speech Denoiser (High Quality): removes harder background noise from speech. Pure Rust, the model is built in, nothing is downloaded. The notice is reproduced in `docs/THIRD-PARTY-deepfilternet.md`. Compatible with the app's GPL-3.0-or-later. |
 | `windows` (Windows only) | MIT or Apache-2.0 | Calls the AAC encoder built into Windows (Media Foundation) for M4A export. No AAC encoder is bundled; the operating system provides it. |
 

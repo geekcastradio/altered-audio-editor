@@ -50,6 +50,9 @@ midir = "0.11"
 rubato = "5.0.1"
 # Speech Denoiser: a Rust port of Xiph.Org RNNoise, BSD-3-Clause (see docs/THIRD-PARTY-nnnoiseless.md).
 nnnoiseless = { version = "0.5.2", default-features = false }
+# Speech Denoiser (High Quality): DeepFilterNet3 in pure Rust with its model built in, MIT or Apache-2.0 (see docs/THIRD-PARTY-deepfilternet.md).
+deep-filter-rt = "0.2.0"
+ndarray = "0.17"
 rtrb = "0.4"
 audioadapter-buffers = "5.2"
 symphonia = { version = "0.6.1", default-features = false, features = ["opt-simd", "wav", "aiff", "pcm", "adpcm", "mp3", "flac", "isomp4", "aac", "alac", "ogg", "vorbis", "mkv", "id3v2"] }
@@ -105,6 +108,40 @@ opt-level = 3
 opt-level = 3
 
 [profile.dev.package.hound]
+opt-level = 3
+
+# The denoiser's network (DeepFilterNet3 on tract) is too slow to test at the default dev level.
+[profile.dev.package.deep-filter-rt]
+opt-level = 3
+
+[profile.dev.package.ndarray]
+opt-level = 3
+
+[profile.dev.package.tract-core]
+opt-level = 3
+
+[profile.dev.package.tract-data]
+opt-level = 3
+
+[profile.dev.package.tract-hir]
+opt-level = 3
+
+[profile.dev.package.tract-linalg]
+opt-level = 3
+
+[profile.dev.package.tract-nnef]
+opt-level = 3
+
+[profile.dev.package.tract-onnx]
+opt-level = 3
+
+[profile.dev.package.tract-onnx-opl]
+opt-level = 3
+
+[profile.dev.package.tract-pulse]
+opt-level = 3
+
+[profile.dev.package.tract-pulse-opl]
 opt-level = 3
 
 [profile.dev.package.primal-check]

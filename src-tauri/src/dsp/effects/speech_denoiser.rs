@@ -14,6 +14,8 @@
 use std::collections::VecDeque;
 
 use audioadapter_buffers::owned::InterleavedOwned;
+use deep_filter_rt::tract::DfTract;
+use ndarray::Array2;
 use nnnoiseless::DenoiseState;
 use rubato::{Async, FixedAsync, Resampler, SincInterpolationParameters};
 
@@ -26,6 +28,8 @@ const FRAME: usize = DenoiseState::FRAME_SIZE;
 const SCALE: f32 = 32768.0;
 
 pub const ID: &str = "altaudio.speech_denoiser";
+/// The larger network: DeepFilterNet3 (MIT or Apache-2.0, see docs/THIRD-PARTY-deepfilternet.md).
+pub const DEEP_ID: &str = "altaudio.speech_denoiser_deep";
 
 pub fn info() -> EffectInfo {
     EffectInfo {
@@ -37,9 +41,78 @@ pub fn info() -> EffectInfo {
     }
 }
 
+pub fn deep_info() -> EffectInfo {
+    EffectInfo {
+        id: DEEP_ID,
+        name: "Speech Denoiser (High Quality)",
+        category: "Restoration",
+        description: "A larger network than Speech Denoiser, for harder noise: keyboards, traffic, a second voice far away. It uses more of the processor and adds about 40 ms of delay, which the session makes up for. Lower Amount if the voice sounds thin. Works on one voice at a time, so run it on each speaker's track.",
+        params: vec![num("amount", "Amount", "%", 0.0, 100.0, 100.0, 1.0)],
+    }
+}
+
+/// The network that cleans each 10 ms frame.
+enum Engine {
+    /// RNNoise: small and quick.
+    Rnn(Box<DenoiseState<'static>>),
+    /// DeepFilterNet3.
+    Deep(Box<Deep>),
+}
+
+struct Deep {
+    df: DfTract,
+    input: Array2<f32>,
+    output: Array2<f32>,
+    /// Samples held back between input and output, at 48 kHz.
+    delay: usize,
+}
+
+impl Deep {
+    fn new() -> Self {
+        let df = DfTract::default();
+        let shape = (df.ch, df.hop_size);
+        Self {
+            delay: df.delay(),
+            df,
+            input: Array2::zeros(shape),
+            output: Array2::zeros(shape),
+        }
+    }
+}
+
+impl Engine {
+    /// Cleans one 10 ms frame at 48 kHz (sample values from -1 to 1).
+    fn frame(&mut self, input: &[f32; FRAME], output: &mut [f32; FRAME]) {
+        match self {
+            Engine::Rnn(state) => {
+                let mut scaled = [0.0f32; FRAME];
+                for (o, i) in scaled.iter_mut().zip(input) {
+                    *o = i * SCALE;
+                }
+                state.process_frame(output, &scaled);
+                for v in output.iter_mut() {
+                    *v /= SCALE;
+                }
+            }
+            Engine::Deep(d) => {
+                for (o, i) in d.input.row_mut(0).iter_mut().zip(input) {
+                    *o = *i;
+                }
+                if d.df.process(d.input.view(), d.output.view_mut()).is_err() {
+                    output.copy_from_slice(input);
+                    return;
+                }
+                for (o, i) in output.iter_mut().zip(d.output.row(0)) {
+                    *o = *i;
+                }
+            }
+        }
+    }
+}
+
 /// One channel's path: resample to 48 kHz, clean, resample back.
 struct Lane {
-    state: Box<DenoiseState<'static>>,
+    engine: Engine,
     down: Option<Resampler48>,
     up: Option<Resampler48>,
     /// Input at the session rate waiting for the first resampler.
@@ -98,7 +171,15 @@ impl Resampler48 {
 }
 
 impl Lane {
-    fn new(rate: u32, priming: usize) -> Option<Self> {
+    /// Samples at 48 kHz the network holds audio back between input and output.
+    fn held(&self) -> usize {
+        match &self.engine {
+            Engine::Deep(d) => d.delay,
+            Engine::Rnn(_) => FRAME,
+        }
+    }
+
+    fn new(rate: u32, priming: usize, deep: bool) -> Option<Self> {
         let chunk_in = (rate as usize / 100).max(16);
         let (down, up) = if rate == RATE {
             (None, None)
@@ -112,7 +193,11 @@ impl Lane {
             )
         };
         let mut lane = Self {
-            state: DenoiseState::new(),
+            engine: if deep {
+                Engine::Deep(Box::new(Deep::new()))
+            } else {
+                Engine::Rnn(DenoiseState::new())
+            },
             down,
             up,
             pending: Vec::new(),
@@ -139,10 +224,10 @@ impl Lane {
         let mut cleaned = [0.0f32; FRAME];
         while self.at48.len() >= FRAME {
             for (o, i) in frame.iter_mut().zip(self.at48.drain(..FRAME)) {
-                *o = i * SCALE;
+                *o = i;
             }
-            self.state.process_frame(&mut cleaned, &frame);
-            self.clean48.extend(cleaned.iter().map(|v| v / SCALE));
+            self.engine.frame(&frame, &mut cleaned);
+            self.clean48.extend_from_slice(&cleaned);
         }
         match self.up.as_mut() {
             Some(u) => {
@@ -177,7 +262,7 @@ impl Lane {
 /// the most the chain's finished audio ever trails what has gone in, found
 /// by feeding it silence one sample at a time (the worst case).
 fn startup_need(rate: u32) -> Option<usize> {
-    let mut lane = Lane::new(rate, 0)?;
+    let mut lane = Lane::new(rate, 0, false)?;
     let span = rate as usize / 100 * 12;
     let mut need = 0usize;
     for t in 1..=span {
@@ -193,17 +278,30 @@ pub struct SpeechDenoiser {
     latency: usize,
     priming: usize,
     rate: u32,
+    deep: bool,
 }
 
 impl SpeechDenoiser {
+    /// The quick network (RNNoise).
     pub fn new(p: &Params, rate: u32) -> Option<Self> {
+        Self::with_engine(p, rate, false)
+    }
+
+    /// The larger network (DeepFilterNet3).
+    pub fn deep(p: &Params, rate: u32) -> Option<Self> {
+        Self::with_engine(p, rate, true)
+    }
+
+    fn with_engine(p: &Params, rate: u32, deep: bool) -> Option<Self> {
         let rate = rate.clamp(8_000, 384_000);
         let priming = startup_need(rate)?;
-        let a = Lane::new(rate, priming)?;
-        let b = Lane::new(rate, priming)?;
+        let a = Lane::new(rate, priming, deep)?;
+        let b = Lane::new(rate, priming, deep)?;
         // The resamplers drop their own filter delay, so what is left is the
-        // priming silence and one RNNoise frame, at the session rate.
-        let fr = FRAME as f64 * f64::from(rate) / f64::from(RATE);
+        // priming silence and what the network holds back (one frame for the
+        // quick one, its whole look-ahead for the larger), at the session rate.
+        let held = a.held();
+        let fr = held as f64 * f64::from(rate) / f64::from(RATE);
         let latency = priming + fr.round() as usize;
         Some(Self {
             lanes: [a, b],
@@ -211,6 +309,7 @@ impl SpeechDenoiser {
             latency,
             priming,
             rate,
+            deep,
         })
     }
 
@@ -246,8 +345,8 @@ impl Processor for SpeechDenoiser {
 
     fn reset(&mut self) {
         if let (Some(a), Some(b)) = (
-            Lane::new(self.rate, self.priming),
-            Lane::new(self.rate, self.priming),
+            Lane::new(self.rate, self.priming, self.deep),
+            Lane::new(self.rate, self.priming, self.deep),
         ) {
             self.lanes = [a, b];
         }
@@ -408,5 +507,87 @@ mod tests {
         let mut buf = vec![0.0f32; 960];
         d.process(&mut buf);
         assert!(buf.iter().all(|v| v.abs() < 1e-6));
+    }
+
+    fn deep_params(amount: f64) -> Params {
+        let saved: BTreeMap<String, f64> = [("amount".to_string(), amount)].into_iter().collect();
+        Params::resolve(&deep_info(), &saved)
+    }
+
+    #[test]
+    fn deep_dry_path_is_delayed_by_the_reported_latency() {
+        for rate in [48_000u32, 44_100] {
+            let mut d = SpeechDenoiser::deep(&deep_params(0.0), rate).unwrap();
+            let x = voice(rate as usize, rate);
+            let out = run_blocks(&mut d, &stereo(&x, &x), 512);
+            let l = d.latency();
+            assert!(l > 1_800, "latency {l}");
+            let y = left(&out);
+            for i in (l + 100)..(x.len() - 100) {
+                assert!((y[i] - x[i - l]).abs() < 1e-6, "rate {rate} frame {i}");
+            }
+        }
+    }
+
+    /// With the network's attenuation limited to nothing it passes audio
+    /// through, held back by its delay: a way to measure the whole chain's
+    /// lag against the latency the effect reports.
+    #[test]
+    fn deep_audio_lines_up_with_the_reported_latency() {
+        for rate in [48_000u32, 44_100, 96_000] {
+            let mut d = SpeechDenoiser::deep(&deep_params(100.0), rate).unwrap();
+            for lane in d.lanes.iter_mut() {
+                if let Engine::Deep(deep) = &mut lane.engine {
+                    deep.df.set_atten_lim(0.0);
+                }
+            }
+            let x = noise(rate as usize * 3, 0.2, 21);
+            let out = run_blocks(&mut d, &stereo(&x, &x), 480);
+            let y = left(&out);
+            let got = lag(&x, &y, rate as usize, 8 * rate as i32 / 100);
+            let want = d.latency() as i32;
+            assert!(
+                (got - want).abs() <= 8,
+                "rate {rate}: measured {got}, reported {want}"
+            );
+        }
+    }
+
+    #[test]
+    fn deep_block_size_does_not_change_the_result() {
+        let rate = 44_100;
+        let x = voice(rate as usize, rate);
+        let n = noise(x.len(), 0.01, 5);
+        let sum: Vec<f32> = x.iter().zip(&n).map(|(a, b)| a + b).collect();
+        let input = stereo(&sum, &sum);
+        let mut a = SpeechDenoiser::deep(&deep_params(100.0), rate).unwrap();
+        let mut b = SpeechDenoiser::deep(&deep_params(100.0), rate).unwrap();
+        let big = run_blocks(&mut a, &input, 4096);
+        let small = run_blocks(&mut b, &input, 97);
+        for (u, v) in big.iter().zip(&small) {
+            assert!((u - v).abs() < 1e-4);
+        }
+    }
+
+    #[test]
+    fn deep_steady_noise_goes_down() {
+        let rate = 48_000;
+        let n = noise(rate as usize * 3, 0.05, 9);
+        let mut d = SpeechDenoiser::deep(&deep_params(100.0), rate).unwrap();
+        let out = run_blocks(&mut d, &stereo(&n, &n), 480);
+        let y = left(&out);
+        assert!(rms(&y[rate as usize..]) < rms(&n[rate as usize..]) * 0.5);
+    }
+
+    #[test]
+    fn deep_reset_update_and_silence_are_safe() {
+        let mut d = SpeechDenoiser::deep(&deep_params(100.0), 48_000).unwrap();
+        assert!(d.update(&deep_params(50.0)));
+        d.reset();
+        let mut buf = vec![0.0f32; 4800];
+        d.process(&mut buf);
+        assert!(buf.iter().all(|v| v.abs() < 1e-6));
+        let mut empty: [f32; 0] = [];
+        d.process(&mut empty);
     }
 }
