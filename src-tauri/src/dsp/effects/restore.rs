@@ -506,6 +506,29 @@ impl GapRepair {
     }
 }
 
+/// Fills `s..e` (end exclusive) of one channel with a smooth curve drawn
+/// from the two samples on each side, the same fill Click Repair uses.
+/// Returns false when there are not two samples of context on each side.
+pub fn fill_span(x: &mut [f32], s: usize, e: usize) -> bool {
+    if e <= s || s < 2 || e + 2 > x.len() {
+        return false;
+    }
+    let len = (e - s) as f32;
+    let (p0, p1) = (x[s - 2], x[s - 1]);
+    let (p2, p3) = (x[e], x[e + 1]);
+    let m1 = (p1 - p0) * (len + 1.0);
+    let m2 = (p3 - p2) * (len + 1.0);
+    for (j, i) in (s..e).enumerate() {
+        let u = (j as f32 + 1.0) / (len + 1.0);
+        let (u2, u3) = (u * u, u * u * u);
+        x[i] = (2.0 * u3 - 3.0 * u2 + 1.0) * p1
+            + (u3 - 2.0 * u2 + u) * m1
+            + (-2.0 * u3 + 3.0 * u2) * p2
+            + (u3 - u2) * m2;
+    }
+    true
+}
+
 /// What QuickPass looks for in a clip.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize)]
 #[serde(
@@ -817,6 +840,27 @@ mod tests {
             .map(|i| (z[i + lat] - clean[i]).abs())
             .fold(0f32, f32::max);
         assert!(worst < 1e-6, "clean audio untouched: {worst}");
+    }
+
+    #[test]
+    fn fill_span_smooths_a_selected_click_and_refuses_the_edge() {
+        let clean: Vec<f32> = (0..400)
+            .map(|i| (2.0 * PI * 300.0 * i as f32 / R as f32).sin() * 0.3)
+            .collect();
+        let mut x = clean.clone();
+        for v in &mut x[200..205] {
+            *v += 0.7;
+        }
+        assert!(super::fill_span(&mut x, 200, 205));
+        let err = (198..207)
+            .map(|i| (x[i] - clean[i]).abs())
+            .fold(0f32, f32::max);
+        assert!(err < 0.01, "left {err}");
+        assert_eq!(x[..200], clean[..200]);
+        assert_eq!(x[205..], clean[205..]);
+        assert!(!super::fill_span(&mut x, 1, 4), "no room on the left");
+        assert!(!super::fill_span(&mut x, 396, 399), "no room on the right");
+        assert!(!super::fill_span(&mut x, 10, 10), "empty span");
     }
 
     #[test]

@@ -70,6 +70,7 @@ const APPROVED: Record<string, string[]> = {
   "multitrack.meter-input": ["Alt+I"],
   "edit.repeat-last": ["Shift+R"],
   "edit.repeat-last-dialog": ["Ctrl+R"],
+  "fx.fill-click": ["Ctrl+Alt+K"],
   "file.convert-sample-type": ["Shift+T"],
   "fx.capture-noise-print": ["Shift+P"],
   "wave.channel-left": ["ArrowUp"],

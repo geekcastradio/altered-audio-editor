@@ -47,6 +47,36 @@ export const WELCOME_PAGES: readonly WelcomePage[] = [
     ],
     image: "controllers",
   },
+  {
+    rev: 3,
+    title: "Comp the best takes",
+    body: [
+      "Record a line more than once, select the clips and choose Clip > Make Takes from Selected Clips. The Takes panel lets you pick which take plays over each stretch, and Clip > Flatten Takes keeps your picks.",
+      "The User Guide has a section on takes and comping, and one on multi-mic shows.",
+    ],
+  },
+  {
+    rev: 4,
+    title: "Chains and batches",
+    body: [
+      "A process chain is a short list of steps run on a session as one undo step: Multitrack > Run Process Chain. The Batch Convert panel runs a chain over a whole list of files, to a loudness target if you want one.",
+    ],
+  },
+  {
+    rev: 5,
+    title: "Cleaner voices",
+    body: [
+      "Speech Denoiser (High Quality), in the Restoration group, is a larger network for hard noise such as keyboards and traffic. It is built in: nothing is downloaded and nothing leaves your computer.",
+    ],
+  },
+  {
+    rev: 6,
+    title: "Quicker clean-up, tidier views",
+    body: [
+      "Fill Single Click (Effects menu, Ctrl+Alt+K) smooths over one selected click, and Shift+R repeats it on the next one. In the Waveform Editor the waveform now moves as you drag the level knob.",
+      "Track Visibility has Save and Load presets. Suspend Groups (Ctrl+Shift+G) lets you pick one clip from a group. Meter Input Signal (Alt+I) checks every mic before you arm it. Guest Track adds a track with the Remote Guest cleanup ready, and Podcast Mode and Voiceover Mode in the View menu switch layouts.",
+    ],
+  },
 ];
 
 /** Raise this with the newest page's rev. */

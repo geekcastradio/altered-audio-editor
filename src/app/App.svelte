@@ -71,7 +71,7 @@
   import TimeInfoPanel from "../panels/time-info/TimeInfoPanel.svelte";
   import { editor, restoreSettings, settingsOf } from "../stores/editor";
   import { anchorStart, clipsFrom, clipsUpTo, nextClipId } from "./clip-select";
-  import { hasClipIn, showOnly } from "../panels/editor/visibility";
+  import { hasClipIn, hiddenNames, keepByPreset, sanitizePresets, showOnly, withPreset } from "../panels/editor/visibility";
   import { clipLength, sessionEnd, setErrorSink, type ClipDoc, type Op, type TrackDoc } from "../stores/session";
   import { formatSize } from "../panels/files/format";
   import { fit, MIN_TRACK_H, maxSppFor, zoomAround } from "../panels/editor/timeline";
@@ -145,6 +145,9 @@
     midiSpan,
     FADE_SHAPES,
     fadeShapeChanges,
+    areGroupsSuspended,
+    getFocusClip,
+    setGroupsSuspended,
     type ClipBoard,
   } from "../panels/editor/clip-edit";
   import { silenceChanges } from "../panels/editor/silence-span";
@@ -258,6 +261,7 @@
     probeMedia,
     sessionExportSesx,
     waveRoomTone,
+    waveFillClick,
     waveStretch,
     wavePitchEdit,
     waveReverseInvert,
@@ -318,7 +322,7 @@
   import { reportUrl } from "./bug-report-link";
   import { waveRows, type WaveRow } from "../panels/files/wave-rows";
   import { rasterize } from "../panels/editor/spectrum";
-  import { inputLevels, liveTakes, LiveWave, recordControl, recording } from "../stores/record";
+  import { inputLevels, liveTakes, LiveWave, meterInputAll, recordControl, recording } from "../stores/record";
   import { stretchRange, amplifyRange, clampRange, copyRange, crossfadeSeams, cropTo, deleteRange, fadeRange, insertFile, mixPasteAt, pasteAt, replaceRange, silenceRange, type WaveBoard } from "../panels/editor/wave-edit";
 
   let info = $state<AppInfo | null>(null);
@@ -868,6 +872,20 @@
     editor.selectTrack(ids[0]!);
   }
 
+  /** Multitrack > Add > Guest Track: a mono track named Guest with the Remote Guest profile on, ready for a guest's recording. */
+  async function addGuestTrack() {
+    const doc = session.current;
+    const p = profileById("remote-guest");
+    if (!doc || !p) return;
+    const sel = editor.current().selectedTrack;
+    const i = doc.tracks.findIndex((t) => t.id === sel);
+    const [name] = newTrackNames(doc.tracks.map((t) => t.name), 1, "Guest");
+    const id = uuid();
+    const add: Op = { op: "add_track", id, name: name ?? "Guest", stereo: false, index: i >= 0 ? i + 1 : doc.tracks.length };
+    await session.edit("Add Guest Track", { op: "batch", ops: [add, profileOp({ id } as TrackDoc, p, uuid)] }, sessionHistory);
+    editor.selectTrack(id);
+  }
+
   function addTrack(stereo: boolean) {
     const doc = session.current;
     if (!doc) return;
@@ -967,6 +985,8 @@
     return value;
   }
 
+  const KEY_VIS_PRESETS = "multitrack.visibility.presets";
+
   /** Track Visibility: set which tracks the Editor and Mixer list, as one undoable step. */
   function visibilityActions() {
     const tracks = () => session.current?.tracks ?? [];
@@ -1002,6 +1022,32 @@
       mk("multitrack.vis.only-playhead", "Show Only Tracks with Clips at Playhead", (t) => {
         const p = session.current?.view.playhead ?? 0;
         return hasClipIn(spans(t), p, p);
+      }),
+      actions.register({
+        id: "multitrack.vis.save",
+        run: async () => {
+          const name = (await promptText("Save Visibility Preset", "Name for the tracks showing now", ""))?.trim();
+          if (!name) return;
+          prefs.set(KEY_VIS_PRESETS, withPreset(sanitizePresets(prefs.raw(KEY_VIS_PRESETS)), { name, hidden: hiddenNames(tracks()) }));
+          actions.invalidate();
+          showNotice(`Saved the preset "${name}".`);
+        },
+        enabled: () => tracks().length > 0,
+        reason: () => "No tracks.",
+      }),
+      actions.register({
+        id: "multitrack.vis.load",
+        run: async () => {
+          const saved = sanitizePresets(prefs.raw(KEY_VIS_PRESETS));
+          const pick = await ask("Load Visibility Preset", "Show the tracks saved in a preset. Tracks are matched by name.", [
+            ...saved.map((p, i) => ({ label: p.name, value: String(i) })),
+            { label: "Cancel", value: "cancel" },
+          ]);
+          const p = saved[Number(pick)];
+          if (p) await apply(`Visibility Preset ${p.name}`, keepByPreset(p.hidden));
+        },
+        enabled: () => tracks().length > 0 && sanitizePresets(prefs.raw(KEY_VIS_PRESETS)).length > 0,
+        reason: () => (tracks().length === 0 ? "No tracks." : "Save a preset first."),
       }),
     ];
   }
@@ -3641,6 +3687,20 @@
     }
   }
 
+  /** Effects > Fill Single Click: smooths over the selected click from the audio each side. No dialog, so Repeat Last Command can run it on the next click. */
+  async function waveFillSingleClick() {
+    const d = wave.current;
+    const r = waveSel();
+    if (!d || !r) return;
+    try {
+      const res = await waveFillClick(r[0], r[1]);
+      const label = "Fill Single Click";
+      await waveEdit(label, replaceRange(wave.current ?? d, res.start, res.end, res.media, label, uuid), [res.start, res.end]);
+    } catch (e) {
+      showError(e);
+    }
+  }
+
   /** The last Amplify amount, offered again by the next Amplify and repeated by Repeat Last Command without asking. */
   let lastAmplifyDb = 3;
   /** Commands that repeat with what was chosen last time, without opening their dialog again. */
@@ -3981,11 +4041,12 @@
   let monitorKey = "";
   function syncMonitor(force = false) {
     if (take) return;
-    const armed = (session.current?.tracks ?? []).filter((t) => t.record_armed);
-    const key = armed.map((t) => `${t.id}:${t.input ?? ""}:${t.channels}:${t.monitor_input ? 1 : 0}`).join("|");
+    const meterAll = get(meterInputAll);
+    const armed = (session.current?.tracks ?? []).filter((t) => t.record_armed || meterAll);
+    const key = armed.map((t) => `${t.id}:${t.input ?? ""}:${t.channels}:${t.record_armed && t.monitor_input ? 1 : 0}`).join("|");
     if (!force && key === monitorKey) return;
     monitorKey = key;
-    const targets: RecordTarget[] = armed.map((t) => ({ key: t.id, input: t.input ?? null, channels: t.channels === "mono" ? 1 : 2, name: t.name, monitor: !!t.monitor_input, chain: t.monitor_input ? (t.effects ?? null) : null }));
+    const targets: RecordTarget[] = armed.map((t) => ({ key: t.id, input: t.input ?? null, channels: t.channels === "mono" ? 1 : 2, name: t.name, monitor: t.record_armed && !!t.monitor_input, chain: t.record_armed && t.monitor_input ? (t.effects ?? null) : null }));
     void recordMonitor(targets).catch(() => {});
     if (targets.length) startInputPoll();
     else stopInputPoll();
@@ -4342,7 +4403,7 @@
       ...["fx.spectrum.reduce-12", "fx.spectrum.reduce-24", "fx.spectrum.remove", "fx.spectrum.repair", "fx.spectrum.play"].map((id) =>
         actions.register({ id, run: () => {}, enabled: () => false, reason: () => NOT_WAVE }),
       ),
-      ...["edit.mix-paste", "edit.crop", "fx.invert", "fx.reverse", "fx.silence", "fx.room-tone", "fx.fade-in", "fx.fade-out", "fx.fade-in-linear", "fx.fade-out-linear", "fx.amplify", "fx.normalize", "fx.pitch-tune", "fx.pitch-curve"].map((id) =>
+      ...["edit.mix-paste", "edit.crop", "fx.invert", "fx.reverse", "fx.silence", "fx.room-tone", "fx.fill-click", "fx.fade-in", "fx.fade-out", "fx.fade-in-linear", "fx.fade-out-linear", "fx.amplify", "fx.normalize", "fx.pitch-tune", "fx.pitch-curve"].map((id) =>
         actions.register({ id, run: () => {}, enabled: () => false, reason: () => NOT_WAVE }),
       ),
       ov(waveFocus, {
@@ -4531,6 +4592,12 @@
         run: () => waveRoomToneFill(),
         enabled: () => waveSel() !== null && exporting === null,
         reason: () => (exporting ? "Wait for the current job to finish." : NEED_WAVE_SEL),
+      }),
+      ov(waveIsOpen, {
+        id: "fx.fill-click",
+        run: () => waveFillSingleClick(),
+        enabled: () => waveSel() !== null,
+        reason: () => NEED_WAVE_SEL,
       }),
       // Fades cover the selection, or the whole file when nothing is selected.
       ...(
@@ -5031,6 +5098,23 @@
         checked: () => settings.current.returnOnStop,
       }),
       actions.register({ id: "multitrack.add.stereo", run: () => addTrack(true) }),
+      actions.register({ id: "multitrack.add.guest", run: () => addGuestTrack(), enabled: () => session.current !== null }),
+      ...(
+        [
+          ["view.mode.podcast", "default"],
+          ["view.mode.voiceover", "voiceover"],
+        ] as const
+      ).map(([id, ws]) =>
+        actions.register({
+          id,
+          run: () => {
+            const cur = settings.current;
+            if (cur.musicMode) settings.set({ ...cur, musicMode: false, metronome: { ...cur.metronome, on: false } });
+            return dock.switchTo(ws);
+          },
+          checked: () => wsState.current === ws && !settings.current.musicMode,
+        }),
+      ),
       actions.register({ id: "multitrack.add.midi", run: () => addMidiTrack(), enabled: () => session.current !== null, visible: () => settings.current.musicMode }),
       actions.register({
         id: "view.mode.music",
@@ -5346,6 +5430,39 @@
         },
         enabled: () => editor.current().selectedClips.size > 1,
         reason: () => "Select two or more clips (Ctrl+click) first.",
+      }),
+      actions.register({
+        id: "clip.group-suspend",
+        run: () => {
+          setGroupsSuspended(!areGroupsSuspended());
+          actions.invalidate();
+          showNotice(areGroupsSuspended() ? "Groups are suspended: clicking a grouped clip picks only that clip." : "Groups are back on.");
+        },
+        checked: () => areGroupsSuspended(),
+      }),
+      actions.register({
+        id: "clip.group-remove-focus",
+        run: () => {
+          const id = getFocusClip();
+          return id ? editClips("Remove Clip from Group", [{ id, ungroup: true }]) : undefined;
+        },
+        enabled: () => {
+          const id = getFocusClip();
+          const doc = session.current;
+          return !!id && !!doc && !!findClips(doc, [id])[0]?.clip.group;
+        },
+        reason: () => "Click a grouped clip first.",
+      }),
+      actions.register({
+        id: "multitrack.meter-input",
+        run: () => {
+          meterInputAll.update((v) => !v);
+          syncMonitor(true);
+          actions.invalidate();
+        },
+        checked: () => get(meterInputAll),
+        enabled: () => session.current !== null,
+        reason: () => "Open a session first.",
       }),
       actions.register({
         id: "clip.ungroup",

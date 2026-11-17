@@ -195,6 +195,7 @@ pub fn run() {
             commands::wave_fx::wave_channel_edit,
             commands::wave_fx::wave_stretch,
             commands::wave_fx::wave_room_tone,
+            commands::wave_fx::wave_fill_click,
             commands::spectral::wave_pitch,
             commands::wave_fx::wave_pitch_edit,
             commands::session::session_get,

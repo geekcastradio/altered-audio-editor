@@ -24,6 +24,9 @@ export const recording = writable<RecordingState>({ active: false, seconds: 0, p
 /** Input level per track id (0 to 1, falling smoothly), while inputs are open. */
 export const inputLevels = writable<Record<string, number>>({});
 
+/** Meter Input Signal: every track with an input shows its input level, armed or not. */
+export const meterInputAll = writable(false);
+
 /**
  * The waveform of one take while it records, kept in the same form as a
  * finished file's peak cache (16-bit min and max per block and channel,

@@ -913,9 +913,24 @@ export function fadeShapeChanges(clips: readonly ClipDoc[], shape: string): Clip
   return out;
 }
 
+let groupsSuspended = false;
+/** While groups are suspended, picking a grouped clip picks only that clip. The groups themselves are not changed. */
+export const setGroupsSuspended = (on: boolean): void => {
+  groupsSuspended = on;
+};
+export const areGroupsSuspended = (): boolean => groupsSuspended;
+
+let focusClip: string | null = null;
+/** The clip clicked last: the one Remove Focus Clip from Group takes out of its group. */
+export const setFocusClip = (id: string | null): void => {
+  focusClip = id;
+};
+export const getFocusClip = (): string | null => focusClip;
+
 /** The ids plus every clip that shares a group with one of them. */
 export function withGroups(doc: SessionDoc, ids: Iterable<string>): string[] {
   const want = new Set(ids);
+  if (groupsSuspended) return [...want];
   const groups = new Set<string>();
   for (const t of doc.tracks) for (const c of t.clips) if (want.has(c.id) && c.group) groups.add(c.group);
   if (groups.size === 0) return [...want];

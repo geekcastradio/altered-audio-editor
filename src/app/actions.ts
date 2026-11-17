@@ -30,7 +30,7 @@ export interface Action {
  * Views, panels, saving and transport are left out, so repeating never reopens a window or saves.
  */
 const REPEATABLE = new Set([
-  "fx.invert", "fx.reverse", "fx.silence", "fx.fade-in", "fx.fade-out", "fx.amplify", "fx.normalize",
+  "fx.invert", "fx.reverse", "fx.silence", "fx.fade-in", "fx.fade-out", "fx.amplify", "fx.normalize", "fx.fill-click",
   "fx.pitch-tune", "fx.pitch-curve", "fx.gen.tone", "fx.gen.noise", "fx.gen.silence",
   "edit.crop", "edit.mix-paste", "edit.silence-time-clips",
   "clip.split", "clip.split-all", "clip.merge", "clip.fade-in", "clip.fade-out", "clip.nudge-left", "clip.nudge-right",

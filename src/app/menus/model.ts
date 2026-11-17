@@ -58,9 +58,6 @@ const popup = (id: string, label: string): MenuItem => ({ kind: "popup", id, lab
 
 const P2 = "Arrives with playback (P2).";
 const P3 = "Arrives with editing (P3).";
-const P5 = "Arrives with effects (P5).";
-const P7 = "Arrives with podcast publishing (P7).";
-const LATER = "Not built yet.";
 
 /** Open Recent slots. Unused slots are hidden. */
 export const RECENT_SLOTS = 10;
@@ -234,7 +231,7 @@ export const MENUS: readonly Menu[] = [
         item("multitrack.add.stereo", "Stereo Track"),
         item("multitrack.add.midi", "MIDI Track"),
         item("multitrack.add-tracks", "Add Tracks..."),
-        item("multitrack.add.guest", "Guest Track", { pending: P5 }),
+        item("multitrack.add.guest", "Guest Track"),
         item("multitrack.add.bus", "Bus Track"),
         item("multitrack.add.bus-mono", "Mono Bus Track"),
       ]),
@@ -257,12 +254,8 @@ export const MENUS: readonly Menu[] = [
           "Show Only Tracks with Clips at Playhead",
         ),
         sep,
-        item("multitrack.vis.load", "Load Visibility Preset", {
-          pending: LATER,
-        }),
-        item("multitrack.vis.save", "Save Visibility Preset", {
-          pending: LATER,
-        }),
+        item("multitrack.vis.load", "Load Visibility Preset..."),
+        item("multitrack.vis.save", "Save Visibility Preset..."),
       ]),
       sep,
       item("multitrack.insert-files", "Insert Files at Playhead..."),
@@ -292,7 +285,7 @@ export const MENUS: readonly Menu[] = [
         item("transport.speed-150", "1.5x"),
         item("transport.speed-200", "2x (sounds smeared)"),
       ]),
-      item("multitrack.meter-input", "Meter Input Signal", { pending: LATER }),
+      item("multitrack.meter-input", "Meter Input Signal"),
       item("multitrack.record", "Record"),
       item("multitrack.record-options", "Recording Options..."),
       sep,
@@ -316,12 +309,6 @@ export const MENUS: readonly Menu[] = [
         sep,
         item("multitrack.profile.clear", "Clear Profile"),
       ]),
-      item("multitrack.transcribe", "Transcribe Session...", {
-        pending: LATER,
-      }),
-      item("multitrack.remove-fillers", "Remove Filler Words...", {
-        pending: P7,
-      }),
       sep,
       sub("Mix Down to New File", [
         item("multitrack.mixdown.all", "Entire Session"),
@@ -387,8 +374,8 @@ export const MENUS: readonly Menu[] = [
       ]),
       sub("Group", [
         item("clip.group", "Group Clips"),
-        item("clip.group-suspend", "Suspend Groups", { pending: LATER }),
-        item("clip.group-remove-focus", "Remove Focus Clip from Group", { pending: LATER }),
+        item("clip.group-suspend", "Suspend Groups"),
+        item("clip.group-remove-focus", "Remove Focus Clip from Group"),
         item("clip.ungroup", "Ungroup Selected Clips"),
       ]),
       item("clip.stretch", "Time Stretch..."),
@@ -402,7 +389,6 @@ export const MENUS: readonly Menu[] = [
       item("clip.bring-front", "Bring Clip to Front"),
       item("clip.send-back", "Send Clip to Back"),
       sep,
-      item("clip.remove-music", "Remove Music...", { pending: P7 }),
       item("clip.reveal", "Show in Files Panel"),
     ],
   },
@@ -420,6 +406,7 @@ export const MENUS: readonly Menu[] = [
       item("fx.reverse", "Reverse"),
       item("fx.silence", "Silence"),
       item("fx.room-tone", "Fill with Room Tone"),
+      item("fx.fill-click", "Fill Single Click"),
       sub("Spectrum", [
         item("fx.spectrum.reduce-12", "Reduce Selected Area 12 dB"),
         item("fx.spectrum.reduce-24", "Reduce Selected Area 24 dB"),
@@ -557,10 +544,8 @@ export const MENUS: readonly Menu[] = [
       ]),
       sep,
       item("view.mode.music", "Music Mode"),
-      item("view.mode.podcast", "Podcast Mode", {
-        pending: "Its panels arrive with P7.",
-      }),
-      item("view.mode.voiceover", "Voiceover Mode", { pending: LATER }),
+      item("view.mode.podcast", "Podcast Mode"),
+      item("view.mode.voiceover", "Voiceover Mode"),
     ],
   },
   {
