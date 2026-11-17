@@ -69,6 +69,14 @@ Markers (Edit > Add Marker) can mark cues, chapters, ad slots and social clips. 
 
 In the Markers panel, click a marker to pick it and jump to it. Right-click a marker flag on the ruler, or a row in the panel, for Go to Marker, Rename, Convert to Range or Point, Change Marker Type and Delete. The panel has End and Description columns, a search box and resizable columns. Ctrl+click adds or removes one, and Shift+click picks a run. Edit > Markers > Rename Selected Marker, Delete Selected Markers and Delete All Markers work on the pick, and Undo brings them back.
 
+**Track Visibility.** Multitrack > Track Visibility hides tracks from the Editor and Mixer lists without stopping them from playing. Save Visibility Preset remembers which tracks are hidden under a name, and Load Visibility Preset brings it back. Presets match tracks by name, so a preset made for one episode works in the next one. The newest eight are kept.
+
+**Groups.** Group Clips (Clip > Group) ties clips together so clicking one picks them all and they move as one. Suspend Groups (Ctrl+Shift+G) turns that off for a while so you can pick a single clip without breaking the group. Remove Focus Clip from Group takes just the clip you clicked last out of its group, and Ungroup Selected Clips takes out every clip you have picked.
+
+**Meter Input Signal** (Multitrack > Meter Input Signal, Alt+I) shows the input level on every track, not only the armed ones, so you can check a mic before you arm it.
+
+**Host profiles and Guest Track.** Multitrack > Host Profile gives a voice track a starting Voice Chain set for how that person sounds: Close Mic, Standard Mic or Remote Guest. It replaces the track's chain in one undo step, and Clear Profile takes it away. Remote Guest uses stronger noise and room cleanup, a gentler gate and a low-pass that keeps call fizz out above 7 kHz, and marks the track as a guest track. Multitrack > Add > Guest Track adds a mono track named Guest with that profile already on, ready for a guest's recording.
+
 ## Takes and comping
 
 When you record a line more than once, put the takes on one track over the same stretch, select those clips and choose Clip > Make Takes from Selected Clips. They become a set of takes: only one plays, and the others stay on the track, drawn dim. The **Takes** panel (Window > Takes) lists each set.
@@ -87,6 +95,19 @@ These tools are for a conversation recorded with one mic per person, or a call r
 - **Close Dead Space** (Multitrack > Close Dead Space) shortens every stretch where no track has audio to a pause you pick. Everything after moves left together, so tracks stay in step.
 - **Find Isolated Short Clips** (Multitrack > Find Isolated Short Clips) lists stray bumps, coughs and breaths left behind as tiny clips. You tick the ones to remove.
 
+## Recording a remote guest
+
+There is no built-in call feature, and nothing in the program sends audio over the network. For a remote guest the most reliable method is a double-ender: you and your guest talk over any call tool you like, and each of you also records your own microphone locally.
+
+1. Each person records their own voice on their own computer, at the same sample rate, ideally as WAV. Record in this program or any recorder you trust.
+2. Start both recordings before the call begins, and clap once at the start so the two files share an obvious sound.
+3. After the call your guest sends you their file. Import it on a second track under your own.
+4. Run Multitrack > Sync Tracks to line the guest up with your track. It needs at least two minutes of shared audio. Check the reported drift: if the two computers' clocks disagree, a long episode can slip by a few milliseconds, which Sync Tracks reports but does not correct yet.
+5. If the call recording or a room mic picked up the other voice, run Reduce Bleed, then Auto Mic Mix and Talk Time. Close Dead Space tidies the pauses.
+
+Your guest's local file is clean, so it sounds better than the call itself. Keep the call recording as a backup, and as the guide track if the guest forgets to record. To capture the call on your side, use the "System audio" input described under Recording.
+
+
 ## Process chains
 
 A process chain is a small text file that lists steps to run on a session in order. Multitrack > Run Process Chain runs one as a single undo step. A chain is checked before anything changes: a step that is unknown, out of range or names a preset or track that does not exist stops it with a message saying which. A step that fails takes back what already ran, unless the chain marks it to be skipped.
@@ -96,6 +117,12 @@ The steps are Auto Mic Mix, Close Dead Space, Loudness Target (sets the Master s
 ## Music, stretching and fitting
 
 Select a clip and open the **Properties** panel. Stretch changes a clip's speed and pitch, with a mode of Off, Real-time or Rendered (HQ), and can fit a clip to the time selection. Remix is for music: set a target length and it finds up to three ways to cut or repeat the music where it lines up, shows the length you would get, and puts the one you pick on the track with short crossfades as one undo. Source Channels sets how much of each channel of the file goes left and right. Clip > Time Stretch and Clip > Fit Music to Length open these sections. Remix applies once: change the length later and you find joins again.
+
+## Soundboard
+
+The Soundboard panel (Window > Soundboard) has nine pads, each holding one sound such as a jingle, a stinger or an ad read. Press an empty pad to choose a file for it. Press a pad that has a sound and it goes on the session at the playhead, on the selected track (or the first track), as one undo step. Change and Clear sit under each pad.
+
+A pad puts the sound on the session. It does not play live over the transport, so press Play to hear it. Each pad is also an action under Multitrack > Soundboard, so you can give it a key in Edit > Keyboard Shortcuts. The pads are saved with the program, not with a session. If a pad's file has moved, pressing it says the file could not be read.
 
 ## Voice Chain and effects
 
@@ -147,6 +174,8 @@ To record, set the mode, press Play, and move a fader, a pan control, or a slide
 
 Recorded moves are thinned so lanes are not flooded with points. Settings > Playback and Recording has a slider for how much. Zero keeps every point.
 
+Settings > Automation says where scripting stands. Process chains work now (Multitrack > Run Process Chain). Scripting and a local endpoint are planned after 1.0, and nothing listens on your computer.
+
 Buses have the same mode box. Plug-in controls and the master strip cannot be recorded yet.
 
 ## Hardware controllers
@@ -169,7 +198,9 @@ A plug-in's own window opens from its slot in the Voice Chain. What you change t
 
 ## Waveform Editor
 
-Open a file with File > Open, or send a clip over with Clip > Open in Waveform Editor. Select a stretch of audio and use the Effects menu to Amplify, Normalize, Fade In, Fade Out, Invert, Reverse or Silence it. The Spectrum view (View > Show Spectrum) shows frequency over time, with selection tools to reduce, remove or repair a marked area.
+Open a file with File > Open, or send a clip over with Clip > Open in Waveform Editor. Select a stretch of audio and use the Effects menu to Amplify, Normalize, Fade In, Fade Out, Invert, Reverse or Silence it. The Spectrum view (View > Show Spectrum) shows frequency over time, with selection tools to reduce, remove or repair a marked area. Effects > Spectrum > Play Selected Area plays only the sound inside the selection, so you can hear what you are about to remove, without changing the file. The selection can be up to five minutes long.
+
+Drag the level knob in the corner of the view to turn the selection, or the whole file, up or down. The waveform redraws at the new height while you drag, so you can judge the level by eye, and the change applies when you let go. Effects > Fill Single Click smooths over one selected click, up to 25 ms, from the audio on each side. Select the next click and press Shift+R to repeat it, or use Ctrl+Alt+K.
 
 Edits here change the file when you save it. Changes to a file used by a session show up in the session once saved.
 
@@ -199,6 +230,40 @@ Very long recordings are fine: WAV exports and multichannel exports switch to RF
 Check Loudness (File > Check Loudness) measures your episode against a target. Loudness Match (Effects > Loudness Match, or right-click a clip and choose Loudness Match) sets clip gain so each selected clip, or each track when none are selected, reaches a goal. If a match would push a track over its peak limit, it can add a True Peak limiter at that limit instead of leaving the row unticked. Match by Loudness (LUFS), Peak, True Peak or Total RMS. The Tolerance box leaves alone anything already within that many dB of the goal, so a clip that is close enough is not touched. Rows that would peak over full scale start unticked, and applying is one undo step.
 
 Each session can have its own loudness target. Set it in Multitrack > Session Properties under Loudness target, and Check Loudness uses it for that session instead of the choice in Settings. It is saved with the session, so a session template made from it (File > Save as Session Template) starts every new episode with the same target. Leave it on "Use my Settings choice" to keep one target for everything.
+
+**Batch Convert.** The Batch Convert panel runs each file in its list through a chain of steps and converts it to the format you choose. The steps are a Voice Chain preset, trim, loudness and peak limit, and fades. The Loudness step takes each file to a LUFS target with a peak ceiling. Pick a starter chain, or save your own.
+
+## Panels and workspaces
+
+Every panel is in the Window menu. A **workspace** is a saved arrangement of panels. Window lists Default, Focused Edit, Mixing, Voiceover, Music and Review and Export, plus any you save, with commands to save changes, save the arrangement under a new name, reset the current one and delete it. Built-in workspaces cannot be deleted. Drag a panel's tab to move it, and Reset puts the current workspace back the way it was.
+
+View > Podcast Mode switches to the Default workspace and turns Music Mode off. View > Voiceover Mode switches to the Voiceover workspace, with takes and markers on the left, and also turns Music Mode off. Music Mode (View) shows the MIDI and bars tools, and the Music workspace turns it on.
+
+**Levels** shows the output level, left and right, on a scale from -60 to 0 dB. It follows whatever is playing: the session, the Waveform Editor's file, or a preview from Files, Drive Manager or Libraries. Click a red over light to clear it.
+
+**Time Info** shows where the playhead is, the time selection (or the span of the selected clips), the visible range, and the session's length, format and mixdown size. The playhead, selection and view times can be dragged or typed. In the Waveform Editor it shows the open file instead.
+
+**History** lists every edit since the session opened. Click a row to return to that point. Rows after it dim until a new edit replaces them.
+
+**Metadata** edits the tags inside WAV, FLAC, MP3 and M4A files. Add files, search the list, edit one file's fields, set cover art, and keep named tag sets (a show's artist, album and genre) to put on many files at once. Only filled-in fields are written, so chapters and the audio stay as they are. A file open in the Waveform Editor is refused.
+
+**Drive Manager** browses drives and folders and previews audio. Bring files into the session by double-click, with Import, or by dragging rows onto the Files panel.
+
+**Playlist** keeps range markers in an order you choose. Play runs them back to back so you can hear an arrangement, such as a highlight reel or a set of promos, without moving any clips. Export writes each one as its own file.
+
+**Phase Wheel** shows how two signals of what is playing line up, frequency by frequency. Each dot is a band of frequencies. A dot straight up means the two move together, straight down means they are opposite and would cancel in mono. The bar under the wheel is the overall correlation: +1 the same, 0 unrelated, -1 opposite.
+
+**3D Space** shows the room from above with the layout's speakers and a dot for each track and bus. Drag a dot to move it, and use the wheel over a dot to raise or lower it. The bar on top picks the speaker layout and whether you hear it on speakers or headphones.
+
+## Everyday tools
+
+**Generate** (Effects > Generate) has Tone, Noise and Silence. Tone and Noise make a new audio file and place it as a clip at the playhead on the selected track. Silence makes room at the playhead: everything after it moves later, on every track or only the selected one, and a clip under the playhead is split.
+
+**Fill with Room Tone** (Effects, Waveform Editor) replaces the selected stretch with room tone built from the quietest second elsewhere in the file. It needs a quiet stretch to copy, quieter than -40 dBFS, and Undo takes it back.
+
+**Speaker Balance** (Multitrack > Speaker Balance) brings every voice track to the same loudness in one click, before the Voice Chain, so gates and compressors see each speaker at a like level. The quietest voice is the reference and the others come down to it, so nobody is pushed into clipping. It is applied as clip gain in one undo step, and music, sound effect and ambience tracks are left alone.
+
+**Audiobook delivery check.** Check Loudness has an Audiobook (ACX) choice. It checks the three numbers narration is judged on: average level between -23 and -18 dBFS RMS, peaks no higher than -3 dBFS, and a noise floor no louder than -60 dBFS RMS. Confirm the figures against the retailer's own page before you submit. A pass here is a good sign, not a guarantee.
 
 ## Files, folders and settings
 

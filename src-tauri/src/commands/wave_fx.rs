@@ -15,7 +15,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use super::spectral::{by_pairs, render_n, snapshot, write_n, SpectralResult};
 use super::wave::OpenWave;
-use crate::dsp::effects::ChainProcessor;
+use crate::dsp::effects::{fill_span, ChainProcessor};
 use crate::dsp::roomtone;
 use crate::export::mixdown;
 use crate::session::model::EffectChain;
@@ -273,6 +273,68 @@ pub async fn wave_room_tone(
             source_start: from as u64,
             source_db,
         })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The longest stretch Fill Single Click will smooth over. A click is a few
+/// milliseconds; anything longer is a different job.
+const FILL_CLICK_LONGEST_SECONDS: f64 = 0.025;
+/// Samples read on each side of the click to draw the fill from.
+const FILL_CLICK_CONTEXT: u64 = 4;
+
+/// Waveform editor Fill Single Click on `start..end`: replaces the selected
+/// stretch with a smooth curve drawn from the audio on each side, on every
+/// channel. The interface swaps the result in as one undoable edit.
+#[tauri::command]
+pub async fn wave_fill_click(
+    app: AppHandle,
+    wave: State<'_, OpenWave>,
+    start: u64,
+    end: u64,
+) -> Result<SpectralResult, String> {
+    let session = snapshot(&wave)?;
+    let dir = crate::commands::cache::cache_root(&app)?.join("wave-fx");
+    spawn_blocking(move || -> Result<SpectralResult, String> {
+        let rate = session.sample_rate;
+        let total = mixdown::session_end(&session);
+        let end = end.min(total);
+        if end <= start {
+            return Err("Select the click first.".into());
+        }
+        if (end - start) as f64 > f64::from(rate) * FILL_CLICK_LONGEST_SECONDS {
+            return Err(
+                "Fill Single Click is for one click at a time. Select 25 ms or less around it."
+                    .into(),
+            );
+        }
+        let lead = start.min(FILL_CLICK_CONTEXT);
+        let tail = (total - end).min(FILL_CLICK_CONTEXT);
+        if lead < 2 || tail < 2 {
+            return Err("The click is too close to the start or end of the file to fill.".into());
+        }
+        let (from, to) = (start - lead, end + tail);
+        let (audio, n) = render_n(&session, from as i64, to as i64);
+        let frames = audio.len() / n.max(1);
+        if frames < (to - from) as usize {
+            return Err("Could not read the audio around the click.".into());
+        }
+        let (s, e) = (lead as usize, lead as usize + (end - start) as usize);
+        let mut out = audio.clone();
+        for c in 0..n {
+            let mut ch: Vec<f32> = audio.iter().skip(c).step_by(n).copied().collect();
+            if !fill_span(&mut ch, s, e) {
+                return Err(
+                    "The click is too close to the start or end of the file to fill.".into(),
+                );
+            }
+            for (i, v) in ch.into_iter().enumerate().take(frames) {
+                out[i * n + c] = v;
+            }
+        }
+        let media = write_n(&dir, "fill-click", &out, n, s, e - s, rate)?;
+        Ok(SpectralResult { media, start, end })
     })
     .await
     .map_err(|e| e.to_string())?

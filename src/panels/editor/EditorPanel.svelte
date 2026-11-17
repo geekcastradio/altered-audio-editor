@@ -35,7 +35,7 @@
   import { timeDisplayItems } from "./time-menu";
   import { dragGain, gainBox, gainText } from "./clip-gain";
   import { clipsAt, copyMoved, fadeClip, gapAt, LockedError, MIN_CLIP, moveClips, nearest, previewTracks, snapTargets, splitClips, trimClip, withCrossfades,
-    withLayers, withGroups } from "./clip-edit";
+    withLayers, withGroups, setFocusClip } from "./clip-edit";
   import { shownTracks as listedTracks } from "./visibility";
   import { addPoint, chipBox, chipLabel, envChange, envName, formatValue, fxChoices, fxLaneOf, fxParam, levelAt, movePoint, movePoints, pointsOf, rangeOf, restValue, snapValue, valueToY, yToValue, type EnvKind } from "./envelope";
   import LaneCanvas from "./LaneCanvas.svelte";
@@ -45,7 +45,7 @@
   import { chainTarget } from "../../stores/chain-target";
   import Dial from "./Dial.svelte";
   import TrackMeter from "./TrackMeter.svelte";
-  import { inputLevels, liveTakes, type LiveTakes } from "../../stores/record";
+  import { inputLevels, liveTakes, meterInputAll, type LiveTakes } from "../../stores/record";
   import { keepLast } from "../../app/settings/device-cache";
   import { audioInputs, openSoundSettings, probeMedia, type AudioInput } from "../../app/core";
   import { laneWidths } from "../time-info/time-info";
@@ -1036,7 +1036,7 @@
   /** Playback level of a track's channel, 0 when stopped. */
   /** A track's meter: the input while armed, otherwise playback (over lights stay after stopping). */
   function meterOf(track: TrackDoc): readonly [MeterLevel, MeterLevel] | null {
-    if (track.record_armed) {
+    if (track.record_armed || (meterAll && levels[track.id] !== undefined)) {
       const v = levels[track.id] ?? 0;
       const m = { level: v, peak: v, over: v >= 1 };
       return [m, m];
@@ -1046,6 +1046,12 @@
   $effect(() =>
     inputLevels.subscribe((v) => {
       levels = v;
+    }),
+  );
+  let meterAll = $state(false);
+  $effect(() =>
+    meterInputAll.subscribe((v) => {
+      meterAll = v;
     }),
   );
   let live = $state<LiveTakes | null>(null);
@@ -1330,6 +1336,7 @@
       return;
     }
     if (z.kind !== "env-point" && z.kind !== "env-line") envSel = null;
+    setFocusClip(clip.id);
     if (e.ctrlKey || e.metaKey) {
       const next = new Set(ed.selectedClips);
       const members = doc ? withGroups(doc, [clip.id]) : [clip.id];

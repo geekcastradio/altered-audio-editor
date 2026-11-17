@@ -967,6 +967,11 @@ export function waveRoomTone(start: number, end: number): Promise<RoomToneResult
   return invoke<RoomToneResult>("wave_room_tone", { start, end });
 }
 
+/** Fill Single Click: `start..end` (25 ms or less) smoothed over from the audio each side, for replaceRange. */
+export function waveFillClick(start: number, end: number): Promise<SpectralResult> {
+  return invoke<SpectralResult>("wave_fill_click", { start, end });
+}
+
 export interface PitchReport {
   frames: number;
   voiced: number;

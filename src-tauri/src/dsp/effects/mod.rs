@@ -47,7 +47,7 @@ use crate::session::model::{EffectChain, EffectSlot, Id};
 
 pub use dynamics::{Compressor, DeEsser, Gate, Limiter, Multiband, SpeechLeveler};
 pub use eq::{HumCut, ParametricEq};
-pub use restore::{find_spots, repair_spots, Spots};
+pub use restore::{fill_span, find_spots, repair_spots, Spots};
 
 /// Effects with a level detector that can listen to a sidechain key.
 pub const KEYED: [&str; 2] = ["altaudio.dynamics", "altaudio.breath_gate"];

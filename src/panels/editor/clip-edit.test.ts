@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { ClipDoc, SessionDoc, TrackDoc } from "../../stores/session";
-import { snapToMarkers, clipsAt, copyClips, copyMoved, fadeClip, gapAt, gapToClose, rippleTracks, LockedError, MIN_CLIP, moveClips, nearest, pasteClips, previewTracks, rippleDeleteClips, rippleDeleteRange, snapTargets, trimToRange, splitClips, trimClip, trimToPlayhead, withCrossfades, fadeShapeChanges, withGroups, withLayers, TOP_LAYER, withVolume, withEnvelope, envelopeId, loopChanges } from "./clip-edit";
+import { snapToMarkers, clipsAt, copyClips, copyMoved, fadeClip, gapAt, gapToClose, rippleTracks, LockedError, MIN_CLIP, moveClips, nearest, pasteClips, previewTracks, rippleDeleteClips, rippleDeleteRange, snapTargets, trimToRange, splitClips, trimClip, trimToPlayhead, withCrossfades, fadeShapeChanges, withGroups, setGroupsSuspended, areGroupsSuspended, setFocusClip, getFocusClip, withLayers, TOP_LAYER, withVolume, withEnvelope, envelopeId, loopChanges } from "./clip-edit";
 
 const fade = () => ({ length: 0, shape: "linear" as const, curve: 0 });
 
@@ -373,6 +373,23 @@ describe("withGroups", () => {
     const doc = session([track("A", [{ ...clip("a", 0), group: "g" }, clip("b", 50_000)]), track("B", [{ ...clip("c", 0), group: "g" }])]);
     expect(withGroups(doc, ["a"]).sort()).toEqual(["a", "c"]);
     expect(withGroups(doc, ["b"])).toEqual(["b"]);
+  });
+  it("picks only the clip itself while groups are suspended", () => {
+    const doc = session([track("A", [{ ...clip("a", 0), group: "g" }]), track("B", [{ ...clip("c", 0), group: "g" }])]);
+    setGroupsSuspended(true);
+    try {
+      expect(areGroupsSuspended()).toBe(true);
+      expect(withGroups(doc, ["a"])).toEqual(["a"]);
+    } finally {
+      setGroupsSuspended(false);
+    }
+    expect(withGroups(doc, ["a"]).sort()).toEqual(["a", "c"]);
+  });
+  it("remembers the clip clicked last", () => {
+    setFocusClip("z");
+    expect(getFocusClip()).toBe("z");
+    setFocusClip(null);
+    expect(getFocusClip()).toBeNull();
   });
 });
 

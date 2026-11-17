@@ -298,6 +298,12 @@
     c.style.height = `${h}px`;
     const g = c.getContext("2d");
     if (!g) return;
+    // While the level knob is dragged, the stretch it will change is drawn at the new height.
+    const previewK = levelDrag && level !== 0 ? 10 ** (level / 20) : 1;
+    const sized = selection !== null && selection.end > selection.start;
+    const previewA = sized ? (selection?.start ?? 0) : 0;
+    const previewB = sized ? (selection?.end ?? Infinity) : Infinity;
+    const previewAt = (pos: number) => (previewK !== 1 && pos >= previewA && pos < previewB ? previewK : 1);
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.fillStyle = css("--surface-0");
     g.fillRect(0, 0, w + SCALE_W, h);
@@ -379,7 +385,7 @@
           const hc = Math.min(ch, have.channels - 1);
           const at = (f: number) => {
             const rel = ((f - clip.source_in) * rate) / srcRate;
-            const v = (have.data[(f - have.start) * have.channels + hc] ?? 0) * pieceGain(clip, rel, len) * ampZoom;
+            const v = (have.data[(f - have.start) * have.channels + hc] ?? 0) * pieceGain(clip, rel, len) * ampZoom * previewAt(clip.start + rel);
             return [xOf(clip.start + rel, view), mid - Math.max(-1, Math.min(1, v)) * half] as const;
           };
           g.beginPath();
@@ -413,7 +419,7 @@
         if (clip.looped && region > 0) into = (((into + clip.looped.phase) % region) + region) % region;
         const s0 = clip.source_in + into;
         const s1 = Math.min(clip.source_out, s0 + framesPerPx);
-        const k = pieceGain(clip, rel, len) * ampZoom;
+        const k = pieceGain(clip, rel, len) * ampZoom * previewAt(clip.start + rel);
         for (let ch = 0; ch < channels; ch++) {
           const top = ch * laneH;
           const mid = top + laneH / 2;
