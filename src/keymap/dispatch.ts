@@ -8,10 +8,11 @@
 
 import type { ActionRegistry } from "../app/actions";
 import { chordFromEvent } from "./chord";
+import { ownsArrowKeys } from "./owns-arrows";
 import type { Keymap } from "./keymap";
 
 /** Actions that keep firing while the key is held. Everything else fires once per press. */
-const REPEATABLE = new Set(["edit.undo", "edit.redo", "view.zoom-in", "view.zoom-out"]);
+const REPEATABLE = new Set(["edit.undo", "edit.redo", "view.zoom-in", "view.zoom-out", "transport.step-left", "transport.step-right", "transport.page-left", "transport.page-right"]);
 
 /**
  * Webview keys that would reload, print, or search the page. Blocked in
@@ -82,8 +83,10 @@ export function decide(
 /** Listens for key presses on the window. Returns a function that stops listening. */
 export function bindKeymap(keymap: Keymap, actions: ActionRegistry, onError: (e: unknown) => void, onBlocked?: (why: string) => void): () => void {
   const handler = (e: KeyboardEvent) => {
+    // A slider, drop-down or list keeps its own bare arrow and Page keys.
+    const bare = !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && /^(Arrow|Page)/.test(e.key);
     const result = decide(e, keymap, {
-      inTextField: isTextEntry(e.target),
+      inTextField: isTextEntry(e.target) || (bare && ownsArrowKeys(e.target)),
       modalOpen: document.querySelector('[aria-modal="true"]') !== null,
       release: !import.meta.env.DEV,
     });

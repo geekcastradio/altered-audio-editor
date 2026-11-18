@@ -24,8 +24,8 @@ const APPROVED: Record<string, string[]> = {
   "multitrack.play-pause": ["Space"],
   "multitrack.record": ["Shift+Space"],
   "clip.split": ["Ctrl+K"],
-  "view.zoom-in": ["Ctrl+=", "="],
-  "view.zoom-out": ["Ctrl+-", "-"],
+  "view.zoom-in": ["Ctrl+=", "=", "+", "Shift++"],
+  "view.zoom-out": ["-"],
   "edit.find": ["Ctrl+F"],
   "file.close": ["Ctrl+W", "Ctrl+F4"],
   "files.next-open": ["Ctrl+Tab", "Ctrl+PageDown"],
@@ -41,37 +41,42 @@ const APPROVED: Record<string, string[]> = {
   "transport.prev-marker": ["Ctrl+Alt+ArrowLeft"],
   "transport.next-marker": ["Ctrl+Alt+ArrowRight"],
   "edit.marker.cue": ["M", "Shift+*", "*", "F8"],
-  "edit.marker.retake": ["F9"],
-  "edit.marker.cut-this": ["Shift+F9"],
-  "edit.marker.great-bit": ["Ctrl+F9"],
+  "edit.marker.retake": ["F6"],
+  "edit.marker.cut-this": ["Shift+F6"],
+  "edit.marker.great-bit": ["Ctrl+F6"],
   "view.zoom-session": ["\\"],
   "view.zoom-selection": ["Shift+S", "Shift+/", "?"],
   "view.zoom-out-full": ["Shift+\\", "|"],
   "view.zoom-all-axes": ["Ctrl+\\"],
-  "view.editor.toggle": ["1"],
+  "view.editor.toggle": ["1", "F12"],
   "view.editor.multitrack": ["0"],
   "view.editor.waveform": ["9"],
-  "view.spectrum": ["Shift+D"],
+  "view.spectrum": ["Shift+D", "F9"],
   "view.hud": ["Shift+U"],
   "view.zoom-in-vertical": ["Alt+="],
-  "window.panel.files": ["Alt+1"],
-  "window.panel.voice-chain": ["Alt+2"],
-  "window.panel.audio-fx": ["Alt+3"],
+  "window.panel.editor": ["Alt+1"],
+  "window.panel.mixer": ["Alt+2"],
+  "window.panel.properties": ["Alt+3"],
   "window.panel.sound-types": ["Alt+4"],
-  "window.panel.libraries": ["Alt+5"],
-  "window.panel.markers": ["Alt+6"],
-  "window.panel.metadata": ["Alt+7"],
-  "window.panel.history": ["Alt+8"],
-  "window.panel.levels": ["Alt+9"],
-  "window.panel.mixer": ["Alt+0"],
+  "window.panel.loudness-match": ["Alt+5"],
+  "window.panel.time-info": ["Alt+6"],
+  "window.panel.levels": ["Alt+7"],
+  "window.panel.markers": ["Alt+8"],
+  "window.panel.files": ["Alt+9"],
+  "window.panel.voice-chain": ["Alt+0"],
+  "window.panel.audio-fx": ["Ctrl+Alt+1"],
+  "window.panel.libraries": ["Ctrl+Alt+2"],
+  "window.panel.history": ["Ctrl+Alt+3"],
+  "window.panel.metadata": ["Ctrl+P"],
+  "window.panel.phase-wheel": ["Alt+X"],
   "view.zoom-out-vertical": ["Alt+-"],
   "multitrack.return-on-stop": ["Shift+X"],
   "fx.hide-windows": ["Ctrl+Shift+H"],
-  "multitrack.meter-input": ["Alt+I"],
-  "edit.repeat-last": ["Shift+R"],
-  "edit.repeat-last-dialog": ["Ctrl+R"],
-  "fx.fill-click": ["Ctrl+Alt+K"],
-  "file.convert-sample-type": ["Shift+T"],
+  "multitrack.meter-input": ["Alt+I", "F10"],
+  "edit.repeat-last": ["Shift+R", "F3"],
+  "edit.repeat-last-dialog": ["Ctrl+R", "F2"],
+  "fx.fill-click": ["Ctrl+Alt+U"],
+  "file.convert-sample-type": ["Shift+T", "F11"],
   "fx.capture-noise-print": ["Shift+P"],
   "wave.channel-left": ["ArrowUp"],
   "wave.channel-right": ["ArrowDown"],
@@ -79,7 +84,7 @@ const APPROVED: Record<string, string[]> = {
   "clip.nudge-right": ["Alt+."],
   "clip.to-track-above": ["Alt+ArrowUp"],
   "clip.to-track-below": ["Alt+ArrowDown"],
-  "edit.marker.cd-track": ["Shift+M"],
+  "edit.marker.cd-track": ["Shift+M", "Shift+F8"],
   "edit.marker.cart": ["C"],
   "multitrack.add.stereo": ["Alt+A"],
   "multitrack.add.bus": ["Alt+B"],
@@ -91,7 +96,7 @@ const APPROVED: Record<string, string[]> = {
   "edit.ripple.clips": ["Shift+Backspace", "Shift+Delete"],
   "edit.ripple.time-clips": ["Alt+Backspace", "Alt+Delete"],
   "edit.ripple.time-all": ["Ctrl+Shift+Backspace", "Ctrl+Shift+Delete"],
-  "edit.deselect": ["Ctrl+D"],
+  "edit.deselect": ["Ctrl+D", "Ctrl+Shift+A"],
   "edit.select-next-clip": ["."],
   "edit.select-clips-track-end": ["Ctrl+Alt+T"],
   "edit.clear-time-selection": ["G"],
@@ -99,7 +104,7 @@ const APPROVED: Record<string, string[]> = {
   "edit.set-out": ["O"],
   "edit.clear-in": ["Shift+I"],
   "edit.clear-out": ["Shift+O"],
-  "edit.settings": ["Ctrl+,"],
+  "edit.settings": ["Ctrl+,", "Ctrl+Shift+K", "Ctrl+Alt+K", "F4"],
   "edit.keyboard-shortcuts": ["Alt+K"],
   "edit.crop": ["Ctrl+T"],
   "multitrack.insert-files": ["Ctrl+Shift+I"],
@@ -123,11 +128,23 @@ const APPROVED: Record<string, string[]> = {
   "multitrack.vis.show-all": ["Alt+Shift+A"],
   "multitrack.vis.hide-selected": ["Alt+H"],
   "analysis.statistics": ["Ctrl+Alt+A"],
-  "analysis.frequency": ["Ctrl+Alt+F"],
+  "analysis.frequency": ["Ctrl+Alt+F", "Alt+Z"],
   "clip.trim.selection": ["Alt+T"],
-  "edit.marker.range": ["Ctrl+Shift+M"],
+  "edit.marker.range": ["Ctrl+Shift+M", "Ctrl+Shift+F8", "Ctrl+Shift+*"],
   "fx.add.noise_print": ["Ctrl+Shift+P"],
   "fx.spectrum.repair": ["Ctrl+U"],
+  "edit.marker.delete": ["Ctrl+0"],
+  "edit.marker.delete-all": ["Ctrl+Alt+0"],
+  "edit.marker.rename": ["/"],
+  "window.minimize": ["Ctrl+M"],
+  "help.guide": ["F1"],
+  "transport.step-left": ["ArrowLeft"],
+  "transport.step-right": ["ArrowRight"],
+  "transport.page-left": ["PageUp"],
+  "transport.page-right": ["PageDown"],
+  "transport.to-in": ["Q"],
+  "transport.to-out": ["W"],
+  "transport.jump-to": ["Ctrl+J"],
 };
 
 const key = (
@@ -189,6 +206,37 @@ describe("shipped keymap", () => {
       expect(ids.has(id), id).toBe(true);
   });
 
+  it("gives Audition's panel keys to the matching panels", () => {
+    const k = new Keymap();
+    const want: Record<string, string> = {
+      "Alt+1": "window.panel.editor",
+      "Alt+2": "window.panel.mixer",
+      "Alt+3": "window.panel.properties",
+      "Alt+5": "window.panel.loudness-match",
+      "Alt+6": "window.panel.time-info",
+      "Alt+7": "window.panel.levels",
+      "Alt+8": "window.panel.markers",
+      "Alt+9": "window.panel.files",
+      "Ctrl+P": "window.panel.metadata",
+    };
+    for (const [chord, id] of Object.entries(want)) expect(k.actionFor(chord), chord).toBe(id);
+  });
+
+  it("answers Audition's function-key spellings", () => {
+    const k = new Keymap();
+    const want: Record<string, string> = {
+      F1: "help.guide",
+      F2: "edit.repeat-last-dialog",
+      F3: "edit.repeat-last",
+      F4: "edit.settings",
+      F9: "view.spectrum",
+      F10: "multitrack.meter-input",
+      F11: "file.convert-sample-type",
+      F12: "view.editor.toggle",
+    };
+    for (const [chord, id] of Object.entries(want)) expect(k.actionFor(chord), chord).toBe(id);
+  });
+
   it("never binds one chord twice", () => {
     const all = Object.values(DEFAULT_BINDINGS).flat();
     expect(new Set(all).size).toBe(all.length);
@@ -214,9 +262,9 @@ describe("Keymap", () => {
 
   it("saves only the user's changes", () => {
     const km = new Keymap();
-    km.assign("help.about", "F1");
-    expect(km.getOverrides()).toEqual({ "help.about": ["F1"] });
-    km.assign("help.about", "F1");
+    km.assign("help.about", "F5");
+    expect(km.getOverrides()).toEqual({ "help.about": ["F5"] });
+    km.assign("help.about", "F5");
     expect(km.isChanged("edit.undo")).toBe(false);
   });
 
@@ -239,7 +287,7 @@ describe("Keymap", () => {
 
   it("resets everything", () => {
     const km = new Keymap();
-    km.assign("help.about", "F1");
+    km.assign("help.about", "F5");
     km.clear("edit.undo");
     km.resetAll();
     expect(km.getOverrides()).toEqual({});

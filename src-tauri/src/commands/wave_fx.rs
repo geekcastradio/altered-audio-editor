@@ -15,7 +15,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use super::spectral::{by_pairs, render_n, snapshot, write_n, SpectralResult};
 use super::wave::OpenWave;
-use crate::dsp::effects::{fill_span, ChainProcessor};
+use crate::dsp::effects::{context_wanted, fill_gap, ChainProcessor};
 use crate::dsp::roomtone;
 use crate::export::mixdown;
 use crate::session::model::EffectChain;
@@ -278,15 +278,14 @@ pub async fn wave_room_tone(
     .map_err(|e| e.to_string())?
 }
 
-/// The longest stretch Fill Single Click will smooth over. A click is a few
-/// milliseconds; anything longer is a different job.
-const FILL_CLICK_LONGEST_SECONDS: f64 = 0.025;
-/// Samples read on each side of the click to draw the fill from.
-const FILL_CLICK_CONTEXT: u64 = 4;
+/// The longest stretch Fill Single Click will fill. Two clicks close together
+/// (about 40 ms) go in one selection.
+const FILL_CLICK_LONGEST_SECONDS: f64 = 0.100;
 
 /// Waveform editor Fill Single Click on `start..end`: replaces the selected
-/// stretch with a smooth curve drawn from the audio on each side, on every
-/// channel. The interface swaps the result in as one undoable edit.
+/// stretch with a fill built from the audio on each side (a short model of
+/// that sound, plus noise at its level), on every channel. The interface
+/// swaps the result in as one undoable edit.
 #[tauri::command]
 pub async fn wave_fill_click(
     app: AppHandle,
@@ -305,12 +304,13 @@ pub async fn wave_fill_click(
         }
         if (end - start) as f64 > f64::from(rate) * FILL_CLICK_LONGEST_SECONDS {
             return Err(
-                "Fill Single Click is for one click at a time. Select 25 ms or less around it."
+                "Fill Single Click is for one click at a time. Select 100 ms or less around it."
                     .into(),
             );
         }
-        let lead = start.min(FILL_CLICK_CONTEXT);
-        let tail = (total - end).min(FILL_CLICK_CONTEXT);
+        let want = context_wanted(rate, (end - start) as usize) as u64;
+        let lead = start.min(want);
+        let tail = (total - end).min(want);
         if lead < 2 || tail < 2 {
             return Err("The click is too close to the start or end of the file to fill.".into());
         }
@@ -324,7 +324,9 @@ pub async fn wave_fill_click(
         let mut out = audio.clone();
         for c in 0..n {
             let mut ch: Vec<f32> = audio.iter().skip(c).step_by(n).copied().collect();
-            if !fill_span(&mut ch, s, e) {
+            // The same selection always gives the same fill; each channel draws its own noise.
+            let seed = start ^ (c as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+            if !fill_gap(&mut ch, s, e, rate, seed) {
                 return Err(
                     "The click is too close to the start or end of the file to fill.".into(),
                 );
