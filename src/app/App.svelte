@@ -1113,14 +1113,14 @@
   };
 
   /** Nudge: moves the selected clips one screen pixel at the current zoom, never before time zero. */
-  async function nudgeClips(dir: -1 | 1) {
+  async function nudgeClips(dir: -1 | 1, times = 1) {
     const doc = session.current;
     if (!doc) return;
-    const step = Math.max(1, Math.round(doc.view.samples_per_pixel));
+    const step = Math.max(1, Math.round(doc.view.samples_per_pixel)) * times;
     const changes = nudgeable()
       .map((f) => ({ id: f.clip.id, start: Math.max(0, f.clip.start + dir * step) }))
       .filter((c, i) => c.start !== nudgeable()[i]!.clip.start);
-    await editClips(dir < 0 ? "Nudge Left" : "Nudge Right", changes);
+    await editClips(`${dir < 0 ? "Nudge Left" : "Nudge Right"}${times > 1 ? ` ${times} Steps` : ""}`, changes);
   }
 
   /** Selected clips (not locked) whose file has two or more channels. */
@@ -5353,6 +5353,23 @@
         run: () => nudgeClips(1),
         enabled: () => !inWave() && nudgeable().length > 0,
         reason: () => "Select clips that are not locked first.",
+      }),
+      actions.register({
+        id: "clip.nudge-left-5",
+        run: () => nudgeClips(-1, 5),
+        enabled: () => !inWave() && nudgeable().length > 0,
+        reason: () => "Select clips that are not locked first.",
+      }),
+      actions.register({
+        id: "clip.nudge-right-5",
+        run: () => nudgeClips(1, 5),
+        enabled: () => !inWave() && nudgeable().length > 0,
+        reason: () => "Select clips that are not locked first.",
+      }),
+      actions.register({
+        id: "view.follow-playhead",
+        run: () => editor.setFollowPlayhead(!editor.current().followPlayhead),
+        checked: () => editor.current().followPlayhead,
       }),
       actions.register({
         id: "clip.split-channels",
