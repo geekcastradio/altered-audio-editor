@@ -73,7 +73,7 @@ export const WELCOME_PAGES: readonly WelcomePage[] = [
     rev: 6,
     title: "Quicker clean-up, tidier views",
     body: [
-      "Fill Single Click (Effects menu, Ctrl+Alt+K) smooths over one selected click, and Shift+R repeats it on the next one. In the Waveform Editor the waveform now moves as you drag the level knob.",
+      "Fill Single Click (Effects menu, Ctrl+Alt+U) smooths over one selected click, and Shift+R repeats it on the next one. In the Waveform Editor the waveform now moves as you drag the level knob.",
       "Track Visibility has Save and Load presets. Suspend Groups (Ctrl+Shift+G) lets you pick one clip from a group. Meter Input Signal (Alt+I) checks every mic before you arm it. Guest Track adds a track with the Remote Guest cleanup ready, and Podcast Mode and Voiceover Mode in the View menu switch layouts.",
     ],
   },

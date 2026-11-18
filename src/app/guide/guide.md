@@ -34,7 +34,7 @@ Recording Options (Multitrack > Recording Options) holds pre-roll, punch-in and 
 
 To record a call, each output device is also offered as an input named "System audio" followed by the device. It records what the computer plays, while microphones record on their own tracks.
 
-**Marking while you record.** Three quick marks drop a numbered marker at the playhead: Add Retake Marker (F9), Add Cut This Marker (Shift+F9) and Add Great Bit Marker (Ctrl+F9). They work in the Multitrack and in the Waveform Editor, and every key can be changed in Keyboard Shortcuts. Window > Review lists your Cut this, Retake and Great bit marks in time order, with Previous and Next to step through them and a filter to show one kind.
+**Marking while you record.** Three quick marks drop a numbered marker at the playhead: Add Retake Marker (F6), Add Cut This Marker (Shift+F6) and Add Great Bit Marker (Ctrl+F6). They work in the Multitrack and in the Waveform Editor, and every key can be changed in Keyboard Shortcuts. Window > Review lists your Cut this, Retake and Great bit marks in time order, with Previous and Next to step through them and a filter to show one kind.
 
 **Scrubbing.** Settings > Playback and Recording has Play audio while scrubbing. With it on, dragging the playhead along the ruler plays what is under it. It is approximate: playback restarts at the pointer every moment. It is off by default.
 
@@ -200,7 +200,7 @@ A plug-in's own window opens from its slot in the Voice Chain. What you change t
 
 Open a file with File > Open, or send a clip over with Clip > Open in Waveform Editor. Select a stretch of audio and use the Effects menu to Amplify, Normalize, Fade In, Fade Out, Invert, Reverse or Silence it. The Spectrum view (View > Show Spectrum) shows frequency over time, with selection tools to reduce, remove or repair a marked area. Effects > Spectrum > Play Selected Area plays only the sound inside the selection, so you can hear what you are about to remove, without changing the file. The selection can be up to five minutes long.
 
-Drag the level knob in the corner of the view to turn the selection, or the whole file, up or down. The waveform redraws at the new height while you drag, so you can judge the level by eye, and the change applies when you let go. Effects > Fill Single Click smooths over one selected click, up to 25 ms, from the audio on each side. Select the next click and press Shift+R to repeat it, or use Ctrl+Alt+K.
+Drag the level knob in the corner of the view to turn the selection, or the whole file, up or down. The waveform redraws at the new height while you drag, so you can judge the level by eye, and the change applies when you let go. Effects > Fill Single Click repairs one selected click, pop or burst, up to 100 ms, so two clicks close together can go in one selection. It listens to the sound on each side, builds the missing stretch from it and adds a little noise at the level of the room so the repair does not sound like a gap. Select the next click and press Shift+R to repeat it, or use Ctrl+Alt+U.
 
 Edits here change the file when you save it. Changes to a file used by a session show up in the session once saved.
 
@@ -275,7 +275,7 @@ The Files panel lists the media in your session. Multitrack > Insert Session as 
 
 Collect Session Media (File > Collect Session Media) copies everything a session uses into one folder, which is the safe way to move a session to another computer.
 
-Keyboard shortcuts are listed in Help > Keyboard Shortcuts, and you can change them in Edit > Keyboard Shortcuts. They follow Audition's wherever the same command exists.
+Keyboard shortcuts are listed in Help > Keyboard Shortcuts, and you can change them in Edit > Keyboard Shortcuts. They follow Audition's wherever the same command exists, including its panel keys (Alt+1 Editor, Alt+2 Mixer, Alt+3 Properties, Alt+5 Loudness Match, Alt+6 Time Info, Alt+7 Levels, Alt+8 Markers, Alt+9 Files, Ctrl+P Metadata) and its function keys (F1 Help, F2 and F3 repeat the last command, F4 Settings, F9 spectral view, F10 meter input, F11 Convert Sample Type, F12 swap editors). The playhead moves with Left and Right (one pixel at the current zoom), Page Up and Page Down (one screen), Q and W (the start and end of the time selection) and Ctrl+J (type a time to jump to); the same moves are under Multitrack > Go To. Panels that Audition does not have take their own keys: Voice Chain Alt+0, Sound Types Alt+4, Audio FX Ctrl+Alt+1, Libraries Ctrl+Alt+2 and History Ctrl+Alt+3. Edit > Keyboard Shortcuts can bring in an Audition shortcut export.
 
 ## When something goes wrong
 

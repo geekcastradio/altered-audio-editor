@@ -398,6 +398,13 @@ describe("menu model", () => {
       "fx.hide-windows",
       "help.guide",
       "edit.controllers",
+      "transport.step-left",
+      "transport.step-right",
+      "transport.page-left",
+      "transport.page-right",
+      "transport.to-in",
+      "transport.to-out",
+      "transport.jump-to",
     ]);
     for (const m of MENUS) {
       for (const it of allItems(m.items)) {

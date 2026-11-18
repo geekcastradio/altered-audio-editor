@@ -105,7 +105,7 @@
   </div>
   {#if total === 0}
     <p class="empty">
-      No marks yet. While you record, drop them with Edit &gt; Markers: Add Cut This Marker (Shift+F9), Add Retake Marker (F9) or Add Great Bit Marker (Ctrl+F9).
+      No marks yet. While you record, drop them with Edit &gt; Markers: Add Cut This Marker (Shift+F6), Add Retake Marker (F6) or Add Great Bit Marker (Ctrl+F6).
     </p>
   {:else if marks.length === 0}
     <p class="empty">No marks of this kind.</p>

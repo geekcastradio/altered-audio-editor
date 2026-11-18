@@ -38,6 +38,8 @@
   import { DockController, type PanelContent, type WorkspaceState } from "./docking/dock";
   import { PANELS, panelDef, type PanelId } from "./docking/registry";
   import { clearIn, clearOut, markIn, markOut, type Span } from "./in-out";
+  import { headTarget, jumpTarget, type HeadMove } from "./playhead-keys";
+  import { laneWidths } from "../panels/time-info/time-info";
   import DockShell from "./docking/DockShell.svelte";
   import { ActionRegistry } from "./actions";
   import { MENUS } from "./menus/model";
@@ -5230,6 +5232,57 @@
       actions.register({ id: "transport.next-edge", run: () => jumpEdge(1, false), enabled: () => session.current !== null }),
       actions.register({ id: "transport.prev-marker", run: () => jumpEdge(-1, true), enabled: () => session.current !== null }),
       actions.register({ id: "transport.next-marker", run: () => jumpEdge(1, true), enabled: () => session.current !== null }),
+      ...(
+        [
+          ["transport.step-left", "step-left"],
+          ["transport.step-right", "step-right"],
+          ["transport.page-left", "page-left"],
+          ["transport.page-right", "page-right"],
+          ["transport.to-in", "to-in"],
+          ["transport.to-out", "to-out"],
+        ] as [string, HeadMove][]
+      ).map(([id, move]) =>
+        actions.register({
+          id,
+          run: async () => {
+            const wv = waveIsOpen();
+            const d = wv ? wave.current : session.current;
+            if (!d) return;
+            const t = wv ? waveTransport : transport;
+            const to = headTarget(move, {
+              pos: t.current.position,
+              end: sessionEnd(d),
+              spp: d.view.samples_per_pixel,
+              width: get(laneWidths)[wv ? "waveform" : "multitrack"],
+              sel: d.view.selection ?? null,
+            });
+            if (to === null) return;
+            if (wv) await waveTransport.seek(to);
+            else await seekAndShow(to);
+          },
+          enabled: () => (waveIsOpen() ? wave.current !== null : session.current !== null),
+          reason: () => "Open a session or a file first.",
+        }),
+      ),
+      actions.register({
+        id: "transport.jump-to",
+        run: async () => {
+          const wv = waveIsOpen();
+          const d = wv ? wave.current : session.current;
+          if (!d) return;
+          const text = await promptText("Jump to Time", "Move the playhead to (for example 1:05.250)", "0:00.000");
+          if (text === null) return;
+          const to = jumpTarget(text, d.sample_rate, editor.current().timeFormat, settings.current.timecodeFps, sessionEnd(d));
+          if (to === null) {
+            showNotice("That is not a time. Try 1:05.250 or 65.25.");
+            return;
+          }
+          if (wv) await waveTransport.seek(to);
+          else await seekAndShow(to);
+        },
+        enabled: () => (waveIsOpen() ? wave.current !== null : session.current !== null),
+        reason: () => "Open a session or a file first.",
+      }),
       actions.register({
         id: "view.zoom-session",
         run: () => {

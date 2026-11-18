@@ -22,6 +22,7 @@ mod echo;
 mod eq;
 mod expander;
 mod filters;
+mod gapfill;
 mod modulation;
 mod phase;
 pub mod phase_curve;
@@ -47,6 +48,7 @@ use crate::session::model::{EffectChain, EffectSlot, Id};
 
 pub use dynamics::{Compressor, DeEsser, Gate, Limiter, Multiband, SpeechLeveler};
 pub use eq::{HumCut, ParametricEq};
+pub use gapfill::{context_wanted, fill_gap};
 pub use restore::{fill_span, find_spots, repair_spots, Spots};
 
 /// Effects with a level detector that can listen to a sidechain key.
