@@ -143,7 +143,7 @@ impl Decoder {
 
 impl Backend for Decoder {
     #[allow(deprecated)]
-    fn open(path: &Path) -> Result<(Self, VideoInfo), String> {
+    fn open(path: &Path, _hardware: bool) -> Result<(Self, VideoInfo), String> {
         unsafe {
             let text = path
                 .to_str()
@@ -181,6 +181,8 @@ impl Backend for Decoder {
                 fps,
                 duration,
                 has_audio,
+                // AVFoundation does not give the codec name here; the panel copes with empty.
+                codec: String::new(),
             };
             let frame_len = if fps > 0.0 { 1.0 / fps } else { 1.0 / 30.0 };
             Ok((
