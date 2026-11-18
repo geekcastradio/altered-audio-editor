@@ -17,8 +17,8 @@ use windows::Win32::Media::MediaFoundation::{
     IMF2DBuffer, IMFAttributes, IMFSample, IMFSourceReader, MFCreateAttributes, MFCreateMediaType,
     MFCreateSourceReaderFromURL, MFMediaType_Video, MFShutdown, MFStartup, MFVideoFormat_RGB32,
     MFSTARTUP_LITE, MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE,
-    MF_MT_SUBTYPE, MF_MT_VIDEO_ROTATION, MF_PD_DURATION, MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING,
-    MF_VERSION,
+    MF_MT_SUBTYPE, MF_MT_VIDEO_ROTATION, MF_PD_DURATION, MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS,
+    MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, MF_VERSION,
 };
 use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
@@ -39,7 +39,7 @@ const FLAG_END: u32 = 0x2;
 const MAX_DECODE: usize = 1500;
 
 fn err(what: &str, e: windows::core::Error) -> String {
-    format!("Video ({what}): {e}")
+    super::explain(what, e.code().0 as u32, &e.to_string())
 }
 
 /// Media Foundation and COM started for this thread; stopped when dropped.
@@ -166,7 +166,7 @@ impl Decoder {
 }
 
 impl Backend for Decoder {
-    fn open(path: &Path) -> Result<(Self, VideoInfo), String> {
+    fn open(path: &Path, hardware: bool) -> Result<(Self, VideoInfo), String> {
         let mf = Mf::start()?;
         unsafe {
             let wide: Vec<u16> = path
@@ -176,11 +176,17 @@ impl Backend for Decoder {
                 .collect();
             // Let the reader convert the picture to plain color for us.
             let mut attrs: Option<IMFAttributes> = None;
-            MFCreateAttributes(&mut attrs, 1).map_err(|e| err("settings", e))?;
+            MFCreateAttributes(&mut attrs, 2).map_err(|e| err("settings", e))?;
             let attrs = attrs.ok_or("Video: could not make settings.")?;
             attrs
                 .SetUINT32(&MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1)
                 .map_err(|e| err("settings", e))?;
+            if hardware {
+                // Without this the reader decodes on the CPU only.
+                attrs
+                    .SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1)
+                    .map_err(|e| err("settings", e))?;
+            }
             let reader = MFCreateSourceReaderFromURL(PCWSTR(wide.as_ptr()), &attrs)
                 .map_err(|e| err("open", e))?;
             reader
@@ -239,12 +245,22 @@ impl Backend for Decoder {
                 (width, height)
             };
             let has_audio = reader.GetNativeMediaType(FIRST_AUDIO, 0).is_ok();
+            let codec = reader
+                .GetNativeMediaType(FIRST_VIDEO, 0)
+                .ok()
+                .and_then(|n| {
+                    let a: &IMFAttributes = &n;
+                    a.GetGUID(&MF_MT_SUBTYPE).ok()
+                })
+                .map(|g| super::codec_name(g.data1))
+                .unwrap_or_default();
             let info = VideoInfo {
                 width: shown_w,
                 height: shown_h,
                 fps,
                 duration: hns as f64 / 10_000_000.0,
                 has_audio,
+                codec,
             };
             let frame_len = if fps > 0.0 {
                 (10_000_000.0 / fps) as i64

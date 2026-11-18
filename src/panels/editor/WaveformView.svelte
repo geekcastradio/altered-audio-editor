@@ -15,6 +15,7 @@
   import { KIND_COLORS, markerAt } from "../markers/markers";
   import { markerMenuItems } from "../markers/marker-menu";
   import { Scrubber } from "./scrubber";
+  import { followEffect } from "./follow";
   import type { ActionRegistry } from "../../app/actions";
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import { editor, type EditorState } from "../../stores/editor";
@@ -130,10 +131,12 @@
 
   function setView(v: Partial<{ spp: number; scroll: number; playhead: number; selection: { start: number; end: number } | null }>, auto = false) {
     if (!doc) return;
-    // Scrolling or zooming by hand while playing stops the following until playback starts again or the playhead is moved.
+    // Scrolling by hand while playing stops the following until playback starts again or the playhead is moved.
+    // Zooming does not: the playhead stays in view and the following goes on.
     if (!auto && tp?.playing) {
-      if (v.playhead !== undefined) followHeld = false;
-      else if ((v.scroll !== undefined && v.scroll !== doc.view.scroll) || (v.spp !== undefined && v.spp !== doc.view.samples_per_pixel)) followHeld = true;
+      const effect = followEffect({ spp: doc.view.samples_per_pixel, scroll: doc.view.scroll }, v);
+      if (effect === "release") followHeld = false;
+      else if (effect === "hold") followHeld = true;
     }
     // The view never runs past the end of the file.
     const maxScroll = Math.max(0, total - width * (v.spp ?? view.spp));
@@ -178,8 +181,8 @@
   });
 
   // Keep the playhead in view while playing, unless the view was scrolled
-  // or zoomed by hand: then leave it be until playback starts again or the
-  // playhead is moved.
+  // by hand: then leave it be until playback starts again or the
+  // playhead is moved. Zooming keeps following.
   let followHeld = false;
   let wasPlaying = false;
   $effect(() => {

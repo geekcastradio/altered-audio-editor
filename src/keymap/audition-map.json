@@ -125,5 +125,9 @@
  "Transport.MoveCTIPageRight": "transport.page-right",
  "Transport.MoveCTIToInPoint": "transport.to-in",
  "Transport.MoveCTIToOutPoint": "transport.to-out",
- "Transport.JumpToTime": "transport.jump-to"
+ "Transport.JumpToTime": "transport.jump-to",
+ "Transport.ShuttleStop": "multitrack.stop",
+ "Transport.ShuttleRight": "transport.play",
+ "Transport.TogglePause": "multitrack.play-pause",
+ "Transport.ToggleLooping": "transport.toggle-loop"
 }

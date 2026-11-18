@@ -164,6 +164,8 @@ pub fn run() {
             commands::video::video_open,
             commands::video::video_frame,
             commands::video::video_close,
+            commands::video::video_stats,
+            commands::video::video_set_hardware,
             commands::devices::audio_inputs,
             commands::devices::audio_outputs,
             commands::devices::set_audio_output,

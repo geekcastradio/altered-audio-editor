@@ -405,6 +405,8 @@ describe("menu model", () => {
       "transport.to-in",
       "transport.to-out",
       "transport.jump-to",
+      "transport.play",
+      "transport.toggle-loop",
     ]);
     for (const m of MENUS) {
       for (const it of allItems(m.items)) {

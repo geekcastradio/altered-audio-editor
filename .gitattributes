@@ -9,3 +9,15 @@
 *.m4a binary
 *.ogg binary
 *.opus binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.zip binary
+*.gz binary
+*.msi binary
+*.onnx binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary

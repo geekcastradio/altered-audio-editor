@@ -54,6 +54,7 @@ export const WELCOME_PAGES: readonly WelcomePage[] = [
       "Record a line more than once, select the clips and choose Clip > Make Takes from Selected Clips. The Takes panel lets you pick which take plays over each stretch, and Clip > Flatten Takes keeps your picks.",
       "The User Guide has a section on takes and comping, and one on multi-mic shows.",
     ],
+    image: "takes-comping",
   },
   {
     rev: 4,
@@ -61,6 +62,7 @@ export const WELCOME_PAGES: readonly WelcomePage[] = [
     body: [
       "A process chain is a short list of steps run on a session as one undo step: Multitrack > Run Process Chain. The Batch Convert panel runs a chain over a whole list of files, to a loudness target if you want one.",
     ],
+    image: "process-chain",
   },
   {
     rev: 5,
@@ -76,6 +78,16 @@ export const WELCOME_PAGES: readonly WelcomePage[] = [
       "Fill Single Click (Effects menu, Ctrl+Alt+U) smooths over one selected click, and Shift+R repeats it on the next one. In the Waveform Editor the waveform now moves as you drag the level knob.",
       "Track Visibility has Save and Load presets. Suspend Groups (Ctrl+Shift+G) lets you pick one clip from a group. Meter Input Signal (Alt+I) checks every mic before you arm it. Guest Track adds a track with the Remote Guest cleanup ready, and Podcast Mode and Voiceover Mode in the View menu switch layouts.",
     ],
+    image: "fill-click",
+  },
+  {
+    rev: 7,
+    title: "Shortcuts now follow Audition",
+    body: [
+      "Wherever Audition has the same command, the key is now the same. Panels: Alt+1 Editor, Alt+2 Mixer, Alt+3 Properties, Alt+5 Loudness Match, Alt+6 Time Info, Alt+7 Levels, Alt+8 Markers, Alt+9 Files, Ctrl+P Metadata. The playhead moves with Left and Right, Page Up and Page Down, Q and W (start and end of the selection), Ctrl+J (type a time to jump to), K to stop, L to play and Ctrl+L for Loop Playback in the Waveform Editor.",
+      "Panels Audition does not have take their own keys, and a few of ours moved to make room. Help > Keyboard Shortcuts lists everything. Edit > Keyboard Shortcuts changes any key or imports an Audition shortcut export.",
+    ],
+    image: "panel-keys",
   },
 ];
 

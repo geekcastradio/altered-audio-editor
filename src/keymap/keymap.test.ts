@@ -21,7 +21,7 @@ const APPROVED: Record<string, string[]> = {
   "edit.copy": ["Ctrl+C"],
   "edit.paste": ["Ctrl+V"],
   "edit.delete": ["Delete", "Backspace"],
-  "multitrack.play-pause": ["Space"],
+  "multitrack.play-pause": ["Space", "Ctrl+Shift+Space"],
   "multitrack.record": ["Shift+Space"],
   "clip.split": ["Ctrl+K"],
   "view.zoom-in": ["Ctrl+=", "=", "+", "Shift++"],
@@ -145,6 +145,9 @@ const APPROVED: Record<string, string[]> = {
   "transport.to-in": ["Q"],
   "transport.to-out": ["W"],
   "transport.jump-to": ["Ctrl+J"],
+  "multitrack.stop": ["K"],
+  "transport.play": ["L"],
+  "transport.toggle-loop": ["Ctrl+L"],
 };
 
 const key = (

@@ -23,6 +23,12 @@ The Help menu has links (The GCRN website, the book, and an optional PayPal page
 
 Help > Check for Updates reads one small file (`latest.json`) from this project's GitHub releases and nothing else. The optional weekly check does the same and is off unless you turn it on in Edit > Settings > Privacy. Neither sends anything about you or your audio. GitHub sees a normal web request from your internet address, as with any download. A newer version is only installed when you click Install and Restart, and the installer is checked against the project's signing key first. The portable zip never updates itself.
 
+## Speech models, video and bug reports
+
+The speech models behind the noise and speech tools are built into the app. Nothing is downloaded, and your audio is never sent anywhere to be processed. Video pictures are decoded by your operating system's own decoders, and the files you open are only read from disk.
+
+Help > Report a Bug opens a new GitHub issue in your web browser with details about the app and your system filled in. You can read and change all of it before you submit, and nothing is sent unless you submit it on GitHub.
+
 ## Plug-ins
 
 VST3 plug-ins you load are made by other companies and may behave differently. Check their own policies if that matters to you.
