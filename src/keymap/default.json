@@ -138,6 +138,14 @@
     "transport.jump-to": ["Ctrl+J"],
     "multitrack.stop": ["K"],
     "transport.play": ["L"],
-    "transport.toggle-loop": ["Ctrl+L"]
+    "transport.toggle-loop": ["Ctrl+L"],
+    "edit.clipboard.1": ["Ctrl+1"],
+    "edit.clipboard.2": ["Ctrl+2"],
+    "edit.clipboard.3": ["Ctrl+3"],
+    "edit.clipboard.4": ["Ctrl+4"],
+    "edit.clipboard.5": ["Ctrl+5"],
+    "view.follow-playhead": ["A"],
+    "clip.nudge-left-5": ["Alt+Shift+<", "Alt+Shift+,"],
+    "clip.nudge-right-5": ["Alt+Shift+>", "Alt+Shift+."]
   }
 }

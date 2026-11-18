@@ -129,5 +129,13 @@
  "Transport.ShuttleStop": "multitrack.stop",
  "Transport.ShuttleRight": "transport.play",
  "Transport.TogglePause": "multitrack.play-pause",
- "Transport.ToggleLooping": "transport.toggle-loop"
+ "Transport.ToggleLooping": "transport.toggle-loop",
+ "Edit.ActivateClipboard1": "edit.clipboard.1",
+ "Edit.ActivateClipboard2": "edit.clipboard.2",
+ "Edit.ActivateClipboard3": "edit.clipboard.3",
+ "Edit.ActivateClipboard4": "edit.clipboard.4",
+ "Edit.ActivateClipboard5": "edit.clipboard.5",
+ "Edit.TogglePlaybackAutoScroll": "view.follow-playhead",
+ "Clip.NudgeLeft5": "clip.nudge-left-5",
+ "Clip.NudgeRight5": "clip.nudge-right-5"
 }

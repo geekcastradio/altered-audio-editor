@@ -341,6 +341,8 @@ export const MENUS: readonly Menu[] = [
       sub("Nudge", [
         item("clip.nudge-left", "Nudge Left"),
         item("clip.nudge-right", "Nudge Right"),
+        item("clip.nudge-left-5", "Nudge Left 5 Steps"),
+        item("clip.nudge-right-5", "Nudge Right 5 Steps"),
       ]),
       item("clip.split-all", "Split All Clips at Playhead"),
       item("clip.merge", "Merge Clips"),
@@ -538,6 +540,7 @@ export const MENUS: readonly Menu[] = [
       item("view.zoom-in-vertical", "Zoom In Vertically"),
       item("view.zoom-out-vertical", "Zoom Out Vertically"),
       item("view.hud", "Show HUD"),
+      item("view.follow-playhead", "Follow Playhead"),
       item("wave.channel-left", "Activate Left Channel"),
       item("wave.channel-right", "Activate Right Channel"),
       sub("Time Format", [
