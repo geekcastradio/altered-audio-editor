@@ -11,7 +11,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { OutputFormat } from "./output-format";
 import { invoke } from "@tauri-apps/api/core";
 import type { EffectChainDoc, EffectSlotDoc, MediaRefDoc } from "../stores/session";
-import type { VideoMeta } from "./video";
+import type { VideoMeta, VideoStats } from "./video";
 import type { SpectralMask } from "../panels/editor/spectrum";
 
 export interface AppInfo {
@@ -1443,6 +1443,16 @@ export function videoFrame(id: number, seconds: number, maxWidth: number): Promi
 /** Lets go of an open video. */
 export function videoClose(id: number): Promise<void> {
   return invoke<void>("video_close", { id });
+}
+
+/** How long pictures have taken for an open video, and whether a hardware decoder is in use. */
+export function videoStats(id: number): Promise<VideoStats> {
+  return invoke<VideoStats>("video_stats", { id });
+}
+
+/** Whether videos opened from now on ask for a hardware decoder first (software if that fails). */
+export function videoSetHardware(on: boolean): Promise<void> {
+  return invoke<void>("video_set_hardware", { on });
 }
 
 /** Sends short MIDI messages back to a device (fader positions, lights); resolves false when it has no output. */

@@ -268,6 +268,8 @@ export const MENUS: readonly Menu[] = [
       sep,
       item("multitrack.play-pause", "Play / Stop"),
       item("multitrack.stop", "Stop"),
+      item("transport.play", "Play"),
+      item("transport.toggle-loop", "Loop Playback"),
       sub("Go To", [
         item("transport.go-start", "Start"),
         item("transport.go-end", "End"),

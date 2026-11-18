@@ -17,8 +17,10 @@
 //! an error that says so.
 
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use std::time::Instant;
 
 /// True where this build can show video.
 pub const AVAILABLE: bool = cfg!(windows) || cfg!(all(target_os = "macos", feature = "apple"));
@@ -38,6 +40,100 @@ pub struct VideoInfo {
     pub duration: f64,
     /// True when the file also has a sound track.
     pub has_audio: bool,
+    /// The picture codec by its common name ("H.264", "HEVC"), or empty when unknown.
+    pub codec: String,
+}
+
+/// Whether to ask the system for a hardware decoder first. Off by default:
+/// software decoding is what has been tried the most. Applies to videos
+/// opened after it is set.
+static PREFER_HARDWARE: AtomicBool = AtomicBool::new(false);
+
+/// Sets whether videos opened from now on ask for hardware decoding first.
+/// If that fails the video opens with software decoding instead.
+pub fn set_prefer_hardware(on: bool) {
+    PREFER_HARDWARE.store(on, Ordering::Relaxed);
+}
+
+/// Whether hardware decoding is asked for first.
+pub fn prefer_hardware() -> bool {
+    PREFER_HARDWARE.load(Ordering::Relaxed)
+}
+
+/// How long pictures took to get, for the Video panel's details line.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DecodeStats {
+    /// Pictures delivered.
+    pub frames: u64,
+    /// Pictures that took longer than one frame of the video to get.
+    pub slow: u64,
+    pub total_ms: f64,
+    pub max_ms: f64,
+}
+
+impl DecodeStats {
+    /// Counts one picture that took `ms`, against `budget_ms` (one frame).
+    pub fn record(&mut self, ms: f64, budget_ms: f64) {
+        self.frames += 1;
+        self.total_ms += ms;
+        if ms > self.max_ms {
+            self.max_ms = ms;
+        }
+        if ms > budget_ms {
+            self.slow += 1;
+        }
+    }
+
+    /// Mean time per picture, 0 before the first.
+    pub fn average_ms(&self) -> f64 {
+        if self.frames == 0 {
+            0.0
+        } else {
+            self.total_ms / self.frames as f64
+        }
+    }
+}
+
+/// The common name for a picture codec from the first four bytes of its
+/// format code (a four-letter tag such as "H264"), or empty when unknown.
+pub fn codec_name(tag: u32) -> String {
+    let bytes = tag.to_le_bytes();
+    let text: String = bytes.iter().map(|b| char::from(*b)).collect();
+    let name = match text.to_ascii_uppercase().as_str() {
+        "H264" | "AVC1" | "X264" => "H.264",
+        "H265" | "HEVC" | "HVC1" | "HEV1" => "HEVC",
+        "AV01" => "AV1",
+        "VP90" => "VP9",
+        "VP80" => "VP8",
+        "MP4V" | "MP4S" => "MPEG-4",
+        "WMV3" | "WVC1" => "Windows Media Video",
+        "MJPG" => "Motion JPEG",
+        _ => "",
+    };
+    if !name.is_empty() {
+        return name.to_string();
+    }
+    if bytes.iter().all(|b| b.is_ascii_graphic()) {
+        text
+    } else {
+        String::new()
+    }
+}
+
+/// An error message for a failed system call. Two failures have a plain
+/// answer the person can act on; everything else keeps the system's own text.
+pub fn explain(what: &str, code: u32, text: &str) -> String {
+    match code {
+        // No decoder installed for this picture format.
+        0xC00D_5212 => "Video: Windows has no decoder for this video's codec. For HEVC or AV1, \
+            install the matching video extension from the Microsoft Store, then open it again."
+            .to_string(),
+        // The file type is not one the system can read.
+        0xC00D_36C4 => "Video: Windows can't read this kind of file. MP4 and MOV files with \
+            H.264 pictures are the safest."
+            .to_string(),
+        _ => format!("Video ({what}): {text}"),
+    }
 }
 
 /// A picture as the system decoder delivered it: blue, green, red and a
@@ -136,7 +232,8 @@ pub fn scale(raw: &RawFrame, max_width: u32) -> Frame {
 /// How a platform's decoder is driven. Lives on the thread that made it,
 /// because system decoder objects are tied to the thread that opened them.
 trait Backend: Sized {
-    fn open(path: &Path) -> Result<(Self, VideoInfo), String>;
+    /// `hardware` asks the system for a hardware decoder first.
+    fn open(path: &Path, hardware: bool) -> Result<(Self, VideoInfo), String>;
     /// The picture showing at `seconds`: seeks to the key frame before it and
     /// decodes forward to it.
     fn frame_at(&mut self, seconds: f64) -> Result<RawFrame, String>;
@@ -164,7 +261,7 @@ struct Decoder;
 
 #[cfg(not(any(windows, all(target_os = "macos", feature = "apple"))))]
 impl Backend for Decoder {
-    fn open(_path: &Path) -> Result<(Self, VideoInfo), String> {
+    fn open(_path: &Path, _hardware: bool) -> Result<(Self, VideoInfo), String> {
         Err(UNAVAILABLE.into())
     }
     fn frame_at(&mut self, _seconds: f64) -> Result<RawFrame, String> {
@@ -193,6 +290,31 @@ pub struct VideoReader {
     thread: Option<JoinHandle<()>>,
     info: VideoInfo,
     path: PathBuf,
+    stats: Arc<Mutex<DecodeStats>>,
+    hardware: Arc<AtomicBool>,
+}
+
+/// Opens with a hardware decoder when asked and one works, else with software.
+/// The flag says which one it ended up with.
+fn open_best(path: &Path) -> Result<(Decoder, VideoInfo, bool), String> {
+    if prefer_hardware() {
+        if let Ok((d, info)) = Decoder::open(path, true) {
+            return Ok((d, info, true));
+        }
+    }
+    Decoder::open(path, false).map(|(d, info)| (d, info, false))
+}
+
+fn picture_at(dec: &mut Decoder, seconds: f64, max_width: u32) -> Result<Frame, String> {
+    let q = dec.quarter_turns();
+    dec.frame_at(seconds)
+        .map(|f| scale(&rotate(f, q), max_width))
+}
+
+fn picture_next(dec: &mut Decoder, max_width: u32) -> Result<Option<Frame>, String> {
+    let q = dec.quarter_turns();
+    dec.next_frame()
+        .map(|f| f.map(|f| scale(&rotate(f, q), max_width)))
 }
 
 impl VideoReader {
@@ -201,38 +323,68 @@ impl VideoReader {
         let (tx, rx) = mpsc::channel::<Cmd>();
         let (ready_tx, ready_rx) = mpsc::channel::<Result<VideoInfo, String>>();
         let owned = path.to_path_buf();
+        let stats = Arc::new(Mutex::new(DecodeStats::default()));
+        let hardware = Arc::new(AtomicBool::new(false));
+        let (stats_in, hardware_in) = (Arc::clone(&stats), Arc::clone(&hardware));
         let thread = thread::Builder::new()
             .name("video".into())
             .spawn(move || {
-                let mut dec = match Decoder::open(&owned) {
-                    Ok((d, info)) => {
-                        let _ = ready_tx.send(Ok(info));
-                        d
-                    }
+                let (mut dec, info, mut hw) = match open_best(&owned) {
+                    Ok(opened) => opened,
                     Err(e) => {
                         let _ = ready_tx.send(Err(e));
                         return;
                     }
                 };
+                hardware_in.store(hw, Ordering::Relaxed);
+                // One frame of the video, the time a picture may take.
+                let budget = if info.fps > 0.0 {
+                    1000.0 / info.fps
+                } else {
+                    40.0
+                };
+                let _ = ready_tx.send(Ok(info));
                 while let Ok(cmd) = rx.recv() {
-                    match cmd {
+                    let started = Instant::now();
+                    let counted = match cmd {
                         Cmd::At {
                             seconds,
                             max_width,
                             reply,
                         } => {
-                            let q = dec.quarter_turns();
-                            let r = dec
-                                .frame_at(seconds)
-                                .map(|f| scale(&rotate(f, q), max_width));
+                            let mut r = picture_at(&mut dec, seconds, max_width);
+                            if r.is_err() && hw {
+                                // The hardware decoder failed: go on with software.
+                                if let Ok((d, _)) = Decoder::open(&owned, false) {
+                                    dec = d;
+                                    hw = false;
+                                    hardware_in.store(false, Ordering::Relaxed);
+                                    r = picture_at(&mut dec, seconds, max_width);
+                                }
+                            }
+                            let counted = r.is_ok();
                             let _ = reply.send(r);
+                            counted
                         }
                         Cmd::Next { max_width, reply } => {
-                            let q = dec.quarter_turns();
-                            let r = dec
-                                .next_frame()
-                                .map(|f| f.map(|f| scale(&rotate(f, q), max_width)));
+                            let mut r = picture_next(&mut dec, max_width);
+                            if r.is_err() && hw {
+                                if let Ok((d, _)) = Decoder::open(&owned, false) {
+                                    dec = d;
+                                    hw = false;
+                                    hardware_in.store(false, Ordering::Relaxed);
+                                    r = picture_next(&mut dec, max_width);
+                                }
+                            }
+                            let counted = matches!(r, Ok(Some(_)));
                             let _ = reply.send(r);
+                            counted
+                        }
+                    };
+                    if counted {
+                        let ms = started.elapsed().as_secs_f64() * 1000.0;
+                        if let Ok(mut s) = stats_in.lock() {
+                            s.record(ms, budget);
                         }
                     }
                 }
@@ -246,7 +398,20 @@ impl VideoReader {
             thread: Some(thread),
             info,
             path: path.to_path_buf(),
+            stats,
+            hardware,
         })
+    }
+
+    /// How long pictures have taken so far.
+    pub fn stats(&self) -> DecodeStats {
+        self.stats.lock().map(|s| s.clone()).unwrap_or_default()
+    }
+
+    /// True when this video is being decoded with a hardware decoder the
+    /// system accepted (it can still be the software one if that failed).
+    pub fn hardware(&self) -> bool {
+        self.hardware.load(Ordering::Relaxed)
     }
 
     pub fn info(&self) -> &VideoInfo {
@@ -410,6 +575,40 @@ mod tests {
         assert_eq!(raw(2), flipped);
         // Three clockwise turns put the top-right pixel (1) at the top-left.
         assert_eq!(&raw(3)[..4], &[1, 1, 1, 255]);
+    }
+
+    #[test]
+    fn codecs_get_their_common_names() {
+        let tag = |s: &[u8; 4]| u32::from_le_bytes(*s);
+        assert_eq!(codec_name(tag(b"H264")), "H.264");
+        assert_eq!(codec_name(tag(b"avc1")), "H.264");
+        assert_eq!(codec_name(tag(b"hvc1")), "HEVC");
+        assert_eq!(codec_name(tag(b"AV01")), "AV1");
+        assert_eq!(codec_name(tag(b"VP90")), "VP9");
+        // An unknown but readable tag is shown as it is; an unreadable one is empty.
+        assert_eq!(codec_name(tag(b"ABCD")), "ABCD");
+        assert_eq!(codec_name(0x0000_0001), "");
+    }
+
+    #[test]
+    fn two_failures_get_a_plain_answer_and_the_rest_keep_the_systems_text() {
+        assert!(explain("open", 0xC00D_5212, "x").contains("no decoder"));
+        assert!(explain("open", 0xC00D_5212, "x").contains("Microsoft Store"));
+        assert!(explain("open", 0xC00D_36C4, "x").contains("can't read"));
+        assert_eq!(explain("read", 5, "boom"), "Video (read): boom");
+    }
+
+    #[test]
+    fn stats_count_slow_pictures_against_one_frame() {
+        let mut s = DecodeStats::default();
+        assert_eq!(s.average_ms(), 0.0);
+        s.record(10.0, 33.0);
+        s.record(50.0, 33.0);
+        s.record(30.0, 33.0);
+        assert_eq!(s.frames, 3);
+        assert_eq!(s.slow, 1);
+        assert_eq!(s.max_ms, 50.0);
+        assert!((s.average_ms() - 30.0).abs() < 1e-9);
     }
 
     #[test]

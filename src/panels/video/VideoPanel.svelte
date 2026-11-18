@@ -12,8 +12,18 @@
   import type { CommandRunner } from "../../stores/media-pool";
   import type { SessionDoc, SessionStore, VideoRefDoc } from "../../stores/session";
   import type { TransportState, TransportStore } from "../../stores/transport";
-  import { videoClose, videoFrame, videoOpen, videoPick, videoSupport } from "../../app/core";
-  import { askWidth, decodePicture, errorText, needsFrame, timecode, videoTime, type VideoMeta } from "../../app/video";
+  import { videoClose, videoFrame, videoOpen, videoPick, videoSetHardware, videoStats, videoSupport } from "../../app/core";
+  import {
+    askWidth,
+    decodePicture,
+    describeVideo,
+    errorText,
+    needsFrame,
+    timecode,
+    videoTime,
+    type VideoMeta,
+    type VideoStats,
+  } from "../../app/video";
 
   interface Props {
     session: SessionStore;
@@ -43,6 +53,20 @@
     unsupported = typeof e === "string" ? e : "Video is not available on this system.";
   });
 
+  // Asking the system for a hardware decoder is off unless the person turns it on.
+  const HARDWARE_KEY = "aae.video.hardware";
+  function storedHardware(): boolean {
+    try {
+      return localStorage.getItem(HARDWARE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  }
+  const savedHardware = storedHardware();
+  let hardware = $state(savedHardware);
+  // Videos wait for this, so the saved choice applies to the first one opened.
+  const ready: Promise<unknown> = videoSetHardware(savedHardware).catch(() => undefined);
+
   const video = $derived<VideoRefDoc | null>(doc?.video ?? null);
   const rate = $derived(doc?.sample_rate ?? 48000);
   const seconds = $derived(((tp?.playing ? tp.position : (doc?.view.playhead ?? 0)) as number) / rate);
@@ -64,7 +88,8 @@
     if (old) void videoClose(old.id).catch(() => undefined);
     if (!path) return;
     const mine = ++opening;
-    void videoOpen(path)
+    void ready
+      .then(() => videoOpen(path))
       .then((o) => {
         if (mine !== opening) {
           void videoClose(o.id).catch(() => undefined);
@@ -81,6 +106,43 @@
     opening++;
     if (open) void videoClose(open.id).catch(() => undefined);
   });
+
+  // How decoding is going, refreshed once a second while a video is open.
+  let stats = $state<VideoStats | null>(null);
+  $effect(() => {
+    stats = null;
+    const o = open;
+    if (!o) return;
+    const id = o.id;
+    const tick = () =>
+      void videoStats(id)
+        .then((s) => {
+          if (open?.id === id) stats = s;
+        })
+        .catch(() => undefined);
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  });
+
+  async function setHardware(on: boolean) {
+    hardware = on;
+    try {
+      localStorage.setItem(HARDWARE_KEY, on ? "1" : "0");
+    } catch {
+      // Storage can be blocked; the choice then lasts until the app closes.
+    }
+    try {
+      await videoSetHardware(on);
+    } catch (e) {
+      onError(e);
+      return;
+    }
+    // Reopen the picture so the new choice takes effect.
+    const old = open;
+    open = null;
+    if (old) void videoClose(old.id).catch(() => undefined);
+  }
 
   let canvas = $state<HTMLCanvasElement | null>(null);
   let wrap = $state<HTMLDivElement | null>(null);
@@ -220,6 +282,11 @@
       <button type="button" onclick={remove}>Remove</button>
     </div>
     <p class="path" title={video.path}>{video.path}</p>
+    {#if open}<p class="path" aria-label="Video details">{describeVideo(open.meta, stats)}</p>{/if}
+    <label class="hw" title="Asks the system for a hardware decoder. If that fails the video opens with software decoding instead.">
+      <input type="checkbox" checked={hardware} onchange={(e) => void setHardware(e.currentTarget.checked)} />
+      Try hardware decoding for smoother playback
+    </label>
   {/if}
 </div>
 
@@ -276,6 +343,12 @@
   .err {
     color: var(--error, #e5484d);
     opacity: 1;
+  }
+  .hw {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: 12px;
   }
   .path {
     margin: 0;

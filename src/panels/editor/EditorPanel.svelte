@@ -70,6 +70,7 @@
   import { KIND_COLORS, markerAt, markerCss } from "../markers/markers";
   import { markerMenuItems } from "../markers/marker-menu";
   import { Scrubber } from "./scrubber";
+  import { followEffect } from "./follow";
   import { quiet, type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
   import { channelNames } from "../space/space";
   import { defaultTrackColor, MIN_TRACK_H, trackHeight, formatIn, maxSppFor, rulerTicks, ticksFor, setDisplayTempo, sampleAt, xOf, zoomAround, edgeScrollPx, type Viewport, TRACK_GAP } from "./timeline";
@@ -483,7 +484,7 @@
   });
 
   // Follow Playhead: during playback, page the lanes when the playhead
-  // nears the right edge or falls off either side. Scrolling or zooming
+  // nears the right edge or falls off either side. Scrolling
   // yourself while it plays (overview bar, wheel, scrollbar) lets go of it,
   // so you can look at another part of the session while it plays. It
   // follows again once you stop moving the view with the playhead in view
@@ -520,8 +521,10 @@
   function setView(v: Partial<{ spp: number; scroll: number; playhead: number }>, auto = false) {
     if (!doc) return;
     if (!auto && tp?.playing) {
-      if (v.playhead !== undefined) followHeld = false;
-      else if ((v.scroll !== undefined && v.scroll !== doc.view.scroll) || (v.spp !== undefined && v.spp !== doc.view.samples_per_pixel)) {
+      // A hand scroll holds the following; a zoom does not (the playhead stays in view).
+      const effect = followEffect({ spp: doc.view.samples_per_pixel, scroll: doc.view.scroll }, v);
+      if (effect === "release") followHeld = false;
+      else if (effect === "hold") {
         followHeld = true;
         userViewAt = performance.now();
       }

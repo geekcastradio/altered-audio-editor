@@ -78,14 +78,18 @@
     display: flex;
     flex-direction: column;
     flex: none;
-    width: 210px;
+    width: 230px;
     padding: 6px;
     overflow-y: auto;
     border-right: 1px solid var(--border);
   }
   nav button {
     flex-shrink: 0;
-    padding: 5px 8px;
+    padding: 6px 10px;
+    margin-bottom: 2px;
+    line-height: 1.3;
+    white-space: normal;
+    overflow-wrap: anywhere;
     border: 0;
     border-radius: 3px;
     background: transparent;

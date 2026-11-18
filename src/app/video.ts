@@ -10,6 +10,31 @@ export interface VideoMeta {
   fps: number;
   duration: number;
   has_audio: boolean;
+  /** The picture codec by its common name; empty or missing when unknown. */
+  codec?: string;
+}
+
+/** How pictures have been coming for an open video. */
+export interface VideoStats {
+  frames: number;
+  /** Pictures that took longer than one frame of the video to get. */
+  slow: number;
+  average_ms: number;
+  max_ms: number;
+  /** True when a hardware decoder was asked for and the system accepted it. */
+  hardware: boolean;
+}
+
+/** One line for the Video panel: what the file is and how decoding is going. */
+export function describeVideo(meta: VideoMeta, stats: VideoStats | null): string {
+  const rate = meta.fps > 0 ? ` at ${Math.round(meta.fps * 100) / 100} fps` : "";
+  const parts = [`${meta.codec ? `${meta.codec}, ` : ""}${meta.width}x${meta.height}${rate}`];
+  if (stats && stats.frames > 0) {
+    parts.push(`${Math.round(stats.average_ms)} ms per picture (slowest ${Math.round(stats.max_ms)})`);
+    parts.push(`${stats.slow} of ${stats.frames} slower than one frame`);
+  }
+  parts.push(stats?.hardware ? "hardware decoder in use" : "software decoding");
+  return parts.join(" | ");
 }
 
 export interface VideoPicture {

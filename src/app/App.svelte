@@ -3865,6 +3865,11 @@
     if (take) return finishRecord();
     return t.toggle();
   }
+  /** Play, never stop: the L key. Does nothing while playing or recording. */
+  function playOnly(t: TransportStore): Promise<void> {
+    if (take || t.current.playing) return Promise.resolve();
+    return t.play().catch(showError);
+  }
   /** Stop: back to where playback began, or, with Return to Start on Stop off, where it stopped. */
   function stopTransport(t: TransportStore): Promise<void> {
     return t.current.playing && !settings.current.returnOnStop ? t.pause() : t.stop();
@@ -4775,6 +4780,12 @@
       }),
       ov(waveIsOpen, { id: "multitrack.play-pause", run: () => spaceToggle(waveTransport) }),
       ov(waveIsOpen, { id: "multitrack.stop", run: () => (take ? finishRecord() : stopTransport(waveTransport)) }),
+      ov(waveIsOpen, { id: "transport.play", run: () => playOnly(waveTransport) }),
+      ov(waveIsOpen, {
+        id: "transport.toggle-loop",
+        run: () => editor.togglePlayMode("loop"),
+        checked: () => editor.current().playMode === "loop",
+      }),
       ov(waveIsOpen, { id: "transport.go-start", run: () => waveTransport.seek(0) }),
       ov(waveIsOpen, { id: "transport.go-end", run: () => waveTransport.seek(wave.current ? sessionEnd(wave.current) : 0) }),
       ov(waveIsOpen, { id: "view.zoom-in", run: () => waveZoom.run?.("in") }),
@@ -5076,6 +5087,13 @@
         label: () => (take ? "Stop Recording" : "Record"),
       }),
       actions.register({ id: "multitrack.stop", run: () => (take ? finishRecord() : stopTransport(transport)) }),
+      actions.register({ id: "transport.play", run: () => playOnly(transport) }),
+      actions.register({
+        id: "transport.toggle-loop",
+        run: () => undefined,
+        enabled: () => false,
+        reason: () => "Loop Playback repeats the time selection in the Waveform Editor.",
+      }),
       actions.register({
         id: "multitrack.properties",
         enabled: () => session.current !== null,

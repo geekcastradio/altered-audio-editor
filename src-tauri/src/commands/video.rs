@@ -25,6 +25,20 @@ pub struct VideoMeta {
     pub fps: f64,
     pub duration: f64,
     pub has_audio: bool,
+    /// The picture codec by its common name, or empty when unknown.
+    pub codec: String,
+}
+
+/// How pictures have been coming, for the Video panel's details line.
+#[derive(Debug, Clone, Serialize)]
+pub struct VideoStats {
+    pub frames: u64,
+    /// Pictures that took longer than one frame of the video to get.
+    pub slow: u64,
+    pub average_ms: f64,
+    pub max_ms: f64,
+    /// True when a hardware decoder was asked for and the system accepted it.
+    pub hardware: bool,
 }
 
 impl From<&VideoInfo> for VideoMeta {
@@ -35,6 +49,7 @@ impl From<&VideoInfo> for VideoMeta {
             fps: i.fps,
             duration: i.duration,
             has_audio: i.has_audio,
+            codec: i.codec.clone(),
         }
     }
 }
@@ -142,6 +157,28 @@ pub async fn video_frame(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// How long pictures have taken for an open video.
+#[tauri::command]
+pub fn video_stats(id: u32, app: AppHandle) -> Result<VideoStats, String> {
+    let state = app.state::<Videos>();
+    let map = state.open.lock().map_err(|_| "Video: busy.".to_string())?;
+    let reader = map.get(&id).ok_or("Video: that file is not open.")?;
+    let s = reader.stats();
+    Ok(VideoStats {
+        frames: s.frames,
+        slow: s.slow,
+        average_ms: s.average_ms(),
+        max_ms: s.max_ms,
+        hardware: reader.hardware(),
+    })
+}
+
+/// Whether videos opened from now on ask for a hardware decoder first.
+#[tauri::command]
+pub fn video_set_hardware(on: bool) {
+    altered_os_video::set_prefer_hardware(on);
 }
 
 /// Lets go of a video.
