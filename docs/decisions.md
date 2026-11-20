@@ -1807,3 +1807,7 @@ Publishing a draft made by a manual start creates the tag, and the Release workf
 ## 2026-11-20: Kdenlive added as a reference source; OTIO import planned (issue 120)
 
 Steve approved Kdenlive (GPL-3.0-or-later overall, per-file headers vary) as a third reference source, on the same rules as the other two: algorithms and formats only, no interface, workflow or data model, credit in `ATTRIBUTION.md`, ask before porting more than one algorithm, check every file's SPDX header. The goal is the cleanest and cheapest route to each feature, not the most features. OpenTimelineIO import (issue 120) is built from the OTIO JSON spec in Rust, with Kdenlive's own exported files as test samples when available. Export already exists since 0.27.0. Kdenlive reads and writes OTIO since 25.04 (C++ libraries).
+
+## 2026-11-20: Scheduled document reviews
+
+Steve: legal, security, readme and how-to documents are reviewed every 5th release, and every 10th release gets the full review with the licence checks. The list and the schedule are in `docs/doc-review-checklist.md`, and `CLAUDE.md` Conventions points to it. The review is the first item of that release. The first one due is 0.50.0 (full), covering everything since 0.40. Reason: the app and its promises change faster than the documents that describe them, and the privacy, security and licence documents are the ones that cost something when they are wrong.

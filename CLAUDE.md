@@ -373,6 +373,7 @@ Rules:
 - Every source file starts with the GPLv3 header naming The GeekCast Radio Network, LLC.
 - Small commits, one task per branch, conventional commit messages.
 - Log every architecture decision in `/docs/decisions.md` with date and reason.
+- Every 5th release (0.50, 0.55, 0.60 and so on) starts with a review of the legal, security, readme and how-to documents; every 10th release (0.50, 0.60 and so on) is the full review with the licence checks. The list is `docs/doc-review-checklist.md` (decided 2026-11-20).
 - UI copy, docs, and comments: plain, short sentences, no em dashes, no other products' feature names.
 
 ## Definition of done for any task
