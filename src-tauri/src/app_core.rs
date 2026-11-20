@@ -40,11 +40,27 @@ impl Dirs {
 pub struct AppCore {
     sink: Arc<dyn EventSink>,
     dirs: Dirs,
+    version: String,
 }
 
 impl AppCore {
     pub fn new(sink: Arc<dyn EventSink>, dirs: Dirs) -> Self {
-        Self { sink, dirs }
+        Self {
+            sink,
+            dirs,
+            version: String::new(),
+        }
+    }
+
+    /// Sets the app version the core reports (the interface knows it, the core does not).
+    pub fn with_version(mut self, version: impl Into<String>) -> Self {
+        self.version = version.into();
+        self
+    }
+
+    /// The app version, for files the core writes (backups carry it).
+    pub fn version(&self) -> &str {
+        &self.version
     }
 
     /// The settings folder (shortcuts, preferences, layouts, templates).
@@ -55,6 +71,11 @@ impl AppCore {
     /// The folder settings backups are kept in.
     pub fn backups_dir(&self) -> Result<PathBuf, String> {
         self.dirs.backups.clone()
+    }
+
+    /// The folder session templates are kept in.
+    pub fn templates_dir(&self) -> Result<PathBuf, String> {
+        Ok(self.config_dir()?.join("templates"))
     }
 
     /// The place events go.
@@ -107,6 +128,10 @@ mod tests {
             core.backups_dir().unwrap(),
             PathBuf::from("root").join("backups")
         );
+        assert_eq!(
+            core.templates_dir().unwrap(),
+            PathBuf::from("root").join("config").join("templates")
+        );
         let broken = AppCore::new(
             Arc::new(MemorySink::default()),
             Dirs {
@@ -115,5 +140,16 @@ mod tests {
             },
         );
         assert_eq!(broken.config_dir().unwrap_err(), "no settings folder");
+        assert_eq!(broken.templates_dir().unwrap_err(), "no settings folder");
+    }
+
+    #[test]
+    fn carries_the_version_it_is_given() {
+        let core = AppCore::new(
+            Arc::new(MemorySink::default()),
+            Dirs::under(std::path::Path::new("x")),
+        );
+        assert_eq!(core.version(), "");
+        assert_eq!(core.with_version("0.47.0").version(), "0.47.0");
     }
 }

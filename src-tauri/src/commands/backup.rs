@@ -8,9 +8,10 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 use tauri::async_runtime::spawn_blocking;
-use tauri::{AppHandle, Manager, WebviewWindow};
+use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
+use crate::app_core::AppCore;
 use crate::backup::{self, Manifest, Mode, Options, Report, SnapshotInfo};
 use crate::paths;
 
@@ -24,14 +25,10 @@ pub struct BackupInfo {
     pub snapshots: Vec<SnapshotInfo>,
 }
 
-fn version(app: &AppHandle) -> String {
-    app.package_info().version.to_string()
-}
-
 #[tauri::command]
-pub async fn backup_info(app: AppHandle) -> Result<BackupInfo, String> {
-    let config = paths::config_dir(&app)?;
-    let dir = paths::backups_dir(&app)?;
+pub async fn backup_info(core: State<'_, AppCore>) -> Result<BackupInfo, String> {
+    let config = core.config_dir()?;
+    let dir = core.backups_dir()?;
     spawn_blocking(move || BackupInfo {
         portable: paths::portable_root().is_some(),
         options: backup::load_options(&config),
@@ -47,7 +44,7 @@ pub async fn backup_info(app: AppHandle) -> Result<BackupInfo, String> {
 #[tauri::command]
 pub async fn backup_pick_save(app: AppHandle) -> Result<Option<PathBuf>, String> {
     let parent: Option<WebviewWindow> = app.get_webview_window("main");
-    let start = paths::backups_dir(&app).ok();
+    let start = app.state::<AppCore>().backups_dir().ok();
     spawn_blocking(move || {
         let name = format!(
             "settings-{}.{}",
@@ -95,12 +92,12 @@ pub async fn backup_pick_open(app: AppHandle) -> Result<Option<PathBuf>, String>
 
 #[tauri::command]
 pub async fn backup_export(
-    app: AppHandle,
+    core: State<'_, AppCore>,
     dest: PathBuf,
     include_secrets: bool,
 ) -> Result<Manifest, String> {
-    let config = paths::config_dir(&app)?;
-    let v = version(&app);
+    let config = core.config_dir()?;
+    let v = core.version().to_string();
     spawn_blocking(move || backup::create(&config, &dest, &v, "manual", include_secrets))
         .await
         .map_err(|e| e.to_string())?
@@ -116,14 +113,14 @@ pub async fn backup_inspect(path: PathBuf) -> Result<Manifest, String> {
 /// Brings a backup in. Replace first takes a snapshot of what is there now, so it can be undone.
 #[tauri::command]
 pub async fn backup_import(
-    app: AppHandle,
+    core: State<'_, AppCore>,
     path: PathBuf,
     mode: Mode,
     categories: Option<Vec<String>>,
 ) -> Result<Report, String> {
-    let config = paths::config_dir(&app)?;
-    let dir = paths::backups_dir(&app)?;
-    let v = version(&app);
+    let config = core.config_dir()?;
+    let dir = core.backups_dir()?;
+    let v = core.version().to_string();
     spawn_blocking(move || {
         backup::read_manifest(&path)?;
         let options = backup::load_options(&config);
@@ -135,10 +132,10 @@ pub async fn backup_import(
 }
 
 #[tauri::command]
-pub async fn backup_snapshot_now(app: AppHandle) -> Result<Option<PathBuf>, String> {
-    let config = paths::config_dir(&app)?;
-    let dir = paths::backups_dir(&app)?;
-    let v = version(&app);
+pub async fn backup_snapshot_now(core: State<'_, AppCore>) -> Result<Option<PathBuf>, String> {
+    let config = core.config_dir()?;
+    let dir = core.backups_dir()?;
+    let v = core.version().to_string();
     spawn_blocking(move || {
         backup::snapshot(
             &config,
@@ -154,8 +151,8 @@ pub async fn backup_snapshot_now(app: AppHandle) -> Result<Option<PathBuf>, Stri
 }
 
 #[tauri::command]
-pub async fn backup_set_options(app: AppHandle, options: Options) -> Result<(), String> {
-    let config = paths::config_dir(&app)?;
+pub async fn backup_set_options(core: State<'_, AppCore>, options: Options) -> Result<(), String> {
+    let config = core.config_dir()?;
     spawn_blocking(move || {
         backup::save_options(
             &config,
