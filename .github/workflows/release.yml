@@ -20,6 +20,18 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Start a build without making a tag first: Actions, Release, Run workflow, type the
+  # version (for example 0.44.0). The draft release it makes carries the tag name, and the
+  # tag itself is created on main when you publish the draft.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, for example 0.44.0 (must match the version files on main)"
+        required: true
+        type: string
+
+env:
+  TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
 
 permissions:
   contents: read
@@ -35,8 +47,14 @@ jobs:
         with:
           node-version: 22
 
+      - name: Manual starts only build main
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Run this workflow from the main branch."
+          exit 1
+
       - name: Check the tag
-        run: node scripts/check-release-version.mjs "${{ github.ref_name }}"
+        run: node scripts/check-release-version.mjs "${{ env.TAG }}"
 
   windows:
     name: Windows installer and portable zip
@@ -79,7 +97,7 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"
+          $tag = "${{ env.TAG }}"
           $out = Join-Path $env:RUNNER_TEMP "release"
           $portable = Join-Path $env:RUNNER_TEMP "portable"
           New-Item -ItemType Directory -Force -Path $out, $portable | Out-Null
@@ -105,7 +123,7 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"
+          $tag = "${{ env.TAG }}"
           $out = Join-Path $env:RUNNER_TEMP "release"
           $more = @()
           if ("${{ steps.asio.outcome }}" -eq "success") { $more = @("--features", "asio") }
@@ -183,7 +201,7 @@ jobs:
 
       - name: Package
         run: |
-          tag="${{ github.ref_name }}"
+          tag="${{ env.TAG }}"
           out="$RUNNER_TEMP/release"
           mkdir -p "$out"
           cp src-tauri/target/release/bundle/appimage/*.AppImage "$out/Altered-Audio-Editor-$tag-x86_64.AppImage"
@@ -231,7 +249,7 @@ jobs:
 
       - name: Package
         run: |
-          tag="${{ github.ref_name }}"
+          tag="${{ env.TAG }}"
           out="$RUNNER_TEMP/release"
           mkdir -p "$out"
           cp src-tauri/target/release/bundle/dmg/*.dmg "$out/Altered-Audio-Editor-$tag-macos-arm64.dmg"
@@ -284,7 +302,7 @@ jobs:
 
       - name: Package
         run: |
-          tag="${{ github.ref_name }}"
+          tag="${{ env.TAG }}"
           out="$RUNNER_TEMP/release"
           mkdir -p "$out"
           cp src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg "$out/Altered-Audio-Editor-$tag-macos-intel.dmg"
@@ -320,7 +338,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          tag="${{ github.ref_name }}"
+          tag="${{ env.TAG }}"
           cd files
           if [ -f NO-ASIO.txt ]; then echo "::warning::The ASIO build failed; the Windows installer has no ASIO."; rm NO-ASIO.txt; fi
           # The manifest the in-app updater reads. Windows is required; each other platform is
@@ -349,7 +367,7 @@ jobs:
           sha256sum * > SHA256SUMS.txt
           ls -la
           if [ -f "$notesfile" ]; then
-            gh release create "$tag" --draft --title "Altered Audio Editor $tag" --notes-file ../notes.md ./*
+            gh release create "$tag" --target "$GITHUB_SHA" --draft --title "Altered Audio Editor $tag" --notes-file ../notes.md ./*
           else
-            gh release create "$tag" --draft --title "Altered Audio Editor $tag" --generate-notes ./*
+            gh release create "$tag" --target "$GITHUB_SHA" --draft --title "Altered Audio Editor $tag" --generate-notes ./*
           fi
