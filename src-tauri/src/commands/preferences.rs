@@ -7,20 +7,21 @@
 use std::collections::BTreeMap;
 
 use serde_json::Value;
-use tauri::AppHandle;
+use tauri::State;
+
+use crate::app_core::AppCore;
 
 use crate::session::preferences;
 
-fn config_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    crate::paths::config_dir(app)
+#[tauri::command]
+pub fn preferences_load(core: State<'_, AppCore>) -> Result<BTreeMap<String, Value>, String> {
+    Ok(preferences::load_preferences(&core.config_dir()?))
 }
 
 #[tauri::command]
-pub fn preferences_load(app: AppHandle) -> Result<BTreeMap<String, Value>, String> {
-    Ok(preferences::load_preferences(&config_dir(&app)?))
-}
-
-#[tauri::command]
-pub fn preferences_save(app: AppHandle, values: BTreeMap<String, Value>) -> Result<(), String> {
-    preferences::save_preferences(&config_dir(&app)?, values).map_err(|e| e.to_string())
+pub fn preferences_save(
+    core: State<'_, AppCore>,
+    values: BTreeMap<String, Value>,
+) -> Result<(), String> {
+    preferences::save_preferences(&core.config_dir()?, values).map_err(|e| e.to_string())
 }

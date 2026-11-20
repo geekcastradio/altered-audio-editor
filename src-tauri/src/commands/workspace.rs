@@ -8,49 +8,47 @@
 use std::path::PathBuf;
 
 use serde_json::Value;
-use tauri::AppHandle;
+use tauri::State;
+
+use crate::app_core::AppCore;
 
 use crate::session::workspace;
 
-fn config_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    crate::paths::config_dir(app)
-}
-
 /// Returns the saved layout, or null when none has been saved.
 #[tauri::command]
-pub fn workspace_load(app: AppHandle) -> Result<Option<Value>, String> {
-    workspace::load_user_layout(&config_dir(&app)?).map_err(|e| e.to_string())
+pub fn workspace_load(core: State<'_, AppCore>) -> Result<Option<Value>, String> {
+    workspace::load_user_layout(&core.config_dir()?).map_err(|e| e.to_string())
 }
 
 /// Saves the current layout.
 #[tauri::command]
-pub fn workspace_save(app: AppHandle, layout: Value) -> Result<(), String> {
-    workspace::save_user_layout(&config_dir(&app)?, layout).map_err(|e| e.to_string())
+pub fn workspace_save(core: State<'_, AppCore>, layout: Value) -> Result<(), String> {
+    workspace::save_user_layout(&core.config_dir()?, layout).map_err(|e| e.to_string())
 }
 
 /// Forgets the saved layout.
 #[tauri::command]
-pub fn workspace_clear(app: AppHandle) -> Result<(), String> {
-    workspace::clear_user_layout(&config_dir(&app)?).map_err(|e| e.to_string())
+pub fn workspace_clear(core: State<'_, AppCore>) -> Result<(), String> {
+    workspace::clear_user_layout(&core.config_dir()?).map_err(|e| e.to_string())
 }
 
 /// Saved named workspaces, without their layouts.
 #[tauri::command]
-pub fn workspace_list(app: AppHandle) -> Result<Vec<workspace::WorkspaceInfo>, String> {
-    Ok(workspace::list_named(&config_dir(&app)?))
+pub fn workspace_list(core: State<'_, AppCore>) -> Result<Vec<workspace::WorkspaceInfo>, String> {
+    Ok(workspace::list_named(&core.config_dir()?))
 }
 
 /// One named workspace's saved layout, or null when it has none yet.
 #[tauri::command]
-pub fn workspace_get(app: AppHandle, id: String) -> Result<Option<Value>, String> {
-    workspace::load_named(&config_dir(&app)?, &id)
+pub fn workspace_get(core: State<'_, AppCore>, id: String) -> Result<Option<Value>, String> {
+    workspace::load_named(&core.config_dir()?, &id)
         .map(|w| w.map(|w| w.layout))
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn workspace_put(
-    app: AppHandle,
+    core: State<'_, AppCore>,
     id: String,
     name: String,
     built_in: bool,
@@ -58,10 +56,10 @@ pub fn workspace_put(
 ) -> Result<(), String> {
     let mut w = workspace::Workspace::new(id, name, layout);
     w.built_in = built_in;
-    workspace::save_named(&config_dir(&app)?, w).map_err(|e| e.to_string())
+    workspace::save_named(&core.config_dir()?, w).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn workspace_delete(app: AppHandle, id: String) -> Result<(), String> {
-    workspace::delete_named(&config_dir(&app)?, &id).map_err(|e| e.to_string())
+pub fn workspace_delete(core: State<'_, AppCore>, id: String) -> Result<(), String> {
+    workspace::delete_named(&core.config_dir()?, &id).map_err(|e| e.to_string())
 }

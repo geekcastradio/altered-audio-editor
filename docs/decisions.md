@@ -1788,3 +1788,7 @@ The Release workflow also accepts a manual start (Actions, Release, Run workflow
 
 `src-tauri/src/startup.rs` stamps each launch stage with the time since the process began and writes `startup-timing.log` in the settings folder, replacing the last launch's file. The interface adds its own stages through the `startup_mark` command. Local file only, no network, no personal data. Reason: Steve reports a launch of about a minute; it must be measured before a native shell inherits the cause. The first reading needs a cold start on his Windows PC. Whatever the log shows as the biggest gap is fixed next, as its own change.
 
+## 2026-11-20: AppCore carries the folders; first commands moved behind it
+
+`AppCore` now holds a `Dirs` value (settings folder, backups folder) worked out once at startup by `paths`, each keeping its error text so commands report failures as before. `keymap`, `preferences` and `workspace` commands take `State<AppCore>` and use `core.config_dir()`. Their logic already lived in `session::*` as plain functions, so these commands were the cheapest to move and show the pattern: a command resolves nothing itself, it hands the core's folder to a plain function. Next families: backup, template, library, cache, links. Engine and recording commands last.
+

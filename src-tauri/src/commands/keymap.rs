@@ -6,20 +6,21 @@
 
 use std::collections::BTreeMap;
 
-use tauri::AppHandle;
+use tauri::State;
+
+use crate::app_core::AppCore;
 
 use crate::session::keymap;
 
-fn config_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    crate::paths::config_dir(app)
+#[tauri::command]
+pub fn keymap_load(core: State<'_, AppCore>) -> Result<BTreeMap<String, Vec<String>>, String> {
+    keymap::load_user_keymap(&core.config_dir()?).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn keymap_load(app: AppHandle) -> Result<BTreeMap<String, Vec<String>>, String> {
-    keymap::load_user_keymap(&config_dir(&app)?).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn keymap_save(app: AppHandle, bindings: BTreeMap<String, Vec<String>>) -> Result<(), String> {
-    keymap::save_user_keymap(&config_dir(&app)?, bindings).map_err(|e| e.to_string())
+pub fn keymap_save(
+    core: State<'_, AppCore>,
+    bindings: BTreeMap<String, Vec<String>>,
+) -> Result<(), String> {
+    keymap::save_user_keymap(&core.config_dir()?, bindings).map_err(|e| e.to_string())
 }
