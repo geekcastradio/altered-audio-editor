@@ -1792,3 +1792,7 @@ The Release workflow also accepts a manual start (Actions, Release, Run workflow
 
 `AppCore` now holds a `Dirs` value (settings folder, backups folder) worked out once at startup by `paths`, each keeping its error text so commands report failures as before. `keymap`, `preferences` and `workspace` commands take `State<AppCore>` and use `core.config_dir()`. Their logic already lived in `session::*` as plain functions, so these commands were the cheapest to move and show the pattern: a command resolves nothing itself, it hands the core's folder to a plain function. Next families: backup, template, library, cache, links. Engine and recording commands last.
 
+
+## 2026-11-20: Backup and template commands move behind AppCore
+
+`AppCore` now also carries the app version (`with_version`, set once at start-up) and gives the templates folder (`templates_dir`, the settings folder plus `templates`). The backup commands (info, export, import, snapshot now, set options) and the template commands (list, save, delete) use it instead of `AppHandle`. The two backup commands that open a file dialog (`backup_pick_save`, `backup_pick_open`) still need the window and stay as they are until dialogs get their own seam. Next families: library, cache, links.

@@ -76,7 +76,8 @@ pub fn run() {
                         config: paths::config_dir(app.handle()),
                         backups: paths::backups_dir(app.handle()),
                     },
-                ),
+                )
+                .with_version(app.package_info().version.to_string()),
             );
             // Settings from older versions are moved to the Altered Audio folder first.
             startup::mark("window and core ready");

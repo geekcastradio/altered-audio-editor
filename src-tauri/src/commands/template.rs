@@ -10,7 +10,9 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use tauri::async_runtime::spawn_blocking;
-use tauri::{AppHandle, State};
+use tauri::State;
+
+use crate::app_core::AppCore;
 
 use super::session::OpenSession;
 use crate::export::mixdown::unique_path;
@@ -28,10 +30,6 @@ pub struct TemplateEntry {
     pub tracks: usize,
     pub clips: usize,
     pub sample_rate: u32,
-}
-
-pub fn templates_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(crate::paths::config_dir(app)?.join("templates"))
 }
 
 fn entry(path: &Path, t: &Template) -> TemplateEntry {
@@ -96,8 +94,8 @@ pub fn session_from(path: &Path, name: &str) -> Result<Session, String> {
 }
 
 #[tauri::command]
-pub async fn template_list(app: AppHandle) -> Result<Vec<TemplateEntry>, String> {
-    let dir = templates_dir(&app)?;
+pub async fn template_list(core: State<'_, AppCore>) -> Result<Vec<TemplateEntry>, String> {
+    let dir = core.templates_dir()?;
     spawn_blocking(move || {
         super::template_starters::seed_in(&dir);
         list_in(&dir)
@@ -109,7 +107,7 @@ pub async fn template_list(app: AppHandle) -> Result<Vec<TemplateEntry>, String>
 /// File > Save as Session Template: the open session as a template.
 #[tauri::command]
 pub async fn template_save(
-    app: AppHandle,
+    core: State<'_, AppCore>,
     open: State<'_, OpenSession>,
     name: String,
     description: Option<String>,
@@ -118,7 +116,7 @@ pub async fn template_save(
         return Err("Give the template a name.".into());
     }
     let session = open.0.lock().map_err(|e| e.to_string())?.session.clone();
-    let dir = templates_dir(&app)?;
+    let dir = core.templates_dir()?;
     spawn_blocking(move || save_in(&dir, &name, description.as_deref().unwrap_or(""), &session))
         .await
         .map_err(|e| e.to_string())?
@@ -126,8 +124,8 @@ pub async fn template_save(
 
 /// Deletes a template. Only files in the templates folder.
 #[tauri::command]
-pub async fn template_delete(app: AppHandle, path: PathBuf) -> Result<(), String> {
-    let dir = templates_dir(&app)?;
+pub async fn template_delete(core: State<'_, AppCore>, path: PathBuf) -> Result<(), String> {
+    let dir = core.templates_dir()?;
     if path.parent() != Some(dir.as_path())
         || path.extension().is_none_or(|x| x != TEMPLATE_EXTENSION)
     {
