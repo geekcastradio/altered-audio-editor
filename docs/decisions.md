@@ -1833,4 +1833,4 @@ The Voice Chain, Batch Convert and QuickPass minimum height went from 220 to 260
 
 ## 2026-11-20: spectrogram color schemes (issue 141)
 
-The Spectrogram Colors popover gets a row of ready-made schemes (`SPECTRUM_PRESETS` in app/colors.ts). They are plain quiet and loud pairs run through the existing palette, so no new setting or file format. "Fire" gives the purple, red, orange and yellow look the reporter asked for, with our own values. The default look is unchanged.
+The Spectrogram Colors popover gets a row of schemes (`SPECTRUM_PRESETS` in app/colors.ts). Two are named by Steve: **Default** (purple, red, orange, yellow, the look the reporter asked for, our own values) and **AAE** (the earlier teal and gold look). The rest are quiet and loud pairs run through the existing palette. One new setting, `colors.spectrumScheme` ("" for Default, "aae"), applies only while quiet and loud are both empty; custom colors win over it. Reason: the teal path cannot be made from a two-color pair. Consequence: people who never set colors now see the new Default; AAE restores the old look.

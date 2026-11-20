@@ -22,9 +22,11 @@ export interface AppColors {
   accent: string;
   /** The selected track's lane. */
   laneSelected: string;
-  /** Spectrogram: quiet and loud. Both empty keeps the built-in palette. */
+  /** Spectrogram: quiet and loud. Both empty uses the scheme below. */
   spectrumLow: string;
   spectrumHigh: string;
+  /** Spectrogram scheme used while quiet and loud are both empty: "" is Default, "aae" is the teal and gold look. */
+  spectrumScheme: string;
   /** Phase Wheel: lowest and highest frequencies. Empty keeps red to magenta. */
   phaseLow: string;
   phaseHigh: string;
@@ -188,6 +190,7 @@ export const NO_COLORS: AppColors = {
   laneSelected: "",
   spectrumLow: "",
   spectrumHigh: "",
+  spectrumScheme: "",
   phaseLow: "",
   phaseHigh: "",
 };
@@ -285,6 +288,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       laneSelected: color(c.laneSelected),
       spectrumLow: color(c.spectrumLow),
       spectrumHigh: color(c.spectrumHigh),
+      spectrumScheme: c.spectrumScheme === "aae" ? "aae" : "",
       phaseLow: color(c.phaseLow),
       phaseHigh: color(c.phaseHigh),
     },

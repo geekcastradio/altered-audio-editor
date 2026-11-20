@@ -22,8 +22,8 @@
     lowDefault: string;
     highDefault: string;
     /** Ready-made pairs to pick from, shown as swatches. */
-    presets?: readonly { name: string; low: string; high: string; swatch?: string }[];
-    onChange: (low: string, high: string) => void;
+    presets?: readonly { name: string; low: string; high: string; scheme?: string; swatch?: string }[];
+    onChange: (low: string, high: string, scheme?: string) => void;
     onClose: () => void;
   }
 
@@ -48,7 +48,7 @@
   {#if presets.length}
     <div class="presets" role="group" aria-label="Color schemes">
       {#each presets as p (p.name)}
-        <button type="button" class="preset" title={p.name} aria-label={p.name} style:background={p.swatch ?? `linear-gradient(to right, ${p.low}, ${p.high})`} onclick={() => onChange(p.low, p.high)}></button>
+        <button type="button" class="preset" title={p.name} aria-label={p.name} style:background={p.swatch ?? `linear-gradient(to right, ${p.low}, ${p.high})`} onclick={() => onChange(p.low, p.high, p.scheme ?? "")}></button>
       {/each}
     </div>
   {/if}

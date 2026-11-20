@@ -775,9 +775,9 @@
   let colorPop = $state<{ x: number; y: number } | null>(null);
   let appColors = $state(settings.current.colors);
   $effect(() => settings.subscribe((v) => (appColors = v.colors)));
-  function setSpectrumColors(low: string, high: string) {
+  function setSpectrumColors(low: string, high: string, scheme = "") {
     const c = settings.current;
-    settings.set({ ...c, colors: { ...c.colors, spectrumLow: low, spectrumHigh: high } });
+    settings.set({ ...c, colors: { ...c.colors, spectrumLow: low, spectrumHigh: high, spectrumScheme: scheme } });
   }
 
   // Horizontal scroll bar.
