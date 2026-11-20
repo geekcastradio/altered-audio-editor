@@ -1792,3 +1792,7 @@ The Release workflow also accepts a manual start (Actions, Release, Run workflow
 
 `AppCore` now holds a `Dirs` value (settings folder, backups folder) worked out once at startup by `paths`, each keeping its error text so commands report failures as before. `keymap`, `preferences` and `workspace` commands take `State<AppCore>` and use `core.config_dir()`. Their logic already lived in `session::*` as plain functions, so these commands were the cheapest to move and show the pattern: a command resolves nothing itself, it hands the core's folder to a plain function. Next families: backup, template, library, cache, links. Engine and recording commands last.
 
+
+## 2026-11-20: A tag push for an already released version builds nothing
+
+Publishing a draft made by a manual start creates the tag, and the Release workflow also starts on tag pushes, so each publish began a second build that would have made a duplicate draft (seen with 0.44.0 and 0.45.0). The first job now checks whether a release for the pushed tag already exists. If it does, the run says so and every build job is skipped. Manual starts and a fresh tag with no release behave as before. Limit: a draft release is invisible to the workflow's read-only token, so a tag pushed while only a draft exists would still build. That is the old tag-first route and is rare now.

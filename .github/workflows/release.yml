@@ -40,7 +40,24 @@ jobs:
   verify:
     name: Tag matches the version in the files
     runs-on: ubuntu-24.04
+    outputs:
+      proceed: ${{ steps.exists.outputs.proceed }}
     steps:
+      # Publishing a draft made by a manual start creates the tag, and that tag push would start
+      # a second build of the same version. If a published release for this tag already exists,
+      # this is that second start: stop here and build nothing.
+      - name: Skip a tag push that already has a release
+        id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          proceed=true
+          if [ "${{ github.event_name }}" = "push" ] && gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "A release for $TAG already exists, so this tag push builds nothing."
+            proceed=false
+          fi
+          echo "proceed=$proceed" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v5
 
       - uses: actions/setup-node@v5
@@ -54,11 +71,13 @@ jobs:
           exit 1
 
       - name: Check the tag
+        if: steps.exists.outputs.proceed == 'true'
         run: node scripts/check-release-version.mjs "${{ env.TAG }}"
 
   windows:
     name: Windows installer and portable zip
     needs: verify
+    if: needs.verify.outputs.proceed == 'true'
     runs-on: windows-latest
     env:
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -144,6 +163,7 @@ jobs:
   linux:
     name: Linux AppImage and deb (experimental)
     needs: verify
+    if: needs.verify.outputs.proceed == 'true'
     # The oldest Ubuntu LTS still supported: an AppImage can only run on systems with at least the
     # glibc it was built against, so building on the newest runner locks out older distributions.
     runs-on: ubuntu-22.04
@@ -218,6 +238,7 @@ jobs:
   macos:
     name: macOS Apple silicon (experimental, unsigned)
     needs: verify
+    if: needs.verify.outputs.proceed == 'true'
     runs-on: macos-latest
     continue-on-error: true
     env:
@@ -269,6 +290,7 @@ jobs:
   macos-intel:
     name: macOS Intel (experimental, unsigned)
     needs: verify
+    if: needs.verify.outputs.proceed == 'true'
     runs-on: macos-latest
     continue-on-error: true
     timeout-minutes: 60
@@ -317,9 +339,9 @@ jobs:
 
   draft:
     name: Draft release
-    needs: [windows, linux, macos, macos-intel]
+    needs: [verify, windows, linux, macos, macos-intel]
     # Runs when Windows built, whatever happened to Linux and macOS.
-    if: always() && needs.windows.result == 'success'
+    if: always() && needs.verify.outputs.proceed == 'true' && needs.windows.result == 'success'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
