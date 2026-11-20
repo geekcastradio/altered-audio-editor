@@ -48,6 +48,12 @@ pub fn launch_paths(state: tauri::State<'_, LaunchPaths>) -> Vec<String> {
     std::mem::take(&mut *state.0.lock().unwrap_or_else(|e| e.into_inner()))
 }
 
+/// The interface reports its own startup stages (mounted, first paint) so the log covers the whole launch.
+#[tauri::command]
+pub fn startup_mark(stage: String) {
+    crate::startup::mark(&format!("ui: {stage}"));
+}
+
 /// Free space, in bytes, on the drive that holds `path` (or the Documents folder when none is given).
 /// None when the drive cannot be asked, so the status bar just leaves the figure out.
 #[tauri::command]

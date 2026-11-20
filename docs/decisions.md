@@ -1784,3 +1784,7 @@ Phase 0 of the native move: `src-tauri/src/app_core.rs` adds `AppCore`, a clonea
 
 The Release workflow also accepts a manual start (Actions, Release, Run workflow, with the version). The tag in file names, update links and the draft title comes from one `TAG` value, which is the pushed tag or `v` plus the typed version. Manual starts only run from main and still stop if the version files do not match. The draft is created with its target set to the built commit; GitHub makes the tag when the draft is published. Reason: the cloud session that prepares releases cannot push tags, and this removes the one manual step before a draft.
 
+## 2026-11-20: Startup timing log (Phase 1 of the native move)
+
+`src-tauri/src/startup.rs` stamps each launch stage with the time since the process began and writes `startup-timing.log` in the settings folder, replacing the last launch's file. The interface adds its own stages through the `startup_mark` command. Local file only, no network, no personal data. Reason: Steve reports a launch of about a minute; it must be measured before a native shell inherits the cause. The first reading needs a cold start on his Windows PC. Whatever the log shows as the biggest gap is fixed next, as its own change.
+
