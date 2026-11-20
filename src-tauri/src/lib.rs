@@ -28,9 +28,11 @@ pub mod rpp_import;
 pub mod selection;
 pub mod session;
 pub mod sesx;
+pub mod startup;
 
 /// Starts the desktop app.
 pub fn run() {
+    startup::begin();
     let cwd = std::env::current_dir().unwrap_or_default();
     let launch = commands::app::file_args(std::env::args().skip(1), &cwd);
     tauri::Builder::default()
@@ -71,6 +73,10 @@ pub fn run() {
                 app_core::AppCore::new(std::sync::Arc::new(app.handle().clone())),
             );
             // Settings from older versions are moved to the Altered Audio folder first.
+            startup::mark("window and core ready");
+            if let Ok(dir) = paths::config_dir(app.handle()) {
+                startup::set_folder(&dir);
+            }
             paths::migrate_settings(app.handle());
             // Backups and the cache move into Documents\Altered Audio with the libraries.
             paths::migrate_documents(app.handle());
@@ -82,11 +88,13 @@ pub fn run() {
                     std::thread::spawn(move || backup::on_launch(&config, &backups, &version));
                 }
                 plugins::load(&dir);
+                startup::mark("plug-in list loaded");
             }
             // Reversed clips read reversed copies kept with the other working files.
             if let Ok(root) = commands::cache::cache_root(app.handle()) {
                 engine::reverse::set_dir(root.join("Reversed"));
             }
+            startup::mark("setup done");
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
@@ -95,6 +103,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::app::app_info,
             commands::app::launch_paths,
+            commands::app::startup_mark,
             commands::app::disk_free,
             commands::app::app_exit,
             commands::app::app_minimize,

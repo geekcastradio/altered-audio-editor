@@ -1649,6 +1649,11 @@ export function launchPaths(): Promise<string[]> {
   return invoke<string[]>("launch_paths");
 }
 
+/** Stamps a startup stage in the startup timing log (a local file in the settings folder). */
+export function startupMark(stage: string): Promise<void> {
+  return invoke<void>("startup_mark", { stage });
+}
+
 /** Calls `fn` with files opened from File Explorer while the app runs. Returns the stop function. */
 export function onOpenPaths(fn: (paths: string[]) => void): Promise<() => void> {
   return listen<string[]>("open-paths", (e) => fn(e.payload));

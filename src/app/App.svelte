@@ -13,6 +13,7 @@
     exitApp,
     diskFree,
     getAppInfo,
+    startupMark,
     loadKeymapOverrides,
     workspaceGet,
     workspaceList,
@@ -6806,6 +6807,10 @@
   });
 
   onMount(() => {
+    if (isTauri()) {
+      void startupMark("main window mounted").catch(() => {});
+      requestAnimationFrame(() => requestAnimationFrame(() => void startupMark("first frame painted").catch(() => {})));
+    }
     void prefs
       .load()
       .then(() => libraries.restore())
