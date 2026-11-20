@@ -5,8 +5,6 @@
 //! Panel layout persistence. The layout lives in the app config folder,
 //! never in browser storage.
 
-use std::path::PathBuf;
-
 use serde_json::Value;
 use tauri::State;
 
