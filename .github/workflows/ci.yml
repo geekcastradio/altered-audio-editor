@@ -162,6 +162,18 @@ jobs:
           AAE_REQUIRE_TOOLS: "1"
         run: cargo test --workspace
 
+      # The optional pure-Rust AAC encoder (off in release builds). Same checks, with
+      # ffmpeg in the tests as the independent decoder.
+      - name: cargo clippy with pure-aac
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --features pure-aac -- -D warnings
+
+      - name: cargo test with pure-aac
+        working-directory: src-tauri
+        env:
+          AAE_REQUIRE_TOOLS: "1"
+        run: cargo test --lib --features pure-aac
+
   security:
     name: Security and privacy
     runs-on: ubuntu-24.04

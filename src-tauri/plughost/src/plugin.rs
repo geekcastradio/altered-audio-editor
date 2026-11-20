@@ -64,7 +64,12 @@ impl Default for Tempo {
 /// A COM pointer moved to another thread. VST3 allows processing on
 /// another thread than setup; the plug-in is responsible for the rest.
 pub struct SendPtr<T>(pub T);
-// SAFETY: see above.
+// SAFETY: VST3 lets a host call a plug-in's audio processor from a thread
+// other than the one that set it up, and makes the plug-in responsible for
+// its own locking. It wraps the Audio side (the processor's COM pointers and
+// buffers), which is handed once from the main thread to the stdin thread
+// and then used only there: moved, never shared. COM reference counts are
+// thread-safe by contract, so releasing it from that thread is allowed.
 unsafe impl<T> Send for SendPtr<T> {}
 
 pub struct Plugin {
@@ -145,6 +150,15 @@ impl Plugin {
         let handler = ComWrapper::new(Handler {
             edits: edits.clone(),
         });
+        // SAFETY: plug-in setup in the order the VST3 SDK documents
+        // (create, initialize, connect, set state, set up processing,
+        // activate), all on this one thread. Every out-pointer passed is a
+        // local that outlives the call, every object pointer handed over
+        // (`host`, `handler`, the streams) is a ComWrapper kept alive for at
+        // least the call and, for host and handler, as long as the plug-in
+        // (stored in Plugin), and each pointer the plug-in returns is taken
+        // over by ComPtr (null gives None and becomes an error). The module
+        // stays loaded for as long as any of its objects (Plugin holds it).
         unsafe {
             crate::stage("creating it");
             let mut obj: *mut c_void = ptr::null_mut();
@@ -293,6 +307,8 @@ impl Plugin {
     /// readouts); the audio side gets it with the next block.
     pub fn set_param(&self, id: u32, value: f64) {
         if let Some(c) = &self.controller {
+            // SAFETY: a live controller (owned by self), called on the main
+            // thread, with plain values.
             unsafe {
                 c.setParamNormalized(id, value);
             }
@@ -301,6 +317,8 @@ impl Plugin {
 
     /// The plug-in's settings: component state and controller state.
     pub fn state(&self) -> String {
+        // SAFETY: live component and controller (owned by self); each
+        // getState writes into a MemStream we own that outlives the call.
         unsafe {
             let s = stream(Vec::new());
             self.component.getState(stream_ptr(&s));
@@ -323,12 +341,16 @@ impl Plugin {
     pub fn latency_now(&self) -> u32 {
         self.component
             .cast::<IAudioProcessor>()
+            // SAFETY: a live processor just cast from our own component.
             .map_or(self.latency, |p| unsafe { p.getLatencySamples() })
     }
 }
 
 impl Drop for Plugin {
     fn drop(&mut self) {
+        // SAFETY: shutdown in the SDK's order (controller terminated, then
+        // the component switched off and terminated), once, while the module
+        // is still loaded (it is dropped after these fields).
         unsafe {
             if let Some(c) = self.controller.take() {
                 if self.separate_controller {
@@ -359,55 +381,65 @@ fn split_state(data: &str) -> Option<(Vec<u8>, Vec<u8>)> {
 /// any others (sidechain inputs and the like), and turns them all on,
 /// along with the first note input. Returns the channels of each input
 /// and output bus, and whether there is a note input.
+///
+/// # Safety
+/// `component` and `processor` must be the same, initialized, inactive
+/// plug-in, on the thread that set it up.
 unsafe fn setup_buses(
     component: &ComPtr<IComponent>,
     processor: &ComPtr<IAudioProcessor>,
 ) -> (Vec<usize>, Vec<usize>, bool) {
-    let events = component.getBusCount(kEvent as i32, kInput as i32) > 0;
-    if events {
-        component.activateBus(kEvent as i32, kInput as i32, 0, 1);
+    // SAFETY: per this function's contract the plug-in is alive and set up
+    // for these calls; bus indexes stay below the counts it reports, the
+    // arrangement pointers point at our own Vecs of exactly nin and nout
+    // entries, and getBusArrangement writes one value into a local.
+    unsafe {
+        let events = component.getBusCount(kEvent as i32, kInput as i32) > 0;
+        if events {
+            component.activateBus(kEvent as i32, kInput as i32, 0, 1);
+        }
+        let nin = component.getBusCount(kAudio as i32, kInput as i32).max(0);
+        let nout = component.getBusCount(kAudio as i32, kOutput as i32).max(0);
+        let current = |dir: i32, i: i32| {
+            let mut a: SpeakerArrangement = 0;
+            processor.getBusArrangement(dir, i, &mut a);
+            a
+        };
+        let mut ins: Vec<SpeakerArrangement> = (0..nin)
+            .map(|i| {
+                if i == 0 {
+                    SpeakerArr::kStereo
+                } else {
+                    current(kInput as i32, i)
+                }
+            })
+            .collect();
+        let mut outs: Vec<SpeakerArrangement> = (0..nout)
+            .map(|i| {
+                if i == 0 {
+                    SpeakerArr::kStereo
+                } else {
+                    current(kOutput as i32, i)
+                }
+            })
+            .collect();
+        processor.setBusArrangements(ins.as_mut_ptr(), nin, outs.as_mut_ptr(), nout);
+        for i in 0..nin {
+            component.activateBus(kAudio as i32, kInput as i32, i, 1);
+        }
+        for i in 0..nout {
+            component.activateBus(kAudio as i32, kOutput as i32, i, 1);
+        }
+        (
+            (0..nin)
+                .map(|i| channels(current(kInput as i32, i)))
+                .collect(),
+            (0..nout)
+                .map(|i| channels(current(kOutput as i32, i)))
+                .collect(),
+            events,
+        )
     }
-    let nin = component.getBusCount(kAudio as i32, kInput as i32).max(0);
-    let nout = component.getBusCount(kAudio as i32, kOutput as i32).max(0);
-    let current = |dir: i32, i: i32| {
-        let mut a: SpeakerArrangement = 0;
-        processor.getBusArrangement(dir, i, &mut a);
-        a
-    };
-    let mut ins: Vec<SpeakerArrangement> = (0..nin)
-        .map(|i| {
-            if i == 0 {
-                SpeakerArr::kStereo
-            } else {
-                current(kInput as i32, i)
-            }
-        })
-        .collect();
-    let mut outs: Vec<SpeakerArrangement> = (0..nout)
-        .map(|i| {
-            if i == 0 {
-                SpeakerArr::kStereo
-            } else {
-                current(kOutput as i32, i)
-            }
-        })
-        .collect();
-    processor.setBusArrangements(ins.as_mut_ptr(), nin, outs.as_mut_ptr(), nout);
-    for i in 0..nin {
-        component.activateBus(kAudio as i32, kInput as i32, i, 1);
-    }
-    for i in 0..nout {
-        component.activateBus(kAudio as i32, kOutput as i32, i, 1);
-    }
-    (
-        (0..nin)
-            .map(|i| channels(current(kInput as i32, i)))
-            .collect(),
-        (0..nout)
-            .map(|i| channels(current(kOutput as i32, i)))
-            .collect(),
-        events,
-    )
 }
 
 /// A note as VST3 wants it, `offset` frames into the block.
@@ -444,25 +476,35 @@ fn vst_event(n: &NoteEvent, offset: u32) -> Event {
     }
 }
 
+/// Every control the plug-in lists.
+///
+/// # Safety
+/// `c` must be an initialized controller, used on the thread that set it up.
 unsafe fn read_params(c: &ComPtr<IEditController>) -> Vec<ParamInfo> {
-    let n = c.getParameterCount().max(0);
-    let mut out = Vec::with_capacity(n as usize);
-    for i in 0..n {
-        let mut info: ParameterInfo = std::mem::zeroed();
-        if c.getParameterInfo(i, &mut info) != kResultOk {
-            continue;
+    // SAFETY: per this function's contract the controller is alive;
+    // ParameterInfo is plain C data, so zeroed is valid, and
+    // getParameterInfo only writes into the one on our stack for an index
+    // below the count it reported.
+    unsafe {
+        let n = c.getParameterCount().max(0);
+        let mut out = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            let mut info: ParameterInfo = std::mem::zeroed();
+            if c.getParameterInfo(i, &mut info) != kResultOk {
+                continue;
+            }
+            let f = info.flags;
+            out.push(ParamInfo {
+                id: info.id,
+                title: from_wstring(&info.title),
+                units: from_wstring(&info.units),
+                steps: info.stepCount,
+                default: info.defaultNormalizedValue,
+                hidden: f & (kIsReadOnly | kIsHidden | kIsProgramChange) as i32 != 0,
+            });
         }
-        let f = info.flags;
-        out.push(ParamInfo {
-            id: info.id,
-            title: from_wstring(&info.title),
-            units: from_wstring(&info.units),
-            steps: info.stepCount,
-            default: info.defaultNormalizedValue,
-            hidden: f & (kIsReadOnly | kIsHidden | kIsProgramChange) as i32 != 0,
-        });
+        out
     }
-    out
 }
 
 impl Audio {
@@ -566,6 +608,8 @@ impl Audio {
         let ev = ComWrapper::new(EventList {
             events: events.into(),
         });
+        // SAFETY: ProcessContext is plain C data (numbers and flags, plus a
+        // chord struct of the same), so all zeroes is a valid value.
         let mut ctx: ProcessContext = unsafe { std::mem::zeroed() };
         ctx.state =
             (kPlaying | kTempoValid | kTimeSigValid | kProjectTimeMusicValid | kBarPositionValid)
@@ -615,6 +659,10 @@ impl Audio {
             outputEvents: ptr::null_mut(),
             processContext: &mut ctx,
         };
+        // SAFETY: on the audio thread that owns this Audio. Every pointer in
+        // `data` points at buffers, lists and the context owned by this call
+        // or by self, sized as declared (numSamples <= MAX_BLOCK, numChannels
+        // matching each bus), and all of it outlives the call.
         let ok = unsafe { self.processor.process(&mut data) } == kResultOk;
         self.time += n as i64;
         // Some plug-ins report an error yet fill their outputs: keep what
@@ -667,6 +715,8 @@ impl Audio {
             outputEvents: ptr::null_mut(),
             processContext: ptr::null_mut(),
         };
+        // SAFETY: a zero-sample block with no buffers (VST3's documented way
+        // to send parameter changes only); the change list outlives the call.
         unsafe {
             self.processor.process(&mut data);
         }
@@ -674,6 +724,9 @@ impl Audio {
 
     /// Clears the plug-in's memory, as after a jump.
     pub fn reset(&mut self) {
+        // SAFETY: a live processor and component (owned by self), switched
+        // off and on again in the SDK's order, on the audio thread that owns
+        // this Audio.
         unsafe {
             self.processor.setProcessing(0);
             self.component.setActive(0);
@@ -684,12 +737,14 @@ impl Audio {
     }
 
     pub fn latency(&self) -> u32 {
+        // SAFETY: a live processor owned by self.
         unsafe { self.processor.getLatencySamples() }
     }
 }
 
 impl Drop for Audio {
     fn drop(&mut self) {
+        // SAFETY: a live processor owned by self, stopped once.
         unsafe {
             self.processor.setProcessing(0);
         }

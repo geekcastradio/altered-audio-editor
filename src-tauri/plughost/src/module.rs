@@ -79,10 +79,17 @@ pub fn library_path(bundle: &Path) -> Result<PathBuf, String> {
 impl Module {
     pub fn open(bundle: &Path) -> Result<Module, String> {
         let path = library_path(bundle)?;
-        // SAFETY: loading a plug-in runs its code; that is why this whole
-        // host runs in its own process.
+        // SAFETY: loading a library runs its initializers, which Rust cannot
+        // check. That is the trust a plug-in host has to extend, and why this
+        // whole host runs in its own process: if the plug-in misbehaves, only
+        // this process goes down.
         let lib = unsafe { Library::new(&path) }
             .map_err(|e| format!("Could not load the plug-in: {e}"))?;
+        // SAFETY: the symbol types below are the VST3 module entry points as
+        // the SDK declares them (InitDll and GetPluginFactory take nothing,
+        // ModuleEntry takes the library handle, which may be null). Each is
+        // called on the main thread, once, while `lib` is loaded, and the
+        // factory pointer is taken over by ComPtr, which owns its reference.
         unsafe {
             #[cfg(windows)]
             if let Ok(init) = lib.get::<unsafe extern "system" fn() -> bool>(b"InitDll\0") {
@@ -115,6 +122,9 @@ impl Module {
     pub fn classes(&self) -> Vec<FactoryClass> {
         let mut out = Vec::new();
         // The maker the file declares, for classes that leave theirs blank.
+        // SAFETY: PFactoryInfo is plain C data (byte arrays and an int), so
+        // all zeroes is a valid value; the factory is alive (owned by self)
+        // and getFactoryInfo only writes into the struct we pass.
         let maker = unsafe {
             let mut fi: vst3::Steinberg::PFactoryInfo = std::mem::zeroed();
             if self.factory().getFactoryInfo(&mut fi) == vst3::Steinberg::kResultOk {
@@ -130,6 +140,10 @@ impl Module {
                 v
             }
         };
+        // SAFETY: as above: the factory is alive for the whole loop, the class
+        // info structs are plain C data so zeroed is valid, and each
+        // getClassInfo call only writes into the struct on our stack. `i`
+        // stays below countClasses.
         unsafe {
             let f2 = self.factory().cast::<IPluginFactory2>();
             let n = self.factory().countClasses();
@@ -170,6 +184,9 @@ impl Drop for Module {
         // Let go of the factory before the module is told to shut down.
         drop(self.factory.take());
         let Some(lib) = self.lib.take() else { return };
+        // SAFETY: the module exit functions as the SDK declares them, called
+        // once, after the factory is released, while the library is still
+        // loaded (it is never unloaded: see below).
         unsafe {
             #[cfg(windows)]
             if let Ok(exit) = lib.get::<unsafe extern "system" fn() -> bool>(b"ExitDll\0") {

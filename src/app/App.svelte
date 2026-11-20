@@ -3695,8 +3695,9 @@
     const r = waveSel();
     if (!d || !r) return;
     try {
-      const res = await waveFillClick(r[0], r[1]);
-      const label = "Fill Single Click";
+      const texture = get(settings).fillClickTexture;
+      const res = await waveFillClick(r[0], r[1], texture);
+      const label = texture === "smooth" ? "Fill Single Click (Smooth)" : "Fill Single Click";
       await waveEdit(label, replaceRange(wave.current ?? d, res.start, res.end, res.media, label, uuid), [res.start, res.end]);
     } catch (e) {
       showError(e);

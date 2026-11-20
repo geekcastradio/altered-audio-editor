@@ -69,6 +69,8 @@ export interface AppSettings {
   realtimePlugins: boolean;
   /** Show the Voice Chain when an effect is added from the Effects menu. */
   openChainOnAdd: boolean;
+  /** Effects > Fill Single Click: Natural adds back matched room noise in the gap; Smooth adds none. */
+  fillClickTexture: FillClickTexture;
   /** Soloing a track unsolos the others. */
   soloExclusive: boolean;
   /** Recorded automation drops points within this percent of a lane's range of the line between their neighbors (0 keeps every point). */
@@ -124,6 +126,8 @@ export interface AppSettings {
   /** 3D Space: dots snap to speakers, the center lines and a grid; turns snap to 15 degrees. */
   spaceSnap: boolean;
 }
+
+export type FillClickTexture = "natural" | "smooth";
 
 export type MetronomeSound = "tick" | "wood" | "beep" | "shaker";
 export type MetronomeSubdivide = "none" | "halves" | "triplets" | "quarters";
@@ -200,6 +204,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autosave: true,
   autosaveMinutes: 2,
   openChainOnAdd: true,
+  fillClickTexture: "natural",
   realtimePlugins: false,
   soloExclusive: false,
   autoThinPercent: 0.3,
@@ -299,6 +304,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       num(o.autosaveMinutes, 1, 60, d.autosaveMinutes),
     ),
     openChainOnAdd: bool(o.openChainOnAdd, d.openChainOnAdd),
+    fillClickTexture: o.fillClickTexture === "smooth" ? "smooth" : d.fillClickTexture,
     realtimePlugins: bool(o.realtimePlugins, d.realtimePlugins),
     soloExclusive: bool(o.soloExclusive, d.soloExclusive),
     autoThinPercent: Math.round(num(o.autoThinPercent, 0, 2, d.autoThinPercent) * 100) / 100,

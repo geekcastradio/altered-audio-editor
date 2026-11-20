@@ -13,6 +13,7 @@
   import { audioDriver, audioInputs, audioOutputs, outputChannels, type AudioDriver, type AudioInput } from "../core";
   import { keepLast } from "./device-cache";
   import BackupPage from "./BackupPage.svelte";
+  import InfoTip from "../InfoTip.svelte";
   import { BROADCAST_REGIONS, targetsFor } from "../loudness";
   import { DEFAULT_SETTINGS, NO_COLORS, TIMECODE_RATES, type AppColors } from "../../stores/settings";
   import { cleanDraft, LATER_PAGES, PAGES, sizeText, type Page, type SettingsDraft } from "./pages";
@@ -343,6 +344,11 @@
           <p class="note">Libraries keep their own copies. Untick this to copy library audio in too, so the session folder works without the library. File &gt; Collect Session Media copies everything in at any time.</p>
         {:else if page === "Effects"}
           <label><input type="checkbox" bind:checked={d.app.openChainOnAdd} /> Show the Voice Chain when adding an effect from the Effects menu</label>
+          <fieldset>
+            <legend>Fill Single Click texture <InfoTip text="How the middle of a filled click sounds. Natural adds back a little noise matched to the sound around it, so a longer fill blends into room tone. Smooth adds none: the cleanest curve, best on very quiet or very clean recordings, but a longer fill can sound like a short dip." label="About Fill Single Click texture" /></legend>
+            <label><input type="radio" bind:group={d.app.fillClickTexture} value="natural" /> Natural (matches the room around the click)</label>
+            <label><input type="radio" bind:group={d.app.fillClickTexture} value="smooth" /> Smooth (no added noise)</label>
+          </fieldset>
           <label><input type="checkbox" bind:checked={d.app.realtimePlugins} /> Mix down sessions that use VST3 plug-ins in real time</label>
           <p class="note">Some plug-ins only work while audio plays at normal speed: pitch correction, immersive panners and other tools that follow the clock. With this on, any mixdown, stem export or Mix Down to New File of a session with VST3 plug-ins runs at playback speed, so an hour takes an hour. Built-in effects never need it.</p>
         {:else if page === "Cache and Files"}

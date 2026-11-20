@@ -48,7 +48,7 @@ use crate::session::model::{EffectChain, EffectSlot, Id};
 
 pub use dynamics::{Compressor, DeEsser, Gate, Limiter, Multiband, SpeechLeveler};
 pub use eq::{HumCut, ParametricEq};
-pub use gapfill::{context_wanted, fill_gap};
+pub use gapfill::{context_wanted, fill_gap, FillTexture};
 pub use restore::{fill_span, find_spots, repair_spots, Spots};
 
 /// Effects with a level detector that can listen to a sidechain key.

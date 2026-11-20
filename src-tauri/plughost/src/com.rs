@@ -7,6 +7,13 @@
 //! plug-in's window reports edits to, the frame it asks to resize, and
 //! messages with attribute lists (plug-ins send these between their two
 //! halves).
+//!
+//! Every method here is called by plug-in code through a COM vtable, so its
+//! pointer arguments come from the plug-in. The VST3 interface contract says
+//! what each pointer must be; each `// SAFETY:` comment below names the part
+//! of that contract the code relies on. Where the contract allows a null
+//! pointer, or a plug-in is known to pass one anyway, the code checks first
+//! and returns `kInvalidArgument` instead of crashing the host process.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -55,7 +62,12 @@ pub fn from_cstring(src: &[std::ffi::c_char]) -> String {
 }
 
 fn same_iid<I: Interface>(tuid: *const TUID) -> bool {
-    // SAFETY: the plug-in passes a pointer to a 16-byte id.
+    if tuid.is_null() {
+        return false;
+    }
+    // SAFETY: not null (checked above), and VST3 passes class and interface
+    // ids as pointers to a 16-byte TUID, which has the same size and
+    // alignment as [u8; 16]. The bytes are only read, and only for this call.
     let bytes = unsafe { &*(tuid as *const [u8; 16]) };
     *bytes == I::IID
 }
@@ -69,7 +81,13 @@ impl Class for HostApp {
 
 impl IHostApplicationTrait for HostApp {
     unsafe fn getName(&self, name: *mut String128) -> tresult {
-        copy_wstring("Altered Audio Editor", &mut *name);
+        if name.is_null() {
+            return kInvalidArgument;
+        }
+        // SAFETY: not null (checked above); IHostApplication::getName hands
+        // a caller-owned String128 (128 UTF-16 units) for the host to fill,
+        // and copy_wstring never writes past its length.
+        copy_wstring("Altered Audio Editor", unsafe { &mut *name });
         kResultOk
     }
 
@@ -79,22 +97,30 @@ impl IHostApplicationTrait for HostApp {
         iid: *mut TUID,
         obj: *mut *mut c_void,
     ) -> tresult {
-        if same_iid::<IMessage>(cid) && same_iid::<IMessage>(iid) {
-            let m = ComWrapper::new(Message::default());
-            if let Some(p) = m.to_com_ptr::<IMessage>() {
-                *obj = p.into_raw() as *mut c_void;
-                return kResultOk;
-            }
+        if obj.is_null() {
+            return kInvalidArgument;
         }
-        if same_iid::<IAttributeList>(cid) && same_iid::<IAttributeList>(iid) {
-            let a = ComWrapper::new(Attributes::default());
-            if let Some(p) = a.to_com_ptr::<IAttributeList>() {
-                *obj = p.into_raw() as *mut c_void;
-                return kResultOk;
-            }
+        // The new object's reference passes to the plug-in through `obj`
+        // (into_raw gives up our count), as createInstance requires.
+        let made = if same_iid::<IMessage>(cid) && same_iid::<IMessage>(iid) {
+            ComWrapper::new(Message::default())
+                .to_com_ptr::<IMessage>()
+                .map(|p| p.into_raw() as *mut c_void)
+        } else if same_iid::<IAttributeList>(cid) && same_iid::<IAttributeList>(iid) {
+            ComWrapper::new(Attributes::default())
+                .to_com_ptr::<IAttributeList>()
+                .map(|p| p.into_raw() as *mut c_void)
+        } else {
+            None
+        };
+        // SAFETY: not null (checked above); createInstance's `obj` is the
+        // caller's out-pointer slot, valid for one pointer-sized write.
+        unsafe { *obj = made.unwrap_or(ptr::null_mut()) };
+        if made.is_some() {
+            kResultOk
+        } else {
+            kNoInterface
         }
-        *obj = ptr::null_mut();
-        kNoInterface
     }
 }
 
@@ -123,29 +149,45 @@ impl IBStreamTrait for MemStream {
         let data = self.data.borrow();
         let at = self.pos.get().min(data.len());
         let n = (num.max(0) as usize).min(data.len() - at);
+        if n > 0 && buffer.is_null() {
+            return kInvalidArgument;
+        }
         if n > 0 {
-            ptr::copy_nonoverlapping(data[at..].as_ptr(), buffer as *mut u8, n);
+            // SAFETY: IBStream::read gives a caller buffer of at least `num`
+            // bytes; n <= num, the source range at..at+n is inside `data`
+            // (n is clamped to what is left), buffer is not null (checked
+            // above), and our Vec cannot overlap memory the plug-in owns.
+            unsafe { ptr::copy_nonoverlapping(data[at..].as_ptr(), buffer as *mut u8, n) };
         }
         self.pos.set(at + n);
         if !read.is_null() {
-            *read = n as int32;
+            // SAFETY: not null; `read` is an optional caller-owned int32.
+            unsafe { *read = n as int32 };
         }
         kResultOk
     }
 
     unsafe fn write(&self, buffer: *mut c_void, num: int32, written: *mut int32) -> tresult {
         let n = num.max(0) as usize;
+        if n > 0 && buffer.is_null() {
+            return kInvalidArgument;
+        }
         let mut data = self.data.borrow_mut();
         let at = self.pos.get();
         if data.len() < at + n {
             data.resize(at + n, 0);
         }
         if n > 0 {
-            ptr::copy_nonoverlapping(buffer as *const u8, data[at..].as_mut_ptr(), n);
+            // SAFETY: IBStream::write gives `num` readable bytes at `buffer`
+            // (not null, checked above); `data` was just grown to at least
+            // at + n bytes, so the destination range is in bounds, and the
+            // caller's buffer cannot be our own Vec.
+            unsafe { ptr::copy_nonoverlapping(buffer as *const u8, data[at..].as_mut_ptr(), n) };
         }
         self.pos.set(at + n);
         if !written.is_null() {
-            *written = n as int32;
+            // SAFETY: not null; `written` is an optional caller-owned int32.
+            unsafe { *written = n as int32 };
         }
         kResultOk
     }
@@ -161,14 +203,16 @@ impl IBStreamTrait for MemStream {
         let to = (base + pos).max(0);
         self.pos.set(to as usize);
         if !result.is_null() {
-            *result = to;
+            // SAFETY: not null; `result` is an optional caller-owned int64.
+            unsafe { *result = to };
         }
         kResultOk
     }
 
     unsafe fn tell(&self, pos: *mut int64) -> tresult {
         if !pos.is_null() {
-            *pos = self.pos.get() as int64;
+            // SAFETY: not null; `pos` is a caller-owned int64.
+            unsafe { *pos = self.pos.get() as int64 };
         }
         kResultOk
     }
@@ -194,10 +238,17 @@ impl IParamValueQueueTrait for ParamQueue {
     }
 
     unsafe fn getPoint(&self, index: int32, offset: *mut int32, value: *mut ParamValue) -> tresult {
+        if offset.is_null() || value.is_null() {
+            return kInvalidArgument;
+        }
         match self.points.borrow().get(index.max(0) as usize) {
             Some((o, v)) => {
-                *offset = *o;
-                *value = *v;
+                // SAFETY: both not null (checked above); getPoint's offset
+                // and value are caller-owned out-parameters.
+                unsafe {
+                    *offset = *o;
+                    *value = *v;
+                }
                 kResultTrue
             }
             None => kResultFalse,
@@ -208,7 +259,8 @@ impl IParamValueQueueTrait for ParamQueue {
         let mut p = self.points.borrow_mut();
         p.push((offset, value));
         if !index.is_null() {
-            *index = p.len() as int32 - 1;
+            // SAFETY: not null; `index` is an optional caller-owned int32.
+            unsafe { *index = p.len() as int32 - 1 };
         }
         kResultTrue
     }
@@ -275,11 +327,18 @@ impl IParameterChangesTrait for ParamChanges {
         id: *const ParamID,
         index: *mut int32,
     ) -> *mut IParamValueQueue {
-        let i = self.find_or_add(*id);
-        if !index.is_null() {
-            *index = i as int32;
+        if id.is_null() {
+            return ptr::null_mut();
         }
-        self.getParameterData(i as int32)
+        // SAFETY: not null (checked above); addParameterData's id points to
+        // one ParamID owned by the caller, read once here.
+        let i = self.find_or_add(unsafe { *id });
+        if !index.is_null() {
+            // SAFETY: not null; `index` is an optional caller-owned int32.
+            unsafe { *index = i as int32 };
+        }
+        // SAFETY: our own method; it touches no raw pointers.
+        unsafe { self.getParameterData(i as int32) }
     }
 }
 
@@ -301,7 +360,9 @@ impl IEventListTrait for EventList {
     unsafe fn getEvent(&self, index: int32, e: *mut Event) -> tresult {
         match self.events.borrow().get(index.max(0) as usize) {
             Some(ev) if !e.is_null() => {
-                *e = *ev;
+                // SAFETY: not null (match guard); getEvent's `e` is a
+                // caller-owned Event to copy into (Event is Copy).
+                unsafe { *e = *ev };
                 kResultOk
             }
             _ => kResultFalse,
@@ -312,7 +373,9 @@ impl IEventListTrait for EventList {
         if e.is_null() {
             return kInvalidArgument;
         }
-        self.events.borrow_mut().push(*e);
+        // SAFETY: not null (checked above); addEvent's `e` points to one
+        // Event owned by the caller, copied out here (Event is Copy).
+        self.events.borrow_mut().push(unsafe { *e });
         kResultOk
     }
 }
@@ -381,14 +444,20 @@ impl IPlugFrameTrait for Frame {
         if size.is_null() {
             return kInvalidArgument;
         }
-        let r = *size;
+        // SAFETY: not null (checked above); resizeView's size is the
+        // plug-in's own ViewRect, read once (ViewRect is Copy).
+        let r = unsafe { *size };
         if let Ok(mut e) = self.edits.lock() {
             e.push(Edit::Resize(r.right - r.left, r.bottom - r.top));
         }
-        if let Some(v) = vst3::ComRef::from_raw(view) {
+        // SAFETY: `view` is the plug-in's own IPlugView, alive for this call
+        // (it is the object calling us); from_raw returns None for null and
+        // borrows without taking a reference count.
+        if let Some(v) = unsafe { vst3::ComRef::from_raw(view) } {
             use vst3::Steinberg::IPlugViewTrait;
             let mut r = r;
-            v.onSize(&mut r);
+            // SAFETY: a live view (above) and a valid ViewRect on our stack.
+            unsafe { v.onSize(&mut r) };
         }
         kResultTrue
     }
@@ -421,7 +490,10 @@ impl IMessageTrait for Message {
         let mut v = if id.is_null() {
             Vec::new()
         } else {
-            CStr::from_ptr(id).to_bytes().to_vec()
+            // SAFETY: not null (checked above); setMessageID takes a
+            // nul-terminated C string the caller keeps alive for this call.
+            // It is copied, so nothing keeps the pointer.
+            unsafe { CStr::from_ptr(id) }.to_bytes().to_vec()
         };
         v.push(0);
         *self.id.borrow_mut() = v;
@@ -451,24 +523,38 @@ impl Class for Attributes {
     type Interfaces = (IAttributeList,);
 }
 
+/// An attribute id, copied.
+///
+/// # Safety
+/// `id` must be null or a nul-terminated C string valid for the call, as
+/// IAttributeList's AttrID arguments are.
 unsafe fn key(id: *const std::ffi::c_char) -> Vec<u8> {
     if id.is_null() {
         Vec::new()
     } else {
-        CStr::from_ptr(id).to_bytes().to_vec()
+        // SAFETY: not null, and nul-terminated per this function's contract.
+        unsafe { CStr::from_ptr(id) }.to_bytes().to_vec()
     }
 }
 
 impl IAttributeListTrait for Attributes {
     unsafe fn setInt(&self, id: *const std::ffi::c_char, value: int64) -> tresult {
-        self.map.borrow_mut().insert(key(id), Attr::Int(value));
+        // SAFETY: `id` is an AttrID from the caller (see `key`).
+        self.map
+            .borrow_mut()
+            .insert(unsafe { key(id) }, Attr::Int(value));
         kResultOk
     }
 
     unsafe fn getInt(&self, id: *const std::ffi::c_char, value: *mut int64) -> tresult {
-        match self.map.borrow().get(&key(id)) {
+        if value.is_null() {
+            return kInvalidArgument;
+        }
+        // SAFETY: `id` is an AttrID from the caller (see `key`).
+        match self.map.borrow().get(&unsafe { key(id) }) {
             Some(Attr::Int(v)) => {
-                *value = *v;
+                // SAFETY: not null (checked above); a caller-owned int64.
+                unsafe { *value = *v };
                 kResultOk
             }
             _ => kResultFalse,
@@ -476,14 +562,22 @@ impl IAttributeListTrait for Attributes {
     }
 
     unsafe fn setFloat(&self, id: *const std::ffi::c_char, value: f64) -> tresult {
-        self.map.borrow_mut().insert(key(id), Attr::Float(value));
+        // SAFETY: `id` is an AttrID from the caller (see `key`).
+        self.map
+            .borrow_mut()
+            .insert(unsafe { key(id) }, Attr::Float(value));
         kResultOk
     }
 
     unsafe fn getFloat(&self, id: *const std::ffi::c_char, value: *mut f64) -> tresult {
-        match self.map.borrow().get(&key(id)) {
+        if value.is_null() {
+            return kInvalidArgument;
+        }
+        // SAFETY: `id` is an AttrID from the caller (see `key`).
+        match self.map.borrow().get(&unsafe { key(id) }) {
             Some(Attr::Float(v)) => {
-                *value = *v;
+                // SAFETY: not null (checked above); a caller-owned f64.
+                unsafe { *value = *v };
                 kResultOk
             }
             _ => kResultFalse,
@@ -494,13 +588,21 @@ impl IAttributeListTrait for Attributes {
         let mut v = Vec::new();
         if !s.is_null() {
             let mut i = 0;
-            while *s.add(i) != 0 {
-                v.push(*s.add(i));
+            // SAFETY: not null (checked above); setString takes a
+            // nul-terminated UTF-16 string, so every unit up to and
+            // including the terminator is readable and nothing past it is
+            // touched.
+            while unsafe { *s.add(i) } != 0 {
+                // SAFETY: as above; index i is before the terminator.
+                v.push(unsafe { *s.add(i) });
                 i += 1;
             }
         }
         v.push(0);
-        self.map.borrow_mut().insert(key(id), Attr::Str(v));
+        // SAFETY: `id` is an AttrID from the caller (see `key`).
+        self.map
+            .borrow_mut()
+            .insert(unsafe { key(id) }, Attr::Str(v));
         kResultOk
     }
 
@@ -510,15 +612,27 @@ impl IAttributeListTrait for Attributes {
         s: *mut TChar,
         size: uint32,
     ) -> tresult {
-        match self.map.borrow().get(&key(id)) {
+        if s.is_null() {
+            return kInvalidArgument;
+        }
+        // SAFETY: `id` is an AttrID from the caller (see `key`).
+        match self.map.borrow().get(&unsafe { key(id) }) {
             Some(Attr::Str(v)) => {
                 let room = size as usize / std::mem::size_of::<TChar>();
                 if room == 0 {
                     return kResultFalse;
                 }
                 let n = v.len().min(room);
-                ptr::copy_nonoverlapping(v.as_ptr(), s, n);
-                *s.add(n - 1) = 0;
+                // SAFETY: getString's `s` (not null, checked above) is a
+                // caller buffer of `size` bytes, so `room` TChars; n <= room
+                // and n <= v.len(), so both ranges are in bounds, and the
+                // plug-in's buffer cannot be our Vec. n >= 1 (room >= 1 and
+                // v always holds at least its terminator), so n - 1 is the
+                // last unit written, inside the buffer.
+                unsafe {
+                    ptr::copy_nonoverlapping(v.as_ptr(), s, n);
+                    *s.add(n - 1) = 0;
+                }
                 kResultOk
             }
             _ => kResultFalse,
@@ -534,9 +648,15 @@ impl IAttributeListTrait for Attributes {
         let v = if data.is_null() {
             Vec::new()
         } else {
-            std::slice::from_raw_parts(data as *const u8, size as usize).to_vec()
+            // SAFETY: not null (checked above); setBinary passes `size`
+            // readable bytes at `data`, copied here so nothing keeps the
+            // pointer. A u8 slice has no alignment requirement.
+            unsafe { std::slice::from_raw_parts(data as *const u8, size as usize) }.to_vec()
         };
-        self.map.borrow_mut().insert(key(id), Attr::Bin(v));
+        // SAFETY: `id` is an AttrID from the caller (see `key`).
+        self.map
+            .borrow_mut()
+            .insert(unsafe { key(id) }, Attr::Bin(v));
         kResultOk
     }
 
@@ -546,11 +666,22 @@ impl IAttributeListTrait for Attributes {
         data: *mut *const c_void,
         size: *mut uint32,
     ) -> tresult {
-        match self.map.borrow().get(&key(id)) {
+        if data.is_null() || size.is_null() {
+            return kInvalidArgument;
+        }
+        // SAFETY: `id` is an AttrID from the caller (see `key`).
+        match self.map.borrow().get(&unsafe { key(id) }) {
             Some(Attr::Bin(v)) => {
-                // Points into the list, which lives as long as the message.
-                *data = v.as_ptr() as *const c_void;
-                *size = v.len() as uint32;
+                // The pointer handed out points into the list, which lives as
+                // long as the message. VST3 says it stays valid only until
+                // the attribute is set again or the list is released, which
+                // matches: a later setBinary replaces (and frees) this Vec.
+                // SAFETY: both out-pointers not null (checked above) and
+                // caller-owned, valid for one write each.
+                unsafe {
+                    *data = v.as_ptr() as *const c_void;
+                    *size = v.len() as uint32;
+                }
                 kResultOk
             }
             _ => kResultFalse,

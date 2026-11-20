@@ -6,6 +6,8 @@
 //! later.
 
 pub mod aac;
+#[cfg(feature = "pure-aac")]
+pub mod aac_pure;
 pub mod adpcm;
 pub mod analysis;
 pub mod chapters;

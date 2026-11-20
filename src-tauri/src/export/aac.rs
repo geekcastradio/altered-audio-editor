@@ -11,6 +11,10 @@
 //! system encoder (Audio Toolbox) is the planned route, and Linux has
 //! no system AAC encoder, so it will need a bundled one.
 //!
+//! Build with the `pure-aac` feature (off by default) and the writer is a
+//! pure-Rust encoder instead (`aac_pure.rs`), on every system. The limits
+//! below stay the same either way, so the Export dialog does not change.
+//!
 //! The Windows encoder takes 44.1 or 48 kHz, mono or stereo, at 96, 128,
 //! 160 or 192 kbps. `resolve` picks values inside those limits.
 
@@ -19,6 +23,10 @@ pub const AAC_BITRATES: [u16; 4] = [96, 128, 160, 192];
 /// Rates the system encoder accepts.
 pub const AAC_RATES: [u32; 2] = [44_100, 48_000];
 
+/// With the `pure-aac` feature the writer is the pure-Rust one, on every system.
+#[cfg(feature = "pure-aac")]
+pub use super::aac_pure::{AacWriter, AVAILABLE, UNAVAILABLE};
+#[cfg(not(feature = "pure-aac"))]
 pub use altered_os_aac::{AacWriter, AVAILABLE, UNAVAILABLE};
 
 /// The nearest bit rate the encoder accepts.

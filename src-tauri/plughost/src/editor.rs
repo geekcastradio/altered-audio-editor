@@ -75,6 +75,11 @@ mod win {
         s.encode_utf16().chain(Some(0)).collect()
     }
 
+    /// The plug-in window's message handler.
+    ///
+    /// # Safety
+    /// Only Windows calls this, with a window of our class and that
+    /// message's own parameters.
     unsafe extern "system" fn proc_(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
         match msg {
             WM_CLOSE => {
@@ -82,12 +87,21 @@ mod win {
                 0
             }
             WM_SIZE => {
-                let mut r: RECT = std::mem::zeroed();
-                GetClientRect(hwnd, &mut r);
+                let mut r = RECT {
+                    left: 0,
+                    top: 0,
+                    right: 0,
+                    bottom: 0,
+                };
+                // SAFETY: hwnd is the live window this message is for, and
+                // GetClientRect writes into the RECT on our stack.
+                unsafe { GetClientRect(hwnd, &mut r) };
                 SIZED.with(|s| s.set(Some((r.right - r.left, r.bottom - r.top))));
                 0
             }
-            _ => DefWindowProcW(hwnd, msg, wp, lp),
+            // SAFETY: passes Windows' own arguments straight back, as every
+            // window procedure must for messages it does not handle.
+            _ => unsafe { DefWindowProcW(hwnd, msg, wp, lp) },
         }
     }
 
@@ -105,6 +119,15 @@ mod win {
         edits: Arc<Mutex<Vec<Edit>>>,
         owner: u64,
     ) -> Result<Box<dyn EditorWindow>, String> {
+        // SAFETY: runs on the host's main thread, as VST3 requires for
+        // views. The controller is alive (borrowed from the Plugin), the view
+        // pointer from createView is taken over by ComPtr (null gives None),
+        // every Win32 call gets either null where documented as allowed or
+        // pointers to locals and wide strings that outlive the call
+        // (`class` and `name` live to the end of this block), and ViewRect
+        // is plain C data, so zeroed is valid before getSize fills it. The
+        // window handle is checked before use and destroyed on every error
+        // path after creation.
         unsafe {
             let view = ComPtr::<IPlugView>::from_raw(controller.createView(ViewType::kEditor))
                 .ok_or("This plug-in has no window of its own.")?;
@@ -192,6 +215,10 @@ mod win {
 
     impl EditorWindow for Win {
         fn pump(&mut self) -> bool {
+            // SAFETY: the standard message loop on the thread that made the
+            // window; MSG is plain C data, so zeroed is valid, and a null
+            // window handle asks for every window on this thread. The view is
+            // alive (owned by self) and onSize gets a ViewRect on our stack.
             unsafe {
                 let mut msg: MSG = std::mem::zeroed();
                 while PeekMessageW(&mut msg, ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
@@ -214,6 +241,9 @@ mod win {
         }
 
         fn resize(&mut self, w: i32, h: i32) {
+            // SAFETY: self.hwnd is our live window (destroyed only in Drop);
+            // AdjustWindowRectEx writes into the RECT on our stack, and a null
+            // insert-after handle is allowed with SWP_NOZORDER.
             unsafe {
                 let mut r = RECT {
                     left: 0,
@@ -235,6 +265,7 @@ mod win {
         }
 
         fn raise(&mut self) {
+            // SAFETY: self.hwnd is our live window (destroyed only in Drop).
             unsafe {
                 ShowWindow(self.hwnd, SW_SHOW);
                 SetForegroundWindow(self.hwnd);
@@ -244,6 +275,9 @@ mod win {
 
     impl Drop for Win {
         fn drop(&mut self) {
+            // SAFETY: the view is detached (setFrame null, then removed)
+            // before its window goes away, as VST3 asks, and the window is
+            // destroyed exactly once, here.
             unsafe {
                 if let Some(v) = self.view.take() {
                     v.setFrame(ptr::null_mut());

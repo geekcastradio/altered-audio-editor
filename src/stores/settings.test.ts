@@ -59,6 +59,11 @@ describe("app settings", () => {
 describe("buffer size setting", () => {
   it("defaults to the driver and keeps only sensible values", () => {
     expect(DEFAULT_SETTINGS.bufferFrames).toBe(0);
+    expect(DEFAULT_SETTINGS.fillClickTexture).toBe("natural");
+    expect(sanitizeSettings({ fillClickTexture: "smooth" }).fillClickTexture).toBe("smooth");
+    expect(sanitizeSettings({ fillClickTexture: "natural" }).fillClickTexture).toBe("natural");
+    expect(sanitizeSettings({ fillClickTexture: "grainy" }).fillClickTexture).toBe("natural");
+    expect(sanitizeSettings({ fillClickTexture: 1 }).fillClickTexture).toBe("natural");
     expect(sanitizeSettings({ bufferFrames: 256 }).bufferFrames).toBe(256);
     expect(sanitizeSettings({ bufferFrames: -1 }).bufferFrames).toBe(0);
     expect(sanitizeSettings({ bufferFrames: 100_000 }).bufferFrames).toBe(0);
