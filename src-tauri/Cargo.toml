@@ -27,6 +27,8 @@ altered-os-aac = { path = "os-aac" }
 mp4 = "0.14"
 # Video pictures through the decoders built into the OS (see os-video/).
 altered-os-video = { path = "os-video" }
+# Optional pure-Rust AAC encoder (feature `pure-aac`; MIT OR Apache-2.0, no unsafe).
+filmcraft-aac = { version = "0.9", optional = true }
 tauri = { version = "2", features = [] }
 # VST3 plug-in hosting, run in a separate process (see plughost/).
 altered-plughost = { path = "plughost" }
@@ -84,6 +86,9 @@ unsafe_code = "forbid"
 asio = ["cpal/asio"]
 # Video pictures on macOS (AVFoundation). Off until the decoder has been built on a Mac.
 apple-video = ["altered-os-video/apple"]
+# AAC (M4A and .aac) written by a pure-Rust encoder on every system, instead of the
+# Windows-only system encoder. Off by default: nothing changes unless it is turned on.
+pure-aac = ["dep:filmcraft-aac"]
 
 # Dev builds: the audio crates (decoders, resampler, FFT, audio I/O)
 # are optimized and our own code lightly, so playback and mixdowns run

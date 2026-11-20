@@ -12,8 +12,33 @@
 //! outside the gap is added back, drawn from the same model so it joins
 //! cleanly. The noise comes from a fixed seed, so the same selection always
 //! gives the same result.
+//!
+//! The texture choice decides whether that noise goes in: Natural adds it
+//! (the gap sounds like the room around it), Smooth leaves it out (the
+//! cleanest curve, which can sound like a short quiet dip on long gaps but
+//! never adds hiss of its own).
 
 use super::fill_span;
+
+/// How the middle of a filled gap sounds.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FillTexture {
+    /// Matched noise from the sound around the gap is added back.
+    #[default]
+    Natural,
+    /// Only the fitted curve: no noise is added.
+    Smooth,
+}
+
+impl FillTexture {
+    /// Reads the name the interface sends; anything unknown is Natural.
+    pub fn from_name(name: Option<&str>) -> Self {
+        match name {
+            Some(n) if n.eq_ignore_ascii_case("smooth") => Self::Smooth,
+            _ => Self::Natural,
+        }
+    }
+}
 
 /// Samples of context read on each side, at 48 kHz (scaled for other rates).
 pub const CONTEXT_48K: usize = 1024;
@@ -98,7 +123,14 @@ fn levinson(r: &[f64], p: usize) -> Option<Vec<f64>> {
 /// Fills `x[s..e]` from the sound on both sides. Returns false (and leaves `x`
 /// alone) when there is nothing to fit from: no room on a side, or silence.
 /// Short of context the fill falls back to the plain curve of `fill_span`.
-pub fn fill_gap(x: &mut [f32], s: usize, e: usize, rate: u32, seed: u64) -> bool {
+pub fn fill_gap(
+    x: &mut [f32],
+    s: usize,
+    e: usize,
+    rate: u32,
+    seed: u64,
+    texture: FillTexture,
+) -> bool {
     if e <= s || s < 2 || e + 2 > x.len() {
         return false;
     }
@@ -195,7 +227,10 @@ pub fn fill_gap(x: &mut [f32], s: usize, e: usize, rate: u32, seed: u64) -> bool
 
     // Noise at the level measured outside, joined to both sides by the same model.
     let ms = n as f64 * 1000.0 / f64::from(rate.max(1));
-    let gain = ((ms - 1.0) / 4.0).clamp(0.0, 1.0);
+    let gain = match texture {
+        FillTexture::Natural => ((ms - 1.0) / 4.0).clamp(0.0, 1.0),
+        FillTexture::Smooth => 0.0,
+    };
     if gain > 0.0 && sigma.is_finite() {
         let mut rng = Rng(seed ^ 0xA5A5_5A5A_1234_5678);
         let mut z: Vec<f64> = (0..n).map(|_| rng.normal()).collect();
@@ -251,7 +286,7 @@ mod tests {
             let (s, e) = (10_000, 10_000 + n);
             let mut x = clean.clone();
             click(&mut x, s, e);
-            assert!(fill_gap(&mut x, s, e, rate, 1));
+            assert!(fill_gap(&mut x, s, e, rate, 1, FillTexture::Natural));
             let ratio = rms(&x[s..e]) / rms(&clean[s..e]);
             assert!((0.5..1.8).contains(&ratio), "{ms} ms: level {ratio}");
             let peak = x[s..e].iter().fold(0f32, |m, v| m.max(v.abs()));
@@ -273,7 +308,7 @@ mod tests {
         let (s, e) = (9_000, 9_000 + n);
         let mut x = clean.clone();
         click(&mut x, s, e);
-        assert!(fill_gap(&mut x, s, e, rate, 9));
+        assert!(fill_gap(&mut x, s, e, rate, 9, FillTexture::Natural));
         let step = |a: f32, b: f32| (a - b).abs();
         let typical = (1..2000)
             .map(|i| step(clean[s - i], clean[s - i - 1]))
@@ -288,7 +323,14 @@ mod tests {
         let run = |seed| {
             let mut x = clean.clone();
             click(&mut x, 9_000, 10_200);
-            assert!(fill_gap(&mut x, 9_000, 10_200, 48_000, seed));
+            assert!(fill_gap(
+                &mut x,
+                9_000,
+                10_200,
+                48_000,
+                seed,
+                FillTexture::Natural
+            ));
             x
         };
         assert_eq!(run(4), run(4));
@@ -300,7 +342,14 @@ mod tests {
         let clean = bed(20_000, 11);
         let mut x = clean.clone();
         click(&mut x, 9_000, 9_048);
-        assert!(fill_gap(&mut x, 9_000, 9_048, 48_000, 1));
+        assert!(fill_gap(
+            &mut x,
+            9_000,
+            9_048,
+            48_000,
+            1,
+            FillTexture::Natural
+        ));
         let err = (0..48)
             .map(|i| (x[9_000 + i] - clean[9_000 + i]).abs())
             .fold(0f32, f32::max);
@@ -308,19 +357,82 @@ mod tests {
     }
 
     #[test]
+    fn smooth_adds_no_noise_and_natural_does() {
+        let rate = 48_000;
+        let n = 2_880; // 60 ms
+        let clean = bed(20_000 + n, 21);
+        let (s, e) = (10_000, 10_000 + n);
+        let run = |t: FillTexture, seed: u64| {
+            let mut x = clean.clone();
+            click(&mut x, s, e);
+            assert!(fill_gap(&mut x, s, e, rate, seed, t));
+            x
+        };
+        // Smooth ignores the seed: no noise is drawn.
+        assert_eq!(run(FillTexture::Smooth, 1), run(FillTexture::Smooth, 2));
+        // Natural fills the middle of a long gap louder than Smooth's dip.
+        let nat = run(FillTexture::Natural, 1);
+        let smo = run(FillTexture::Smooth, 1);
+        let mid = s + n / 4..e - n / 4;
+        assert!(
+            rms(&nat[mid.clone()]) > 1.5 * rms(&smo[mid]),
+            "natural should carry the room noise"
+        );
+        // Both leave the audio outside the gap alone and join without a jump.
+        for x in [&nat, &smo] {
+            assert_eq!(x[..s], clean[..s]);
+            assert_eq!(x[e..], clean[e..]);
+            assert!(x[s..e].iter().all(|v| v.is_finite()));
+        }
+    }
+
+    #[test]
+    fn texture_names_read_as_expected() {
+        assert_eq!(FillTexture::from_name(Some("smooth")), FillTexture::Smooth);
+        assert_eq!(FillTexture::from_name(Some("Smooth")), FillTexture::Smooth);
+        assert_eq!(
+            FillTexture::from_name(Some("natural")),
+            FillTexture::Natural
+        );
+        assert_eq!(FillTexture::from_name(Some("wobbly")), FillTexture::Natural);
+        assert_eq!(FillTexture::from_name(None), FillTexture::Natural);
+    }
+
+    #[test]
     fn silence_and_short_context_fall_back_instead_of_failing() {
         let mut quiet = vec![0.0f32; 20_000];
         quiet[9_000..9_100].fill(0.5);
-        assert!(fill_gap(&mut quiet, 9_000, 9_100, 48_000, 1));
+        assert!(fill_gap(
+            &mut quiet,
+            9_000,
+            9_100,
+            48_000,
+            1,
+            FillTexture::Natural
+        ));
         assert!(quiet.iter().all(|v| v.is_finite()));
         // Too little context for the fit: the plain curve is used.
         let mut short = bed(300, 2);
         click(&mut short, 150, 160);
-        assert!(fill_gap(&mut short, 150, 160, 48_000, 1));
+        assert!(fill_gap(
+            &mut short,
+            150,
+            160,
+            48_000,
+            1,
+            FillTexture::Natural
+        ));
         assert!(short.iter().all(|v| v.is_finite()));
         // No room at all.
         let mut edge = bed(300, 2);
-        assert!(!fill_gap(&mut edge, 1, 5, 48_000, 1));
-        assert!(!fill_gap(&mut edge, 10, 10, 48_000, 1));
+        assert!(!fill_gap(&mut edge, 1, 5, 48_000, 1, FillTexture::Natural));
+        assert!(!fill_gap(
+            &mut edge,
+            10,
+            10,
+            48_000,
+            1,
+            FillTexture::Natural
+        ));
     }
 }

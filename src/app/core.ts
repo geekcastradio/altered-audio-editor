@@ -967,9 +967,9 @@ export function waveRoomTone(start: number, end: number): Promise<RoomToneResult
   return invoke<RoomToneResult>("wave_room_tone", { start, end });
 }
 
-/** Fill Single Click: `start..end` (100 ms or less) filled from the audio each side, for replaceRange. */
-export function waveFillClick(start: number, end: number): Promise<SpectralResult> {
-  return invoke<SpectralResult>("wave_fill_click", { start, end });
+/** Fill Single Click: `start..end` (100 ms or less) filled from the audio each side, for replaceRange. `texture` Natural adds matched room noise in the gap, Smooth adds none. */
+export function waveFillClick(start: number, end: number, texture: "natural" | "smooth" = "natural"): Promise<SpectralResult> {
+  return invoke<SpectralResult>("wave_fill_click", { start, end, texture });
 }
 
 export interface PitchReport {

@@ -15,7 +15,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use super::spectral::{by_pairs, render_n, snapshot, write_n, SpectralResult};
 use super::wave::OpenWave;
-use crate::dsp::effects::{context_wanted, fill_gap, ChainProcessor};
+use crate::dsp::effects::{context_wanted, fill_gap, ChainProcessor, FillTexture};
 use crate::dsp::roomtone;
 use crate::export::mixdown;
 use crate::session::model::EffectChain;
@@ -292,9 +292,11 @@ pub async fn wave_fill_click(
     wave: State<'_, OpenWave>,
     start: u64,
     end: u64,
+    texture: Option<String>,
 ) -> Result<SpectralResult, String> {
     let session = snapshot(&wave)?;
     let dir = crate::commands::cache::cache_root(&app)?.join("wave-fx");
+    let texture = FillTexture::from_name(texture.as_deref());
     spawn_blocking(move || -> Result<SpectralResult, String> {
         let rate = session.sample_rate;
         let total = mixdown::session_end(&session);
@@ -326,7 +328,7 @@ pub async fn wave_fill_click(
             let mut ch: Vec<f32> = audio.iter().skip(c).step_by(n).copied().collect();
             // The same selection always gives the same fill; each channel draws its own noise.
             let seed = start ^ (c as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
-            if !fill_gap(&mut ch, s, e, rate, seed) {
+            if !fill_gap(&mut ch, s, e, rate, seed, texture) {
                 return Err(
                     "The click is too close to the start or end of the file to fill.".into(),
                 );

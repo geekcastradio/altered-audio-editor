@@ -66,6 +66,7 @@ dependencies = [
  "cpal",
  "deep-filter-rt",
  "ebur128",
+ "filmcraft-aac",
  "flacenc",
  "fs4",
  "hound",
@@ -1522,6 +1523,22 @@ dependencies = [
  "cfg-if",
  "libc",
 ]
+
+[[package]]
+name = "filmcraft-aac"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "320f035b1c55004b37025f8db667f908bc6fafe98fbe0b1ab8efcdf559c7440a"
+dependencies = [
+ "filmcraft-bitstream",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "filmcraft-bitstream"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08f8be9fae696d78e233591b4d57871c39f15ac0ac7445168356cda705efa499"
 
 [[package]]
 name = "find-msvc-tools"
@@ -3941,7 +3958,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ad9c5423459fa2f729b8d9235fab810aa29628b171467744fc86d21460ad70d"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.15.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",

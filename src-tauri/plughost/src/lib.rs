@@ -21,6 +21,13 @@
 // unsigned enums, pointer types), so casts that do nothing on one system
 // are needed on another.
 #![allow(clippy::unnecessary_cast)]
+// Every unsafe operation sits in its own `unsafe { }` block, even inside an
+// `unsafe fn`, and every block and `unsafe impl` carries a `// SAFETY:`
+// comment saying why it holds. Clippy (run by CI and ship.ps1) fails the
+// build on a block without one, so new unsafe code has to explain itself.
+#![deny(unsafe_op_in_unsafe_fn)]
+#![deny(clippy::undocumented_unsafe_blocks)]
+#![deny(clippy::missing_safety_doc)]
 
 pub mod com;
 pub mod editor;
@@ -60,7 +67,9 @@ pub fn main_with_args(args: &[String]) -> Option<i32> {
 /// like), as every Windows host does.
 #[cfg(windows)]
 fn init_com() {
-    // SAFETY: called once, on the main thread, before any plug-in loads.
+    // SAFETY: called once, on the main thread, before any plug-in loads;
+    // OleInitialize takes a reserved pointer that must be null. A failure
+    // (already initialized) is harmless and needs no cleanup here.
     unsafe {
         windows_sys::Win32::System::Ole::OleInitialize(std::ptr::null());
     }

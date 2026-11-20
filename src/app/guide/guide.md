@@ -290,6 +290,7 @@ Drag the level knob in the corner of the view to turn the selection, or the whol
 - The waveform redraws at the new height while you drag, so you can judge the level by eye, and the change applies when you let go.
 - Effects > Fill Single Click repairs one selected click, pop or burst, up to 100 ms, so two clicks close together can go in one selection.
 - It listens to the sound on each side, builds the missing stretch from it and adds a little noise at the level of the room so the repair does not sound like a gap.
+- Edit > Settings > Effects > Fill Single Click texture picks how the repair sounds. Natural (the default) adds that room noise. Smooth adds none, which suits very clean or very quiet recordings, though a longer repair can sound like a short dip.
 - Select the next click and press Shift+R to repeat it, or use Ctrl+Alt+U.
 
 Edits here change the file when you save it. Changes to a file used by a session show up in the session once saved.

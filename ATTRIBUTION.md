@@ -28,9 +28,9 @@ Most dependencies are MIT or Apache-2.0 and are listed in `Cargo.lock` and `pack
 
 | Library | License | Use |
 | --- | --- | --- |
-| LAME 3.100 (via `mp3lame-sys` and `mp3lame-encoder`) | LGPL-2.0-or-later (LAME); MIT (bindings) | MP3 encoding. Built from source and linked into the app; LGPL is compatible with the app's GPL-3.0-or-later. |
+| LAME 3.100 (via `mp3lame-sys` and `mp3lame-encoder`) | LGPL-2.0-or-later (LAME); LGPL-3.0 (the two Rust binding crates, as their `Cargo.toml` declares) | MP3 encoding. Built from source and linked into the app; LGPL-2.0-or-later and LGPL-3.0 are both compatible with the app's GPL-3.0-or-later. The app's source is public, which meets the relinking terms. |
 | `flacenc` | Apache-2.0 | FLAC encoding. |
-| `opus-decoder` | MIT or Apache-2.0 | Opus decoding. A patched copy lives in `src-tauri/vendor/opus-decoder` (faster forward FFT through `rustfft`); see the note there. |
+| `opus-decoder` | MIT or Apache-2.0; its README says it ports algorithms from libopus (BSD-3-Clause) | Opus decoding. A patched copy lives in `src-tauri/vendor/opus-decoder` (faster forward FFT through `rustfft`); see the note there. |
 | ASIO SDK 2.3 (Steinberg, via `cpal`'s `asio` feature, Windows release builds only) | GPL-3.0 (dual licensed by Steinberg; we use the GPLv3 option) | Talking to ASIO audio drivers. ASIO is a trademark of Steinberg Media Technologies GmbH. We do not use the ASIO logo. |
 | `fs4` | MIT or Apache-2.0 | Asking the operating system how much free space a drive has, for the status bar. |
 | `zip` | MIT | Reading zip downloads of recordings, and writing and reading settings backups. |
@@ -41,4 +41,7 @@ Most dependencies are MIT or Apache-2.0 and are listed in `Cargo.lock` and `pack
 | `nnnoiseless` (RNNoise, Xiph.Org) | BSD-3-Clause, including the trained model weights | Speech Denoiser: removes background noise from speech. The notice is reproduced in `docs/THIRD-PARTY-nnnoiseless.md`; the license forbids using Xiph.Org's name to endorse the app. Compatible with the app's GPL-3.0-or-later. |
 | `deep-filter-rt` (DeepFilterNet3, Hendrik Schröter), with `tract` | MIT or Apache-2.0, including the trained model weights | Speech Denoiser (High Quality): removes harder background noise from speech. Pure Rust, the model is built in, nothing is downloaded. The notice is reproduced in `docs/THIRD-PARTY-deepfilternet.md`. Compatible with the app's GPL-3.0-or-later. |
 | `windows` (Windows only) | MIT or Apache-2.0 | Calls the AAC encoder built into Windows (Media Foundation) for M4A export. No AAC encoder is bundled; the operating system provides it. |
+| `filmcraft-aac` and `filmcraft-bitstream` (optional, `pure-aac` feature only) | MIT OR Apache-2.0 | A pure-Rust AAC-LC encoder (clean-room, from ISO/IEC 14496-3; no `unsafe`) used instead of the Windows system encoder when the program is built with `--features pure-aac`. Off in release builds. See `docs/codecs.md`, including the patent note. |
+| Other MPL-2.0 crates (`cssparser`, `selectors` and their helpers, pulled in through Tauri's `tauri-utils`) | MPL-2.0 | Used unmodified. MPL-2.0 applies to those files only and is compatible with GPL-3.0-or-later. |
+| `webpki-root-certs` | CDLA-Permissive-2.0 | Root certificate data pulled in through Tauri's HTTP client (`reqwest`), which the Check for Updates feature uses. Data license; permissive. The program's own code makes no other network calls (see `PRIVACY.md`). |
 
