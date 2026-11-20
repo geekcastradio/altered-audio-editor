@@ -1,4 +1,7 @@
-## Altered Audio Editor 0.49.0 (in progress)
+## Altered Audio Editor 0.49.0
+
+### New
+- **Import OpenTimelineIO files (issue 120).** File > Import Session (.otio) opens a timeline another editor saved, such as Kdenlive, as a new unsaved session. Audio tracks, clips (their place, length and where in the file they start), gaps and markers come across. Fades, volume, pan, effects, transitions and speed changes are not in the format in a form every editor agrees on, so they are left out, and the notice after import says what was left out. A clip whose file cannot be found is still placed so you can relink it. It reads timelines AAE writes (File > Export > Edit Lists) and back.
 
 ### Changed
 - The Voice Chain, Batch Convert and QuickPass group at the bottom left can now be dragged down to just its tab strip when you are not using it. Its panels scroll when the group is short.

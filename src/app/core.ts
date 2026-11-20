@@ -583,6 +583,25 @@ export function sessionImportRpp<T>(path: string): Promise<SessionResult<T> & { 
   return invoke<SessionResult<T> & { report: RppReport }>("session_import_rpp", { path });
 }
 
+export interface OtioReport {
+  tracks: number;
+  clips: number;
+  markers: number;
+  /** What the file had that is not brought in. */
+  leftOut: string[];
+  missingFiles: string[];
+}
+
+/** Opens the picker for OpenTimelineIO (.otio) files. */
+export function sessionPickOtio(): Promise<string | null> {
+  return invoke<string | null>("session_pick_otio");
+}
+
+/** Imports an .otio timeline as the new, unsaved session. */
+export function sessionImportOtio<T>(path: string): Promise<SessionResult<T> & { report: OtioReport }> {
+  return invoke<SessionResult<T> & { report: OtioReport }>("session_import_otio", { path });
+}
+
 export interface ChainLoadedDoc {
   chain: import("./chains").ChainFile;
   problems: { step: number | null; message: string }[];

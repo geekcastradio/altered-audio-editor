@@ -68,7 +68,7 @@ fn samples(seconds: f64, rate: u32) -> u64 {
     }
 }
 
-fn candidates(file: &str, base: &Path) -> Vec<PathBuf> {
+pub(crate) fn candidates(file: &str, base: &Path) -> Vec<PathBuf> {
     let unified = file.replace('\\', "/");
     let mut out = Vec::new();
     let p = PathBuf::from(&unified);
@@ -88,7 +88,13 @@ fn candidates(file: &str, base: &Path) -> Vec<PathBuf> {
     out
 }
 
-fn media_for(file: &str, base: &Path, rate: u32, channels: u16, min_len: u64) -> (MediaRef, bool) {
+pub(crate) fn media_for(
+    file: &str,
+    base: &Path,
+    rate: u32,
+    channels: u16,
+    min_len: u64,
+) -> (MediaRef, bool) {
     for p in candidates(file, base) {
         if p.is_file() {
             if let Ok(info) = probe(&p) {

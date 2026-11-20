@@ -170,6 +170,7 @@ describe("menu model", () => {
       "edit.repeat-last-dialog",
       "file.import-sesx",
       "file.import-rpp",
+      "file.import-otio",
       "multitrack.play-pause",
       "multitrack.stop",
       "transport.go-start",
