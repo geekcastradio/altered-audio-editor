@@ -20,6 +20,7 @@ pub mod engine;
 pub mod events;
 pub mod export;
 pub mod library;
+pub mod otio_import;
 pub mod paths;
 pub mod peaks;
 pub mod plugins;
@@ -311,6 +312,8 @@ pub fn run() {
             commands::chain::chain_load,
             commands::session::session_pick_rpp,
             commands::session::session_import_rpp,
+            commands::session::session_pick_otio,
+            commands::session::session_import_otio,
             commands::session::session_export_sesx,
             commands::app::app_set_title,
             commands::workspace::workspace_load,

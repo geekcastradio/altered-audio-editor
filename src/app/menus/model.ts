@@ -89,6 +89,7 @@ export const MENUS: readonly Menu[] = [
       item("file.import-folder", "Import Folder..."),
       item("file.import-sesx", "Import Session (.sesx)..."),
       item("file.import-rpp", "Import Session (.rpp)..."),
+      item("file.import-otio", "Import Session (.otio)..."),
       item("file.edit-tags", "Edit File Tags..."),
       sep,
       item("file.save", "Save"),

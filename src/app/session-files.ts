@@ -14,7 +14,7 @@
  *   normally; the user chooses to recover or discard it.
  */
 
-import type { NewSessionOptions, Recoverable, RppReport, SesxReport, SessionResult } from "./core";
+import type { NewSessionOptions, OtioReport, Recoverable, RppReport, SesxReport, SessionResult } from "./core";
 import type { UndoStack } from "../commands";
 import type { StashedHistory } from "../commands/undo-stack";
 import { sessionEnd } from "../stores/session";
@@ -39,6 +39,8 @@ export interface SessionFileBackend {
   importSesx(path: string): Promise<SessionResult<SessionDoc> & { report: SesxReport }>;
   pickRpp?(): Promise<string | null>;
   importRpp?(path: string): Promise<SessionResult<SessionDoc> & { report: RppReport }>;
+  pickOtio?(): Promise<string | null>;
+  importOtio?(path: string): Promise<SessionResult<SessionDoc> & { report: OtioReport }>;
   /** Sets a copy of the session in front aside, so another can take its place. Without these, one session at a time. */
   park?(): Promise<void>;
   /** Brings a set-aside session to the front. */
@@ -123,6 +125,18 @@ export function rppSummary(r: RppReport): string {
   const parts = [`Imported ${count(r.tracks, "track", "tracks")} and ${count(r.clips, "clip", "clips")}.`];
   if (r.markers) parts.push(`${count(r.markers, "marker", "markers")} came across.`);
   if (r.stretched) parts.push(`${count(r.stretched, "clip keeps its", "clips keep their")} speed change as a stretch.`);
+  if (r.leftOut.length) parts.push(`Left out: ${r.leftOut.join(", ")}.`);
+  if (r.missingFiles.length > 0) {
+    const n = r.missingFiles.length;
+    parts.push(`${n} media ${n === 1 ? "file was" : "files were"} not found.`);
+  }
+  return parts.join(" ");
+}
+
+export function otioSummary(r: OtioReport): string {
+  const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const parts = [`Imported ${count(r.tracks, "track", "tracks")} and ${count(r.clips, "clip", "clips")}.`];
+  if (r.markers) parts.push(`${count(r.markers, "marker", "markers")} came across.`);
   if (r.leftOut.length) parts.push(`Left out: ${r.leftOut.join(", ")}.`);
   if (r.missingFiles.length > 0) {
     const n = r.missingFiles.length;
@@ -250,6 +264,7 @@ export class SessionFiles {
     // A .sesx in Open Recent is imported again, as a new unsaved session.
     if (/\.sesx$/i.test(target)) return this.importSesx(target);
     if (/\.rpp$/i.test(target)) return this.importRpp(target);
+    if (/\.otio$/i.test(target)) return this.importOtio(target);
     // Already open: bring it to the front.
     const key = (p: string | null) => (p ?? "").replace(/\\/g, "/").toLowerCase();
     if (key(this.d.session.path) === key(target)) return true;
@@ -304,6 +319,26 @@ export class SessionFiles {
     await this.replace({ ...r, missing: [] }, "Import Session", true);
     this.addRecent(target);
     this.d.notice(rppSummary(r.report));
+    return true;
+  }
+
+  /** Brings in an .otio timeline as a new, unsaved session. */
+  async importOtio(path?: string): Promise<boolean> {
+    const b = this.d.backend;
+    if (!b.pickOtio || !b.importOtio) return false;
+    if (!(await this.makeRoom())) return false;
+    const target = path ?? (await b.pickOtio());
+    if (!target) return false;
+    let r: SessionResult<SessionDoc> & { report: OtioReport };
+    try {
+      r = await b.importOtio(target);
+    } catch (e) {
+      this.dropRecent(target);
+      throw e;
+    }
+    await this.replace({ ...r, missing: [] }, "Import Session", true);
+    this.addRecent(target);
+    this.d.notice(otioSummary(r.report));
     return true;
   }
 

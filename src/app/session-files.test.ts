@@ -7,7 +7,7 @@ import { UndoStack } from "../commands";
 import { MediaPool } from "../stores/media-pool";
 import { SessionStore, type SessionDoc } from "../stores/session";
 import type { Recoverable, SessionResult } from "./core";
-import { displayName, isAudioFile, isBlank, planOpen, SessionFiles, sesxSummary, type Choice, type SessionFileBackend } from "./session-files";
+import { displayName, isAudioFile, isBlank, otioSummary, planOpen, SessionFiles, sesxSummary, type Choice, type SessionFileBackend } from "./session-files";
 
 function doc(name = "Untitled Session", media: SessionDoc["media"] = []): SessionDoc {
   return {
@@ -324,5 +324,12 @@ describe("sesxSummary", () => {
     expect(sesxSummary(base)).not.toContain("marker");
     expect(sesxSummary({ ...base, markers: 1 })).toContain("1 marker came across.");
     expect(sesxSummary({ ...base, markers: 4 })).toContain("4 markers came across.");
+  });
+});
+
+describe("otioSummary", () => {
+  it("names what came across and what did not", () => {
+    const text = otioSummary({ tracks: 2, clips: 5, markers: 1, leftOut: ["transitions"], missingFiles: ["a.wav"] });
+    expect(text).toBe("Imported 2 tracks and 5 clips. 1 marker came across. Left out: transitions. 1 media file was not found.");
   });
 });

@@ -754,6 +754,61 @@ pub async fn session_import_rpp(
     })
 }
 
+/// Opens the picker for OpenTimelineIO (`.otio`) files.
+#[tauri::command]
+pub async fn session_pick_otio(app: AppHandle) -> Result<Option<PathBuf>, String> {
+    let parent = app.get_webview_window("main");
+    spawn_blocking(move || {
+        let mut d = app
+            .dialog()
+            .file()
+            .set_title("Import Session")
+            .add_filter("OpenTimelineIO (.otio)", &["otio"]);
+        if let Some(w) = parent.as_ref() {
+            d = d.set_parent(w);
+        }
+        d.blocking_pick_file()
+            .and_then(|f| f.as_path().map(|p| p.to_path_buf()))
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Serialize)]
+pub struct OtioImportedResult {
+    #[serde(flatten)]
+    pub result: SessionWithPath,
+    pub report: crate::otio_import::OtioReport,
+}
+
+/// Imports an `.otio` timeline as a new, unsaved session.
+#[tauri::command]
+pub async fn session_import_otio(
+    app: AppHandle,
+    path: PathBuf,
+) -> Result<OtioImportedResult, String> {
+    let imported = spawn_blocking(move || crate::otio_import::import(&path))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    app.state::<crate::engine::Transport>().stop();
+    let open = app.state::<OpenSession>();
+    let mut s = open.0.lock().map_err(|e| e.to_string())?;
+    if let Ok(dir) = autosave_dir(&app) {
+        file::clear_autosave(&dir, s.session.id);
+    }
+    s.session = imported.session.clone();
+    s.path = None;
+    Ok(OtioImportedResult {
+        result: SessionWithPath {
+            session: imported.session,
+            path: None,
+            missing: imported.missing,
+        },
+        report: imported.report,
+    })
+}
+
 #[derive(Debug, Serialize)]
 pub struct SesxExported {
     pub path: PathBuf,
