@@ -1799,3 +1799,7 @@ The Release workflow also accepts a manual start (Actions, Release, Run workflow
 ## 2026-11-20: A tag push for an already released version builds nothing
 
 Publishing a draft made by a manual start creates the tag, and the Release workflow also starts on tag pushes, so each publish began a second build that would have made a duplicate draft (seen with 0.44.0 and 0.45.0). The first job now checks whether a release for the pushed tag already exists. If it does, the run says so and every build job is skipped. Manual starts and a fresh tag with no release behave as before. Limit: a draft release is invisible to the workflow's read-only token, so a tag pushed while only a draft exists would still build. That is the old tag-first route and is rare now.
+
+## 2026-11-20: Drag the edges of a time selection (issue 125)
+
+`src/panels/editor/selection-edge.ts` holds the pure part: which border the pointer is over (`edgeAt`, within 6 pixels, so reach follows zoom) and which border stays put (`anchorFor`). The Waveform Editor and the multitrack Time Selection tool both start their normal range drag with the opposite border as the anchor, so snapping, edge scrolling and the zero-crossing snap all work unchanged. A press-and-release on a border changes nothing. The hover cursor is a resize arrow. Only the Time Selection tool in the multitrack view picks up borders: with the Move tool a press on empty space still draws a box, because clips and the box select need that press. Reason: the reporter's other half of the request. The keyboard half shipped in 0.43.0.
