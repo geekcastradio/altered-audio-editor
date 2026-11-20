@@ -15,6 +15,7 @@
   import { KIND_COLORS, markerAt } from "../markers/markers";
   import { markerMenuItems } from "../markers/marker-menu";
   import { Scrubber } from "./scrubber";
+  import { anchorFor, edgeAt } from "./selection-edge";
   import { followEffect } from "./follow";
   import type { ActionRegistry } from "../../app/actions";
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
@@ -605,6 +606,12 @@
     if (now && now.start === start && now.end === end) setView({ selection: { start: a, end: b }, ...(tp?.playing ? {} : { playhead: a }) });
   }
 
+  /** A resize cursor over a border of the selection, so it is clear it can be grabbed. */
+  function onHover(e: PointerEvent) {
+    if (e.buttons !== 0 || !canvas) return;
+    canvas.style.cursor = edgeAt(selection, xIn(e, canvas), view) ? "ew-resize" : "";
+  }
+
   function onPointer(e: PointerEvent) {
     if (!doc || e.button !== 0) return;
     const el = e.currentTarget as HTMLElement;
@@ -619,17 +626,24 @@
       const s = clamp(Math.round(sampleAt(cx - el.getBoundingClientRect().left, v)));
       return snapOn && doc ? clamp(snapToMarkers(s, doc.markers ?? [], Math.round(8 * v.spp))) : s;
     };
-    const anchor = e.shiftKey && selection ? (Math.abs(at(e.clientX) - selection.start) < Math.abs(at(e.clientX) - selection.end) ? selection.end : selection.start) : at(e.clientX);
-    let dragged = e.shiftKey && !!selection;
+    // Pressing on a border of the current selection picks that border up; the other one stays put.
+    const grab = !e.shiftKey && selection ? edgeAt(selection, xIn(e, el), v) : null;
+    const anchor = grab && selection ? anchorFor(selection, grab) : e.shiftKey && selection ? (Math.abs(at(e.clientX) - selection.start) < Math.abs(at(e.clientX) - selection.end) ? selection.end : selection.start) : at(e.clientX);
+    let dragged = (e.shiftKey && !!selection) || !!grab;
+    let grabMoved = false;
+    const startX = e.clientX;
     const move = (ev: PointerEvent) => {
       const s = at(ev.clientX);
+      if (grab && !grabMoved && Math.abs(ev.clientX - startX) < 3) return;
       if (!dragged && Math.abs(s - anchor) / v.spp < 3) return;
       dragged = true;
+      grabMoved = true;
       setView({ selection: { start: Math.min(anchor, s), end: Math.max(anchor, s) } });
     };
     const up = (ev: PointerEvent) => {
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", up, true);
+      if (grab && !grabMoved && Math.abs(ev.clientX - startX) < 3) return; // grabbed and let go: nothing changes
       if (dragged) {
         move(ev);
         const sel = doc?.view.selection;
@@ -881,7 +895,7 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="area" bind:this={area} bind:clientHeight={height} onwheel={onWheel} oncontextmenu={onMenu}>
       <div class="measure" bind:clientWidth={width} style:right="{SCALE_W}px"></div>
-      <canvas bind:this={canvas} onpointerdown={onPointer} ondblclick={() => run("edit.select-all")}></canvas>
+      <canvas bind:this={canvas} onpointerdown={onPointer} onpointermove={onHover} ondblclick={() => run("edit.select-all")}></canvas>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       {#if ed.showHud}
         <div class="hud" class:active={levelDrag} onpointerdown={onLevelPointer} title="Drag right or up to turn the selection (or the whole file) up, left or down to turn it down. Release to apply. Shift for fine steps.">

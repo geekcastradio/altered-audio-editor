@@ -337,6 +337,8 @@
   let format = $state<string | null>(null);
   let freeText = $state<string | null>(null);
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+  let centerNotice = $state<string | null>(null);
+  let centerTimer: ReturnType<typeof setTimeout> | undefined;
 
   let errorTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -367,6 +369,17 @@
     notice = text;
     clearTimeout(noticeTimer);
     noticeTimer = setTimeout(() => (notice = null), 6000);
+  }
+
+  /**
+   * A message in the middle of the window for results the person should not miss
+   * (export finished or stopped, a session upgraded). It does not block work: click
+   * it to close it, or it clears itself.
+   */
+  function showCenterNotice(text: string) {
+    centerNotice = text;
+    clearTimeout(centerTimer);
+    centerTimer = setTimeout(() => (centerNotice = null), 12000);
   }
 
   /** Replaces any zips with the audio extracted from them (into a folder beside each zip). */
@@ -735,8 +748,8 @@
 
   /**
    * File > Open. Sessions open as usual. Audio files go into the Files
-   * panel; when the session has no clips yet, each one is also placed on
-   * its own track at the start so it can be played and edited right away.
+   * panel; one file also opens in the Waveform editor. A multitrack is never
+   * built from them here: that happens when files are dropped on the Editor.
    */
   async function openAny(): Promise<void> {
     await openPaths(await filePickOpen());
@@ -824,7 +837,7 @@
   }
 
   async function openAudio(paths: string[]): Promise<void> {
-    // One audio file opens as itself in the Waveform editor. Two or more build a multitrack, below.
+    // One audio file opens as itself in the Waveform editor. Two or more go to the Files panel only, below.
     if (paths.length === 1) {
       const imported = await mediaPool.importPaths(paths, sessionHistory);
       mediaPool.setSelection(imported.ids);
@@ -832,22 +845,13 @@
       files.noteRecent(paths[0]!);
       return;
     }
-    const doc = session.current;
-    if (!doc) return;
-    const empty = doc.tracks.every((t) => t.clips.length === 0);
-    if (empty) {
-      // Each file onto the next empty track (new sessions start with some), then new tracks.
-      for (const [i, p] of paths.entries()) await placeFiles([p], doc.tracks[i]?.id ?? null, 0);
-      await actions.run("view.zoom-session");
-      return;
-    }
+    // Two or more files opened this way (File > Open, a recent file, the file manager) only go
+    // into the Files panel. A multitrack is made when files are dropped onto the Editor together,
+    // or when they are dragged from the Files panel onto tracks.
     const imported = await mediaPool.importPaths(paths, sessionHistory);
     mediaPool.setSelection(imported.ids);
-    showNotice(
-      paths.length === 1
-        ? "Added to the Files panel. Drag it onto a track, or use Insert Files at Playhead."
-        : `Added ${paths.length} files to the Files panel. Drag them onto tracks, or use Insert Files at Playhead.`,
-    );
+    dock.show("files");
+    showNotice(`Added ${paths.length} files to the Files panel. Drag them onto the Editor together to build a multitrack, or open one on its own.`);
   }
 
   let addTracksOpen = $state(false);
@@ -1625,11 +1629,11 @@
         exporting = { title: `Exporting ${i + 1} of ${items.length}: ${m.name}`, progress: i / items.length, floating: true };
         const r = await exportMix(paths[i]!, { range: [m.position, m.position + m.duration], format });
         if (r.cancelled) {
-          showNotice(`Export stopped after ${i} of ${items.length} files.`);
+          showCenterNotice(`Export stopped after ${i} of ${items.length} files.`);
           return;
         }
       }
-      showNotice(`Exported ${items.length} ${items.length === 1 ? "file" : "files"} as ${describeFormat(format, { sampleRate: doc.sample_rate, channels: 2, bitDepth: doc.bit_depth })}.`);
+      showCenterNotice(`Exported ${items.length} ${items.length === 1 ? "file" : "files"} as ${describeFormat(format, { sampleRate: doc.sample_rate, channels: 2, bitDepth: doc.bit_depth })}.`);
     } finally {
       exporting = null;
     }
@@ -1764,7 +1768,7 @@
         ...(what.clips ? { clips: what.clips } : {}),
       });
       if (!r) {
-        showNotice("Mixdown cancelled.");
+        showCenterNotice("Mixdown cancelled.");
         return;
       }
       await transport.stop();
@@ -1772,7 +1776,7 @@
       dock.show("editor");
       actions.invalidate();
       const clipped = r.peak > 1 ? ` It goes above 0 dBFS (peak +${(20 * Math.log10(r.peak)).toFixed(1)} dB); it is kept as float, so nothing is lost, but turn it down before saving to a fixed format.` : "";
-      showNotice(`Mixed down to a new file in the Waveform editor. Save As keeps it.${clipped}`);
+      showCenterNotice(`Mixed down to a new file in the Waveform editor. Save As keeps it.${clipped}`);
     } catch (e) {
       showError(e);
     } finally {
@@ -1863,7 +1867,7 @@
         ...(goal ? { normalize: { lufs: goal.lufs, peak: goal.peak } } : {}),
       });
       if (r.cancelled) {
-        showNotice("Export cancelled. Nothing was saved.");
+        showCenterNotice("Export cancelled. Nothing was saved.");
         return;
       }
       const name = path.split(/[\\/]/).pop();
@@ -1934,12 +1938,12 @@
       if (target === "files-panel") {
         const imported = await mediaPool.importPaths([path], sessionHistory);
         mediaPool.setSelection(imported.ids);
-        showNotice(`Mixed down to ${name} and added it to the Files panel.${chapterNote}${checkNote}${clipped}`);
+        showCenterNotice(`Mixed down to ${name} and added it to the Files panel.${chapterNote}${checkNote}${clipped}`);
       } else if (target === "track") {
         await placeFiles([path], null, what.start);
-        showNotice(`Bounced to ${name} on a new track.${clipped}`);
+        showCenterNotice(`Bounced to ${name} on a new track.${clipped}`);
       } else {
-        showNotice(pack ? `Exported ${name}.${chapterNote}${levelNote}${checkNote}${packNote}${clipped}` : `Exported ${name}.${chapterNote}${levelNote}${checkNote}${clipped}`);
+        showCenterNotice(pack ? `Exported ${name}.${chapterNote}${levelNote}${checkNote}${packNote}${clipped}` : `Exported ${name}.${chapterNote}${levelNote}${checkNote}${clipped}`);
       }
     } catch (e) {
       showError(e);
@@ -1961,7 +1965,7 @@
     if (!doc || exporting) return;
     const tracks = doc.tracks.filter((t) => t.clips.length > 0 && !t.muted);
     if (tracks.length === 0) {
-      showNotice("No unmuted tracks with clips to export.");
+      showCenterNotice("No unmuted tracks with clips to export.");
       return;
     }
     const sp = session.path;
@@ -1981,12 +1985,12 @@
         const path = `${folder}${sep}${fileSafe(doc.name)} - ${String(i + 1).padStart(2, "0")} ${fileSafe(t.name)}.wav`;
         const r = await exportMix(path, { track: t.id });
         if (r.cancelled) {
-          showNotice(`Stem export cancelled after ${done} of ${tracks.length}.`);
+          showCenterNotice(`Stem export cancelled after ${done} of ${tracks.length}.`);
           return;
         }
         done++;
       }
-      showNotice(`Exported ${done} ${done === 1 ? "stem" : "stems"} to ${folder}.`);
+      showCenterNotice(`Exported ${done} ${done === 1 ? "stem" : "stems"} to ${folder}.`);
     } catch (e) {
       showError(e);
     } finally {
@@ -2520,7 +2524,7 @@
         // keeps a copy of the original first; say so afterward, once, in plain words.
         const older = path === null ? await sessionUpgradeNotice().catch(() => null) : null;
         const saved = await sessionSave<SessionDoc, MediaRefDoc>(path, media, libs, settings.current.backups ? settings.current.backupCount : 0);
-        if (older !== null) showNotice("Upgraded from an older version. The original is kept in the Backups folder. Older versions of Altered Audio can't open this session.");
+        if (older !== null) showCenterNotice("Upgraded from an older version. The original is kept in the Backups folder. Older versions of Altered Audio can't open this session.");
         return saved;
       },
       open: (path) => sessionOpen<SessionDoc>(path),
@@ -6973,6 +6977,14 @@
     <DockShell {dock} />
   </main>
 
+  {#if centerNotice}
+    <div class="center-notice" role="status" aria-live="polite">
+      <button type="button" onclick={() => (centerNotice = null)}>
+        <span class="msg">{centerNotice}</span>
+        <span class="hint">Click to close</span>
+      </button>
+    </div>
+  {/if}
   <footer class="status">
     {#if info}
       <span>Core {info.version}</span>
@@ -7508,6 +7520,39 @@
     background: var(--surface-0);
   }
 
+  .center-notice {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 900;
+  }
+  .center-notice button {
+    pointer-events: auto;
+    max-width: min(520px, 80vw);
+    padding: 16px 22px;
+    text-align: left;
+    font: inherit;
+    font-size: 14px;
+    line-height: 1.45;
+    color: var(--text);
+    background: var(--header-b);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+    cursor: pointer;
+  }
+  .center-notice .msg {
+    display: block;
+  }
+  .center-notice .hint {
+    display: block;
+    margin-top: 8px;
+    font-size: 11px;
+    opacity: 0.6;
+  }
   .status {
     display: flex;
     gap: var(--space-4);

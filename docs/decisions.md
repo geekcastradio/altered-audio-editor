@@ -1799,3 +1799,30 @@ The Release workflow also accepts a manual start (Actions, Release, Run workflow
 ## 2026-11-20: A tag push for an already released version builds nothing
 
 Publishing a draft made by a manual start creates the tag, and the Release workflow also starts on tag pushes, so each publish began a second build that would have made a duplicate draft (seen with 0.44.0 and 0.45.0). The first job now checks whether a release for the pushed tag already exists. If it does, the run says so and every build job is skipped. Manual starts and a fresh tag with no release behave as before. Limit: a draft release is invisible to the workflow's read-only token, so a tag pushed while only a draft exists would still build. That is the old tag-first route and is rare now.
+
+## 2026-11-20: Drag the edges of a time selection (issue 125)
+
+`src/panels/editor/selection-edge.ts` holds the pure part: which border the pointer is over (`edgeAt`, within 6 pixels, so reach follows zoom) and which border stays put (`anchorFor`). The Waveform Editor and the multitrack Time Selection tool both start their normal range drag with the opposite border as the anchor, so snapping, edge scrolling and the zero-crossing snap all work unchanged. A press-and-release on a border changes nothing. The hover cursor is a resize arrow. Only the Time Selection tool in the multitrack view picks up borders: with the Move tool a press on empty space still draws a box, because clips and the box select need that press. Reason: the reporter's other half of the request. The keyboard half shipped in 0.43.0.
+
+## 2026-11-20: Kdenlive added as a reference source; OTIO import planned (issue 120)
+
+Steve approved Kdenlive (GPL-3.0-or-later overall, per-file headers vary) as a third reference source, on the same rules as the other two: algorithms and formats only, no interface, workflow or data model, credit in `ATTRIBUTION.md`, ask before porting more than one algorithm, check every file's SPDX header. The goal is the cleanest and cheapest route to each feature, not the most features. OpenTimelineIO import (issue 120) is built from the OTIO JSON spec in Rust, with Kdenlive's own exported files as test samples when available. Export already exists since 0.27.0. Kdenlive reads and writes OTIO since 25.04 (C++ libraries).
+
+## 2026-11-20: Scheduled document reviews
+
+Steve: legal, security, readme and how-to documents are reviewed every 5th release, and every 10th release gets the full review with the licence checks. The list and the schedule are in `docs/doc-review-checklist.md`, and `CLAUDE.md` Conventions points to it. The review is the first item of that release. The first one due is 0.50.0 (full), covering everything since 0.40. Reason: the app and its promises change faster than the documents that describe them, and the privacy, security and licence documents are the ones that cost something when they are wrong.
+
+## 2026-11-20: What is in 1.0
+
+Steve: 1.0 is a fully workable program, as close to 1:1 with the reference editor as possible, that schools can use cleanly. It includes the full Rust interface, video, MIDI tracks and instruments, soundboard live play and localization. Anything that uses AI or makes outside calls comes after 1.0: transcription (Whisper), the Transcript panel, text-based editing, filler word removal, captions from speech, show notes, Music Remover, new speech or enhancement models, RSS.com upload, Podcast Manager sync, the local MCP endpoint. The noise reducers already shipped run on the user's machine and stay. The P7 items in `CLAUDE.md` marked for transcription, text-based editing, Podcast Manager sync, Publish Package upload, Music Remover and the social clip extractor are therefore post-1.0 in practice. Reason: a smaller, finished program that schools can trust is worth more than a longer feature list, and every outside call needs the privacy work to be redone.
+
+Confirmed by Steve the same day: the noise reducer built on nnnoiseless stays in 1.0, and the Chapters and Podcast Publish panels keep their local parts (chapter editing, local export) in 1.0 while the upload and transcript parts come after. DeepFilterNet, which also ships and runs locally, was not named in the answer; it stays as built until Steve says otherwise.
+
+
+## 2026-11-20: centered notices for results people must not miss
+
+Export finished or stopped, stem export, mixdown and the session upgrade message now show in a centered, non-blocking message (`showCenterNotice` in App.svelte). Other notices stay in the status bar. Reason: the status bar notice sat in a corner and was missed. Steve asked for the move.
+
+## 2026-11-20: opening several audio files only fills the Files panel
+
+Supersedes the File > Open entry that placed each audio file on its own track in an empty session. Two or more files opened by File > Open, a recent file or the file manager now go to the Files panel only. A multitrack is made by dropping files on the Editor together or dragging them from the Files panel onto tracks. Reason: Steve found that opening files should not create a session he then has to save or close.

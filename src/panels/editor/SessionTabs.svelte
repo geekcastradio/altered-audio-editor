@@ -32,27 +32,42 @@
 <style>
   .tabs {
     display: flex;
-    gap: 1px;
+    align-items: flex-end;
+    gap: 4px;
     flex: none;
     overflow-x: auto;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface-1);
+    padding: 6px 8px 0;
+    border-bottom: 1px solid var(--border-strong);
+    background: var(--gutter);
   }
   .tab {
     display: flex;
     align-items: center;
-    max-width: 220px;
-    border-right: 1px solid var(--border);
+    min-height: 28px;
+    max-width: 240px;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    background: var(--surface-2);
     color: var(--text-dim);
   }
+  .tab:hover {
+    background: var(--surface-3);
+    color: var(--text);
+  }
   .tab.front {
+    position: relative;
+    margin-bottom: -1px;
+    border-color: var(--border-strong);
+    border-top: 2px solid var(--accent);
     background: var(--surface-0);
     color: var(--text);
-    box-shadow: inset 0 -2px 0 var(--accent);
+    font-weight: 600;
   }
   .name {
     min-width: 0;
-    padding: 4px 4px 4px 10px;
+    padding: 5px 6px 5px 14px;
+    font-weight: inherit;
     border: none;
     background: none;
     color: inherit;
@@ -63,7 +78,7 @@
     cursor: pointer;
   }
   .x {
-    padding: 0 7px;
+    padding: 0 10px 0 6px;
     border: none;
     background: none;
     color: var(--text-faint);

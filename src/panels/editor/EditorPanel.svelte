@@ -74,6 +74,7 @@
   import { quiet, type MeterLevel, type TransportState, type TransportStore } from "../../stores/transport";
   import { channelNames } from "../space/space";
   import { defaultTrackColor, MIN_TRACK_H, trackHeight, formatIn, maxSppFor, rulerTicks, ticksFor, setDisplayTempo, sampleAt, xOf, zoomAround, edgeScrollPx, type Viewport, TRACK_GAP } from "./timeline";
+  import { anchorFor, edgeAt } from "./selection-edge";
 
   interface Props {
     session: SessionStore;
@@ -1159,7 +1160,7 @@
       return;
     }
     if (ed.tool === "time") {
-      hoverCursor = "text";
+      hoverCursor = edgeAt(doc?.view.selection, x, view) ? "ew-resize" : "text";
       return;
     }
     if (ed.tool === "razor") {
@@ -1549,9 +1550,12 @@
       const hit = snap.on && !shift ? nearest(s, targets, SNAP_PX * view.spp) : null;
       return hit ?? s;
     };
-    const anchor = at(e.clientX, e.shiftKey);
+    // Pressing on a border of the current selection picks that border up; the other one stays put.
+    const sel0 = d0.view.selection;
+    const grab = leftEdge === undefined && !e.shiftKey && sel0 ? edgeAt(sel0, e.clientX - left, view) : null;
+    const anchor = grab && sel0 ? anchorFor(sel0, grab) : at(e.clientX, e.shiftKey);
     const startX = e.clientX;
-    let moved = false;
+    let moved = !!grab;
     let lastEv: PointerEvent | null = null;
     const move = (ev: PointerEvent) => {
       lastEv = ev;
