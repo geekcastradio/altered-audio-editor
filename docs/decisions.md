@@ -1826,3 +1826,7 @@ Export finished or stopped, stem export, mixdown and the session upgrade message
 ## 2026-11-20: opening several audio files only fills the Files panel
 
 Supersedes the File > Open entry that placed each audio file on its own track in an empty session. Two or more files opened by File > Open, a recent file or the file manager now go to the Files panel only. A multitrack is made by dropping files on the Editor together or dragging them from the Files panel onto tracks. Reason: Steve found that opening files should not create a session he then has to save or close.
+
+## 2026-11-20: bottom-left panel group can shrink to its tabs
+
+The Voice Chain, Batch Convert and QuickPass minimum height went from 220 to 260 down to 36 (the tab strip), so the group can be dragged down or tucked away. Batch Convert now scrolls when short, like the other two. Reason: Steve could not drag the group down. Other groups keep their minimums until reported.

@@ -71,7 +71,13 @@ pub fn copy_in(paths: &[PathBuf], dir: &Path, keep: &Path) -> CopyResult {
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_default();
-                out.failed.push(format!("{name}: {e}"));
+                // Say which file is missing and where it was expected, not just the system's words.
+                if !src.exists() {
+                    out.failed
+                        .push(format!("{name}: the original is not at {}", src.display()));
+                } else {
+                    out.failed.push(format!("{name}: {e}"));
+                }
                 out.paths.push(src.clone());
             }
         }
@@ -187,6 +193,7 @@ mod tests {
         );
         assert_eq!(r.paths, vec![gone]);
         assert_eq!(r.failed.len(), 1);
+        assert!(r.failed[0].contains("the original is not at"));
         assert!(media_dir(&session, "../x").ends_with("x"));
     }
 }
