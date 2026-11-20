@@ -177,6 +177,8 @@ Full detail, status table, risks and order of work are in `docs/backlog.md` (see
 
 ## Podcast-specific features (phase assignments in spec)
 
+**1.0 scope (decided 2026-11-20):** anything that uses AI or makes outside calls is after 1.0. That covers Text-based editing, filler word removal, transcription (Whisper), Podcast Manager sync, the upload part of Publish Package (including RSS.com), Music Remover and the social clip extractor below, whatever phase number they carry. The rest of this list is unchanged. Video, MIDI tracks, soundboard live play and localization are in 1.0. See `docs/decisions.md`.
+
 These are confirmed podcast-specific additions. Data model fields are scaffolded in P1 even when the feature builds later.
 
 - **Text-based editing (P7):** delete words in the transcript to cut the audio, one undoable step with a short crossfade and a preview. Needs local transcription with word timestamps (off until a model is loaded).
