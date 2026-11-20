@@ -115,7 +115,7 @@ The full guide is built into the app: choose **Help > User Guide**. It is search
 
 - No account and no login. Ever.
 - No telemetry, analytics or tracking. The app makes no network calls on its own.
-- Update checks run only when you click Help > Check for Updates, or if you turn on the weekly check. Nothing installs without your click.
+- Update checks run only when you click Help > Check for Updates, or if you turn on the update notice in Settings (every start, or once a week). Nothing installs without your click.
 - Your audio never leaves your computer.
 
 ## Support the project

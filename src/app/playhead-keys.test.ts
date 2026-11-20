@@ -3,7 +3,7 @@
 // This file is part of Altered Audio Editor.
 
 import { describe, expect, it } from "vitest";
-import { headTarget, jumpTarget, type HeadContext } from "./playhead-keys";
+import { adjustSelection, headTarget, jumpTarget, type HeadContext } from "./playhead-keys";
 
 const ctx = (o: Partial<HeadContext> = {}): HeadContext => ({ pos: 10_000, end: 100_000, spp: 100, width: 500, sel: null, ...o });
 
@@ -38,5 +38,25 @@ describe("playhead keys", () => {
     expect(jumpTarget("65.25", 48_000, "time", 30, 10_000_000)).toBe(3_132_000);
     expect(jumpTarget("99:00", 48_000, "time", 30, 1_000_000)).toBe(1_000_000);
     expect(jumpTarget("soon", 48_000, "time", 30, 1_000_000)).toBeNull();
+  });
+});
+
+describe("adjustSelection", () => {
+  const sel = { start: 1_000, end: 5_000 };
+  it("moves each border by the step", () => {
+    expect(adjustSelection(sel, "start-left", 100, 10_000)).toEqual({ start: 900, end: 5_000 });
+    expect(adjustSelection(sel, "start-right", 100, 10_000)).toEqual({ start: 1_100, end: 5_000 });
+    expect(adjustSelection(sel, "end-left", 100, 10_000)).toEqual({ start: 1_000, end: 4_900 });
+    expect(adjustSelection(sel, "end-right", 100, 10_000)).toEqual({ start: 1_000, end: 5_100 });
+  });
+  it("never crosses the borders or leaves the content", () => {
+    expect(adjustSelection(sel, "start-right", 9_999, 10_000)).toEqual({ start: 4_999, end: 5_000 });
+    expect(adjustSelection(sel, "end-left", 9_999, 10_000)).toEqual({ start: 1_000, end: 1_001 });
+    expect(adjustSelection(sel, "start-left", 9_999, 10_000)).toEqual({ start: 0, end: 5_000 });
+    expect(adjustSelection(sel, "end-right", 9_999, 10_000)).toEqual({ start: 1_000, end: 10_000 });
+  });
+  it("does nothing without a selection", () => {
+    expect(adjustSelection(null, "end-right", 100, 10_000)).toBeNull();
+    expect(adjustSelection({ start: 5, end: 5 }, "end-right", 100, 10_000)).toBeNull();
   });
 });

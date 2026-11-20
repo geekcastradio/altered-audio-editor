@@ -7,10 +7,11 @@
 
 use std::path::PathBuf;
 
+use crate::events::EventSinkExt;
 use serde::Serialize;
 use tauri::async_runtime::spawn_blocking;
 use tauri::ipc::Response;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
 use crate::peaks::{self, PeakSummary};
 
@@ -38,7 +39,7 @@ pub async fn peaks_ensure(app: AppHandle, path: PathBuf) -> Result<PeakSummary, 
     spawn_blocking(move || {
         let p = path.clone();
         peaks::ensure(&path, |progress| {
-            let _ = app.emit(
+            let _ = app.emit_event(
                 "peaks-progress",
                 Progress {
                     path: p.clone(),

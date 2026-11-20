@@ -1768,3 +1768,12 @@ Effect settings windows open in the middle of the screen and have a light title 
 - `welcomeSeen` (a flag) became `welcomeRev` (the newest page revision seen). Pages live in `src/app/welcome.ts` with a `rev`; `WELCOME_REV` is the highest. A fresh install shows all pages; rev 0 is install-only. An upgrade shows only pages newer than the saved revision, then records the new revision. Old `welcomeSeen: true` and settings saved before the welcome existed both count as revision 1.
 - Rule for adding a page: only for a change worth stopping the person for (a new way of working, not a fix). Pictures are optional PNGs in `src/assets/welcome/`, matched by name; a missing file shows text only.
 
+
+
+## 2026-11-19: Update notice is a corner toast, with an every-start option
+
+Decision (Steve, after a Discord request): the optional update check can run at every start as well as weekly, and a found update shows a small non-modal notice in the bottom right corner with a "See what's new" button, instead of one status bar line. This replaces the "never a pop-up" part of the 2026-10-14 decision. Still true: off by default, never during playback or recording at launch, one small file from GitHub releases, nothing installs without a click. Same day, Steve added: install at launch only if the user turns it on (Settings > Privacy, "Install it for me when the program starts", off by default). It only runs for copies that can update themselves, uses the same signature check, asks about unsaved work as File > Exit does, and falls back to the corner notice if declined or if it fails.
+
+## 2026-11-19: 100% Rust, no webview, done in phases
+
+Decision (Steve): the goal is 100% Rust, or as close as possible, with no WebView2/Chromium. Python is acceptable only as optional tooling or a clearly isolated AI sidecar, and ONNX in Rust is preferred. Each release moves some logic across. 0.43.0 adds `src-tauri/src/events.rs` (an `EventSink` trait that every progress and file event goes through) and `src-tauri/src/selection.rs` (Rust copy of the selection and playhead rules), both checked against `shared-fixtures/selection.json` from vitest and cargo test. Rust is about 50% of the code by size at this point; the rest is TypeScript and Svelte, and falls as panels are ported.

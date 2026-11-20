@@ -54,3 +54,30 @@ export function jumpTarget(
   const at = parseTime(text, rate, format, fps);
   return at === null ? null : clamp(at, end);
 }
+
+export type EdgeMove = "start-left" | "start-right" | "end-left" | "end-right";
+
+/**
+ * Moves one border of the time selection by `step` samples, keeping at least one
+ * sample selected and staying inside 0..end. Null when there is no selection.
+ */
+export function adjustSelection(
+  sel: { start: number; end: number } | null,
+  move: EdgeMove,
+  step: number,
+  end: number,
+): { start: number; end: number } | null {
+  if (!sel || sel.end <= sel.start) return null;
+  const n = Math.max(1, Math.round(step));
+  const top = Math.max(1, Math.round(end));
+  switch (move) {
+    case "start-left":
+      return { start: clamp(sel.start - n, top), end: sel.end };
+    case "start-right":
+      return { start: Math.min(clamp(sel.start + n, top), sel.end - 1), end: sel.end };
+    case "end-left":
+      return { start: sel.start, end: Math.max(clamp(sel.end - n, top), sel.start + 1) };
+    case "end-right":
+      return { start: sel.start, end: Math.max(sel.start + 1, clamp(sel.end + n, top)) };
+  }
+}

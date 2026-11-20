@@ -11,9 +11,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 
+use crate::events::EventSinkExt;
 use serde::Serialize;
 use tauri::async_runtime::spawn_blocking;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 
 use super::session::Applied;
 use crate::codecs;
@@ -697,7 +698,7 @@ pub async fn wave_save(
         let mut progress = |done: u64, total: u64| {
             if done == total || done - last >= total / 100 {
                 last = done;
-                let _ = app.emit("export-progress", Progress { done, total });
+                let _ = app.emit_event("export-progress", Progress { done, total });
             }
         };
         let r = if all_channels > 2 {
@@ -970,7 +971,7 @@ pub async fn wave_new_from_mix(
             let r = mixdown::mixdown(&session, &request, &path, &flag, |done, total| {
                 if done == total || done - last >= total / 100 {
                     last = done;
-                    let _ = progress.emit(
+                    let _ = progress.emit_event(
                         "export-progress",
                         serde_json::json!({ "done": done, "total": total }),
                     );

@@ -109,10 +109,16 @@ export interface AppSettings {
   scrubAudio: boolean;
   /** Offer the Amp Model in the Add effect menus even with Music Mode off (it is a music tool, so off by default). */
   ampModelAlways: boolean;
+  /** Playback that starts inside a selection stops at its end. On by default, as in Audition. */
+  stopAtSelectionEnd: boolean;
   /** The metronome, kept between runs. */
   metronome: MetronomePrefs;
   /** Help > Check for Updates once a week on its own. Off unless turned on (Settings > Privacy). */
   updateCheck: boolean;
+  /** How often the on-its-own check runs when it is on: every start, or at most once a week. */
+  updateEvery: UpdateEvery;
+  /** With the notice on: install a newer version at start-up on its own (only copies that can update themselves). Off: it asks first. */
+  updateAutoInstall: boolean;
   /** When the last update check ran, in milliseconds since 1970. 0 means never. */
   lastUpdateCheck: number;
   /** MIDI inputs listened to as controllers (by name). */
@@ -126,6 +132,9 @@ export interface AppSettings {
   /** 3D Space: dots snap to speakers, the center lines and a grid; turns snap to 15 degrees. */
   spaceSnap: boolean;
 }
+
+/** How often the optional update notice looks for a new version. */
+export type UpdateEvery = "launch" | "week";
 
 export type FillClickTexture = "natural" | "smooth";
 
@@ -226,7 +235,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   playbackSpeed: false,
   scrubAudio: false,
   ampModelAlways: false,
+  stopAtSelectionEnd: true,
   updateCheck: false,
+  updateEvery: "week",
+  updateAutoInstall: false,
   lastUpdateCheck: 0,
   controllerPorts: [],
   controllerBindings: [],
@@ -337,7 +349,10 @@ export function sanitizeSettings(raw: unknown): AppSettings {
     playbackSpeed: bool(o.playbackSpeed, d.playbackSpeed),
     scrubAudio: bool(o.scrubAudio, d.scrubAudio),
     ampModelAlways: bool(o.ampModelAlways, d.ampModelAlways),
+    stopAtSelectionEnd: bool(o.stopAtSelectionEnd, d.stopAtSelectionEnd),
     updateCheck: bool(o.updateCheck, d.updateCheck),
+    updateEvery: o.updateEvery === "launch" ? "launch" : d.updateEvery,
+    updateAutoInstall: bool(o.updateAutoInstall, d.updateAutoInstall),
     lastUpdateCheck:
       typeof o.lastUpdateCheck === "number" && Number.isFinite(o.lastUpdateCheck) && o.lastUpdateCheck > 0
         ? Math.floor(o.lastUpdateCheck)

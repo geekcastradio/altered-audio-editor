@@ -10,8 +10,9 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use crate::events::EventSinkExt;
 use tauri::async_runtime::spawn_blocking;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 
 use super::spectral::{by_pairs, render_n, snapshot, write_n, SpectralResult};
 use super::wave::OpenWave;
@@ -148,7 +149,7 @@ pub async fn wave_apply_chain(
                 let whole = (p as f32 + f) / pairs as f32;
                 if whole - last >= 0.01 || whole >= 1.0 {
                     last = whole;
-                    let _ = progress.emit(
+                    let _ = progress.emit_event(
                         "export-progress",
                         serde_json::json!({ "done": (whole * 1000.0) as u64, "total": 1000u64 }),
                     );
@@ -234,7 +235,7 @@ pub async fn wave_room_tone(
                     _ => None,
                 });
             }
-            let _ = progress.emit(
+            let _ = progress.emit_event(
                 "export-progress",
                 serde_json::json!({ "done": w1 as u64, "total": windows as u64 }),
             );

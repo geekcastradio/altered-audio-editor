@@ -33,6 +33,27 @@ export function playStart(playhead: number, selection: { start: number; end: num
   return playhead >= selection.start && playhead < selection.end ? playhead : selection.start;
 }
 
+/** The facts the stop-at-selection rule looks at. Mirrored in Rust (`selection.rs`) and tested from one fixture file. */
+export interface StopAtSelection {
+  /** The preference is on and playback is not held at the end. */
+  enabled: boolean;
+  /** The backend stops by itself at the end of the audio (not while looping). */
+  backendStopsAtEnd: boolean;
+  /** Playback jumps over the selection (Skip Selection). */
+  skips: boolean;
+  /** Where this play started, in samples. */
+  startedAt: number;
+  /** Where playback is now. */
+  position: number;
+  sel: { start: number; end: number };
+}
+
+/** True when playback that started inside the time selection has reached its end. */
+export function stopAtSelectionDue(f: StopAtSelection): boolean {
+  return f.enabled && f.sel.end > f.sel.start && f.backendStopsAtEnd && !f.skips &&
+    f.startedAt >= f.sel.start && f.startedAt < f.sel.end && f.position >= f.sel.end;
+}
+
 /** Meter level with a slow fall and a held peak, in 0..1 (above 1 means over). */
 export interface MeterLevel {
   level: number;
@@ -103,6 +124,8 @@ export class TransportStore {
   holdAtEnd = false;
   /** Stop puts the playhead back where playback started. Off: it stays where playback stopped. */
   returnOnStop = true;
+  /** Playback that starts inside the time selection stops at its end, as Audition does by default (Settings > Playback and Recording). */
+  stopAtSelection = true;
 
   constructor(
     private readonly backend: TransportBackend,
@@ -207,6 +230,21 @@ export class TransportStore {
         if (end > 0 && !this.holdAtEnd && this.backend.stopAtEnd?.() && s.position >= end && this.startedAt < end) {
           await this.backend.stop();
           this.halt(end);
+          return;
+        }
+        const sel = doc?.view.selection;
+        if (
+          sel && stopAtSelectionDue({
+            enabled: this.stopAtSelection && !this.holdAtEnd,
+            backendStopsAtEnd: this.backend.stopAtEnd?.() ?? false,
+            skips: this.backend.skipsSelection?.() ?? false,
+            startedAt: this.startedAt,
+            position: s.position,
+            sel,
+          })
+        ) {
+          await this.backend.stop();
+          this.halt(this.returnOnStop ? this.startedAt : sel.end);
           return;
         }
         this.applyStatus(s);

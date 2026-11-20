@@ -38,7 +38,7 @@
   import { DockController, type PanelContent, type WorkspaceState } from "./docking/dock";
   import { PANELS, panelDef, type PanelId } from "./docking/registry";
   import { clearIn, clearOut, markIn, markOut, type Span } from "./in-out";
-  import { headTarget, jumpTarget, type HeadMove } from "./playhead-keys";
+  import { adjustSelection, headTarget, jumpTarget, type EdgeMove, type HeadMove } from "./playhead-keys";
   import { laneWidths } from "../panels/time-info/time-info";
   import DockShell from "./docking/DockShell.svelte";
   import { ActionRegistry } from "./actions";
@@ -2929,6 +2929,8 @@
   let welcomeOpen = $state<WelcomePlan | null>(null);
   let updateInfo = $state<UpdateInfo | null>(null);
   let updateOpen = $state(false);
+  /** The small corner notice after an automatic check finds a newer version. */
+  let updateToast = $state(false);
   let updateBusy = $state(false);
 
   /**
@@ -2938,6 +2940,7 @@
   async function checkUpdate(manual: boolean) {
     if (updateBusy) return;
     updateBusy = true;
+    let autoInstall = false;
     try {
       const found = await updateCheck();
       settings.set({ ...settings.current, lastUpdateCheck: Date.now() });
@@ -2947,11 +2950,19 @@
       }
       updateInfo = found;
       if (manual) updateOpen = true;
-      else showNotice(`Version ${found.version} is available. Choose Help > Check for Updates to install it.`);
+      else if (settings.current.updateAutoInstall && found.canInstall) autoInstall = true;
+      else updateToast = true;
     } catch (e) {
       if (manual) showNotice(`Could not check for updates: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       updateBusy = false;
+    }
+    // Chosen in Settings > Privacy. Asks about unsaved work first, as File > Exit does.
+    if (autoInstall && updateInfo) {
+      showNotice(`Installing version ${updateInfo.version} and restarting...`);
+      await installUpdate();
+      // Declined or failed: fall back to the corner notice instead of staying silent.
+      if (!updateBusy) updateToast = true;
     }
   }
 
@@ -3847,6 +3858,8 @@
     root.setProperty("--meter-red", `${meterPercent(s.meterRedDb)}%`);
     setCustomTarget({ lufs: s.customLufs, peak: s.customPeak });
     setMeterSpeed(s.meterSpeed);
+    transport.stopAtSelection = s.stopAtSelectionEnd;
+    waveTransport.stopAtSelection = s.stopAtSelectionEnd;
     if (isTauri()) {
       // Driver first, so the output name is looked up on the right one.
       void setAudioDriver(s.driver === "asio")
@@ -5118,6 +5131,15 @@
         },
         checked: () => settings.current.returnOnStop,
       }),
+      actions.register({
+        id: "multitrack.stop-at-selection",
+        run: () => {
+          settings.set({ ...settings.current, stopAtSelectionEnd: !settings.current.stopAtSelectionEnd });
+          applyAppSettings(settings.current, false);
+          actions.invalidate();
+        },
+        checked: () => settings.current.stopAtSelectionEnd,
+      }),
       actions.register({ id: "multitrack.add.stereo", run: () => addTrack(true) }),
       actions.register({ id: "multitrack.add.guest", run: () => addGuestTrack(), enabled: () => session.current !== null }),
       ...(
@@ -5281,6 +5303,33 @@
           },
           enabled: () => (waveIsOpen() ? wave.current !== null : session.current !== null),
           reason: () => "Open a session or a file first.",
+        }),
+      ),
+      ...(
+        [
+          ["edit.sel.start-left", "start-left"],
+          ["edit.sel.start-right", "start-right"],
+          ["edit.sel.end-left", "end-left"],
+          ["edit.sel.end-right", "end-right"],
+        ] as [string, EdgeMove][]
+      ).map(([id, move]) =>
+        actions.register({
+          id,
+          run: () => {
+            const wv = waveIsOpen();
+            const d = wv ? wave.current : session.current;
+            if (!d) return;
+            const step = Math.max(1, Math.round(d.view.samples_per_pixel));
+            const sel = d.view.selection ?? null;
+            const next = adjustSelection(sel, move, step, Math.max(sessionEnd(d), (sel?.end ?? 0) + step));
+            if (!next) return;
+            (wv ? wave : session).setView({ ...d.view, selection: next });
+          },
+          enabled: () => {
+            const d = waveIsOpen() ? wave.current : session.current;
+            return !!d?.view.selection && d.view.selection.end > d.view.selection.start;
+          },
+          reason: () => "There is no time selection.",
         }),
       ),
       actions.register({
@@ -6814,7 +6863,7 @@
         offs.push(startMetronome());
         // The weekly update check is off unless turned on in Settings > Privacy.
         const c = settings.current;
-        if (updateDue(c.updateCheck, c.lastUpdateCheck, Date.now()) && !transport.current.playing) void checkUpdate(false);
+        if (updateDue(c.updateCheck, c.lastUpdateCheck, Date.now(), c.updateEvery) && !transport.current.playing) void checkUpdate(false);
         // Settings changed outside the Settings window (a view's right-click colors) are kept too.
         let lastSettings = JSON.stringify(settings.current);
         offs.push(
@@ -7324,6 +7373,14 @@
   />
 {/if}
 
+{#if updateToast && updateInfo && !updateOpen}
+  <div class="update-toast" role="status">
+    <span>Version {updateInfo.version} is available.</span>
+    <button type="button" onclick={() => { updateToast = false; updateOpen = true; }}>See what's new</button>
+    <button type="button" aria-label="Dismiss" onclick={() => (updateToast = false)}>Later</button>
+  </div>
+{/if}
+
 {#if updateOpen && updateInfo}
   <UpdateDialog
     info={updateInfo}
@@ -7356,6 +7413,30 @@
 {/if}
 
 <style>
+  .update-toast {
+    position: fixed;
+    right: 16px;
+    bottom: 36px;
+    z-index: 5500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    background: var(--surface-2);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    color: var(--text);
+    font-size: 13px;
+  }
+  .update-toast button {
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
+    background: var(--surface-3);
+    color: var(--text);
+    padding: 3px 10px;
+    cursor: pointer;
+  }
   .countdown {
     position: fixed;
     top: 40%;

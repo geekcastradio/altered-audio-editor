@@ -207,14 +207,14 @@ pub async fn plugins_scan(
     app: tauri::AppHandle,
     all: bool,
 ) -> Result<(plugins::ScanReport, RegistryView), String> {
-    use tauri::Emitter;
+    use crate::events::EventSinkExt;
     spawn_blocking(move || {
         let report = plugins::scan(all, |done, total, bundle| {
             let name = bundle
                 .file_stem()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            let _ = app.emit(
+            let _ = app.emit_event(
                 "plugins-scan-progress",
                 serde_json::json!({ "done": done, "total": total, "name": name }),
             );

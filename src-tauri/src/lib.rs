@@ -16,6 +16,7 @@ pub mod commands;
 pub mod controllers;
 pub mod dsp;
 pub mod engine;
+pub mod events;
 pub mod export;
 pub mod library;
 pub mod paths;
@@ -23,6 +24,7 @@ pub mod peaks;
 pub mod plugins;
 pub mod rpp;
 pub mod rpp_import;
+pub mod selection;
 pub mod session;
 pub mod sesx;
 
@@ -35,7 +37,8 @@ pub fn run() {
         // runs hands it to the running window, which comes to the front,
         // instead of starting a second, empty copy.
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
-            use tauri::{Emitter, Manager};
+            use crate::events::EventSinkExt;
+            use tauri::Manager;
             let paths =
                 commands::app::file_args(argv.into_iter().skip(1), std::path::Path::new(&cwd));
             if let Some(w) = app.get_webview_window("main") {
@@ -43,7 +46,7 @@ pub fn run() {
                 let _ = w.set_focus();
             }
             if !paths.is_empty() {
-                let _ = app.emit("open-paths", paths);
+                let _ = app.emit_event("open-paths", paths);
             }
         }))
         .manage(commands::app::LaunchPaths(std::sync::Mutex::new(launch)))

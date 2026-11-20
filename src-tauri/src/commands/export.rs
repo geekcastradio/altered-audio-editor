@@ -8,9 +8,10 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::events::EventSinkExt;
 use serde::Serialize;
 use tauri::async_runtime::spawn_blocking;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use super::session::OpenSession;
@@ -194,7 +195,7 @@ pub async fn export_mixdown(
             // About 100 updates per export is plenty for a progress bar.
             if done == total || done - last >= total / 100 {
                 last = done;
-                let _ = app.emit("export-progress", Progress { done, total });
+                let _ = app.emit_event("export-progress", Progress { done, total });
             }
         })
         .map_err(|e| e.to_string())
@@ -292,7 +293,7 @@ pub async fn export_mix_into_video(
         let done = mixdown::mixdown(&session, &request, &temp, &flag, |done, total| {
             if done == total || done - last >= total / 100 {
                 last = done;
-                let _ = app.emit("export-progress", Progress { done, total });
+                let _ = app.emit_event("export-progress", Progress { done, total });
             }
         });
         let result = match done {
@@ -354,7 +355,7 @@ pub async fn export_merge(
         let result = mixdown::mixdown(&session, &request, &path, &flag, |done, total| {
             if done == total || done - last >= total / 100 {
                 last = done;
-                let _ = app.emit("export-progress", Progress { done, total });
+                let _ = app.emit_event("export-progress", Progress { done, total });
             }
         })
         .map_err(|e| e.to_string())?;
@@ -403,7 +404,7 @@ pub async fn loudness_check(
         loudness::measure(&session, &request, &flag, |done, total| {
             if done == total || done - last >= total / 100 {
                 last = done;
-                let _ = app.emit("export-progress", Progress { done, total });
+                let _ = app.emit_event("export-progress", Progress { done, total });
             }
         })
         .map_err(|e| e.to_string())
@@ -429,7 +430,7 @@ pub async fn analyze_audio(
         analysis::analyze(&session, &request, &flag, |done, total| {
             if done == total || done - last >= total / 100 {
                 last = done;
-                let _ = app.emit("export-progress", Progress { done, total });
+                let _ = app.emit_event("export-progress", Progress { done, total });
             }
         })
         .map_err(|e| e.to_string())
