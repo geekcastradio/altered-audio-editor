@@ -65,9 +65,32 @@ export function ramp(low: Rgb, high: Rgb, t: number): Rgb {
 /** Defaults: the Phase Wheel runs red (low notes) to magenta (high). */
 export const PHASE_LOW = "#ff2a2a";
 export const PHASE_HIGH = "#e02aff";
-/** Defaults for a custom spectrogram: deep blue (quiet) to warm yellow (loud). */
-export const SPECTRUM_LOW = "#2a1a8a";
-export const SPECTRUM_HIGH = "#ffe066";
+/** The Default spectrogram: deep purple (quiet) through red and orange to yellow (loud). */
+export const SPECTRUM_LOW = "#4a1470";
+export const SPECTRUM_HIGH = "#ffd23f";
+
+/**
+ * Ready-made spectrogram color schemes. Default and AAE are schemes (empty
+ * pair); the others are quiet and loud pairs. `swatch` is how a scheme is
+ * drawn in the picker.
+ */
+export interface SpectrumPreset {
+  name: string;
+  low: string;
+  high: string;
+  /** "" for Default, "aae" for the teal and gold look. */
+  scheme?: string;
+  swatch?: string;
+}
+export const SPECTRUM_PRESETS: readonly SpectrumPreset[] = [
+  { name: "Default", low: "", high: "", scheme: "", swatch: "linear-gradient(to right, #08080d, #4a1470, #c0204a, #f07a20, #ffd23f)" },
+  { name: "AAE", low: "", high: "", scheme: "aae", swatch: "linear-gradient(to right, #08080d, #2a1a5e, #26808c, #deb246, #fffae4)" },
+  { name: "Ember", low: "#6b1020", high: "#ffd23f" },
+  { name: "Ocean", low: "#0a3a6b", high: "#7fffd4" },
+  { name: "Violet", low: "#3a1a6b", high: "#ff7ad9" },
+  { name: "Forest", low: "#0f4a2a", high: "#e8ff7a" },
+  { name: "Gray", low: "#303036", high: "#ffffff" },
+];
 
 /**
  * A 256-entry spectrogram palette (RGB triples, flattened): near black

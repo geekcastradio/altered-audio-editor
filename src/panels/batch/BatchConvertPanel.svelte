@@ -412,7 +412,8 @@
     grid-template-columns: minmax(0, 1fr);
     height: 100%;
     min-height: 0;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     background: var(--surface-1);
   }
 

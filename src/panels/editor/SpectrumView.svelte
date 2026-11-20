@@ -465,11 +465,12 @@
   });
 
   // The palette: the built-in one, or the quiet and loud colors picked in Settings or the right-click menu.
-  let lut = $state<Uint8Array>(SPECTRUM_LUT);
+  let lut = $state<Uint8Array>(spectrumLut(SPECTRUM_LOW, SPECTRUM_HIGH));
   $effect(() =>
     settings.subscribe((v) => {
       const c = v.colors;
-      lut = c.spectrumLow || c.spectrumHigh ? spectrumLut(c.spectrumLow || SPECTRUM_LOW, c.spectrumHigh || SPECTRUM_HIGH) : SPECTRUM_LUT;
+      // Custom quiet and loud colors win; then the AAE scheme; otherwise Default.
+      lut = c.spectrumLow || c.spectrumHigh ? spectrumLut(c.spectrumLow || SPECTRUM_LOW, c.spectrumHigh || SPECTRUM_HIGH) : c.spectrumScheme === "aae" ? SPECTRUM_LUT : spectrumLut(SPECTRUM_LOW, SPECTRUM_HIGH);
     }),
   );
 </script>

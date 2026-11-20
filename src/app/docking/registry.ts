@@ -515,9 +515,10 @@ export function workspaceId(name: string, taken: ReadonlySet<string>): string {
  */
 export const MIN_SIZE: Record<PanelId, { w: number; h: number }> = {
   files: { w: 280, h: 150 },
-  "voice-chain": { w: 300, h: 260 },
-  "batch-convert": { w: 300, h: 220 },
-  quickpass: { w: 300, h: 220 },
+  // The Voice Chain group at the bottom left can be dragged down to its tab strip when it is not in use; its panels scroll when short.
+  "voice-chain": { w: 300, h: 36 },
+  "batch-convert": { w: 300, h: 36 },
+  quickpass: { w: 300, h: 36 },
   editor: { w: 520, h: 260 },
   mixer: { w: 360, h: 220 },
   levels: { w: 260, h: 70 },

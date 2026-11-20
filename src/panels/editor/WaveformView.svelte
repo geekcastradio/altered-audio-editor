@@ -11,7 +11,7 @@
 <script lang="ts">
   import { settings, wheelAnchorX, zoomRatios } from "../../stores/settings";
   import ColorPairPopover from "../../app/ColorPairPopover.svelte";
-  import { SPECTRUM_HIGH, SPECTRUM_LOW } from "../../app/colors";
+  import { SPECTRUM_HIGH, SPECTRUM_LOW, SPECTRUM_PRESETS } from "../../app/colors";
   import { KIND_COLORS, markerAt } from "../markers/markers";
   import { markerMenuItems } from "../markers/marker-menu";
   import { Scrubber } from "./scrubber";
@@ -775,9 +775,9 @@
   let colorPop = $state<{ x: number; y: number } | null>(null);
   let appColors = $state(settings.current.colors);
   $effect(() => settings.subscribe((v) => (appColors = v.colors)));
-  function setSpectrumColors(low: string, high: string) {
+  function setSpectrumColors(low: string, high: string, scheme = "") {
     const c = settings.current;
-    settings.set({ ...c, colors: { ...c.colors, spectrumLow: low, spectrumHigh: high } });
+    settings.set({ ...c, colors: { ...c.colors, spectrumLow: low, spectrumHigh: high, spectrumScheme: scheme } });
   }
 
   // Horizontal scroll bar.
@@ -975,6 +975,7 @@
     high={appColors.spectrumHigh}
     lowDefault={SPECTRUM_LOW}
     highDefault={SPECTRUM_HIGH}
+    presets={SPECTRUM_PRESETS}
     onChange={setSpectrumColors}
     onClose={() => (colorPop = null)}
   />

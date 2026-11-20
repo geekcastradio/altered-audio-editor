@@ -116,8 +116,8 @@
     { key: "playhead", label: "Playhead", theme: "#f2c14e" },
     { key: "accent", label: "Accent (focus and selection)", theme: "#3fa9f5" },
     { key: "laneSelected", label: "Selected track lane", theme: "#34343b" },
-    { key: "spectrumLow", label: "Spectrogram, quiet", theme: "#2a1a8a" },
-    { key: "spectrumHigh", label: "Spectrogram, loud", theme: "#ffe066" },
+    { key: "spectrumLow", label: "Spectrogram, quiet", theme: "#4a1470" },
+    { key: "spectrumHigh", label: "Spectrogram, loud", theme: "#ffd23f" },
     { key: "phaseLow", label: "Phase Wheel, low notes", theme: "#ff2a2a" },
     { key: "phaseHigh", label: "Phase Wheel, high notes", theme: "#e02aff" },
   ];
