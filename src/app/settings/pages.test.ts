@@ -2,6 +2,7 @@
 // Copyright (c) The GeekCast Radio Network, LLC.
 // This file is part of Altered Audio Editor.
 
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "../../stores/settings";
 import { RECORD_DEFAULTS } from "../recording";
@@ -20,6 +21,13 @@ describe("settings pages", () => {
     expect(d.record.offsetMs).toBe(1000);
     expect(d.record.prerollSec).toBe(2);
     expect(d.loudness.region).toBe("uk");
+  });
+
+  it("draws every page: the dialog has a branch for each name in the list", () => {
+    const dialog = readFileSync(new URL("./SettingsDialog.svelte", import.meta.url), "utf8");
+    for (const name of PAGES) {
+      expect(dialog.includes(`page === "${name}"`), `no branch draws the ${name} page`).toBe(true);
+    }
   });
 
   it("lists every page once and marks the later ones", () => {
