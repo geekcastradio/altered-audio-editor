@@ -748,8 +748,8 @@
 
   /**
    * File > Open. Sessions open as usual. Audio files go into the Files
-   * panel; when the session has no clips yet, each one is also placed on
-   * its own track at the start so it can be played and edited right away.
+   * panel; one file also opens in the Waveform editor. A multitrack is never
+   * built from them here: that happens when files are dropped on the Editor.
    */
   async function openAny(): Promise<void> {
     await openPaths(await filePickOpen());
@@ -837,7 +837,7 @@
   }
 
   async function openAudio(paths: string[]): Promise<void> {
-    // One audio file opens as itself in the Waveform editor. Two or more build a multitrack, below.
+    // One audio file opens as itself in the Waveform editor. Two or more go to the Files panel only, below.
     if (paths.length === 1) {
       const imported = await mediaPool.importPaths(paths, sessionHistory);
       mediaPool.setSelection(imported.ids);
@@ -845,22 +845,13 @@
       files.noteRecent(paths[0]!);
       return;
     }
-    const doc = session.current;
-    if (!doc) return;
-    const empty = doc.tracks.every((t) => t.clips.length === 0);
-    if (empty) {
-      // Each file onto the next empty track (new sessions start with some), then new tracks.
-      for (const [i, p] of paths.entries()) await placeFiles([p], doc.tracks[i]?.id ?? null, 0);
-      await actions.run("view.zoom-session");
-      return;
-    }
+    // Two or more files opened this way (File > Open, a recent file, the file manager) only go
+    // into the Files panel. A multitrack is made when files are dropped onto the Editor together,
+    // or when they are dragged from the Files panel onto tracks.
     const imported = await mediaPool.importPaths(paths, sessionHistory);
     mediaPool.setSelection(imported.ids);
-    showNotice(
-      paths.length === 1
-        ? "Added to the Files panel. Drag it onto a track, or use Insert Files at Playhead."
-        : `Added ${paths.length} files to the Files panel. Drag them onto tracks, or use Insert Files at Playhead.`,
-    );
+    dock.show("files");
+    showNotice(`Added ${paths.length} files to the Files panel. Drag them onto the Editor together to build a multitrack, or open one on its own.`);
   }
 
   let addTracksOpen = $state(false);

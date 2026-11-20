@@ -1822,3 +1822,7 @@ Confirmed by Steve the same day: the noise reducer built on nnnoiseless stays in
 ## 2026-11-20: centered notices for results people must not miss
 
 Export finished or stopped, stem export, mixdown and the session upgrade message now show in a centered, non-blocking message (`showCenterNotice` in App.svelte). Other notices stay in the status bar. Reason: the status bar notice sat in a corner and was missed. Steve asked for the move.
+
+## 2026-11-20: opening several audio files only fills the Files panel
+
+Supersedes the File > Open entry that placed each audio file on its own track in an empty session. Two or more files opened by File > Open, a recent file or the file manager now go to the Files panel only. A multitrack is made by dropping files on the Editor together or dragging them from the Files panel onto tracks. Reason: Steve found that opening files should not create a session he then has to save or close.

@@ -8,3 +8,6 @@
 6. With Snap on, the dragged border lands on the snap targets. Hold Shift while dragging in the multitrack view to turn snapping off for that drag.
 7. Move tool and other tools: nothing about them changes.
 8. Edit > Select > Adjust Selection keys (Shift+H, J, K, L) still work after a drag.
+
+- Start with no session. File > Open, pick three audio files. They appear in the Files panel; no "Untitled Session" tab or tracks with clips appear.
+- Drag the same three files from the Files panel onto the Editor together. A multitrack builds with one clip per file.
