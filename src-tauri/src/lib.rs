@@ -70,7 +70,13 @@ pub fn run() {
             // The handle core logic uses to reach the interface (Phase 0 of the native move).
             tauri::Manager::manage(
                 &*app,
-                app_core::AppCore::new(std::sync::Arc::new(app.handle().clone())),
+                app_core::AppCore::new(
+                    std::sync::Arc::new(app.handle().clone()),
+                    app_core::Dirs {
+                        config: paths::config_dir(app.handle()),
+                        backups: paths::backups_dir(app.handle()),
+                    },
+                ),
             );
             // Settings from older versions are moved to the Altered Audio folder first.
             startup::mark("window and core ready");

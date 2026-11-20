@@ -465,6 +465,7 @@
         {:else if page === "Automation"}
           <p class="note">Process chains are available now. Multitrack &gt; Run Process Chain runs a saved list of steps (Auto Mic Mix, Close Dead Space, Loudness Target, a Voice Chain preset, QuickPass) on the open session as one undo step. Example chains come with the program, in the docs/chains folder.</p>
           <p class="note">Scripting, and a local endpoint that lets other programs and AI agents drive the editor, are planned for after 1.0. They are not in this version, nothing listens for connections, and there is nothing here to turn on. When they arrive they will be off by default and will keep to this computer.</p>
+        {:else if page === "Privacy"}
           <p class="note">Altered Audio Editor never goes online by itself. No account, no sign-in, no tracking, no usage data, no crash reports. Everything stays on this computer.</p>
           <p class="note">The only web pages it opens are the ones you pick in the Help menu, in your own browser.</p>
           <label><input type="checkbox" bind:checked={d.app.updateCheck} /> Tell me when a new version is out</label>
