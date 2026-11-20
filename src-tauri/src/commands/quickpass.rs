@@ -13,9 +13,10 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::events::EventSinkExt;
 use serde::Serialize;
 use tauri::async_runtime::spawn_blocking;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 
 use super::session::OpenSession;
 use crate::dsp::effects::{find_spots, repair_spots, Spots};
@@ -272,7 +273,7 @@ pub async fn quickpass_spots(
                     failed.note(e);
                 }
             }
-            let _ = app.emit(
+            let _ = app.emit_event(
                 "quickpass-progress",
                 ScanProgress {
                     done: n + 1,
@@ -373,7 +374,7 @@ pub async fn quickpass_levels(
                     failed.note(e);
                 }
             }
-            let _ = app.emit(
+            let _ = app.emit_event(
                 "quickpass-progress",
                 ScanProgress {
                     done: n + 1,

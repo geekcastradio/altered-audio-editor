@@ -152,3 +152,61 @@ describe("TransportStore stop", () => {
     expect(session.current?.view.playhead).toBe(144_000);
   });
 });
+
+describe("TransportStore stops at the end of the selection", () => {
+  function selSetup(selection: { start: number; end: number }, stopAtSelection = true) {
+    let position = 0;
+    const calls: string[] = [];
+    const d = doc(0);
+    d.view = { ...d.view, selection };
+    d.media = [];
+    const session = new SessionStore({
+      get: async () => ({ session: d, path: null }),
+      apply: async () => {
+        throw new Error("unused");
+      },
+      setView: async () => {},
+    });
+    session.set(d);
+    const t = new TransportStore(
+      {
+        play: async (from) => {
+          position = from;
+          calls.push(`play:${from}`);
+        },
+        stop: async () => {
+          calls.push("stop");
+          return position;
+        },
+        status: async () => {
+          position += 5_000;
+          return { playing: true, position, trackIds: [], meters: [], master: [0, 0], underruns: 0 };
+        },
+        stopAtEnd: () => true,
+      },
+      session,
+      () => {},
+      1,
+    );
+    t.stopAtSelection = stopAtSelection;
+    return { t, calls };
+  }
+  const settle = () => new Promise((r) => setTimeout(r, 60));
+
+  it("stops when playback started inside the selection and reached its end", async () => {
+    const { t, calls } = selSetup({ start: 1_000, end: 12_000 });
+    await t.play();
+    await settle();
+    expect(t.current.playing).toBe(false);
+    expect(calls).toContain("stop");
+  });
+
+  it("plays on when the setting is off", async () => {
+    const { t, calls } = selSetup({ start: 1_000, end: 12_000 }, false);
+    await t.play();
+    await settle();
+    expect(t.current.playing).toBe(true);
+    expect(calls).not.toContain("stop");
+    await t.pause();
+  });
+});

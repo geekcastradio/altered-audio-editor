@@ -137,5 +137,14 @@
  "Edit.ActivateClipboard5": "edit.clipboard.5",
  "Edit.TogglePlaybackAutoScroll": "view.follow-playhead",
  "Clip.NudgeLeft5": "clip.nudge-left-5",
- "Clip.NudgeRight5": "clip.nudge-right-5"
+ "Clip.NudgeRight5": "clip.nudge-right-5",
+ "Edit.AdjustLeftSideToLeft": "edit.sel.start-left",
+ "Edit.AdjustLeftSideToRight": "edit.sel.start-right",
+ "Edit.AdjustRightSideToLeft": "edit.sel.end-left",
+ "Edit.AdjustRightSideToRight": "edit.sel.end-right",
+ "Edit.AdjustInPointToLeft": "edit.sel.start-left",
+ "Edit.AdjustInPointToRight": "edit.sel.start-right",
+ "Edit.AdjustOutPointToLeft": "edit.sel.end-left",
+ "Edit.AdjustOutPointToRight": "edit.sel.end-right",
+ "Preferences.TogglePlayOnlySelectedRegion": "multitrack.stop-at-selection"
 }

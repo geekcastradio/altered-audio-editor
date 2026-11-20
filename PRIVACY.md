@@ -21,7 +21,7 @@ The Help menu has links (The GCRN website, the book, and an optional PayPal page
 
 ## Update checks
 
-Help > Check for Updates reads one small file (`latest.json`) from this project's GitHub releases and nothing else. The optional weekly check does the same and is off unless you turn it on in Edit > Settings > Privacy. Neither sends anything about you or your audio. GitHub sees a normal web request from your internet address, as with any download. A newer version is only installed when you click Install and Restart, and the installer is checked against the project's signing key first. The portable zip never updates itself.
+Help > Check for Updates reads one small file (`latest.json`) from this project's GitHub releases and nothing else. The optional update notice does the same, at every start or at most once a week as you choose, and is off unless you turn it on in Edit > Settings > Privacy. Neither sends anything about you or your audio. GitHub sees a normal web request from your internet address, as with any download. A newer version is only installed when you click Install and Restart, unless you also tick "Install it for me when the program starts" in the same place (off by default), and the installer is checked against the project's signing key first. The portable zip never updates itself.
 
 ## Speech models, video and bug reports
 

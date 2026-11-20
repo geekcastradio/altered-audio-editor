@@ -36,7 +36,7 @@ If you open a session made by an older version, nothing changes until you save.
 There is no account, no sign-in, no tracking and no telemetry.
 
 - Your audio and sessions stay on your computer. The program goes online only when you choose Help > Check for Updates or open a link from the Help menu.
-- There is also a weekly update check that is off until you turn it on in Settings.
+- There is also an update notice that is off until you turn it on in Settings > Privacy. Pick every start or once a week. When a newer version exists, a small notice appears in the bottom right corner with a button to see what is new. You can also tick "Install it for me when the program starts": the update is then checked against the project's signing key and installed at start-up (installed copies only), after asking about any unsaved work. Otherwise nothing installs until you click Install and Restart, and with the notice off the program never goes online by itself.
 
 ## Recording
 
@@ -282,6 +282,8 @@ A plug-in's own window opens from its slot in the Voice Chain. What you change t
 Open a file with File > Open, or send a clip over with Clip > Open in Waveform Editor.
 
 - Select a stretch of audio and use the Effects menu to Amplify, Normalize, Fade In, Fade Out, Invert, Reverse or Silence it.
+- Playing a selection stops at its end when playback starts inside it. Edit > Settings > Playback and Recording > "When playback starts within a selection, stop at the end of the selection" turns that off.
+- To fix a selection you made a little off, hold Shift and click to change its borders, or use Edit > Select > Adjust Selection: Move Start Left, Move Start Right, Move End Left and Move End Right. They move one pixel at the current zoom. Keys: Shift+H and Shift+J move the left side, Shift+K and Shift+L move the right side (Shift+Left and Shift+Right move the start, Ctrl+Shift+Left and Ctrl+Shift+Right move the end), and you can change them in Edit > Keyboard Shortcuts. They work in the multitrack view too. Transport > Stop at End of Selection (Shift+V) turns the stop-at-selection behavior on and off.
 - The Spectrum view (View > Show Spectrum) shows frequency over time, with selection tools to reduce, remove or repair a marked area.
 - Effects > Spectrum > Play Selected Area plays only the sound inside the selection, so you can hear what you are about to remove, without changing the file. The selection can be up to five minutes long.
 

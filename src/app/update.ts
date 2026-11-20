@@ -25,9 +25,10 @@ export const updateCheck = (): Promise<UpdateInfo | null> => invoke("update_chec
 /** Downloads, installs and restarts. Only after a click in the update dialog. */
 export const updateInstall = (): Promise<void> => invoke("update_install");
 
-/** The weekly check runs only when turned on and a week has passed since the last one. */
-export function updateDue(enabled: boolean, lastCheck: number, now: number): boolean {
+/** The check runs only when turned on. Every start: always. Weekly: when a week has passed since the last one. */
+export function updateDue(enabled: boolean, lastCheck: number, now: number, every: "launch" | "week" = "week"): boolean {
   if (!enabled) return false;
+  if (every === "launch") return true;
   if (!Number.isFinite(lastCheck) || lastCheck <= 0) return true;
   // A clock set back never blocks the check for good.
   return now < lastCheck || now - lastCheck >= WEEK_MS;

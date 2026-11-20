@@ -182,6 +182,12 @@ export const MENUS: readonly Menu[] = [
           "Select Time Around Selected Clips",
         ),
         item("edit.clear-time-selection", "Clear Time Selection"),
+        sub("Adjust Selection", [
+          item("edit.sel.start-left", "Move Start Left"),
+          item("edit.sel.start-right", "Move Start Right"),
+          item("edit.sel.end-left", "Move End Left"),
+          item("edit.sel.end-right", "Move End Right"),
+        ]),
         item("edit.set-in", "Set In Point"),
         item("edit.set-out", "Set Out Point"),
         item("edit.clear-in", "Clear In Point"),
@@ -287,6 +293,7 @@ export const MENUS: readonly Menu[] = [
         item("transport.jump-to", "Time..."),
       ]),
       item("multitrack.return-on-stop", "Return to Start on Stop"),
+      item("multitrack.stop-at-selection", "Stop at End of Selection"),
       sub("Playback Speed", [
         item("transport.speed-50", "0.5x (sounds smeared)"),
         item("transport.speed-75", "0.75x"),

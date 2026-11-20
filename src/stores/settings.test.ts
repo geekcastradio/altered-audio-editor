@@ -56,6 +56,27 @@ describe("app settings", () => {
   });
 });
 
+describe("stop at selection end setting", () => {
+  it("is on by default, as in Audition, and keeps only booleans", () => {
+    expect(DEFAULT_SETTINGS.stopAtSelectionEnd).toBe(true);
+    expect(sanitizeSettings({ stopAtSelectionEnd: false }).stopAtSelectionEnd).toBe(false);
+    expect(sanitizeSettings({ stopAtSelectionEnd: "no" }).stopAtSelectionEnd).toBe(true);
+  });
+});
+
+describe("update notice setting", () => {
+  it("is off by default, weekly, and keeps only the two known frequencies", () => {
+    expect(DEFAULT_SETTINGS.updateCheck).toBe(false);
+    expect(DEFAULT_SETTINGS.updateEvery).toBe("week");
+    expect(DEFAULT_SETTINGS.updateAutoInstall).toBe(false);
+    expect(sanitizeSettings({ updateAutoInstall: true }).updateAutoInstall).toBe(true);
+    expect(sanitizeSettings({ updateAutoInstall: "yes" }).updateAutoInstall).toBe(false);
+    expect(sanitizeSettings({ updateEvery: "launch" }).updateEvery).toBe("launch");
+    expect(sanitizeSettings({ updateEvery: "daily" }).updateEvery).toBe("week");
+    expect(sanitizeSettings({ updateEvery: 3 }).updateEvery).toBe("week");
+  });
+});
+
 describe("buffer size setting", () => {
   it("defaults to the driver and keeps only sensible values", () => {
     expect(DEFAULT_SETTINGS.bufferFrames).toBe(0);

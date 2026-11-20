@@ -20,6 +20,11 @@ describe("updateDue", () => {
     expect(updateDue(true, last, last + WEEK_MS)).toBe(true);
   });
 
+  it("runs at every start when set to launch, and still never while off", () => {
+    expect(updateDue(true, 1e12, 1e12 + 1, "launch")).toBe(true);
+    expect(updateDue(false, 0, 1e12, "launch")).toBe(false);
+  });
+
   it("runs when the clock went backwards", () => {
     expect(updateDue(true, 2e12, 1e12)).toBe(true);
   });

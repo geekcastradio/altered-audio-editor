@@ -1,0 +1,37 @@
+{
+  "about": "Shared by vitest (src/app/selection-fixture.test.ts) and cargo test (src-tauri/tests/selection_fixture.rs). Change a rule in one language and both fail until the other matches.",
+  "adjustSelection": [
+    { "name": "start left", "sel": [100, 200], "move": "start-left", "step": 10, "end": 1000, "want": [90, 200] },
+    { "name": "start left stops at zero", "sel": [5, 200], "move": "start-left", "step": 10, "end": 1000, "want": [0, 200] },
+    { "name": "start right keeps one sample", "sel": [100, 102], "move": "start-right", "step": 50, "end": 1000, "want": [101, 102] },
+    { "name": "end left keeps one sample", "sel": [100, 102], "move": "end-left", "step": 50, "end": 1000, "want": [100, 101] },
+    { "name": "end right stops at the end", "sel": [100, 990], "move": "end-right", "step": 50, "end": 1000, "want": [100, 1000] },
+    { "name": "step under one rounds up", "sel": [100, 200], "move": "end-right", "step": 0.2, "end": 1000, "want": [100, 201] },
+    { "name": "no selection", "sel": null, "move": "start-left", "step": 10, "end": 1000, "want": null },
+    { "name": "empty selection", "sel": [50, 50], "move": "end-right", "step": 10, "end": 1000, "want": null }
+  ],
+  "headTarget": [
+    { "name": "step left", "move": "step-left", "pos": 500, "end": 1000, "spp": 10, "width": 100, "sel": null, "want": 490 },
+    { "name": "step left clamps", "move": "step-left", "pos": 4, "end": 1000, "spp": 10, "width": 100, "sel": null, "want": 0 },
+    { "name": "page right", "move": "page-right", "pos": 100, "end": 5000, "spp": 10, "width": 100, "sel": null, "want": 1100 },
+    { "name": "page right clamps", "move": "page-right", "pos": 100, "end": 500, "spp": 10, "width": 100, "sel": null, "want": 500 },
+    { "name": "to in", "move": "to-in", "pos": 0, "end": 1000, "spp": 10, "width": 100, "sel": [200, 300], "want": 200 },
+    { "name": "to out", "move": "to-out", "pos": 0, "end": 1000, "spp": 10, "width": 100, "sel": [200, 300], "want": 300 },
+    { "name": "to in without selection", "move": "to-in", "pos": 0, "end": 1000, "spp": 10, "width": 100, "sel": null, "want": null }
+  ],
+  "playStart": [
+    { "name": "no selection", "playhead": 50, "sel": null, "skips": false, "want": 50 },
+    { "name": "inside keeps the playhead", "playhead": 150, "sel": [100, 200], "skips": false, "want": 150 },
+    { "name": "outside goes to the start", "playhead": 20, "sel": [100, 200], "skips": false, "want": 100 },
+    { "name": "at the end goes to the start", "playhead": 200, "sel": [100, 200], "skips": false, "want": 100 },
+    { "name": "skip selection keeps the playhead", "playhead": 20, "sel": [100, 200], "skips": true, "want": 20 }
+  ],
+  "stopAtSelectionDue": [
+    { "name": "reached the end", "enabled": true, "backendStopsAtEnd": true, "skips": false, "startedAt": 120, "position": 200, "sel": [100, 200], "want": true },
+    { "name": "not yet", "enabled": true, "backendStopsAtEnd": true, "skips": false, "startedAt": 120, "position": 199, "sel": [100, 200], "want": false },
+    { "name": "started outside plays on", "enabled": true, "backendStopsAtEnd": true, "skips": false, "startedAt": 20, "position": 250, "sel": [100, 200], "want": false },
+    { "name": "preference off", "enabled": false, "backendStopsAtEnd": true, "skips": false, "startedAt": 120, "position": 250, "sel": [100, 200], "want": false },
+    { "name": "looping does not stop", "enabled": true, "backendStopsAtEnd": false, "skips": false, "startedAt": 120, "position": 250, "sel": [100, 200], "want": false },
+    { "name": "skip selection does not stop", "enabled": true, "backendStopsAtEnd": true, "skips": true, "startedAt": 120, "position": 250, "sel": [100, 200], "want": false }
+  ]
+}

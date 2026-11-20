@@ -138,7 +138,7 @@
     else if (page === "Appearance") Object.assign(d.app, { colors: { ...NO_COLORS }, surface: def.surface });
     else if (page === "Autosave") Object.assign(d.app, { autosave: def.autosave, autosaveMinutes: def.autosaveMinutes, backups: def.backups, backupCount: def.backupCount });
     else if (page === "Session Media") Object.assign(d.app, { copyMedia: def.copyMedia, mediaFolder: def.mediaFolder, collectOnSave: def.collectOnSave, leaveLibraryFiles: def.leaveLibraryFiles });
-    else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb, meterSpeed: def.meterSpeed, autoThinPercent: def.autoThinPercent, playbackSpeed: def.playbackSpeed });
+    else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb, meterSpeed: def.meterSpeed, autoThinPercent: def.autoThinPercent, playbackSpeed: def.playbackSpeed, stopAtSelectionEnd: def.stopAtSelectionEnd });
   }
   const resettable = $derived(["General", "Appearance", "Autosave", "Session Media", "Playback and Recording"].includes(page));
 </script>
@@ -391,6 +391,7 @@
           <fieldset>
             <legend>Playback</legend>
             <label><input type="checkbox" bind:checked={d.editor.followPlayhead} /> Scroll to follow the playhead</label>
+            <label><input type="checkbox" bind:checked={d.app.stopAtSelectionEnd} /> When playback starts within a selection, stop at the end of the selection <span class="why">On, as in Audition: select a stretch, press Space, and it stops at the end. Off: it plays on past the selection. Loop Playback and Skip Selection are not affected.</span></label>
             <label><input type="checkbox" bind:checked={d.app.playbackSpeed} /> Playback speed (experimental): adds Transport > Playback Speed, 0.5x to 2x with the pitch kept <span class="why">For listening and reviewing only; recording, exports and saved files are not affected. 0.5x and 2x sound smeared, the metronome is silent while it is not 1x, and it does not apply to 3D Space sessions heard on speakers. Back to 1x each time the program starts.</span></label>
             <label><input type="checkbox" bind:checked={d.app.scrubAudio} /> Play audio while scrubbing <span class="why">Drag the playhead along the ruler to hear it. Approximate: playback restarts at the pointer every moment.</span></label>
           </fieldset>
@@ -466,8 +467,14 @@
           <p class="note">Scripting, and a local endpoint that lets other programs and AI agents drive the editor, are planned for after 1.0. They are not in this version, nothing listens for connections, and there is nothing here to turn on. When they arrive they will be off by default and will keep to this computer.</p>
           <p class="note">Altered Audio Editor never goes online by itself. No account, no sign-in, no tracking, no usage data, no crash reports. Everything stays on this computer.</p>
           <p class="note">The only web pages it opens are the ones you pick in the Help menu, in your own browser.</p>
-          <label><input type="checkbox" bind:checked={d.app.updateCheck} /> Check for updates once a week</label>
-          <p class="note">Off unless you turn it on. When on, the app reads one small file from this project's GitHub releases about once a week and shows a line when a newer version exists. It sends nothing about you or your audio and never installs anything without your click. Help > Check for Updates works either way.</p>
+          <label><input type="checkbox" bind:checked={d.app.updateCheck} /> Tell me when a new version is out</label>
+          <fieldset disabled={!d.app.updateCheck}>
+            <legend>How often to look</legend>
+            <label><input type="radio" name="updateEvery" value="launch" bind:group={d.app.updateEvery} /> Every time the program starts</label>
+            <label><input type="radio" name="updateEvery" value="week" bind:group={d.app.updateEvery} /> At most once a week</label>
+            <label><input type="checkbox" bind:checked={d.app.updateAutoInstall} /> Install it for me when the program starts <span class="why">Off: you are asked first (the corner notice, then the update dialog). On: a newer version is downloaded, checked against the project's signing key and installed at start-up, then the program restarts. It asks first about unsaved work, and installed copies only; the portable zip and the Linux package still get the notice.</span></label>
+          </fieldset>
+          <p class="note">Off unless you turn it on, so the program stays fully offline by default. When on, it reads one small file from this project's GitHub releases at the times above and shows a small notice in the corner when a newer version exists. It sends nothing about you or your audio and never installs anything without your click. Help > Check for Updates works either way.</p>
         {/if}
       </section>
     </div>

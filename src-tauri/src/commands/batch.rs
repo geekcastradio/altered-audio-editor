@@ -14,9 +14,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::events::EventSinkExt;
 use serde::{Deserialize, Serialize};
 use tauri::async_runtime::spawn_blocking;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 
 use crate::codecs::cue::{read_cues, write_cues, Cue};
 use crate::export::chapters::{embed_chapters, read_chapters, Chapter};
@@ -197,7 +198,7 @@ pub async fn batch_convert(
                     "failed" => "Not saved",
                     _ => "",
                 };
-                let _ = app.emit(
+                let _ = app.emit_event(
                     "batch-progress",
                     BatchProgress {
                         id: job.id.clone(),
