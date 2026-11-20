@@ -7,3 +7,4 @@ Export results, export cancellations and the "session upgraded" message now appe
 
 ### Changed
 - Opening two or more audio files (File > Open, a recent file, from your file manager) no longer builds a multitrack. They go into the Files panel. To build a multitrack, drop the files on the Editor together, or drag them from the Files panel onto tracks. One file still opens on its own in the Waveform editor.
+- The session tabs above the Multitrack stand out more: a darker bar behind them, space around them, rounded tabs with a border, and an accent line and bolder name on the tab in front.
