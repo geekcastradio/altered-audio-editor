@@ -1830,3 +1830,7 @@ Supersedes the File > Open entry that placed each audio file on its own track in
 ## 2026-11-20: bottom-left panel group can shrink to its tabs
 
 The Voice Chain, Batch Convert and QuickPass minimum height went from 220 to 260 down to 36 (the tab strip), so the group can be dragged down or tucked away. Batch Convert now scrolls when short, like the other two. Reason: Steve could not drag the group down. Other groups keep their minimums until reported.
+
+## 2026-11-20: spectrogram color schemes (issue 141)
+
+The Spectrogram Colors popover gets a row of ready-made schemes (`SPECTRUM_PRESETS` in app/colors.ts). They are plain quiet and loud pairs run through the existing palette, so no new setting or file format. "Fire" gives the purple, red, orange and yellow look the reporter asked for, with our own values. The default look is unchanged.

@@ -3,3 +3,4 @@
 ### Changed
 - The Voice Chain, Batch Convert and QuickPass group at the bottom left can now be dragged down to just its tab strip when you are not using it. Its panels scroll when the group is short.
 - When a file cannot be copied into the session folder because the original is gone, the message names the file and where it was expected.
+- Spectrogram color schemes (issue 141). Right-click the spectrogram and choose Spectrogram Colors to pick a ready-made scheme: Default (teal and gold), Fire (purple, red, orange, yellow), Ember, Ocean, Violet, Forest or Gray. You can still set your own quiet and loud colors.

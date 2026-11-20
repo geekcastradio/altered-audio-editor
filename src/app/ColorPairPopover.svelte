@@ -21,15 +21,17 @@
     /** What the color inputs show while on the built-in colors. */
     lowDefault: string;
     highDefault: string;
+    /** Ready-made pairs to pick from, shown as swatches. */
+    presets?: readonly { name: string; low: string; high: string; swatch?: string }[];
     onChange: (low: string, high: string) => void;
     onClose: () => void;
   }
 
-  const { x, y, title, lowLabel, highLabel, low, high, lowDefault, highDefault, onChange, onClose }: Props = $props();
+  const { x, y, title, lowLabel, highLabel, low, high, lowDefault, highDefault, presets = [], onChange, onClose }: Props = $props();
 
   let box = $state<HTMLDivElement | null>(null);
   const left = $derived(Math.max(4, Math.min(x, window.innerWidth - 240)));
-  const top = $derived(Math.max(4, Math.min(y, window.innerHeight - 150)));
+  const top = $derived(Math.max(4, Math.min(y, window.innerHeight - (presets.length ? 210 : 150))));
   $effect(() => {
     const away = (e: PointerEvent) => {
       if (box && !box.contains(e.target as Node)) onClose();
@@ -43,6 +45,13 @@
 
 <div class="pop" bind:this={box} role="dialog" aria-label={title} style:left="{left}px" style:top="{top}px">
   <h2>{title}</h2>
+  {#if presets.length}
+    <div class="presets" role="group" aria-label="Color schemes">
+      {#each presets as p (p.name)}
+        <button type="button" class="preset" title={p.name} aria-label={p.name} style:background={p.swatch ?? `linear-gradient(to right, ${p.low}, ${p.high})`} onclick={() => onChange(p.low, p.high)}></button>
+      {/each}
+    </div>
+  {/if}
   <label>
     <input type="color" value={low || lowDefault} oninput={(e) => onChange(e.currentTarget.value, high || highDefault)} />
     {lowLabel}
@@ -93,6 +102,20 @@
     display: flex;
     gap: 6px;
     align-items: center;
+  }
+  .presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .preset {
+    width: 34px;
+    height: 16px;
+    padding: 0;
+    border-radius: 3px;
+  }
+  .preset:hover {
+    border-color: var(--accent);
   }
   .ramp {
     flex: 1;

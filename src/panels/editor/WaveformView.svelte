@@ -11,7 +11,7 @@
 <script lang="ts">
   import { settings, wheelAnchorX, zoomRatios } from "../../stores/settings";
   import ColorPairPopover from "../../app/ColorPairPopover.svelte";
-  import { SPECTRUM_HIGH, SPECTRUM_LOW } from "../../app/colors";
+  import { SPECTRUM_HIGH, SPECTRUM_LOW, SPECTRUM_PRESETS } from "../../app/colors";
   import { KIND_COLORS, markerAt } from "../markers/markers";
   import { markerMenuItems } from "../markers/marker-menu";
   import { Scrubber } from "./scrubber";
@@ -975,6 +975,7 @@
     high={appColors.spectrumHigh}
     lowDefault={SPECTRUM_LOW}
     highDefault={SPECTRUM_HIGH}
+    presets={SPECTRUM_PRESETS}
     onChange={setSpectrumColors}
     onClose={() => (colorPop = null)}
   />

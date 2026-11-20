@@ -70,6 +70,20 @@ export const SPECTRUM_LOW = "#2a1a8a";
 export const SPECTRUM_HIGH = "#ffe066";
 
 /**
+ * Ready-made spectrogram color schemes. An empty pair is the built-in look
+ * (indigo, teal and gold); `swatch` is how it is drawn in the picker.
+ */
+export const SPECTRUM_PRESETS: readonly { name: string; low: string; high: string; swatch?: string }[] = [
+  { name: "Default (teal and gold)", low: "", high: "", swatch: "linear-gradient(to right, #08080d, #2a1a5e, #26808c, #deb246, #fffae4)" },
+  { name: "Fire (purple, red, orange, yellow)", low: "#4a1470", high: "#ffd23f" },
+  { name: "Ember", low: "#6b1020", high: "#ffd23f" },
+  { name: "Ocean", low: "#0a3a6b", high: "#7fffd4" },
+  { name: "Violet", low: "#3a1a6b", high: "#ff7ad9" },
+  { name: "Forest", low: "#0f4a2a", high: "#e8ff7a" },
+  { name: "Gray", low: "#303036", high: "#ffffff" },
+];
+
+/**
  * A 256-entry spectrogram palette (RGB triples, flattened): near black
  * for silence, fading into `low` for quiet sound and up the color wheel
  * to `high` for the loudest.
