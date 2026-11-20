@@ -1777,3 +1777,10 @@ Decision (Steve, after a Discord request): the optional update check can run at 
 ## 2026-11-19: 100% Rust, no webview, done in phases
 
 Decision (Steve): the goal is 100% Rust, or as close as possible, with no WebView2/Chromium. Python is acceptable only as optional tooling or a clearly isolated AI sidecar, and ONNX in Rust is preferred. Each release moves some logic across. 0.43.0 adds `src-tauri/src/events.rs` (an `EventSink` trait that every progress and file event goes through) and `src-tauri/src/selection.rs` (Rust copy of the selection and playhead rules), both checked against `shared-fixtures/selection.json` from vitest and cargo test. Rust is about 50% of the code by size at this point; the rest is TypeScript and Svelte, and falls as panels are ported.
+
+## 2026-11-20: AppCore handle, and releases can start from GitHub without a tag
+
+Phase 0 of the native move: `src-tauri/src/app_core.rs` adds `AppCore`, a cloneable handle that holds the event sink and is managed at startup. Core logic will take it instead of `AppHandle`; commands move behind it a few at a time, and shared state joins the handle as they do. The module is not named `core` so it cannot be confused with the Rust `core` crate.
+
+The Release workflow also accepts a manual start (Actions, Release, Run workflow, with the version). The tag in file names, update links and the draft title comes from one `TAG` value, which is the pushed tag or `v` plus the typed version. Manual starts only run from main and still stop if the version files do not match. The draft is created with its target set to the built commit; GitHub makes the tag when the draft is published. Reason: the cloud session that prepares releases cannot push tags, and this removes the one manual step before a draft.
+

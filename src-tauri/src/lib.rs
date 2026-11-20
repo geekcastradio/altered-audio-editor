@@ -7,6 +7,7 @@
 //! The interface never touches audio. It sends commands to this core
 //! and renders the state it gets back.
 
+pub mod app_core;
 pub mod backup;
 pub mod bleed_copy;
 pub mod browse;
@@ -64,6 +65,11 @@ pub fn run() {
         .manage(commands::update::PendingUpdate::default())
         .manage(commands::video::Videos::default())
         .setup(|app| {
+            // The handle core logic uses to reach the interface (Phase 0 of the native move).
+            tauri::Manager::manage(
+                &*app,
+                app_core::AppCore::new(std::sync::Arc::new(app.handle().clone())),
+            );
             // Settings from older versions are moved to the Altered Audio folder first.
             paths::migrate_settings(app.handle());
             // Backups and the cache move into Documents\Altered Audio with the libraries.
