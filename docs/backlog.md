@@ -552,3 +552,19 @@ Decision (project lead): broadcast and CD features stay in the plan for people w
 - **VST3 shared-folder presets** from Audiform (`plughost/presets.rs`): optional port.
 - **RSS.com upload** (API step 2): opt-in, explicit network permission, own design.
 - **Ogg/Opus export.**
+
+## Ideas adopted from reading AudiForm 2's README (decided 2026-11-20)
+
+Ideas only, written in our own words, no code or look taken (see CLAUDE.md, Reference sources). Steve agreed all nine are needed; the theme item is narrowed to a light and dark pair.
+
+1. **Report a Problem with diagnostics (Help menu).** Copies a plain block (app version, operating system, audio device and driver, session rate and buffer) to the clipboard and opens the GitHub issues page from the link allow list. No network use by the app. Order: 0.50.0.
+2. **ASIO and audio device probe.** A small example program a tester runs to open a driver and print what happened, since ASIO is untested on hardware. Order: 0.50.0.
+3. **Speed benchmark.** A repeatable benchmark on a dense multi-track session, reported as times real time at 1, 4 and many threads. It decides whether the engine needs a per-track worker pool. Order: 0.50.0.
+4. **Keep unknown fields on save.** Fields a version does not know are carried through load and save untouched, so sessions move safely between versions and between the old and native interfaces.
+5. **Light and dark theme with a toggle.** Only a light and a dark pair, switched with a toggle (View menu and Settings). No other named themes. Includes a high-contrast variant of each if schools need it, to be confirmed with Steve first.
+6. **Listen to a spectral selection.** Play only the frequencies inside a Box, Lasso or Brush selection, looped, before applying Reduce or Remove.
+7. **Per-channel mute in the Waveform editor.** Click a channel letter (L, R, C and so on) to mute or hide it.
+8. **Pre-render heavy tracks.** Render a track in the background so its VST3 plug-ins can rest.
+9. **Out-of-process models with hash-checked downloads.** The pattern to use for Music Remover after 1.0 (AI, so not in 1.0).
+
+Also checked: we already read RF64, BWF, W64 and MKV audio. CAF and MP2 are not in our decoder yet; adding them is likely a symphonia feature switch to verify first.

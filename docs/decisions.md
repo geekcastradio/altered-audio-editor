@@ -1842,3 +1842,7 @@ File > Import Session (.otio) builds a new session from an OTIO JSON timeline (`
 ## 2026-11-20: no rebuild from scratch; AudiForm 2 is read for ideas only
 
 Steve decided the Rust move continues as a port (the interface and its logic move onto the existing Rust core step by step, behind `AppCore`), not a rebuild from scratch. Reason: every release stays usable and hand-tested, and the audio core is already Rust. Steve also approved reading AudiForm 2 (a GPL-3.0-or-later Rust editor by the author of an earlier fork of this program) for ideas only: learn from its public README and docs, take nothing from its code, and build our own where it makes sense. Recorded in CLAUDE.md under Reference sources. Its performance claims are its own and unverified.
+
+## 2026-11-20: ideas adopted from AudiForm 2's README
+
+Steve agreed all nine ideas listed in docs/backlog.md ("Ideas adopted from reading AudiForm 2's README") are needed, with one change: no named theme set. The only theme work is a light and dark pair with a toggle. Items 1 to 3 (Report a Problem diagnostics, the ASIO probe, the speed benchmark) go into 0.50.0 with the document review and the next AppCore batch.
