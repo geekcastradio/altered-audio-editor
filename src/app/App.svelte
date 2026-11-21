@@ -220,6 +220,9 @@
     analyzeAudio,
     sessionPickSave,
     sessionImportSesx,
+    audioDriver,
+    audioOutputs,
+    outputChannels,
     sessionImportOtio,
     sessionImportRpp,
     sessionPickOtio,
@@ -4858,11 +4861,23 @@
           const doc = session.current;
           const w = wave.current;
           const plugins = [...new Set([...(doc ? pluginSlots(doc) : []), ...(w ? pluginSlots(w) : [])].map((s) => s.effect))];
+          // The sound device and driver, so a "device did not respond" report says which one.
+          const drv = await audioDriver().catch(() => null);
+          const outs = await audioOutputs(drv?.asio).catch(() => []);
+          const picked = outs.find((o) => o.isDefault)?.name;
+          const channels = await outputChannels().catch(() => 0);
+          const audio = [
+            `Audio driver: ${drv ? (drv.asio ? "ASIO" : "system") : "unknown"}${drv ? ` (ASIO ${drv.asioBuilt ? `built in, ${drv.drivers.length} installed` : "not in this build"})` : ""}`,
+            `Output device: ${settings.current.output ?? picked ?? "unknown"}${settings.current.output ? "" : " (system default)"}`,
+            `Output channels: ${channels || "unknown"}`,
+            `Buffer request: ${settings.current.bufferFrames ? `${settings.current.bufferFrames} frames` : "the driver's own"}`,
+          ];
           const text = bugInfoText({
             appVersion: info?.version ?? "unknown",
             system: navigator.userAgent,
             state: [`Editor: ${inWave() ? "Waveform" : "Multitrack"}`, `Playing: ${transport.current.playing || waveTransport.current.playing ? "yes" : "no"}`],
             plugins,
+            audio,
           });
           try {
             await navigator.clipboard.writeText(text);

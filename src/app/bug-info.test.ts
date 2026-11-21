@@ -26,4 +26,11 @@ describe("bug info", () => {
     expect(text).toContain("[t] m");
     expect(bugInfoText({ appVersion: "1", system: "x", state: [], plugins: [] }, [])).toContain("No errors recorded");
   });
+
+  it("lists the audio driver and device when given", () => {
+    const text = bugInfoText({ appVersion: "1", system: "x", state: [], plugins: [], audio: ["Audio driver: system", "Output device: Speakers (default)"] }, []);
+    expect(text).toContain("Audio driver: system");
+    expect(text).toContain("Output device: Speakers (default)");
+    expect(bugInfoText({ appVersion: "1", system: "x", state: [], plugins: [] }, [])).not.toContain("Audio driver");
+  });
 });

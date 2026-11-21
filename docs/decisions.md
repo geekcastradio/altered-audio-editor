@@ -1838,3 +1838,11 @@ The Spectrogram Colors popover gets a row of schemes (`SPECTRUM_PRESETS` in app/
 ## 2026-11-20: OpenTimelineIO import (issue 120)
 
 File > Import Session (.otio) builds a new session from an OTIO JSON timeline (`src-tauri/src/otio_import.rs`, command `session_import_otio`), modeled on the .rpp import. Written from the public format description with `serde_json`, no new dependency and nothing ported. Brought in: audio tracks, clips, gaps, timeline and track markers, enabled state. Reported as left out: transitions, clip effects and speed changes, markers on clips, video tracks, nested sequences, clips with no media. Media start times are subtracted so a clip that starts at a timecode offset still reads the right part of the file. A video frame rate is never used as the session rate; those files get 48 kHz. A round-trip test reads back what our own export writes. Not tested yet against a real Kdenlive file; one was requested on the issue.
+
+## 2026-11-20: no rebuild from scratch; AudiForm 2 is read for ideas only
+
+Steve decided the Rust move continues as a port (the interface and its logic move onto the existing Rust core step by step, behind `AppCore`), not a rebuild from scratch. Reason: every release stays usable and hand-tested, and the audio core is already Rust. Steve also approved reading AudiForm 2 (a GPL-3.0-or-later Rust editor by the author of an earlier fork of this program) for ideas only: learn from its public README and docs, take nothing from its code, and build our own where it makes sense. Recorded in CLAUDE.md under Reference sources. Its performance claims are its own and unverified.
+
+## 2026-11-20: ideas adopted from AudiForm 2's README
+
+Steve agreed all nine ideas listed in docs/backlog.md ("Ideas adopted from reading AudiForm 2's README") are needed, with one change: no named theme set. The only theme work is a light and dark pair with a toggle. Items 1 to 3 (Report a Problem diagnostics, the ASIO probe, the speed benchmark) go into 0.50.0 with the document review and the next AppCore batch.

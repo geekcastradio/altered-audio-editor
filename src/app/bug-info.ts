@@ -46,10 +46,13 @@ export interface BugInfoContext {
   state: string[];
   /** Plug-in effect ids in the open documents. */
   plugins: string[];
+  /** Audio driver, device and buffer lines. Left out when empty. */
+  audio?: string[];
 }
 
 export function bugInfoText(ctx: BugInfoContext, list: readonly RecordedError[] = errors): string {
   const out = [`Altered Audio Editor ${ctx.appVersion}`, scrub(ctx.system), ...ctx.state];
+  if (ctx.audio?.length) out.push(...ctx.audio.map(scrub));
   out.push(ctx.plugins.length ? `Plug-ins in use: ${ctx.plugins.join(", ")}` : "Plug-ins in use: none");
   if (list.length === 0) {
     out.push("", "No errors recorded since the app started.");
