@@ -1932,3 +1932,7 @@ The In and Out point rules (`markIn`, `markOut`, `clearIn`, `clearOut` in `src/a
 ## 2026-11-21: audiobook delivery check in Rust
 
 The audiobook delivery check (`acxCheck` in `src/app/delivery.ts`) now has a Rust copy in `src-tauri/src/delivery.rs`, tested against `shared-fixtures/delivery.json` with the TypeScript copy. The expected values come from the TypeScript check, so the grades, the gain figure and the advice text match word for word. Two JavaScript behaviors needed exact copies: `Math.round` sends halves toward positive infinity (Rust's `round` sends them away from zero, which differs for negative gains), and `toFixed(1)` rounds an exact tie up in size. Both have helpers and tests. No behavior change; the interface still uses the TypeScript copy.
+
+## 2026-11-21: color ramps in Rust
+
+The analysis color rules (`src/app/colors.ts`: hex and HSL conversion, `ramp`, and the 256-entry `spectrumLut`) now have a Rust copy in `src-tauri/src/colors.rs`, tested against `shared-fixtures/colors.json` with the TypeScript copy. Hex strings and palette bytes match exactly across six color pairs, including an unreadable color that falls back to the default. The native interface will draw spectrograms from this. The JavaScript-compatible `js_round` and `js_to_fixed1` helpers moved to `src-tauri/src/js_compat.rs` so the delivery check and the colors share one copy. No behavior change; the interface still uses the TypeScript copy.
