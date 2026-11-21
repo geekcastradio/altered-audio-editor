@@ -18,6 +18,10 @@ pub fn js_round(x: f64) -> f64 {
 /// JavaScript's `Number.prototype.toFixed(1)`: the nearest tenth of the exact
 /// value, and an exact tie goes up in size (away from zero for negatives).
 pub fn js_to_fixed1(x: f64) -> String {
+    if x == 0.0 {
+        // Negative zero has no sign in JavaScript's output.
+        return "0.0".to_string();
+    }
     if x < 0.0 {
         return format!("-{}", js_to_fixed1(-x));
     }
@@ -59,5 +63,7 @@ mod tests {
         assert_eq!(js_to_fixed1(0.04), "0.0");
         assert_eq!(js_to_fixed1(-0.04), "-0.0");
         assert_eq!(js_to_fixed1(9.95), "9.9");
+        assert_eq!(js_to_fixed1(0.0), "0.0");
+        assert_eq!(js_to_fixed1(-0.0), "0.0");
     }
 }
