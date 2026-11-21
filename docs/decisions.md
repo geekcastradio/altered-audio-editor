@@ -1916,3 +1916,7 @@ Typed dial values (`parseNumber`, `parsePan`) now have a Rust copy in `src-tauri
 ## 2026-11-21: time input rules in Rust
 
 Typed times and selection edits (`parseTime` for the time, samples, timecode and seconds formats, and `editSelection`) now have a Rust copy in `src-tauri/src/time_input.rs`, tested against `shared-fixtures/time-input.json` with the TypeScript copy. The bars format stays in TypeScript because it needs the session tempo, which has not moved to the core. No behavior change; the interface still uses the TypeScript copy.
+
+## 2026-11-21: dial maths in Rust
+
+The dial's drag, key and pointer rules (`src/app/knob.ts`) now have a Rust copy in `src-tauri/src/knob.rs`, tested against `shared-fixtures/knob.json` with the TypeScript copy (compared to 1e-9, since the two languages may differ in the last bit). No behavior change; the interface still uses the TypeScript copy.
