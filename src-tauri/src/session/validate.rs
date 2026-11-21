@@ -181,6 +181,7 @@ mod tests {
         };
         let mut track = Track::new("Host", ChannelLayout::Mono);
         track.clips.push(Clip {
+            extra: Default::default(),
             id: new_id(),
             name: "intro".into(),
             media_id: media.id,

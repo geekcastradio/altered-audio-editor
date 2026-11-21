@@ -205,6 +205,7 @@ pub fn build(project: &rpp::Project, name: &str, base: &Path) -> RppImported {
                 ..Fade::default()
             };
             track.clips.push(Clip {
+                extra: Default::default(),
                 id: new_id(),
                 name: if it.name.is_empty() {
                     "Clip".into()

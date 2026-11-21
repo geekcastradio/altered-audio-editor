@@ -32,6 +32,9 @@ pub fn new_id() -> Id {
     Uuid::new_v4()
 }
 
+/// Fields a file carries that this version does not know, kept as read.
+pub type Extra = serde_json::Map<String, serde_json::Value>;
+
 /// A multitrack session.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Session {
@@ -97,6 +100,12 @@ pub struct Session {
 
     /// Scaffolding (P6, P7): episode metadata for show sync and export.
     pub metadata: EpisodeMetadata,
+    /// Fields a newer version wrote that this one does not know. They are
+    /// kept as read and written back on save, so a file that passes through
+    /// an older build loses nothing. Not part of the published schema.
+    #[serde(flatten, default, skip_serializing_if = "Extra::is_empty")]
+    #[schemars(skip)]
+    pub extra: Extra,
 }
 
 impl Document for Session {
@@ -145,6 +154,7 @@ impl Session {
             libraries: Vec::new(),
             template_id: None,
             metadata: EpisodeMetadata::default(),
+            extra: Extra::default(),
         }
     }
 
@@ -642,6 +652,12 @@ pub struct Track {
     /// Records automation moves while playing. None plays the lanes (or not).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub record_mode: Option<RecordMode>,
+    /// Fields a newer version wrote that this one does not know. They are
+    /// kept as read and written back on save, so a file that passes through
+    /// an older build loses nothing. Not part of the published schema.
+    #[serde(flatten, default, skip_serializing_if = "Extra::is_empty")]
+    #[schemars(skip)]
+    pub extra: Extra,
 }
 
 /// The height a new track starts with, in pixels: tall enough that the
@@ -685,6 +701,7 @@ impl Track {
             midi_clips: Vec::new(),
             envelopes: Vec::new(),
             record_mode: None,
+            extra: Extra::default(),
         }
     }
 
@@ -986,6 +1003,12 @@ pub struct Clip {
     /// older files and newer builds agree on the format before it freezes; nothing sets it yet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub take: Option<ClipTake>,
+    /// Fields a newer version wrote that this one does not know. They are
+    /// kept as read and written back on save, so a file that passes through
+    /// an older build loses nothing. Not part of the published schema.
+    #[serde(flatten, default, skip_serializing_if = "Extra::is_empty")]
+    #[schemars(skip)]
+    pub extra: Extra,
 }
 
 /// Marks a clip as one take of a set of takes over the same stretch of a track.

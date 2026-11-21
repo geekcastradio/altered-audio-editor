@@ -79,6 +79,7 @@ pub fn envelope() -> Envelope {
 
 pub fn clip() -> Clip {
     Clip {
+        extra: Default::default(),
         id: id(300),
         name: "Cold open".into(),
         media_id: id(100),
@@ -124,6 +125,7 @@ pub fn clip() -> Clip {
 
 pub fn track() -> Track {
     Track {
+        extra: Default::default(),
         id: id(200),
         name: "Host".into(),
         kind: Default::default(),
@@ -206,6 +208,7 @@ pub fn marker() -> Marker {
 
 pub fn session() -> Session {
     Session {
+        extra: Default::default(),
         format: Session::FORMAT.into(),
         schema_version: Session::CURRENT_VERSION,
         id: id(1),
