@@ -40,6 +40,9 @@ pub struct Dirs {
     pub home: Option<PathBuf>,
     /// The app's own cache folder, the last place working files can go.
     pub app_cache: Result<PathBuf, String>,
+    /// The user's common folders in the order the Drive Manager lists them
+    /// (Home, Desktop, Documents, Music, Downloads). Missing ones are left out.
+    pub places: Vec<(String, PathBuf)>,
 }
 
 impl Dirs {
@@ -51,6 +54,10 @@ impl Dirs {
             documents: Some(root.join("documents")),
             home: Some(root.join("home")),
             app_cache: Ok(root.join("app-cache")),
+            places: ["Home", "Desktop", "Documents", "Music", "Downloads"]
+                .iter()
+                .map(|n| (n.to_string(), root.join("home").join(n)))
+                .collect(),
         }
     }
 }
@@ -121,6 +128,21 @@ impl AppCore {
             Some(docs) => Ok(docs.join("Altered Audio").join("Cache")),
             None => self.dirs.app_cache.clone(),
         }
+    }
+
+    /// Drives first, then the user's common folders that exist. Blocks.
+    pub fn browse_locations(&self) -> Vec<crate::browse::Location> {
+        let mut out = crate::browse::roots();
+        for (label, path) in &self.dirs.places {
+            if path.is_dir() {
+                out.push(crate::browse::Location {
+                    path: path.clone(),
+                    label: label.clone(),
+                    kind: crate::browse::LocationKind::Place,
+                });
+            }
+        }
+        out
     }
 
     /// Builds a file's waveform peaks if they are not held already and returns
@@ -213,10 +235,26 @@ mod tests {
                 documents: None,
                 home: None,
                 app_cache: Err("no cache folder".to_string()),
+                places: Vec::new(),
             },
         );
         assert_eq!(broken.config_dir().unwrap_err(), "no settings folder");
         assert_eq!(broken.templates_dir().unwrap_err(), "no settings folder");
+    }
+
+    #[test]
+    fn browse_locations_list_only_folders_that_exist() {
+        let root = std::env::temp_dir().join(format!("aae-places-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("home").join("Music")).unwrap();
+        let core = AppCore::new(Arc::new(MemorySink::default()), Dirs::under(&root));
+        let places: Vec<String> = core
+            .browse_locations()
+            .into_iter()
+            .filter(|l| matches!(l.kind, crate::browse::LocationKind::Place))
+            .map(|l| l.label)
+            .collect();
+        std::fs::remove_dir_all(&root).ok();
+        assert_eq!(places, vec!["Music".to_string()]);
     }
 
     #[test]
