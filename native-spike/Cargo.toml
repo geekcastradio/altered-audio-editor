@@ -1,0 +1,15 @@
+[package]
+name = "aae-native-spike"
+version = "0.0.1"
+edition = "2021"
+license = "GPL-3.0-or-later"
+publish = false
+description = "Phase 2 spike: a native interface sketch. Not shipped, not part of the app build."
+
+# Its own workspace, so the app's CI and releases never build it.
+[workspace]
+
+[dependencies]
+eframe = "0.37.0"
+egui_dock = "0.22.0"
+hound = "3.5.1"

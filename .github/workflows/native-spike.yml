@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (c) The GeekCast Radio Network, LLC.
+# This file is part of Altered Audio Editor.
+
+# Builds the Phase 2 native interface spike (native-spike/) on Windows and
+# keeps the program as a downloadable artifact of the run. It is not part of the
+# app build or of any release.
+name: Native spike
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "native-spike/**"
+      - ".github/workflows/native-spike.yml"
+
+concurrency:
+  group: native-spike-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Spike on Windows
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: native-spike
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native-spike
+
+      - name: cargo clippy
+        run: cargo clippy -- -D warnings
+
+      - name: cargo build (release)
+        run: cargo build --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aae-native-spike-windows
+          path: native-spike/target/release/aae-native-spike.exe
+          retention-days: 30
