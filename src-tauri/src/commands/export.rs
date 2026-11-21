@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use crate::events::EventSinkExt;
+use crate::app_core::AppCore;
 use serde::Serialize;
 use tauri::async_runtime::spawn_blocking;
 use tauri::{AppHandle, Manager, State};
@@ -180,12 +180,13 @@ pub fn paths_exist(paths: Vec<PathBuf>) -> Vec<bool> {
 /// Renders the open session to `path`. Emits `export-progress`.
 #[tauri::command]
 pub async fn export_mixdown(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     open: State<'_, OpenSession>,
     cancel: State<'_, ExportCancel>,
     path: PathBuf,
     request: MixdownRequest,
 ) -> Result<MixdownResult, String> {
+    let app = app.inner().clone();
     let session = open.0.lock().map_err(|e| e.to_string())?.session.clone();
     let flag = cancel.0.clone();
     flag.store(false, Ordering::Relaxed);
@@ -195,7 +196,7 @@ pub async fn export_mixdown(
             // About 100 updates per export is plenty for a progress bar.
             if done == total || done - last >= total / 100 {
                 last = done;
-                let _ = app.emit_event("export-progress", Progress { done, total });
+                let _ = app.emit("export-progress", Progress { done, total });
             }
         })
         .map_err(|e| e.to_string())
@@ -254,12 +255,13 @@ pub async fn export_pick_video_path(
 /// `export-progress`. None when cancelled.
 #[tauri::command]
 pub async fn export_mix_into_video(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     open: State<'_, OpenSession>,
     cancel: State<'_, ExportCancel>,
     path: PathBuf,
     request: MixdownRequest,
 ) -> Result<Option<VideoMixResult>, String> {
+    let app = app.inner().clone();
     let session = open.0.lock().map_err(|e| e.to_string())?.session.clone();
     let video = session.video.clone().ok_or("This session has no video.")?;
     if video.offset < 0.0 {
@@ -293,7 +295,7 @@ pub async fn export_mix_into_video(
         let done = mixdown::mixdown(&session, &request, &temp, &flag, |done, total| {
             if done == total || done - last >= total / 100 {
                 last = done;
-                let _ = app.emit_event("export-progress", Progress { done, total });
+                let _ = app.emit("export-progress", Progress { done, total });
             }
         });
         let result = match done {
@@ -335,13 +337,14 @@ pub struct MergeResult {
 /// `export-progress` and stops on `export_cancel`.
 #[tauri::command]
 pub async fn export_merge(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     open: State<'_, OpenSession>,
     cancel: State<'_, ExportCancel>,
     folder: PathBuf,
     name: String,
     mut request: MixdownRequest,
 ) -> Result<MergeResult, String> {
+    let app = app.inner().clone();
     let session = open.0.lock().map_err(|e| e.to_string())?.session.clone();
     let flag = cancel.0.clone();
     flag.store(false, Ordering::Relaxed);
@@ -355,7 +358,7 @@ pub async fn export_merge(
         let result = mixdown::mixdown(&session, &request, &path, &flag, |done, total| {
             if done == total || done - last >= total / 100 {
                 last = done;
-                let _ = app.emit_event("export-progress", Progress { done, total });
+                let _ = app.emit("export-progress", Progress { done, total });
             }
         })
         .map_err(|e| e.to_string())?;
@@ -391,11 +394,12 @@ pub async fn export_region_copy(
 /// and stops on `export_cancel`, like a mixdown.
 #[tauri::command]
 pub async fn loudness_check(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     open: State<'_, OpenSession>,
     cancel: State<'_, ExportCancel>,
     request: MixdownRequest,
 ) -> Result<LoudnessReport, String> {
+    let app = app.inner().clone();
     let session = open.0.lock().map_err(|e| e.to_string())?.session.clone();
     let flag = cancel.0.clone();
     flag.store(false, Ordering::Relaxed);
@@ -404,7 +408,7 @@ pub async fn loudness_check(
         loudness::measure(&session, &request, &flag, |done, total| {
             if done == total || done - last >= total / 100 {
                 last = done;
-                let _ = app.emit_event("export-progress", Progress { done, total });
+                let _ = app.emit("export-progress", Progress { done, total });
             }
         })
         .map_err(|e| e.to_string())
@@ -417,11 +421,12 @@ pub async fn loudness_check(
 /// Emits `export-progress` and stops on `export_cancel`.
 #[tauri::command]
 pub async fn analyze_audio(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     open: State<'_, OpenSession>,
     cancel: State<'_, ExportCancel>,
     request: MixdownRequest,
 ) -> Result<AnalysisReport, String> {
+    let app = app.inner().clone();
     let session = open.0.lock().map_err(|e| e.to_string())?.session.clone();
     let flag = cancel.0.clone();
     flag.store(false, Ordering::Relaxed);
@@ -430,7 +435,7 @@ pub async fn analyze_audio(
         analysis::analyze(&session, &request, &flag, |done, total| {
             if done == total || done - last >= total / 100 {
                 last = done;
-                let _ = app.emit_event("export-progress", Progress { done, total });
+                let _ = app.emit("export-progress", Progress { done, total });
             }
         })
         .map_err(|e| e.to_string())

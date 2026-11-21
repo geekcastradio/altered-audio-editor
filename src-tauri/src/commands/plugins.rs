@@ -204,17 +204,17 @@ pub fn plugins_set_shared(makers: Vec<String>) -> RegistryView {
 /// bundles too.
 #[tauri::command]
 pub async fn plugins_scan(
-    app: tauri::AppHandle,
+    app: tauri::State<'_, crate::app_core::AppCore>,
     all: bool,
 ) -> Result<(plugins::ScanReport, RegistryView), String> {
-    use crate::events::EventSinkExt;
+    let app = app.inner().clone();
     spawn_blocking(move || {
         let report = plugins::scan(all, |done, total, bundle| {
             let name = bundle
                 .file_stem()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            let _ = app.emit_event(
+            let _ = app.emit(
                 "plugins-scan-progress",
                 serde_json::json!({ "done": done, "total": total, "name": name }),
             );
