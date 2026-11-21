@@ -104,6 +104,25 @@ fn ogg_opus() {
     assert_about_half_second(&i, 0.06);
 }
 
+/// Matroska and WebM hold no length per packet for these codecs, so the
+/// probe estimates it from the packet times (within about one packet).
+#[test]
+fn matroska_and_webm_audio_have_a_length() {
+    for (name, codec) in [
+        ("tone_flac.mka", "FLAC"),
+        ("tone_opus.mka", "Opus"),
+        ("tone_vorbis.mka", "Vorbis"),
+        ("tone_aac.mka", "AAC"),
+        ("tone_mp3.mka", "MP3"),
+        ("tone.webm", "Opus"),
+    ] {
+        let i = info(name);
+        assert_eq!(i.codec, codec, "{name}");
+        assert_eq!((i.sample_rate, i.channels > 0), (48_000, true), "{name}");
+        assert_about_half_second(&i, 0.1);
+    }
+}
+
 #[test]
 fn truncated_file_is_reported_not_crashed() {
     let dir = tempfile::tempdir().unwrap();
@@ -165,6 +184,12 @@ mod reader {
             "tone.opus",
             "tone.flac",
             "tone.aiff",
+            "tone_flac.mka",
+            "tone_opus.mka",
+            "tone_vorbis.mka",
+            "tone_aac.mka",
+            "tone_mp3.mka",
+            "tone.webm",
         ] {
             let mut r = AudioReader::open(&media(name), 2, Some(48_000)).unwrap();
             let samples = read_all(&mut r);

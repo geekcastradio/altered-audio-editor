@@ -464,7 +464,7 @@ export class SessionFiles {
   }
 }
 
-const AUDIO_EXTENSIONS = new Set(["wav", "wave", "aif", "aiff", "aifc", "mp3", "flac", "m4a", "mp4", "aac", "ogg", "oga", "opus", "mkv", "w64", "rf64", "bwf"]);
+const AUDIO_EXTENSIONS = new Set(["wav", "wave", "aif", "aiff", "aifc", "mp3", "flac", "m4a", "mp4", "aac", "ogg", "oga", "opus", "mkv", "mka", "webm", "w64", "rf64", "bwf"]);
 /** Files that may carry a picture. An .mp4 with no picture is still opened as audio. */
 const VIDEO_EXTENSIONS = new Set(["mp4", "m4v", "mov", "wmv", "avi", "mkv"]);
 

@@ -22,7 +22,7 @@ Last checked against 0.41.0 plus the 0.42.0 work. If you add, remove or switch a
 | ALAC | Symphonia | MPL-2.0 | |
 | Ogg Vorbis | Symphonia | MPL-2.0 | |
 | Opus (`.opus`, Ogg Opus) | `opus-decoder` crate, patched copy in `src-tauri/vendor/opus-decoder` | MIT or Apache-2.0 | Pure Rust. The Ogg container is read by Symphonia. |
-| Matroska audio (`.mkv`) | Symphonia | MPL-2.0 | |
+| Matroska and WebM audio (`.mkv`, `.mka`, `.webm`) | Symphonia | MPL-2.0 | Opus, Vorbis, FLAC, AAC and MP3 inside. These containers store no length per packet, so the length is estimated from the packet times and can be off by up to one packet. |
 | Tags and cover art (ID3v2, MP4 `ilst`) | Symphonia; our own M4A tag writer (`export/m4a_tags.rs`) | MPL-2.0; GPL-3.0-or-later | |
 
 ## Audio out (encoding)
