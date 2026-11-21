@@ -1,0 +1,37 @@
+{
+  "parseTime": [
+    { "name": "m:ss.fff", "in": "1:05.250", "rate": 48000, "format": "time", "fps": 30, "want": 3132000 },
+    { "name": "plain seconds", "in": "65.25", "rate": 48000, "format": "time", "fps": 30, "want": 3132000 },
+    { "name": "h:mm:ss", "in": "0:01:05", "rate": 48000, "format": "time", "fps": 30, "want": 3120000 },
+    { "name": "spaces trimmed", "in": "  12  ", "rate": 44100, "format": "time", "fps": 30, "want": 529200 },
+    { "name": "trailing dot", "in": "65.", "rate": 48000, "format": "time", "fps": 30, "want": 3120000 },
+    { "name": "rounds down", "in": "0.00001", "rate": 44100, "format": "time", "fps": 30, "want": 0 },
+    { "name": "rounds half up", "in": "0.5", "rate": 44101, "format": "time", "fps": 30, "want": 22051 },
+    { "name": "samples count", "in": "48000", "rate": 48000, "format": "samples", "fps": 30, "want": 48000 },
+    { "name": "samples falls back to time", "in": "1:00", "rate": 48000, "format": "samples", "fps": 30, "want": 2880000 },
+    { "name": "samples with a decimal reads as time", "in": "1.5", "rate": 48000, "format": "samples", "fps": 30, "want": 72000 },
+    { "name": "timecode 30 fps", "in": "00:01:05:12", "rate": 48000, "format": "timecode", "fps": 30, "want": 3139200 },
+    { "name": "timecode drop separator", "in": "0:00:01;12", "rate": 44100, "format": "timecode", "fps": 25, "want": 65268 },
+    { "name": "timecode falls back to time", "in": "1:05", "rate": 48000, "format": "timecode", "fps": 30, "want": 3120000 },
+    { "name": "timecode three digit frames", "in": "00:01:05:123", "rate": 48000, "format": "timecode", "fps": 30, "want": null },
+    { "name": "seconds format", "in": "12.5", "rate": 48000, "format": "seconds", "fps": 30, "want": 600000 },
+    { "name": "empty", "in": "", "rate": 48000, "format": "time", "fps": 30, "want": null },
+    { "name": "letters", "in": "abc", "rate": 48000, "format": "time", "fps": 30, "want": null },
+    { "name": "four groups", "in": "1:2:3:4", "rate": 48000, "format": "time", "fps": 30, "want": null },
+    { "name": "three digit part", "in": "1:123", "rate": 48000, "format": "time", "fps": 30, "want": null },
+    { "name": "negative", "in": "-5", "rate": 48000, "format": "time", "fps": 30, "want": null },
+    { "name": "two dots", "in": "1.5.2", "rate": 48000, "format": "time", "fps": 30, "want": null },
+    { "name": "trailing colon", "in": "1:05:", "rate": 48000, "format": "time", "fps": 30, "want": null },
+    { "name": "leading dot", "in": ".5", "rate": 48000, "format": "time", "fps": 30, "want": null }
+  ],
+  "editSelection": [
+    { "name": "move start", "sel": [100, 500], "part": "start", "value": 200, "want": [200, 500] },
+    { "name": "start past end swaps", "sel": [100, 500], "part": "start", "value": 800, "want": [500, 800] },
+    { "name": "move end", "sel": [100, 500], "part": "end", "value": 300, "want": [100, 300] },
+    { "name": "end before start swaps", "sel": [100, 500], "part": "end", "value": 40, "want": [40, 100] },
+    { "name": "duration", "sel": [100, 500], "part": "duration", "value": 250, "want": [100, 350] },
+    { "name": "negative clamps to zero", "sel": [100, 500], "part": "start", "value": -50, "want": [0, 500] },
+    { "name": "negative duration is zero", "sel": [100, 500], "part": "duration", "value": -9, "want": [100, 100] },
+    { "name": "rounds", "sel": [100, 500], "part": "end", "value": 300.6, "want": [100, 301] }
+  ]
+}

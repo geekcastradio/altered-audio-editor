@@ -1912,3 +1912,7 @@ A cold-start reading from Steve's PC (0.50.0) showed the first frame at 1.42 s, 
 ## 2026-11-21: dial input rules in Rust
 
 Typed dial values (`parseNumber`, `parsePan`) now have a Rust copy in `src-tauri/src/dial_input.rs`. Both copies are tested against `shared-fixtures/dial-input.json`, the same way as the selection rules. Reason: Phase 3 moves interface logic to Rust, and a shared fixture proves the two agree before the TypeScript copy goes away. No behavior change in the app; the interface still uses the TypeScript copy.
+
+## 2026-11-21: time input rules in Rust
+
+Typed times and selection edits (`parseTime` for the time, samples, timecode and seconds formats, and `editSelection`) now have a Rust copy in `src-tauri/src/time_input.rs`, tested against `shared-fixtures/time-input.json` with the TypeScript copy. The bars format stays in TypeScript because it needs the session tempo, which has not moved to the core. No behavior change; the interface still uses the TypeScript copy.
