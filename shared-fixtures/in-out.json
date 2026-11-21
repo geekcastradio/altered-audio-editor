@@ -1,0 +1,33 @@
+{
+  "markIn": [
+    { "name": "no selection runs to the end", "sel": null, "at": 100, "contentEnd": 1000, "want": [100, 1000] },
+    { "name": "keeps an Out past the In", "sel": [50, 400], "at": 100, "contentEnd": 1000, "want": [100, 400] },
+    { "name": "Out at the In runs to the end", "sel": [50, 100], "at": 100, "contentEnd": 1000, "want": [100, 1000] },
+    { "name": "Out before the In runs to the end", "sel": [50, 80], "at": 100, "contentEnd": 1000, "want": [100, 1000] },
+    { "name": "In at the end is nothing", "sel": null, "at": 1000, "contentEnd": 1000, "want": null },
+    { "name": "negative clamps to zero", "sel": null, "at": -20, "contentEnd": 500, "want": [0, 500] },
+    { "name": "rounds", "sel": null, "at": 10.6, "contentEnd": 500, "want": [11, 500] },
+    { "name": "empty content", "sel": null, "at": 0, "contentEnd": 0, "want": null }
+  ],
+  "markOut": [
+    { "name": "no selection starts at zero", "sel": null, "at": 300, "want": [0, 300] },
+    { "name": "keeps an In before the Out", "sel": [100, 900], "at": 300, "want": [100, 300] },
+    { "name": "In at the Out starts at zero", "sel": [300, 900], "at": 300, "want": [0, 300] },
+    { "name": "In after the Out starts at zero", "sel": [500, 900], "at": 300, "want": [0, 300] },
+    { "name": "Out at zero is nothing", "sel": null, "at": 0, "want": null },
+    { "name": "negative is nothing", "sel": [10, 20], "at": -5, "want": null },
+    { "name": "rounds", "sel": [100, 900], "at": 300.4, "want": [100, 300] }
+  ],
+  "clearIn": [
+    { "name": "no selection", "sel": null, "contentEnd": 1000, "want": null },
+    { "name": "starts at zero again", "sel": [200, 600], "contentEnd": 1000, "want": [0, 600] },
+    { "name": "covers everything is nothing", "sel": [200, 1000], "contentEnd": 1000, "want": null },
+    { "name": "past the end is nothing", "sel": [200, 1200], "contentEnd": 1000, "want": null }
+  ],
+  "clearOut": [
+    { "name": "no selection", "sel": null, "contentEnd": 1000, "want": null },
+    { "name": "runs to the end again", "sel": [200, 600], "contentEnd": 1000, "want": [200, 1000] },
+    { "name": "covers everything is nothing", "sel": [0, 600], "contentEnd": 1000, "want": null },
+    { "name": "In at the end is nothing", "sel": [1000, 1000], "contentEnd": 1000, "want": null }
+  ]
+}

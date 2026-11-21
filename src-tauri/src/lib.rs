@@ -20,6 +20,7 @@ pub mod dsp;
 pub mod engine;
 pub mod events;
 pub mod export;
+pub mod in_out;
 pub mod knob;
 pub mod library;
 pub mod otio_import;

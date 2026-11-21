@@ -1924,3 +1924,7 @@ The dial's drag, key and pointer rules (`src/app/knob.ts`) now have a Rust copy 
 ## 2026-11-21: the startup log is written atomically
 
 CI on the dial maths PR failed once on `startup::tests::marks_are_written_once_a_folder_is_set`. Cause: the log was rewritten with a plain write, which empties the file first, so a reader could see it empty or half written while another stage was being stamped. The log is now written to a side file and swapped in, with a direct write as the fallback if the swap fails. A new test reads the log while another thread stamps 400 stages; it fails with the old write. This also covers Help > Copy Bug Report Details and anyone opening the log while the program runs.
+
+## 2026-11-21: In and Out rules in Rust
+
+The In and Out point rules (`markIn`, `markOut`, `clearIn`, `clearOut` in `src/app/in-out.ts`) now have a Rust copy in `src-tauri/src/in_out.rs`, tested against `shared-fixtures/in-out.json` with the TypeScript copy. It reuses the `Selection` type from `selection.rs`. No behavior change; the interface still uses the TypeScript copy.
