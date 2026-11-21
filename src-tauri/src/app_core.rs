@@ -130,6 +130,23 @@ impl AppCore {
         }
     }
 
+    /// Where unsaved work is set aside every two minutes for crash recovery.
+    pub fn autosave_dir(&self) -> Result<PathBuf, String> {
+        Ok(self.config_dir()?.join("autosave"))
+    }
+
+    /// Default folder for new sessions: Documents/Altered Audio/Sessions
+    /// (home/Documents when the system has no Documents folder).
+    pub fn sessions_default_folder(&self) -> Result<PathBuf, String> {
+        let docs = self
+            .dirs
+            .documents
+            .clone()
+            .or_else(|| self.dirs.home.as_ref().map(|h| h.join("Documents")))
+            .ok_or_else(|| "The Documents folder could not be found.".to_string())?;
+        Ok(docs.join("Altered Audio").join("Sessions"))
+    }
+
     /// Drives first, then the user's common folders that exist. Blocks.
     pub fn browse_locations(&self) -> Vec<crate::browse::Location> {
         let mut out = crate::browse::roots();
@@ -255,6 +272,43 @@ mod tests {
             .collect();
         std::fs::remove_dir_all(&root).ok();
         assert_eq!(places, vec!["Music".to_string()]);
+    }
+
+    #[test]
+    fn autosave_and_sessions_folders() {
+        let core = AppCore::new(
+            Arc::new(MemorySink::default()),
+            Dirs::under(std::path::Path::new("root")),
+        );
+        assert_eq!(
+            core.autosave_dir().unwrap(),
+            PathBuf::from("root").join("config").join("autosave")
+        );
+        assert_eq!(
+            core.sessions_default_folder().unwrap(),
+            PathBuf::from("root")
+                .join("documents")
+                .join("Altered Audio")
+                .join("Sessions")
+        );
+        let mut dirs = Dirs::under(std::path::Path::new("root"));
+        dirs.documents = None;
+        let no_docs = AppCore::new(Arc::new(MemorySink::default()), dirs);
+        assert_eq!(
+            no_docs.sessions_default_folder().unwrap(),
+            PathBuf::from("root")
+                .join("home")
+                .join("Documents")
+                .join("Altered Audio")
+                .join("Sessions")
+        );
+        let mut none = Dirs::under(std::path::Path::new("root"));
+        none.documents = None;
+        none.home = None;
+        none.config = Err("no settings folder".to_string());
+        let none = AppCore::new(Arc::new(MemorySink::default()), none);
+        assert!(none.sessions_default_folder().is_err());
+        assert_eq!(none.autosave_dir().unwrap_err(), "no settings folder");
     }
 
     #[test]

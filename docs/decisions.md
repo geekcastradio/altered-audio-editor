@@ -1878,3 +1878,7 @@ Steve wanted themes limited to one light and one dark with a toggle, nothing els
 ## 2026-11-20: Drive Manager locations move onto AppCore
 
 `browse_locations` no longer reads folders from the Tauri handle. `Dirs` now holds the user's common folders (Home, Desktop, Documents, Music, Downloads) and `AppCore::browse_locations` builds the list, so the native interface can call it with no webview. The command is a thin wrapper. A test covers that only folders that exist are listed.
+
+## 2026-11-20: Autosave and new-session folders move onto AppCore
+
+`AppCore::autosave_dir` and `AppCore::sessions_default_folder` now work out the crash-recovery folder and the default folder for new sessions. The session commands call them; `session_default_folder` takes the core directly and `autosave_dir` is a one-line wrapper, so no command signature changed. Media and export commands were checked and left alone: they only use the Tauri handle for file dialogs (shell UI) and progress events, which already go through the event sink.

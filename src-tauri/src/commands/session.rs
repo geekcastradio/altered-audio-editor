@@ -116,13 +116,10 @@ pub struct NewSessionOptions {
 
 /// Default folder for new sessions: Documents/Altered Audio/Sessions.
 #[tauri::command]
-pub fn session_default_folder(app: AppHandle) -> Result<PathBuf, String> {
-    let paths = app.path();
-    let docs = paths
-        .document_dir()
-        .or_else(|_| paths.home_dir().map(|h| h.join("Documents")))
-        .map_err(|e| e.to_string())?;
-    Ok(docs.join("Altered Audio").join("Sessions"))
+pub fn session_default_folder(
+    core: State<'_, crate::app_core::AppCore>,
+) -> Result<PathBuf, String> {
+    core.sessions_default_folder()
 }
 
 /// The first "`base` N" (N from 1) with no session folder of that name in
@@ -172,7 +169,7 @@ pub struct SessionWithPath {
 }
 
 fn autosave_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(crate::paths::config_dir(app)?.join("autosave"))
+    app.state::<crate::app_core::AppCore>().autosave_dir()
 }
 
 #[tauri::command]
