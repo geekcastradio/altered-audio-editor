@@ -2478,7 +2478,7 @@
   async function copyIntoSession(list: string[], sessionFile: string): Promise<Map<string, string>> {
     if (!list.length) return new Map();
     const r = await mediaCopyIn(sessionFile, settings.current.mediaFolder, list);
-    if (r.failed.length) showNotice(`${plural(r.failed.length, "file")} could not be copied into the session folder and stay where they are: ${r.failed.slice(0, 3).join("; ")}`);
+    if (r.failed.length) showCenterNotice(`${plural(r.failed.length, "file")} could not be copied into the session folder. The session still saves and uses them where they are. If one was moved or deleted, put it back at the path shown. ${r.failed.slice(0, 3).join("; ")}`);
     return new Map(list.map((p, i) => [p, r.paths[i] ?? p]));
   }
 
