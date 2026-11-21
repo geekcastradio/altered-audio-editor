@@ -119,11 +119,11 @@ To comp, make a time selection over the part you like and press **Use over selec
 - **Delete** removes one take. Settings > Multitrack turns the take commands off if you never use them; sessions that already have takes still play the chosen ones.
 - Mixdowns and .sesx exports leave out takes that are not playing. A session that has takes plays every take at once in older versions of the program.
 
-## Multi-mic shows and double-enders
+## Multi-mic shows
 
 ![Two mics hear both people; Reduce Bleed and Auto Mic Mix tidy it up](multi-mic)
 
-These tools are for a conversation recorded with one mic per person, or a call recorded twice. Each works on the whole session and is one undo step.
+These tools are for a conversation recorded with one mic per person, or a call recorded twice (a double-ender). Each works on the whole session and is one undo step.
 
 - **Reduce Bleed** (Multitrack > Reduce Bleed) cleans one mic's track against another's, taking out the other voice that leaked in while keeping the voice on this mic, even when both talk at once. Each clip is cleaned into a copy in a Bleed Reduced folder beside your session. Your originals are not changed. Run it before Auto Mic Mix, and use Sync Tracks first if the tracks are not in step.
 - **Auto Mic Mix and Talk Time** (Multitrack > Auto Mic Mix and Talk Time) finds who is talking and writes a volume lane on each mic that turns it down while someone else speaks. When nobody talks every mic stays open, so the room sound stays even. The same measurement reports how long each voice spoke. The lanes are ordinary automation you can edit.
