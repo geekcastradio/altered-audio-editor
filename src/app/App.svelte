@@ -14,6 +14,7 @@
     diskFree,
     getAppInfo,
     startupMark,
+    startupTiming,
     loadKeymapOverrides,
     workspaceGet,
     workspaceList,
@@ -4877,12 +4878,16 @@
             `Output channels: ${channels || "unknown"}`,
             `Buffer request: ${settings.current.bufferFrames ? `${settings.current.bufferFrames} frames` : "the driver's own"}`,
           ];
+          const startup = (await startupTiming().catch(() => ""))
+            .split("\n")
+            .filter((l) => l.trim());
           const text = bugInfoText({
             appVersion: info?.version ?? "unknown",
             system: navigator.userAgent,
             state: [`Editor: ${inWave() ? "Waveform" : "Multitrack"}`, `Playing: ${transport.current.playing || waveTransport.current.playing ? "yes" : "no"}`],
             plugins,
             audio,
+            startup,
           });
           try {
             await navigator.clipboard.writeText(text);
@@ -6849,10 +6854,14 @@
       void startupMark("main window mounted").catch(() => {});
       requestAnimationFrame(() => requestAnimationFrame(() => void startupMark("first frame painted").catch(() => {})));
     }
+    const mark = (stage: string) => {
+      if (isTauri()) void startupMark(stage).catch(() => {});
+    };
     void prefs
       .load()
-      .then(() => libraries.restore())
+      .then(() => (mark("settings loaded"), libraries.restore()))
       .then((missing) => {
+        mark("libraries restored");
         if (missing.length) showNotice(`Could not open ${missing.length === 1 ? "a library" : `${missing.length} libraries`}: ${missing.join(", ")}`);
       })
       .catch(showError);
@@ -6927,10 +6936,12 @@
           }),
         );
       })
-      .then(() => files.checkRecovery())
+      .then(() => (mark("settings applied"), files.checkRecovery()))
+      .then(() => mark("recovery checked"))
       // A session or audio file the app was started with, from File Explorer.
       .then(() => (isTauri() ? launchPaths() : []))
       .then((paths) => (paths.length ? openPaths(paths) : undefined))
+      .then(() => mark("launch files opened"))
       .catch(showError)
       .finally(() => restartAutosave());
     if (isTauri()) {

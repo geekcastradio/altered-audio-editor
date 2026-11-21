@@ -54,6 +54,12 @@ pub fn startup_mark(stage: String) {
     crate::startup::mark(&format!("ui: {stage}"));
 }
 
+/// The startup timing log so far, one line per stage.
+#[tauri::command]
+pub fn startup_timing() -> String {
+    crate::startup::text()
+}
+
 /// Free space, in bytes, on the drive that holds `path` (or the Documents folder when none is given).
 /// None when the drive cannot be asked, so the status bar just leaves the figure out.
 #[tauri::command]

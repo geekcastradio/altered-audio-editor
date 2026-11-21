@@ -130,6 +130,7 @@ pub fn run() {
             commands::app::app_info,
             commands::app::launch_paths,
             commands::app::startup_mark,
+            commands::app::startup_timing,
             commands::app::disk_free,
             commands::app::app_exit,
             commands::app::app_minimize,

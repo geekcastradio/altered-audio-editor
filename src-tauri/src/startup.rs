@@ -46,6 +46,12 @@ pub fn render(marks: &[(u128, String)]) -> String {
     out
 }
 
+/// The log as text, for Help > Copy Bug Report Details.
+pub fn text() -> String {
+    let s = state().lock().unwrap_or_else(|e| e.into_inner());
+    render(&s.marks)
+}
+
 /// Starts the clock. Call first thing in `run`.
 pub fn begin() {
     let _ = state();
@@ -74,6 +80,14 @@ pub fn set_folder(dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_has_the_header_and_the_stages_so_far() {
+        mark("test stage for text");
+        let t = text();
+        assert!(t.starts_with("Startup timing"));
+        assert!(t.contains("test stage for text"));
+    }
 
     #[test]
     fn render_lists_each_stage_with_its_gap() {

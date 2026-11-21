@@ -33,4 +33,11 @@ describe("bug info", () => {
     expect(text).toContain("Output device: Speakers (default)");
     expect(bugInfoText({ appVersion: "1", system: "x", state: [], plugins: [] }, [])).not.toContain("Audio driver");
   });
+
+  it("lists the startup timing lines when given, and nothing when empty", () => {
+    const text = bugInfoText({ appVersion: "1", system: "x", state: [], plugins: [], startup: ["      0 ms  +0      process started", "   1422 ms  +1084   ui: main window mounted"] }, []);
+    expect(text).toContain("Startup timing:");
+    expect(text).toContain("ui: main window mounted");
+    expect(bugInfoText({ appVersion: "1", system: "x", state: [], plugins: [], startup: [] }, [])).not.toContain("Startup timing");
+  });
 });
