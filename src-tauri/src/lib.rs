@@ -81,6 +81,19 @@ pub fn run() {
                         app_cache: tauri::Manager::path(app.handle())
                             .app_cache_dir()
                             .map_err(|e| e.to_string()),
+                        places: {
+                            let p = tauri::Manager::path(app.handle());
+                            [
+                                ("Home", p.home_dir()),
+                                ("Desktop", p.desktop_dir()),
+                                ("Documents", p.document_dir()),
+                                ("Music", p.audio_dir()),
+                                ("Downloads", p.download_dir()),
+                            ]
+                            .into_iter()
+                            .filter_map(|(n, d)| d.ok().map(|d| (n.to_string(), d)))
+                            .collect()
+                        },
                     },
                 )
                 .with_version(app.package_info().version.to_string()),

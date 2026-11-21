@@ -7,37 +7,19 @@
 use std::path::PathBuf;
 
 use tauri::async_runtime::spawn_blocking;
-use tauri::{AppHandle, Manager, State};
+use tauri::State;
 
-use crate::browse::{self, Entry, Location, LocationKind};
+use crate::app_core::AppCore;
+use crate::browse::{self, Entry, Location};
 use crate::engine::{PreviewPlayer, PreviewStatus};
 
 /// Drives first, then the user's common folders.
 #[tauri::command]
-pub async fn browse_locations(app: AppHandle) -> Result<Vec<Location>, String> {
-    let mut out = spawn_blocking(browse::roots)
+pub async fn browse_locations(core: State<'_, AppCore>) -> Result<Vec<Location>, String> {
+    let core = core.inner().clone();
+    spawn_blocking(move || core.browse_locations())
         .await
-        .map_err(|e| e.to_string())?;
-    let p = app.path();
-    let places = [
-        ("Home", p.home_dir()),
-        ("Desktop", p.desktop_dir()),
-        ("Documents", p.document_dir()),
-        ("Music", p.audio_dir()),
-        ("Downloads", p.download_dir()),
-    ];
-    for (label, dir) in places {
-        if let Ok(path) = dir {
-            if path.is_dir() {
-                out.push(Location {
-                    path,
-                    label: label.into(),
-                    kind: LocationKind::Place,
-                });
-            }
-        }
-    }
-    Ok(out)
+        .map_err(|e| e.to_string())
 }
 
 /// Lists a folder for the Drive Manager.

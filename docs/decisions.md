@@ -1874,3 +1874,7 @@ From the AudiForm 2 README idea list, agreed by Steve. `Session`, `Track` and `C
 ## 2026-11-20: light and dark theme with a toggle (idea 5)
 
 Steve wanted themes limited to one light and one dark with a toggle, nothing else. `theme` (dark or light, default dark) is an app setting, switched from View > Light Theme (the label flips to Dark Theme) or Settings > Appearance > Theme. The light theme is a second set of the same color tokens in `src/styles/tokens.css` (`:root[data-theme="light"]`), so panels, docking tabs and dialogs follow it with no per-panel code; canvases that read tokens when they draw are asked to redraw on a switch. The Classic panel brightness option only affects the dark theme. No keyboard shortcut was added (needs Steve's approval). Not checked by eye yet: canvas drawings that use fixed hex colors (about 40 places in the editor panels) may still look dark-theme-only on the light theme until Steve reports them; those are fixed one panel at a time by moving the color into a token. Also fixed in passing: the Appearance help text no longer names another product.
+
+## 2026-11-20: Drive Manager locations move onto AppCore
+
+`browse_locations` no longer reads folders from the Tauri handle. `Dirs` now holds the user's common folders (Home, Desktop, Documents, Music, Downloads) and `AppCore::browse_locations` builds the list, so the native interface can call it with no webview. The command is a thin wrapper. A test covers that only folders that exist are listed.
