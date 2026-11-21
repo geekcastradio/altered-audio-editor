@@ -15,6 +15,7 @@ pub mod chain;
 pub mod codecs;
 pub mod commands;
 pub mod controllers;
+pub mod dial_input;
 pub mod dsp;
 pub mod engine;
 pub mod events;

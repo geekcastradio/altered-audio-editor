@@ -1,0 +1,35 @@
+{
+  "parseNumber": [
+    { "in": "-2", "want": -2 },
+    { "in": "+3.5", "want": 3.5 },
+    { "in": "−2.0 dB", "want": -2 },
+    { "in": "-6dB", "want": -6 },
+    { "in": "0", "want": 0 },
+    { "in": "2,5", "want": 2.5 },
+    { "in": " 12 ", "want": 12 },
+    { "in": ".5", "want": 0.5 },
+    { "in": "-.25", "want": -0.25 },
+    { "in": "50%", "want": 50 },
+    { "in": "3 DB", "want": 3 },
+    { "in": "", "want": null },
+    { "in": "loud", "want": null },
+    { "in": "1 2", "want": null },
+    { "in": "1.", "want": null },
+    { "in": "--2", "want": null },
+    { "in": "2 dBu", "want": null },
+    { "in": "1e3", "want": null }
+  ],
+  "parsePan": [
+    { "in": "C", "want": 0 },
+    { "in": "center", "want": 0 },
+    { "in": "Centre", "want": 0 },
+    { "in": "l30", "want": -30 },
+    { "in": "R20", "want": 20 },
+    { "in": "L 7.5", "want": -7.5 },
+    { "in": "-40", "want": -40 },
+    { "in": "25", "want": 25 },
+    { "in": "x", "want": null },
+    { "in": "L", "want": null },
+    { "in": "", "want": null }
+  ]
+}

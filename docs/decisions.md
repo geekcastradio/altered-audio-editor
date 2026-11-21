@@ -1908,3 +1908,7 @@ A cold-start reading from Steve's PC (0.50.0) showed the first frame at 1.42 s, 
 ## 2026-11-21: where settings, backups and Documents live no longer needs the window handle
 
 `paths.rs` took the Tauri handle to find the per-user config area and Documents. It now takes a plain `SystemDirs` (config area, the two older settings folders, Documents), filled once from the shell at startup (`SystemDirs::from_tauri`). `config_dir`, `backups_dir`, `migrate_settings` and `migrate_documents` use it, with a test, so a native interface can fill the same struct from its own system calls. What still takes the Tauri handle on purpose: file dialogs and their parent windows, opening links, the plug-in window owner, the updater and the video commands (state fetched inside a worker thread). That is the shell. The core's own logic is now independent of the handle, which was the goal of Phase 0.
+
+## 2026-11-21: dial input rules in Rust
+
+Typed dial values (`parseNumber`, `parsePan`) now have a Rust copy in `src-tauri/src/dial_input.rs`. Both copies are tested against `shared-fixtures/dial-input.json`, the same way as the selection rules. Reason: Phase 3 moves interface logic to Rust, and a shared fixture proves the two agree before the TypeScript copy goes away. No behavior change in the app; the interface still uses the TypeScript copy.
