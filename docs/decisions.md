@@ -1965,6 +1965,12 @@ Testing with ffmpeg-made files showed a second problem that was already there: O
 
 Tests: six half-second sample files in `src-tauri/tests/media` (FLAC, Opus, Vorbis, AAC and MP3 in `.mka`, and Opus in `.webm`) are probed for codec, rate and length, and decoded end to end. `docs/codecs.md` lists the formats and the length note. Not covered: a Matroska file with several audio tracks (the first one is read, as for other formats), and a `.webm` with video (its sound opens; the picture does not, since `.webm` is not on the video list).
 
+## 2026-11-21: The Waveform editor follows a recording again (issue 178)
+
+Reported on issue 167: while recording in the Waveform editor the view stopped scrolling with the new audio, which 0.34.1 had fixed. Cause: `setView` limits the scroll so the view never runs past the end of the file (added in 0.42.0), but a take in progress is not part of the file yet, so each follow scroll was clamped back to the end of the old audio. Recording into an empty file left the view stuck at the start.
+
+Fix: the limit is now a small function, `maxScroll` in `src/panels/editor/follow.ts`, that knows where the recording has got to. Following may page the view so the end of the recording sits 20 pixels from the left edge, as playback does. A scroll by hand may reach the end of the recording but not pass it. With no recording the limit is exactly what it was. The function has unit tests. What is not tested: the live behavior in the window, since the workspace cannot record audio; it needs a hand test (record into an empty file and into one with audio, at a normal zoom and zoomed in, and check the view follows; scroll by hand and check it holds until the next take).
+
 ## 2026-11-21: Clip selection rules in Rust
 
 The rules behind Edit > Select and the empty-track menu (`src/app/clip-select.ts`: `anchorStart`, `clipsFrom`, `clipsUpTo`, `nextClipId`) now have a Rust copy in `src-tauri/src/clip_select.rs`, tested against `shared-fixtures/clip-select.json` with the TypeScript copy (six clip layouts, including shuffled order, clips that start together and fractional starts, against twelve chosen sets and eleven playhead positions). Clips that start together keep their track order in both copies, since both sorts are stable. No behavior change; the interface still uses the TypeScript copy.
