@@ -2010,3 +2010,7 @@ The project lead shared screenshots of another editor's settings and stem-separa
 - Stem separation (after 1.0, AI): pick a model by purpose (vocals, instruments, denoise), show size and a quality figure before download, run on the graphics card with a processor fallback, an overlap quality setting.
 - Settings ideas to check against ours: a one-line reason under each setting, a Reset This Page button, a log file for audio device problems with a Copy Path button, a note when a device is unplugged and the system default plays instead, session media copy policy (copy in, ask, leave) with a collect-all command, a backups count per session, linked crossfades, mouse wheel zoom centered on the pointer or the playhead.
 Each will get its own backlog line and be designed fresh before building.
+
+## 2026-11-21: Speaker Balance arithmetic in Rust
+
+The numbers behind Multitrack > Speaker Balance (`balance` and `describeBalance` in `src/app/speaker-balance.ts`) now have a Rust copy in `src-tauri/src/speaker_balance.rs`, built on the Loudness Match rows. Both read `shared-fixtures/speaker-balance.json`. Left in TypeScript on purpose: which tracks count as voices and the clip gain changes, since they read the session. The TypeScript copy stays in use until the interface moves to Rust.

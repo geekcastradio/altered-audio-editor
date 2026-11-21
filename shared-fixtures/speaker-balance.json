@@ -1,0 +1,380 @@
+{
+  "balance": [
+    {
+      "name": "none",
+      "labels": [],
+      "reports": [],
+      "want": {
+        "rows": [],
+        "reference": null,
+        "text": "No voice tracks with audio to balance."
+      }
+    },
+    {
+      "name": "one track",
+      "labels": [
+        "Host"
+      ],
+      "reports": [
+        {
+          "integrated": -20,
+          "truePeak": -3
+        }
+      ],
+      "want": {
+        "rows": [
+          {
+            "measured": -20,
+            "truePeak": -3,
+            "change": 0,
+            "peakAfter": -3,
+            "measurable": true
+          }
+        ],
+        "reference": 0,
+        "text": "Speaker Balance needs at least two voice tracks with audio."
+      }
+    },
+    {
+      "name": "two tracks",
+      "labels": [
+        "Host",
+        "Guest"
+      ],
+      "reports": [
+        {
+          "integrated": -18,
+          "truePeak": -2
+        },
+        {
+          "integrated": -24,
+          "truePeak": -8
+        }
+      ],
+      "want": {
+        "rows": [
+          {
+            "measured": -18,
+            "truePeak": -2,
+            "change": -6,
+            "peakAfter": -8,
+            "measurable": true
+          },
+          {
+            "measured": -24,
+            "truePeak": -8,
+            "change": 0,
+            "peakAfter": -8,
+            "measurable": true
+          }
+        ],
+        "reference": 1,
+        "text": "Balanced to Guest (-24.0 LUFS): Host -6.0 dB."
+      }
+    },
+    {
+      "name": "within tolerance",
+      "labels": [
+        "A",
+        "B"
+      ],
+      "reports": [
+        {
+          "integrated": -20,
+          "truePeak": -2
+        },
+        {
+          "integrated": -20.3,
+          "truePeak": -2.5
+        }
+      ],
+      "want": {
+        "rows": [
+          {
+            "measured": -20,
+            "truePeak": -2,
+            "change": 0,
+            "peakAfter": -2,
+            "measurable": true
+          },
+          {
+            "measured": -20.3,
+            "truePeak": -2.5,
+            "change": 0,
+            "peakAfter": -2.5,
+            "measurable": true
+          }
+        ],
+        "reference": 1,
+        "text": "The voices already sit within 0.5 LU of each other."
+      }
+    },
+    {
+      "name": "ties pick the first",
+      "labels": [
+        "A",
+        "B",
+        "C"
+      ],
+      "reports": [
+        {
+          "integrated": -22,
+          "truePeak": -1
+        },
+        {
+          "integrated": -22,
+          "truePeak": -2
+        },
+        {
+          "integrated": -15,
+          "truePeak": -1
+        }
+      ],
+      "want": {
+        "rows": [
+          {
+            "measured": -22,
+            "truePeak": -1,
+            "change": 0,
+            "peakAfter": -1,
+            "measurable": true
+          },
+          {
+            "measured": -22,
+            "truePeak": -2,
+            "change": 0,
+            "peakAfter": -2,
+            "measurable": true
+          },
+          {
+            "measured": -15,
+            "truePeak": -1,
+            "change": -7,
+            "peakAfter": -8,
+            "measurable": true
+          }
+        ],
+        "reference": 0,
+        "text": "Balanced to A (-22.0 LUFS): C -7.0 dB."
+      }
+    },
+    {
+      "name": "silent track left out",
+      "labels": [
+        "A",
+        "B",
+        "C"
+      ],
+      "reports": [
+        {
+          "integrated": -16,
+          "truePeak": -1
+        },
+        {
+          "integrated": "-Infinity",
+          "truePeak": "-Infinity"
+        },
+        {
+          "integrated": -25.26,
+          "truePeak": -6.04
+        }
+      ],
+      "want": {
+        "rows": [
+          {
+            "measured": -16,
+            "truePeak": -1,
+            "change": -9.3,
+            "peakAfter": -10.3,
+            "measurable": true
+          },
+          {
+            "measured": "-Infinity",
+            "truePeak": "-Infinity",
+            "change": 0,
+            "peakAfter": "-Infinity",
+            "measurable": false
+          },
+          {
+            "measured": -25.26,
+            "truePeak": -6.04,
+            "change": 0,
+            "peakAfter": -6,
+            "measurable": true
+          }
+        ],
+        "reference": 2,
+        "text": "Balanced to C (-25.3 LUFS): A -9.3 dB."
+      }
+    },
+    {
+      "name": "too quiet to measure",
+      "labels": [
+        "A",
+        "B"
+      ],
+      "reports": [
+        {
+          "integrated": -70,
+          "truePeak": -60
+        },
+        {
+          "integrated": -19,
+          "truePeak": -3
+        }
+      ],
+      "want": {
+        "rows": [
+          {
+            "measured": -70,
+            "truePeak": -60,
+            "change": 0,
+            "peakAfter": -60,
+            "measurable": false
+          },
+          {
+            "measured": -19,
+            "truePeak": -3,
+            "change": 0,
+            "peakAfter": -3,
+            "measurable": true
+          }
+        ],
+        "reference": 1,
+        "text": "Speaker Balance needs at least two voice tracks with audio."
+      }
+    },
+    {
+      "name": "missing report",
+      "labels": [
+        "A",
+        "B",
+        "C"
+      ],
+      "reports": [
+        {
+          "integrated": -17,
+          "truePeak": -2
+        },
+        null,
+        {
+          "integrated": -21.05,
+          "truePeak": -4
+        }
+      ],
+      "want": {
+        "rows": [
+          {
+            "measured": -17,
+            "truePeak": -2,
+            "change": -4.1,
+            "peakAfter": -6.1,
+            "measurable": true
+          },
+          {
+            "measured": "-Infinity",
+            "truePeak": "-Infinity",
+            "change": 0,
+            "peakAfter": 0,
+            "measurable": false
+          },
+          {
+            "measured": -21.05,
+            "truePeak": -4,
+            "change": 0,
+            "peakAfter": -4,
+            "measurable": true
+          }
+        ],
+        "reference": 2,
+        "text": "Balanced to C (-21.1 LUFS): A -4.1 dB."
+      }
+    },
+    {
+      "name": "nan reading",
+      "labels": [
+        "A",
+        "B"
+      ],
+      "reports": [
+        {
+          "integrated": "NaN",
+          "truePeak": 0
+        },
+        {
+          "integrated": -19,
+          "truePeak": -3
+        }
+      ],
+      "want": {
+        "rows": [
+          {
+            "measured": "NaN",
+            "truePeak": 0,
+            "change": 0,
+            "peakAfter": 0,
+            "measurable": false
+          },
+          {
+            "measured": -19,
+            "truePeak": -3,
+            "change": 0,
+            "peakAfter": -3,
+            "measurable": true
+          }
+        ],
+        "reference": 1,
+        "text": "Speaker Balance needs at least two voice tracks with audio."
+      }
+    },
+    {
+      "name": "rounding",
+      "labels": [
+        "A",
+        "B",
+        "C"
+      ],
+      "reports": [
+        {
+          "integrated": -18.04,
+          "truePeak": -2.05
+        },
+        {
+          "integrated": -23.45,
+          "truePeak": -7.25
+        },
+        {
+          "integrated": -30.15,
+          "truePeak": -9.95
+        }
+      ],
+      "want": {
+        "rows": [
+          {
+            "measured": -18.04,
+            "truePeak": -2.05,
+            "change": -12.1,
+            "peakAfter": -14.1,
+            "measurable": true
+          },
+          {
+            "measured": -23.45,
+            "truePeak": -7.25,
+            "change": -6.7,
+            "peakAfter": -13.9,
+            "measurable": true
+          },
+          {
+            "measured": -30.15,
+            "truePeak": -9.95,
+            "change": 0,
+            "peakAfter": -9.9,
+            "measurable": true
+          }
+        ],
+        "reference": 2,
+        "text": "Balanced to C (-30.1 LUFS): A -12.1 dB, B -6.7 dB."
+      }
+    }
+  ]
+}

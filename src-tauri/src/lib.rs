@@ -41,6 +41,7 @@ pub mod rpp_import;
 pub mod selection;
 pub mod session;
 pub mod sesx;
+pub mod speaker_balance;
 pub mod startup;
 pub mod time;
 pub mod time_input;
