@@ -12,6 +12,7 @@ pub mod backup;
 pub mod bleed_copy;
 pub mod browse;
 pub mod chain;
+pub mod clip_select;
 pub mod codecs;
 pub mod colors;
 pub mod commands;
