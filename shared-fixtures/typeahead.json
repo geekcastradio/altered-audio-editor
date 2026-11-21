@@ -1,0 +1,340 @@
+{
+  "sequences": [
+    {
+      "name": "single letters",
+      "labels": [
+        "Razor",
+        "Reverb",
+        "Record",
+        null,
+        "Rename",
+        "  Roll  ",
+        "Slip",
+        "Move"
+      ],
+      "steps": [
+        {
+          "key": "r",
+          "now": 1000,
+          "current": -1,
+          "want": 0
+        },
+        {
+          "key": "s",
+          "now": 5000,
+          "current": 0,
+          "want": 6
+        },
+        {
+          "key": "m",
+          "now": 9000,
+          "current": 6,
+          "want": 7
+        },
+        {
+          "key": "z",
+          "now": 13000,
+          "current": 7,
+          "want": null
+        }
+      ]
+    },
+    {
+      "name": "prefix builds",
+      "labels": [
+        "Razor",
+        "Reverb",
+        "Record",
+        null,
+        "Rename",
+        "  Roll  ",
+        "Slip",
+        "Move"
+      ],
+      "steps": [
+        {
+          "key": "r",
+          "now": 1000,
+          "current": -1,
+          "want": 0
+        },
+        {
+          "key": "e",
+          "now": 1300,
+          "current": 0,
+          "want": 1
+        },
+        {
+          "key": "v",
+          "now": 1600,
+          "current": 1,
+          "want": 1
+        }
+      ]
+    },
+    {
+      "name": "repeat letter steps on",
+      "labels": [
+        "Razor",
+        "Reverb",
+        "Record",
+        null,
+        "Rename",
+        "  Roll  ",
+        "Slip",
+        "Move"
+      ],
+      "steps": [
+        {
+          "key": "r",
+          "now": 1000,
+          "current": -1,
+          "want": 0
+        },
+        {
+          "key": "r",
+          "now": 1200,
+          "current": 0,
+          "want": 1
+        },
+        {
+          "key": "r",
+          "now": 1400,
+          "current": 1,
+          "want": 2
+        },
+        {
+          "key": "r",
+          "now": 1600,
+          "current": 2,
+          "want": 4
+        },
+        {
+          "key": "r",
+          "now": 1800,
+          "current": 4,
+          "want": 5
+        },
+        {
+          "key": "r",
+          "now": 2000,
+          "current": 5,
+          "want": 0
+        }
+      ]
+    },
+    {
+      "name": "pause resets",
+      "labels": [
+        "Razor",
+        "Reverb",
+        "Record",
+        null,
+        "Rename",
+        "  Roll  ",
+        "Slip",
+        "Move"
+      ],
+      "steps": [
+        {
+          "key": "r",
+          "now": 1000,
+          "current": -1,
+          "want": 0
+        },
+        {
+          "key": "e",
+          "now": 1300,
+          "current": 0,
+          "want": 1
+        },
+        {
+          "key": "r",
+          "now": 3000,
+          "current": 1,
+          "want": 2
+        }
+      ]
+    },
+    {
+      "name": "ignores space and named keys",
+      "labels": [
+        "Razor",
+        "Reverb",
+        "Record",
+        null,
+        "Rename",
+        "  Roll  ",
+        "Slip",
+        "Move"
+      ],
+      "steps": [
+        {
+          "key": " ",
+          "now": 1000,
+          "current": 0,
+          "want": null
+        },
+        {
+          "key": "Enter",
+          "now": 1100,
+          "current": 0,
+          "want": null
+        },
+        {
+          "key": "😀",
+          "now": 1200,
+          "current": 0,
+          "want": null
+        }
+      ]
+    },
+    {
+      "name": "empty list",
+      "labels": [],
+      "steps": [
+        {
+          "key": "a",
+          "now": 1000,
+          "current": -1,
+          "want": null
+        }
+      ]
+    },
+    {
+      "name": "wraps and ignores case",
+      "labels": [
+        "alpha",
+        "Beta",
+        null,
+        "ÉCLAIR",
+        "Épée"
+      ],
+      "steps": [
+        {
+          "key": "B",
+          "now": 1000,
+          "current": 3,
+          "want": 1
+        },
+        {
+          "key": "é",
+          "now": 5000,
+          "current": 1,
+          "want": 3
+        },
+        {
+          "key": "É",
+          "now": 5200,
+          "current": 3,
+          "want": 4
+        },
+        {
+          "key": "a",
+          "now": 9000,
+          "current": 4,
+          "want": 0
+        }
+      ]
+    },
+    {
+      "name": "current out of range",
+      "labels": [
+        "Razor",
+        "Reverb",
+        "Record",
+        null,
+        "Rename",
+        "  Roll  ",
+        "Slip",
+        "Move"
+      ],
+      "steps": [
+        {
+          "key": "m",
+          "now": 1000,
+          "current": 99,
+          "want": 7
+        },
+        {
+          "key": "s",
+          "now": 5000,
+          "current": -5,
+          "want": 6
+        }
+      ]
+    }
+  ],
+  "typingKeys": [
+    {
+      "key": "a",
+      "ctrl": false,
+      "alt": false,
+      "meta": false,
+      "want": true
+    },
+    {
+      "key": "A",
+      "ctrl": false,
+      "alt": false,
+      "meta": false,
+      "want": true
+    },
+    {
+      "key": " ",
+      "ctrl": false,
+      "alt": false,
+      "meta": false,
+      "want": false
+    },
+    {
+      "key": "Enter",
+      "ctrl": false,
+      "alt": false,
+      "meta": false,
+      "want": false
+    },
+    {
+      "key": "a",
+      "ctrl": true,
+      "alt": false,
+      "meta": false,
+      "want": false
+    },
+    {
+      "key": "a",
+      "ctrl": false,
+      "alt": true,
+      "meta": false,
+      "want": false
+    },
+    {
+      "key": "a",
+      "ctrl": false,
+      "alt": false,
+      "meta": true,
+      "want": false
+    },
+    {
+      "key": "😀",
+      "ctrl": false,
+      "alt": false,
+      "meta": false,
+      "want": false
+    },
+    {
+      "key": "é",
+      "ctrl": false,
+      "alt": false,
+      "meta": false,
+      "want": true
+    },
+    {
+      "key": "",
+      "ctrl": false,
+      "alt": false,
+      "meta": false,
+      "want": false
+    }
+  ]
+}
