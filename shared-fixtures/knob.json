@@ -1,0 +1,32 @@
+{
+  "dragValue": [
+    { "name": "no move", "start": 0.5, "dy": 0, "ctrl": false, "shift": false, "want": 0.5 },
+    { "name": "up half range", "start": 0.25, "dy": 80, "ctrl": false, "shift": false, "want": 0.75 },
+    { "name": "down", "start": 0.5, "dy": -40, "ctrl": false, "shift": false, "want": 0.25 },
+    { "name": "clamps high", "start": 0.9, "dy": 160, "ctrl": false, "shift": false, "want": 1 },
+    { "name": "clamps low", "start": 0.1, "dy": -160, "ctrl": false, "shift": false, "want": 0 },
+    { "name": "ctrl is fine", "start": 0.5, "dy": 80, "ctrl": true, "shift": false, "want": 0.6 },
+    { "name": "shift is coarse", "start": 0.1, "dy": 16, "ctrl": false, "shift": true, "want": 0.4 },
+    { "name": "ctrl wins over shift", "start": 0.5, "dy": 80, "ctrl": true, "shift": true, "want": 0.6 }
+  ],
+  "keyValue": [
+    { "name": "up", "value": 0.5, "key": "ArrowUp", "home": 0.7, "want": 0.51 },
+    { "name": "right", "value": 0.5, "key": "ArrowRight", "home": 0.7, "want": 0.51 },
+    { "name": "down", "value": 0.5, "key": "ArrowDown", "home": 0.7, "want": 0.49 },
+    { "name": "left", "value": 0.5, "key": "ArrowLeft", "home": 0.7, "want": 0.49 },
+    { "name": "page up", "value": 0.5, "key": "PageUp", "home": 0.7, "want": 0.6 },
+    { "name": "page down", "value": 0.5, "key": "PageDown", "home": 0.7, "want": 0.4 },
+    { "name": "home", "value": 0.5, "key": "Home", "home": 0.7, "want": 0.7 },
+    { "name": "clamps high", "value": 0.995, "key": "ArrowUp", "home": 0.7, "want": 1 },
+    { "name": "clamps low", "value": 0.05, "key": "PageDown", "home": 0.7, "want": 0 },
+    { "name": "other key", "value": 0.5, "key": "a", "home": 0.7, "want": null }
+  ],
+  "pointerAngle": [
+    { "value": 0, "want": -135 },
+    { "value": 0.5, "want": 0 },
+    { "value": 1, "want": 135 },
+    { "value": 0.25, "want": -67.5 },
+    { "value": -1, "want": -135 },
+    { "value": 2, "want": 135 }
+  ]
+}

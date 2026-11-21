@@ -1917,6 +1917,10 @@ Typed dial values (`parseNumber`, `parsePan`) now have a Rust copy in `src-tauri
 
 Typed times and selection edits (`parseTime` for the time, samples, timecode and seconds formats, and `editSelection`) now have a Rust copy in `src-tauri/src/time_input.rs`, tested against `shared-fixtures/time-input.json` with the TypeScript copy. The bars format stays in TypeScript because it needs the session tempo, which has not moved to the core. No behavior change; the interface still uses the TypeScript copy.
 
+## 2026-11-21: dial maths in Rust
+
+The dial's drag, key and pointer rules (`src/app/knob.ts`) now have a Rust copy in `src-tauri/src/knob.rs`, tested against `shared-fixtures/knob.json` with the TypeScript copy (compared to 1e-9, since the two languages may differ in the last bit). No behavior change; the interface still uses the TypeScript copy.
+
 ## 2026-11-21: the startup log is written atomically
 
 CI on the dial maths PR failed once on `startup::tests::marks_are_written_once_a_folder_is_set`. Cause: the log was rewritten with a plain write, which empties the file first, so a reader could see it empty or half written while another stage was being stamped. The log is now written to a side file and swapped in, with a direct write as the fallback if the swap fails. A new test reads the log while another thread stamps 400 stages; it fails with the old write. This also covers Help > Copy Bug Report Details and anyone opening the log while the program runs.
