@@ -181,6 +181,7 @@ describe("menu model", () => {
       "transport.next-marker",
       "view.editor.toggle",
       "view.mode.music",
+      "view.theme",
       "view.mode.podcast",
       "view.mode.voiceover",
       "multitrack.add.guest",

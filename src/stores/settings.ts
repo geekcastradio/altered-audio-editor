@@ -44,8 +44,10 @@ export interface AppSettings {
   dropMany: "sequence" | "tracks";
   /** What the space bar does to a playing session. */
   colors: AppColors;
-  /** How light the panels are: Audition-like charcoal, or the darker classic look. */
+  /** How light the panels are: the standard charcoal, or the darker classic look (dark theme only). */
   surface: "standard" | "classic";
+  /** The color theme: dark for long sessions, or light. */
+  theme: "dark" | "light";
   /** System name of the output; null is the system default. */
   output: string | null;
   /** Device outputs (from 0) the stereo mix plays on: left, right. */
@@ -203,6 +205,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   dropMany: "tracks",
   colors: { ...NO_COLORS },
   surface: "standard",
+  theme: "dark",
   output: null,
   outputPair: [0, 1],
   speakerOutputs: {},
@@ -281,6 +284,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
         ? o.fadeShape
         : "cosine",
     surface: o.surface === "classic" ? "classic" : "standard",
+    theme: o.theme === "light" ? "light" : "dark",
     colors: {
       wave: color(c.wave),
       playhead: color(c.playhead),

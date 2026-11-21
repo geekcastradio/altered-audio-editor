@@ -328,7 +328,7 @@ The bar is an editor that feels right to someone who has edited podcasts for yea
 5. Interaction feedback within one frame (16 ms). Anything slower shows progress and never freezes the window.
 6. Every edit is undoable, including track reorders.
 7. Work is never lost: autosave every 2 minutes plus crash recovery.
-8. Dark UI tuned for long sessions: dense, quiet chrome, clips and waveforms carry the color.
+8. Dark UI tuned for long sessions: dense, quiet chrome, clips and waveforms carry the color. A light theme exists as a toggle (View > Light Theme, Settings > Appearance); there are no other named themes (decided 2026-11-20).
 9. Podcast-specific tools are never in the way during voiceover work, and vice versa.
 
 ## Podcast editor workflow

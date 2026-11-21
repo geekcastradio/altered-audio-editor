@@ -3863,6 +3863,11 @@
   function applyAppSettings(s: AppSettings, autosave: boolean) {
     if (!s.playbackSpeed && speedNow !== 100) void chooseSpeed(100).catch(() => {});
     document.documentElement.dataset.surface = s.surface;
+    if (document.documentElement.dataset.theme !== s.theme) {
+      document.documentElement.dataset.theme = s.theme;
+      // Canvases read their colors when they draw; ask them to draw again.
+      requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+    }
     const root = document.documentElement.style;
     for (const k of ["--wave", "--playhead", "--accent", "--lane-selected"]) root.removeProperty(k);
     for (const [k, v] of Object.entries(colorVars(s.colors))) root.setProperty(k, v);
@@ -5183,6 +5188,15 @@
         }),
       ),
       actions.register({ id: "multitrack.add.midi", run: () => addMidiTrack(), enabled: () => session.current !== null, visible: () => settings.current.musicMode }),
+      actions.register({
+        id: "view.theme",
+        run: () => {
+          settings.set({ ...settings.current, theme: settings.current.theme === "light" ? "dark" : "light" });
+          actions.invalidate();
+        },
+        label: () => (settings.current.theme === "light" ? "Dark Theme" : "Light Theme"),
+        checked: () => settings.current.theme === "light",
+      }),
       actions.register({
         id: "view.mode.music",
         run: () => {
