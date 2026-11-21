@@ -2022,3 +2022,7 @@ The helpers behind the File Tags dialog and the Metadata panel (`cleanTags`, `sa
 ## 2026-11-21: Type to jump in Rust
 
 The type-to-jump rules for lists and menus (`src/app/typeahead.ts`) have a Rust copy in `src-tauri/src/typeahead.rs`. The clock is passed in, as the TypeScript allows. Key lengths count UTF-16 units and lowercasing follows JavaScript. Both copies read `shared-fixtures/typeahead.json`. The TypeScript copy stays in use until the interface moves to Rust.
+
+## 2026-11-21: Reduce Bleed notice and mixdown size in Rust
+
+The clip filter and the notice text for Multitrack > Reduce Bleed (`bleedWork`, `bleedSummary` in `src/app/bleed.ts`) and the mixdown size arithmetic (`mixdownBytes` in `src/app/session-properties.ts`) have a Rust copy in `src-tauri/src/bleed_notice.rs`. Both copies read `shared-fixtures/bleed-notice.json`. The edit builders in those files read the session document and stay in TypeScript. The TypeScript copies stay in use until the interface moves to Rust.

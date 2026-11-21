@@ -1,0 +1,203 @@
+{
+  "work": [
+    {
+      "clips": [],
+      "want": {
+        "work": [],
+        "locked": 0,
+        "unsuitable": 0
+      }
+    },
+    {
+      "clips": [
+        {
+          "locked": false,
+          "looped": false,
+          "stretched": false
+        }
+      ],
+      "want": {
+        "work": [
+          0
+        ],
+        "locked": 0,
+        "unsuitable": 0
+      }
+    },
+    {
+      "clips": [
+        {
+          "locked": true,
+          "looped": false,
+          "stretched": false
+        },
+        {
+          "locked": false,
+          "looped": true,
+          "stretched": false
+        },
+        {
+          "locked": false,
+          "looped": false,
+          "stretched": true
+        },
+        {
+          "locked": false,
+          "looped": true,
+          "stretched": true
+        },
+        {
+          "locked": false,
+          "looped": false,
+          "stretched": false
+        }
+      ],
+      "want": {
+        "work": [
+          4
+        ],
+        "locked": 1,
+        "unsuitable": 3
+      }
+    },
+    {
+      "clips": [
+        {
+          "locked": true,
+          "looped": true,
+          "stretched": true
+        },
+        {
+          "locked": true,
+          "looped": false,
+          "stretched": false
+        }
+      ],
+      "want": {
+        "work": [],
+        "locked": 2,
+        "unsuitable": 0
+      }
+    }
+  ],
+  "summary": [
+    {
+      "removed": [],
+      "locked": 0,
+      "unsuitable": 0,
+      "changed": 0,
+      "want": "That mic picked up almost none of the other one, so nothing was changed."
+    },
+    {
+      "removed": [],
+      "locked": 2,
+      "unsuitable": 1,
+      "changed": 0,
+      "want": "That mic picked up almost none of the other one, so nothing was changed. 2 locked clips were left alone, 1 looped or stretched clip was left alone."
+    },
+    {
+      "removed": [
+        1.24
+      ],
+      "locked": 0,
+      "unsuitable": 0,
+      "changed": 1,
+      "want": "Cleaned 1 clip, up to 1.2 dB quieter overall. One undo puts the originals back. Listen before you keep it."
+    },
+    {
+      "removed": [
+        3.05,
+        0.25,
+        6.35
+      ],
+      "locked": 0,
+      "unsuitable": 0,
+      "changed": 3,
+      "want": "Cleaned 3 clips, up to 6.3 dB quieter overall. One undo puts the originals back. Listen before you keep it."
+    },
+    {
+      "removed": [
+        0.25
+      ],
+      "locked": 1,
+      "unsuitable": 0,
+      "changed": 1,
+      "want": "Cleaned 1 clip, up to 0.3 dB quieter overall. One undo puts the originals back. Listen before you keep it. 1 locked clip was left alone."
+    },
+    {
+      "removed": [
+        2
+      ],
+      "locked": 3,
+      "unsuitable": 2,
+      "changed": 2,
+      "want": "Cleaned 2 clips, up to 2.0 dB quieter overall. One undo puts the originals back. Listen before you keep it. 3 locked clips were left alone, 2 looped or stretched clips were left alone."
+    },
+    {
+      "removed": [
+        0.05
+      ],
+      "locked": 0,
+      "unsuitable": 1,
+      "changed": 1,
+      "want": "Cleaned 1 clip, up to 0.1 dB quieter overall. One undo puts the originals back. Listen before you keep it. 1 looped or stretched clip was left alone."
+    },
+    {
+      "removed": [
+        0
+      ],
+      "locked": 0,
+      "unsuitable": 0,
+      "changed": 1,
+      "want": "Cleaned 1 clip, up to 0.0 dB quieter overall. One undo puts the originals back. Listen before you keep it."
+    },
+    {
+      "removed": [
+        12.345,
+        12.355
+      ],
+      "locked": 1,
+      "unsuitable": 1,
+      "changed": 2,
+      "want": "Cleaned 2 clips, up to 12.4 dB quieter overall. One undo puts the originals back. Listen before you keep it. 1 locked clip was left alone, 1 looped or stretched clip was left alone."
+    }
+  ],
+  "mixdown": [
+    {
+      "samples": 0,
+      "bits": 16,
+      "channels": 2,
+      "want": 0
+    },
+    {
+      "samples": 44100,
+      "bits": 16,
+      "channels": 2,
+      "want": 176400
+    },
+    {
+      "samples": 2880000,
+      "bits": 24,
+      "channels": 2,
+      "want": 17280000
+    },
+    {
+      "samples": 2880000,
+      "bits": 32,
+      "channels": 1,
+      "want": 11520000
+    },
+    {
+      "samples": 1000000000,
+      "bits": 16,
+      "channels": 2,
+      "want": 4000000000
+    },
+    {
+      "samples": 12345,
+      "bits": 24,
+      "channels": 3,
+      "want": 111105
+    }
+  ]
+}
