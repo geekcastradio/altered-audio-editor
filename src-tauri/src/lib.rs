@@ -44,6 +44,7 @@ pub mod sesx;
 pub mod startup;
 pub mod time;
 pub mod time_input;
+pub mod track_names;
 
 /// Starts the desktop app.
 pub fn run() {

@@ -1,0 +1,257 @@
+{
+  "trackNameFromFile": [
+    {
+      "name": "1-host.flac",
+      "want": "host"
+    },
+    {
+      "name": "C:\\calls\\12-guest_two.ogg",
+      "want": "guest two"
+    },
+    {
+      "name": "2024 Interview.wav",
+      "want": "2024 Interview"
+    },
+    {
+      "name": "3-.wav",
+      "want": "3-"
+    },
+    {
+      "name": "/a/b/07_name.mp3",
+      "want": "name"
+    },
+    {
+      "name": "123 x.wav",
+      "want": "x"
+    },
+    {
+      "name": "1234-x.wav",
+      "want": "1234-x"
+    },
+    {
+      "name": "1--x.wav",
+      "want": "x"
+    },
+    {
+      "name": "1-_-x.wav",
+      "want": "x"
+    },
+    {
+      "name": "1- \t.wav",
+      "want": "1-"
+    },
+    {
+      "name": "1-",
+      "want": "1-"
+    },
+    {
+      "name": "9",
+      "want": "9"
+    },
+    {
+      "name": "a.b.c",
+      "want": "a.b"
+    },
+    {
+      "name": "a.",
+      "want": "a."
+    },
+    {
+      "name": ".",
+      "want": "."
+    },
+    {
+      "name": " .wav",
+      "want": " .wav"
+    },
+    {
+      "name": "..wav",
+      "want": "."
+    },
+    {
+      "name": "_.wav",
+      "want": "_.wav"
+    },
+    {
+      "name": "__a__b__.wav",
+      "want": "a b"
+    },
+    {
+      "name": "name",
+      "want": "name"
+    },
+    {
+      "name": "dir/",
+      "want": ""
+    },
+    {
+      "name": "dir\\",
+      "want": ""
+    },
+    {
+      "name": "x/y\\z/1 - Name.m4a",
+      "want": "Name"
+    },
+    {
+      "name": "5 x.wav",
+      "want": "5 x"
+    },
+    {
+      "name": "5  x.wav",
+      "want": "5  x"
+    },
+    {
+      "name": "﻿abc.wav",
+      "want": "abc"
+    },
+    {
+      "name": "  spaced  .wav",
+      "want": "spaced"
+    },
+    {
+      "name": "a\nb/c.wav",
+      "want": "a\nb/c"
+    },
+    {
+      "name": "Zoë_Müller.flac",
+      "want": "Zoë Müller"
+    },
+    {
+      "name": "01_Intro.wav",
+      "want": "Intro"
+    },
+    {
+      "name": "1 2 3.wav",
+      "want": "2 3"
+    },
+    {
+      "name": "10-20-30.wav",
+      "want": "20-30"
+    }
+  ],
+  "newTrackNames": [
+    {
+      "existing": [],
+      "count": 3,
+      "base": "",
+      "want": [
+        "Track 1",
+        "Track 2",
+        "Track 3"
+      ]
+    },
+    {
+      "existing": [
+        "Track 1",
+        "Track 2",
+        "Track 4"
+      ],
+      "count": 2,
+      "base": "",
+      "want": [
+        "Track 5",
+        "Track 6"
+      ]
+    },
+    {
+      "existing": [
+        "Host"
+      ],
+      "count": 3,
+      "base": "Guest",
+      "want": [
+        "Guest",
+        "Guest 2",
+        "Guest 3"
+      ]
+    },
+    {
+      "existing": [
+        "Guest"
+      ],
+      "count": 2,
+      "base": "Guest",
+      "want": [
+        "Guest 2",
+        "Guest 3"
+      ]
+    },
+    {
+      "existing": [
+        "Guest",
+        "Guest 2"
+      ],
+      "count": 2,
+      "base": "Guest",
+      "want": [
+        "Guest 3",
+        "Guest 4"
+      ]
+    },
+    {
+      "existing": [],
+      "count": 0,
+      "base": "",
+      "want": []
+    },
+    {
+      "existing": [
+        "a",
+        "b"
+      ],
+      "count": 1,
+      "base": "  ",
+      "want": [
+        "Track 3"
+      ]
+    },
+    {
+      "existing": [
+        "x"
+      ],
+      "count": 2,
+      "base": "  Pad  ",
+      "want": [
+        "Pad",
+        "Pad 2"
+      ]
+    },
+    {
+      "existing": [
+        "Track 2"
+      ],
+      "count": 3,
+      "base": "",
+      "want": [
+        "Track 3",
+        "Track 4",
+        "Track 5"
+      ]
+    },
+    {
+      "existing": [
+        "Track 3",
+        "Track 4",
+        "Track 5"
+      ],
+      "count": 2,
+      "base": "",
+      "want": [
+        "Track 6",
+        "Track 7"
+      ]
+    },
+    {
+      "existing": [
+        "A",
+        "A"
+      ],
+      "count": 2,
+      "base": "",
+      "want": [
+        "Track 3",
+        "Track 4"
+      ]
+    }
+  ]
+}
