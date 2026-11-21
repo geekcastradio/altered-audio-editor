@@ -107,7 +107,7 @@ where
     let mut phase = 0f32;
     let stream = device
         .build_output_stream(
-            config,
+            *config,
             move |out: &mut [T], _| {
                 for frame in out.chunks_mut(channels) {
                     let v = (phase * std::f32::consts::TAU).sin() * 0.1;
