@@ -194,7 +194,7 @@
   let menu = $state<{ x: number; y: number; items: ContextItem[] } | null>(null);
   function openTracks(e: MouseEvent) {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const tracks = doc?.tracks ?? [];
+    const tracks = scannable;
     menu = {
       x: r.left,
       y: r.bottom,
@@ -215,7 +215,9 @@
       ],
     };
   }
-  const skippedCount = $derived((doc?.tracks ?? []).filter((t) => skipped.has(t.id)).length);
+  /** Only tracks that hold audio are offered: an empty track has nothing to scan. */
+  const scannable = $derived((doc?.tracks ?? []).filter((t) => t.clips.length > 0));
+  const skippedCount = $derived(scannable.filter((t) => skipped.has(t.id)).length);
 
   function targets(): { ids: string[]; info: Map<string, { trackId: string; name: string }> } {
     const info = new Map<string, { trackId: string; name: string }>();
@@ -496,9 +498,9 @@
       <select id="qp-fix" value={s.action} onchange={(e) => set({ action: e.currentTarget.value as QuickPassSettings["action"] })}>
         {#each info.actions as a (a)}<option value={a}>{FIX_BY[a]}</option>{/each}
       </select>
-      {#if (doc?.tracks.length ?? 0) > 1 && !inWave}
+      {#if scannable.length > 1 && !inWave}
         <label for="qp-tracks">Tracks</label>
-        <button type="button" id="qp-tracks" class="pickbtn" aria-haspopup="menu" onclick={openTracks} title="Pick the tracks to scan. Locked clips are always left alone.">{skippedCount === 0 ? "All tracks" : `${(doc?.tracks.length ?? 0) - skippedCount} of ${doc?.tracks.length} tracks`} ▾</button>
+        <button type="button" id="qp-tracks" class="pickbtn" aria-haspopup="menu" onclick={openTracks} title="Pick the tracks to scan. Locked clips are always left alone.">{skippedCount === 0 ? "All tracks" : `${scannable.length - skippedCount} of ${scannable.length} tracks`} ▾</button>
       {/if}
       {#if s.action === "remove"}
         <label for="qp-gaps" title="Leaving the gap open keeps every track in step. Closing it moves later clips left.">Gaps</label>

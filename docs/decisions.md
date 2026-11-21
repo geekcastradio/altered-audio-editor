@@ -1992,3 +1992,7 @@ Left in TypeScript on purpose: `findings`, the finding texts. They write counts 
 The arithmetic behind Loudness Match (`src/app/loudness-match.ts`: `changeFor`, `matchRow`, `levelsOf`, `levelRow`, `truePeakRow` and the constants) now has a Rust copy in `src-tauri/src/loudness_match.rs`, tested against `shared-fixtures/loudness-match.json` with the TypeScript copy (about 450 gain changes at rounding ties and tolerances, and rows for loudness, peak, RMS and true peak against nine readings including silence, NaN and the infinities, with the peak warning checked in each). NaN and the infinities are written as text in the fixture, since JSON cannot hold them, and both sides decode them the same way.
 
 Left in TypeScript on purpose: `matchChanges` and `matchItems`, which read the session and build the clip gain edit. They move with the session, not before it. No behavior change; the interface still uses the TypeScript copy.
+
+## 2026-11-21: QuickPass lists only tracks with audio
+
+The Tracks menu offered every track, including empty ones. It now lists tracks that hold at least one clip, and the button only appears when two or more do. The count text uses the same set. Scan behavior is unchanged (empty tracks never had clips to scan).
