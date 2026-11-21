@@ -22,3 +22,24 @@ export function followEffect(
   if (change.scroll !== undefined && change.scroll !== now.scroll) return "hold";
   return "none";
 }
+
+/**
+ * The farthest the Waveform editor's view may scroll. It never runs past the end of the file,
+ * but while recording the new audio is not in the file yet, so the end it may reach is the end
+ * of that audio instead. `liveEnd` is where the recording has got to (null when not recording).
+ * Following a recording pages the view so the end sits `lead` pixels from the left edge, which
+ * is past the usual limit; a scroll by hand stops where the last audio fills the view.
+ */
+export function maxScroll(opts: {
+  total: number;
+  width: number;
+  spp: number;
+  liveEnd: number | null;
+  following: boolean;
+  lead?: number;
+}): number {
+  const lead = opts.lead ?? 20;
+  const end = Math.max(opts.total, opts.liveEnd ?? 0);
+  const shown = opts.following && opts.liveEnd !== null ? lead : opts.width;
+  return Math.max(0, end - shown * opts.spp);
+}

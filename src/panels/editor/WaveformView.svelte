@@ -16,7 +16,7 @@
   import { markerMenuItems } from "../markers/marker-menu";
   import { Scrubber } from "./scrubber";
   import { anchorFor, edgeAt } from "./selection-edge";
-  import { followEffect } from "./follow";
+  import { followEffect, maxScroll as scrollLimit } from "./follow";
   import type { ActionRegistry } from "../../app/actions";
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import { editor, type EditorState } from "../../stores/editor";
@@ -139,8 +139,8 @@
       if (effect === "release") followHeld = false;
       else if (effect === "hold") followHeld = true;
     }
-    // The view never runs past the end of the file.
-    const maxScroll = Math.max(0, total - width * (v.spp ?? view.spp));
+    // The view never runs past the end of the file, or of the take being recorded into it.
+    const maxScroll = scrollLimit({ total, width, spp: v.spp ?? view.spp, liveEnd: liveEnd(), following: auto });
     const next = {
       ...doc.view,
       samples_per_pixel: v.spp ?? doc.view.samples_per_pixel,
@@ -195,6 +195,13 @@
     if (followHeld) return;
     if (x > width - 20 || x < 0) setView({ scroll: tp.position - 20 * view.spp }, true);
   });
+
+  /** Where the take being recorded into this file has got to, or null when not recording. */
+  function liveEnd(): number | null {
+    const lw = live && live.rate > 0 ? live.waves["wave"] : undefined;
+    if (!live || !lw || lw.blocks <= 0) return null;
+    return live.at + Math.round((lw.frames * rate) / live.rate);
+  }
 
   // Recording into this file: keep the end of the new audio in view as it grows,
   // under the same rule as playback (a hand scroll or zoom holds it until the next take).
