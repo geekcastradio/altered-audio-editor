@@ -5,7 +5,7 @@ Rule (Steve, 2026-11-20): the legal, security, readme and how-to documents drift
 - **Every 5th release** (0.50, 0.55, 0.60 and so on): a light review. Read each item below against what shipped since the last review and fix what is out of date.
 - **Every 10th release** (0.50, 0.60, 0.70 and so on): the full review. Everything in the light review, plus the legal and licence checks marked (full).
 - The review is the first item of that release, logged in `docs/decisions.md`, and the release notes say it happened. Nothing else in that release is allowed to push it out.
-- First due: **0.50.0** (full). It covers everything since 0.40.
+- First due: **0.50.0** (full). It covers everything since 0.40. Done 2026-11-20, see `docs/doc-review-0.50.0.md`. Next: 0.55 (light), 0.60 (full).
 
 ## Light review (every 5th release)
 - [ ] `README.md`: what the app does, install steps, platforms, download links, screenshots.

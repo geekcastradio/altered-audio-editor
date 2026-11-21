@@ -568,3 +568,7 @@ Ideas only, written in our own words, no code or look taken (see CLAUDE.md, Refe
 9. **Out-of-process models with hash-checked downloads.** The pattern to use for Music Remover after 1.0 (AI, so not in 1.0).
 
 Also checked: we already read RF64, BWF, W64 and MKV audio. CAF and MP2 are not in our decoder yet; adding them is likely a symphonia feature switch to verify first.
+
+### Speed benchmark (idea 3), built in 0.50.0
+
+`cargo run --release --example bench_mix` (in `src-tauri`) mixes a generated session of 48 mono tracks, each with a four-effect Voice Chain, and prints times real time. Options: `--tracks`, `--seconds`, `--runs`, `--plain`. Built-in effects run on one thread today (only tracks with plug-ins are spread over threads in `engine/graph.rs`), so the first numbers are the single-thread baseline. Next step, once Steve has run it: a per-track worker pool for built-in chains, measured against that baseline at 1, 4 and many threads.

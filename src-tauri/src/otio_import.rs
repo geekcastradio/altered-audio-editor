@@ -337,6 +337,7 @@ pub fn build(doc: &Value, name: &str, base: &Path) -> Result<OtioImported, OtioE
                         })
                         .unwrap_or_else(|| "Clip".into());
                     track.clips.push(Clip {
+                        extra: Default::default(),
                         id: new_id(),
                         name: clip_name,
                         media_id,

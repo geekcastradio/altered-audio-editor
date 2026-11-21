@@ -4,13 +4,13 @@ What is planned, what is not, and where outside help is most useful. The project
 
 ## Where the project is
 
-Altered Audio Editor is a free, open-source audio editor for podcasters and voiceover work. It follows Adobe Audition's layout, shortcuts and workflow closely, and adds tools for podcast work such as multi-mic cleanup, process chains and batch loudness. It is not at 1.0 yet, and releases come as features and fixes are ready.
+Altered Audio Editor is a free, open-source audio editor for podcasters and voiceover work. It follows the editing workflow experienced audio editors expect (a waveform editor and a non-destructive multitrack editor, standard shortcuts), and adds tools for podcast work such as multi-mic cleanup, process chains and batch loudness. It is not at 1.0 yet, and releases come as features and fixes are ready.
 
 ## The way to 1.0
 
 There is no date for 1.0. It is the stable, no-network release, and it comes when the program is solid, not when a calendar says so.
 
-1. **Close the gaps.** Anything the reference editor has natively and we lack is built or, if it doesn't belong, removed. A 1.0 has no greyed-out "not built yet" menu items.
+1. **Close the gaps.** Anything a full-featured audio editor has natively and we lack is built or, if it doesn't belong, removed. A 1.0 has no greyed-out "not built yet" menu items. This includes the move to a fully Rust interface, video, MIDI tracks and instruments, soundboard live play and localization.
 2. **Fix bugs and performance problems** as people report them, with real files and real machines.
 3. **Soak.** Fixes only, until there are two clean weeks with no crash or freeze reports.
 4. **Lock the session file format**, with a test fixture from every earlier version.
@@ -18,6 +18,7 @@ There is no date for 1.0. It is the stable, no-network release, and it comes whe
 
 ## After 1.0
 
+- **Anything that uses AI or makes outside calls comes after 1.0.** That covers transcription, text-based editing, filler-word cleanup, show notes, music removal, publishing uploads and podcast-host sync. The noise and speech tools already in the app run on your own computer and stay.
 - **1.1: transcripts.** Local transcription and a script panel for editing by text, with reviewed filler-word cleanup (a person keeps or cuts each item, never automatic), all on your own computer.
 - **1.2: automation.** A local-only endpoint, off by default, so scripts and assistants can run process chains and read session information, with a visible on/off switch and a log of what was done. Every change is a labeled, undoable step. If anything here ever needs the network, it will be opt-in and off by default, and these documents will say so.
 - **Only if people ask:** hosting CLAP plug-ins.
@@ -33,5 +34,5 @@ There is no date for 1.0. It is the stable, no-network release, and it comes whe
 
 - **Test on hardware.** A Mac, other Linux distributions, ASIO audio interfaces, and a Mackie-style controller are the gaps. Tell us what happened with your device and driver.
 - **Share recordings you are free to share.** A double-ender (two local recordings of the same conversation) helps with drift correction, and two-mic recordings help with bleed and mic mixing.
-- **Report bugs** with Help > Report a Bug, and attach the file or clip that shows the problem.
+- **Report bugs** with Help > Report a Problem (or Help > Copy Bug Report Details), and attach the file or clip that shows the problem.
 - **Take an issue.** Look for the `good first issue` and `help wanted` labels on the issue tracker.

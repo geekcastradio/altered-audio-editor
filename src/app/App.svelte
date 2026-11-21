@@ -2478,7 +2478,7 @@
   async function copyIntoSession(list: string[], sessionFile: string): Promise<Map<string, string>> {
     if (!list.length) return new Map();
     const r = await mediaCopyIn(sessionFile, settings.current.mediaFolder, list);
-    if (r.failed.length) showNotice(`${plural(r.failed.length, "file")} could not be copied into the session folder and stay where they are: ${r.failed.slice(0, 3).join("; ")}`);
+    if (r.failed.length) showCenterNotice(`${plural(r.failed.length, "file")} could not be copied into the session folder. The session still saves and uses them where they are. If one was moved or deleted, put it back at the path shown. ${r.failed.slice(0, 3).join("; ")}`);
     return new Map(list.map((p, i) => [p, r.paths[i] ?? p]));
   }
 
@@ -3863,6 +3863,11 @@
   function applyAppSettings(s: AppSettings, autosave: boolean) {
     if (!s.playbackSpeed && speedNow !== 100) void chooseSpeed(100).catch(() => {});
     document.documentElement.dataset.surface = s.surface;
+    if (document.documentElement.dataset.theme !== s.theme) {
+      document.documentElement.dataset.theme = s.theme;
+      // Canvases read their colors when they draw; ask them to draw again.
+      requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+    }
     const root = document.documentElement.style;
     for (const k of ["--wave", "--playhead", "--accent", "--lane-selected"]) root.removeProperty(k);
     for (const [k, v] of Object.entries(colorVars(s.colors))) root.setProperty(k, v);
@@ -5183,6 +5188,15 @@
         }),
       ),
       actions.register({ id: "multitrack.add.midi", run: () => addMidiTrack(), enabled: () => session.current !== null, visible: () => settings.current.musicMode }),
+      actions.register({
+        id: "view.theme",
+        run: () => {
+          settings.set({ ...settings.current, theme: settings.current.theme === "light" ? "dark" : "light" });
+          actions.invalidate();
+        },
+        label: () => (settings.current.theme === "light" ? "Dark Theme" : "Light Theme"),
+        checked: () => settings.current.theme === "light",
+      }),
       actions.register({
         id: "view.mode.music",
         run: () => {
@@ -7452,19 +7466,20 @@
 <style>
   .update-toast {
     position: fixed;
-    right: 16px;
-    bottom: 36px;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     z-index: 5500;
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 14px;
+    gap: 12px;
+    padding: 16px 22px;
     border: 1px solid var(--border-strong);
     border-radius: 4px;
     background: var(--surface-2);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     color: var(--text);
-    font-size: 13px;
+    font-size: 14px;
   }
   .update-toast button {
     border: 1px solid var(--border-strong);

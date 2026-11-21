@@ -298,7 +298,7 @@ Zero logins, zero telemetry, zero tracking. The app is fully usable offline with
 - No accounts or sign-in, ever.
 - The only web access is the Help menu opening pages in the user's browser when they pick a link, limited to the allow list in `src-tauri/src/commands/links.rs`.
 - A support link and the project lead's book, Altered Audio: Podcasting Demystified, live in the Help menu only. Never in the user's face, never a nag, never forced.
-- Updates (decided 2026-10-14, built 2026-10-25 for 0.3.1; releases are published as normal releases, not pre-release, so GitHub's "latest" points at them): Help > Check for Updates, plus an optional weekly check that is OFF by default, set in Preferences and on the first-run screen as an unticked box. The check fetches one signed `latest.json` from GitHub Releases through the Tauri updater; no login, no API calls. A found update shows a small non-modal notice in the bottom right corner (changed 2026-11-19), never a window that blocks work, never during playback or recording, and never installs without a click unless the user turned on the off-by-default install-at-launch option. The privacy guard allows only the updater plugin and that one host.
+- Updates (decided 2026-10-14, built 2026-10-25 for 0.3.1; releases are published as normal releases, not pre-release, so GitHub's "latest" points at them): Help > Check for Updates, plus an optional weekly check that is OFF by default, set in Preferences and on the first-run screen as an unticked box. The check fetches one signed `latest.json` from GitHub Releases through the Tauri updater; no login, no API calls. A found update shows a non-modal notice in the middle of the window (moved from the bottom right corner 2026-11-20), never a window that blocks work, never during playback or recording, and never installs without a click unless the user turned on the off-by-default install-at-launch option. The privacy guard allows only the updater plugin and that one host.
 - Any future feature that needs the network (for example Podcast Manager sync) must be off by default, clearly labeled, and never required. See `PRIVACY.md`.
 
 ## Loudness defaults
@@ -328,7 +328,7 @@ The bar is an editor that feels right to someone who has edited podcasts for yea
 5. Interaction feedback within one frame (16 ms). Anything slower shows progress and never freezes the window.
 6. Every edit is undoable, including track reorders.
 7. Work is never lost: autosave every 2 minutes plus crash recovery.
-8. Dark UI tuned for long sessions: dense, quiet chrome, clips and waveforms carry the color.
+8. Dark UI tuned for long sessions: dense, quiet chrome, clips and waveforms carry the color. A light theme exists as a toggle (View > Light Theme, Settings > Appearance); there are no other named themes (decided 2026-11-20).
 9. Podcast-specific tools are never in the way during voiceover work, and vice versa.
 
 ## Podcast editor workflow

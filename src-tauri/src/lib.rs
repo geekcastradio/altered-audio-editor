@@ -76,6 +76,11 @@ pub fn run() {
                     app_core::Dirs {
                         config: paths::config_dir(app.handle()),
                         backups: paths::backups_dir(app.handle()),
+                        documents: tauri::Manager::path(app.handle()).document_dir().ok(),
+                        home: tauri::Manager::path(app.handle()).home_dir().ok(),
+                        app_cache: tauri::Manager::path(app.handle())
+                            .app_cache_dir()
+                            .map_err(|e| e.to_string()),
                     },
                 )
                 .with_version(app.package_info().version.to_string()),

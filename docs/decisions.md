@@ -1846,3 +1846,31 @@ Steve decided the Rust move continues as a port (the interface and its logic mov
 ## 2026-11-20: ideas adopted from AudiForm 2's README
 
 Steve agreed all nine ideas listed in docs/backlog.md ("Ideas adopted from reading AudiForm 2's README") are needed, with one change: no named theme set. The only theme work is a light and dark pair with a toggle. Items 1 to 3 (Report a Problem diagnostics, the ASIO probe, the speed benchmark) go into 0.50.0 with the document review and the next AppCore batch.
+
+## 2026-11-20: update notice moves to the middle of the window
+
+Steve found the bottom right corner notice too easy to miss. The update notice now sits in the middle of the window, still non-blocking (work continues behind it), with "See what's new" and "Later". The fallback after a declined install-at-launch uses the same notice. Rules unchanged: off by default, never during playback or recording.
+
+## 2026-11-20: DeepFilterNet stays in 1.0; new features are written in Rust
+
+Steve, after publishing 0.49.0: DeepFilterNet goes into 1.0, and sooner rather than later. It is already in Rust and shipping: Speech Denoiser (High Quality), DeepFilterNet3 through `deep-filter-rt` on tract, since 0.36.0. So the work left is the tuning and speed side, not a port. It stays on the user's machine, so it fits the 1.0 rule (no outside calls). Also from Steve: new features are built in Rust. From now on the logic of every new feature goes in the Rust core (`AppCore` and the engine, with tests that run on Linux), and the Svelte side stays a thin view over it, so each feature moves to the native interface with no rewrite. The open question of freezing new Svelte-only features at the Phase 2 gate is settled by this rule.
+
+## 2026-11-20: 0.50.0 document review done (full)
+
+Ran the full review in `docs/doc-review-0.50.0.md`. Fixed the README downloads, ROADMAP (1.0 line, product name), PRIVACY (links, Report a Problem, Copy Bug Report Details), SECURITY wording and RELEASING (real release flow). npm licences are clean. Open for Steve: a Rust licence audit in CI (`cargo deny`), a pass over other products' names outside the deliberate compatibility mentions, the in-app guide pass, and the web pages outside the repo.
+
+## 2026-11-20: AppCore batch for 0.50.0 (libraries root, working-files folder, peaks)
+
+Three more pieces of logic moved out of Tauri command bodies into `AppCore`, so an interface that is not Tauri can call them: `libraries_root()` (where new libraries go), `cache_root()` (the working-files folder, honouring the folder picked in Settings) and `peaks_ensure()` (builds waveform peaks and sends `peaks-progress` through the event sink). `Dirs` now also carries the Documents, home and app cache folders, worked out once at startup. The commands `library_default_root`, `peaks_ensure` and `cache::cache_root` are thin wrappers, so nothing in the interface or in other commands changed. Tests cover the Documents, home and app cache fallbacks and the picked-folder rule, and run on Linux.
+
+## 2026-11-20: type a value into a dial; export progress in the middle
+
+Steve: the number beside a track's volume dial (for example -2.0) should be clickable so he can type a value. Every dial now does this (track, bus and master volume, pan, click level): click the number, type, press Enter (Escape cancels). Volume takes "-2", "+3.5" or "-6 dB"; pan also takes "L30", "R20" and "C". Values outside the dial's range are held to its ends, and a bad entry changes nothing. Each typed value is one undoable edit, like a drag. Same day: the export progress box (mixdown, stems, bounce, playlist, video) sits in the middle of the window, still without blocking work behind it, instead of the lower right corner.
+
+## 2026-11-20: keep unknown fields on load and save (sessions)
+
+From the AudiForm 2 README idea list, agreed by Steve. `Session`, `Track` and `Clip` now carry an `extra` map (`#[serde(flatten)]`, skipped when empty, left out of the published JSON Schema). A key this version does not know is read, kept and written back on save, so a session that passes through an older build, or between the old and the native interface, loses nothing. This is not a version bump: files without extra keys are written exactly as before. Side effect to know: a key the interface sends inside a track or clip that the core does not model is now saved instead of dropped, so the interface should not send private working fields in those objects. Covered by two tests in `tests/roundtrip.rs`. Other document types (library, template, workspace, host profile) are still plain; add the same field when one of them needs it.
+
+## 2026-11-20: light and dark theme with a toggle (idea 5)
+
+Steve wanted themes limited to one light and one dark with a toggle, nothing else. `theme` (dark or light, default dark) is an app setting, switched from View > Light Theme (the label flips to Dark Theme) or Settings > Appearance > Theme. The light theme is a second set of the same color tokens in `src/styles/tokens.css` (`:root[data-theme="light"]`), so panels, docking tabs and dialogs follow it with no per-panel code; canvases that read tokens when they draw are asked to redraw on a switch. The Classic panel brightness option only affects the dark theme. No keyboard shortcut was added (needs Steve's approval). Not checked by eye yet: canvas drawings that use fixed hex colors (about 40 places in the editor panels) may still look dark-theme-only on the light theme until Steve reports them; those are fixed one panel at a time by moving the color into a token. Also fixed in passing: the Appearance help text no longer names another product.

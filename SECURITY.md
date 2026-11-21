@@ -12,7 +12,7 @@ Altered Audio Editor is not at 1.0 yet, so only the latest release gets fixes. W
 
 ## Scope
 
-The app has no accounts and no telemetry. Its only network use is the update check (Help > Check for Updates, or the optional weekly check), which reads one small file from this project's GitHub releases, and an update is checked against the project's signing key before it installs.
+The app has no accounts and no telemetry. Its only network use is the update check (Help > Check for Updates, or the optional check at start or once a week), which reads one small file from this project's GitHub releases, and an update is checked against the project's signing key before it installs.
 
 Reports are most useful when they are about:
 

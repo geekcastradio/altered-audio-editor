@@ -32,15 +32,16 @@ Windows 10 and 11 (64-bit). Get the latest build from the [Releases page](https:
 
 - **`Altered-Audio-Editor-<version>-setup.exe`** is the installer. It adds a Start menu entry and an uninstaller, and works per user or for all users.
 - **`Altered-Audio-Editor-<version>-portable.zip`** needs no install. Unzip it anywhere, including a USB drive, and run the app.
+- **`Altered-Audio-Editor-<version>-x64.msi`** is the same app as an MSI package, for managed computers and schools that install with Group Policy or similar tools.
 - **`SHA256SUMS.txt`** lists a checksum for each file so you can confirm your download is intact.
 
 The app is not code signed yet, so Windows SmartScreen may say it does not recognize it. Choose More info, then Run anyway. Builds are made by GitHub Actions from the tagged source, so what you download matches what is in this repository.
 
 A few antivirus scanners may flag the installer with a low-confidence guess. That is common for new, unsigned installers and goes away as the file builds a reputation. To check your copy, compare its SHA-256 with `SHA256SUMS.txt` (in PowerShell: `Get-FileHash <file>`).
 
-**Linux and macOS (experimental).** Releases also carry a Linux AppImage and `.deb`, and a macOS `.dmg` for Apple silicon Macs. They are built from the same source but not tested by us yet, so reports are welcome. The macOS app is not notarized: the first time, right-click it and choose Open. AAC export works on Windows only for now.
+**Linux and macOS (experimental).** Releases also carry a Linux AppImage and `.deb`, and a macOS `.dmg` for Apple silicon Macs and one for Intel Macs. They are built from the same source but not tested by us yet, so reports are welcome. The macOS app is not notarized: the first time, right-click it and choose Open. AAC export works on Windows only for now.
 
-Early versions are pre-releases. Expect rough edges and keep backups of your recordings.
+Versions before 1.0 are early releases. Expect rough edges and keep backups of your recordings.
 
 ## User Guide
 

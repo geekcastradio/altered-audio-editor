@@ -42,8 +42,7 @@
   }
 
   .backdrop.floating {
-    place-items: end end;
-    padding: 36px 16px;
+    place-items: center;
     background: none;
     pointer-events: none;
   }

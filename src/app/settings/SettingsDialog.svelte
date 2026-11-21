@@ -135,7 +135,7 @@
   function resetPage() {
     const def = DEFAULT_SETTINGS;
     if (page === "General") Object.assign(d.app, { zoomStep: def.zoomStep, wheelAnchor: def.wheelAnchor, wheelZooms: def.wheelZooms, fadeShape: def.fadeShape, dropMany: def.dropMany });
-    else if (page === "Appearance") Object.assign(d.app, { colors: { ...NO_COLORS }, surface: def.surface });
+    else if (page === "Appearance") Object.assign(d.app, { colors: { ...NO_COLORS }, surface: def.surface, theme: def.theme });
     else if (page === "Autosave") Object.assign(d.app, { autosave: def.autosave, autosaveMinutes: def.autosaveMinutes, backups: def.backups, backupCount: def.backupCount });
     else if (page === "Session Media") Object.assign(d.app, { copyMedia: def.copyMedia, mediaFolder: def.mediaFolder, collectOnSave: def.collectOnSave, leaveLibraryFiles: def.leaveLibraryFiles });
     else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb, meterSpeed: def.meterSpeed, autoThinPercent: def.autoThinPercent, playbackSpeed: def.playbackSpeed, stopAtSelectionEnd: def.stopAtSelectionEnd });
@@ -201,7 +201,8 @@
               <button type="button" disabled={!d.app.colors[r.key]} onclick={() => (d.app.colors[r.key] = "")}>Theme</button>
             {/each}
           </div>
-          <label><select bind:value={d.app.surface}><option value="standard">Standard</option><option value="classic">Classic (darker)</option></select> Panel brightness <span class="why">Standard is closer to Audition's charcoal. Classic is the darker look of earlier versions.</span></label>
+          <label><select bind:value={d.app.theme}><option value="dark">Dark</option><option value="light">Light</option></select> Theme <span class="why">Dark is tuned for long sessions. Light is for bright rooms. You can also switch from View > Light Theme.</span></label>
+          <label><select bind:value={d.app.surface}><option value="standard">Standard</option><option value="classic">Classic (darker)</option></select> Panel brightness <span class="why">Standard is a mid charcoal. Classic is the darker look of earlier versions. Used by the dark theme only.</span></label>
         {:else if page === "Audio Devices"}
           <label class="row">
             Play through

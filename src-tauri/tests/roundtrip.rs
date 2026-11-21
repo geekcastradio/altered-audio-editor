@@ -131,6 +131,35 @@ fn every_document_writes_its_header() {
     );
 }
 
+/// Fields a newer version wrote must survive a load and save in this one.
+#[test]
+fn unknown_session_fields_survive_a_load_and_save() {
+    let mut v = serde_json::to_value(common::session()).unwrap();
+    v["from_the_future"] = serde_json::json!({ "level": 3, "tags": ["a", "b"] });
+    v["tracks"][0]["track_note"] = serde_json::json!("keep me");
+    v["tracks"][0]["clips"][0]["clip_flag"] = serde_json::json!(true);
+    let text = serde_json::to_string(&v).unwrap();
+
+    let session: Session = from_json(&text).unwrap();
+    assert_eq!(session.extra["from_the_future"]["level"], 3);
+
+    let back: serde_json::Value = serde_json::from_str(&to_json(&session).unwrap()).unwrap();
+    assert_eq!(back["from_the_future"], v["from_the_future"]);
+    assert_eq!(back["tracks"][0]["track_note"], "keep me");
+    assert_eq!(back["tracks"][0]["clips"][0]["clip_flag"], true);
+    // And a second pass changes nothing.
+    let again: Session = from_json(&to_json(&session).unwrap()).unwrap();
+    assert_eq!(again, session);
+}
+
+/// A session with nothing extra writes no extra keys at all.
+#[test]
+fn a_plain_session_writes_no_extra_keys() {
+    let v = serde_json::to_value(common::session()).unwrap();
+    assert!(v.get("extra").is_none());
+    assert!(v["tracks"][0].get("extra").is_none());
+}
+
 fn session_value() -> serde_json::Value {
     serde_json::to_value(common::session()).unwrap()
 }

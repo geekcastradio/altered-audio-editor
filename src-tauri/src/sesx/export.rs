@@ -510,6 +510,7 @@ mod tests {
         t.volume_db = -6.0;
         t.pan = -25.0;
         t.clips.push(Clip {
+            extra: Default::default(),
             id: new_id(),
             name: "Take".into(),
             media_id: m.id,

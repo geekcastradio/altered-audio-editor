@@ -9,7 +9,7 @@
 */
 
 .dockview-theme-altaudio {
-  color-scheme: dark;
+  color-scheme: inherit;
 
   --dv-group-view-background-color: var(--surface-1);
   --dv-tabs-and-actions-container-background-color: var(--surface-0);

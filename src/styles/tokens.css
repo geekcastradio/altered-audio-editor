@@ -92,6 +92,42 @@
   --text-dim: #9a9aa2;
 }
 
+/*
+  Light theme. Same tokens, light values. The classic surface setting only
+  applies to the dark theme. Clip colors stay saturated enough to read on
+  light lanes, and waveforms keep their own colors.
+*/
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --surface-0: #f1f1f4;
+  --surface-1: #e7e7eb;
+  --surface-2: #dcdce1;
+  --surface-3: #d0d0d7;
+  --border: #bdbdc6;
+  --border-strong: #9d9da8;
+
+  --text: #1d1d22;
+  --text-dim: #45454e;
+  --text-faint: #75757f;
+
+  --accent: #1c78c4;
+  --accent-dim: #8bbbe3;
+  --playhead: #b57b00;
+  --value: #0b62a8;
+  --gutter: #c9c9d1;
+  --danger: #c8372f;
+  --title-bar: #2d2f38;
+  --title-bar-text: #f1f1f4;
+
+  --lane-a: #f6f6f8;
+  --lane-b: #ececf0;
+  --lane-selected: #d4e3f3;
+  --track-gap: #b9b9c3;
+  --header-a: #dedee3;
+  --header-b: #d6d6dc;
+}
+
 *,
 *::before,
 *::after {

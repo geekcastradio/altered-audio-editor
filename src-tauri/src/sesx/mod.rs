@@ -1065,6 +1065,7 @@ pub fn import(path: &Path) -> Result<Imported, SesxError> {
                 report.stretched += 1;
             }
             track.clips.push(Clip {
+                extra: Default::default(),
                 id: new_id(),
                 name: c.attribute("name").unwrap_or("Clip").to_string(),
                 media_id,

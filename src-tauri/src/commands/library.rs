@@ -17,13 +17,10 @@ use crate::library::{Library, LibraryItem};
 
 /// Where new libraries go by default: Documents/Altered Audio/Libraries.
 #[tauri::command]
-pub fn library_default_root(app: AppHandle) -> Result<PathBuf, String> {
-    let docs = app
-        .path()
-        .document_dir()
-        .or_else(|_| app.path().home_dir())
-        .map_err(|e| e.to_string())?;
-    Ok(docs.join("Altered Audio").join("Libraries"))
+pub fn library_default_root(
+    core: tauri::State<'_, crate::app_core::AppCore>,
+) -> Result<PathBuf, String> {
+    core.libraries_root()
 }
 
 #[tauri::command]

@@ -43,6 +43,7 @@ pub struct ClipSpec {
 impl ClipSpec {
     fn build(&self) -> Clip {
         Clip {
+            extra: Default::default(),
             id: self.id,
             name: self.name.clone(),
             media_id: self.media_id,

@@ -44,6 +44,7 @@
   import { monoCheck } from "../../stores/mono-check";
   import { chainTarget } from "../../stores/chain-target";
   import Dial from "./Dial.svelte";
+  import { parsePan } from "./dial-input";
   import TrackMeter from "./TrackMeter.svelte";
   import { inputLevels, liveTakes, meterInputAll, type LiveTakes } from "../../stores/record";
   import { keepLast } from "../../app/settings/device-cache";
@@ -2808,7 +2809,7 @@
                   }}>3D</button
                 >
               {:else}
-                <Dial value={track.pan} min={-100} max={100} step={1} origin={0} label="Pan" icon="pan" format={formatPan} onChange={(v) => setValue(track, "pan", v)} {...holdOf(track.id, "pan", () => track.pan)} />
+                <Dial value={track.pan} min={-100} max={100} step={1} origin={0} label="Pan" icon="pan" format={formatPan} parse={parsePan} onChange={(v) => setValue(track, "pan", v)} {...holdOf(track.id, "pan", () => track.pan)} />
               {/if}
               <span class="tail">
                 {@render monoBtn(track)}
@@ -2978,7 +2979,7 @@
             {#if headerView === "mix"}
               <div class="line">
                 <Dial value={b.volume_db} min={-60} max={12} step={0.1} origin={0} label="Volume" icon="volume" format={(v) => `${formatDb(v)}`} onChange={(v) => setBus(b, { volume_db: v }, "Bus Volume")} {...holdOf(b.id, "volume", () => b.volume_db)} />
-                <Dial value={b.pan} min={-100} max={100} step={1} origin={0} label="Pan" icon="pan" format={formatPan} onChange={(v) => setBus(b, { pan: v }, "Bus Pan")} {...holdOf(b.id, "pan", () => b.pan)} />
+                <Dial value={b.pan} min={-100} max={100} step={1} origin={0} label="Pan" icon="pan" format={formatPan} parse={parsePan} onChange={(v) => setBus(b, { pan: v }, "Bus Pan")} {...holdOf(b.id, "pan", () => b.pan)} />
                 <select class="auto" aria-label="{b.name} automation mode" value={autoMode(b)} title={MODE_TIP} onchange={(e) => pickMode(b, "bus", e.currentTarget.value as AutoModeName)}>
                   <option value="off">Off</option>
                   <option value="read">Read</option>
