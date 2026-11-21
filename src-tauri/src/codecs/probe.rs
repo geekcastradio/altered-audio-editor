@@ -141,6 +141,7 @@ pub fn probe(path: &Path) -> Result<AudioInfo, ProbeError> {
     let mut sample_rate = params.sample_rate;
     let mut channels = params.channels.as_ref().map(|c| c.count());
     let mut scanned: u64 = 0;
+    let mut first_pts: Option<i64> = None;
     loop {
         let packet = match format.next_packet() {
             Ok(Some(p)) => p,
@@ -151,6 +152,7 @@ pub fn probe(path: &Path) -> Result<AudioInfo, ProbeError> {
             continue;
         }
         scanned += packet.dur.get();
+        first_pts.get_or_insert(packet.pts.get());
         match decoder.decode(&packet) {
             Ok(buf) => {
                 let spec = buf.spec();
@@ -177,7 +179,7 @@ pub fn probe(path: &Path) -> Result<AudioInfo, ProbeError> {
         (Some(n), _) => n,
         (None, Some(d)) => to_frames(d.get(), time_base, sample_rate),
         (None, None) => {
-            let ticks = count_remaining(format.as_mut(), track.id, scanned)?;
+            let ticks = count_remaining(format.as_mut(), track.id, scanned, first_pts)?;
             to_frames(ticks, time_base, sample_rate)
         }
     };
@@ -203,23 +205,42 @@ pub fn probe(path: &Path) -> Result<AudioInfo, ProbeError> {
 }
 
 /// Sums packet durations to the end of the stream, without decoding.
+///
+/// Matroska and WebM do not store a duration for each packet of most codecs,
+/// so the sum comes out as zero. Then the length is estimated from the packet
+/// timestamps: the span from the first packet to the last, plus one average
+/// packet for the last packet's own length.
 fn count_remaining(
     format: &mut dyn FormatReader,
     track_id: u32,
     mut ticks: u64,
+    first_pts: Option<i64>,
 ) -> Result<u64, ProbeError> {
+    let mut last_pts = first_pts;
+    let mut packets: u64 = u64::from(first_pts.is_some());
     loop {
         match format.next_packet() {
-            Ok(Some(p)) if p.track_id == track_id => ticks += p.dur.get(),
-            Ok(Some(_)) => {}
-            Ok(None) => return Ok(ticks),
-            // A truncated tail still has a usable length.
-            Err(SymError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
-                return Ok(ticks)
+            Ok(Some(p)) if p.track_id == track_id => {
+                ticks += p.dur.get();
+                last_pts = Some(p.pts.get());
+                packets += 1;
             }
+            Ok(Some(_)) => {}
+            Ok(None) => break,
+            // A truncated tail still has a usable length.
+            Err(SymError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
             Err(e) => return Err(damaged(e)),
         }
     }
+    if ticks == 0 {
+        if let (Some(first), Some(last)) = (first_pts, last_pts) {
+            if packets > 1 && last > first {
+                let span = (last - first) as u64;
+                ticks = span + span / (packets - 1);
+            }
+        }
+    }
+    Ok(ticks)
 }
 
 fn to_frames(ticks: u64, time_base: Option<TimeBase>, sample_rate: u32) -> u64 {
