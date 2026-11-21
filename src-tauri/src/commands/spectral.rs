@@ -7,10 +7,11 @@
 
 use std::sync::atomic::AtomicBool;
 
+use crate::app_core::AppCore;
 use serde::Serialize;
 use tauri::async_runtime::spawn_blocking;
 use tauri::ipc::Response;
-use tauri::{AppHandle, State};
+use tauri::State;
 
 use super::wave::OpenWave;
 use crate::dsp::spectral::{self, Action, Mask, FFT_SIZE};
@@ -298,7 +299,7 @@ pub enum SpectralMode {
 /// the stretch for the new file as one undoable op.
 #[tauri::command]
 pub async fn wave_spectral_edit(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     wave: State<'_, OpenWave>,
     mask: Mask,
     mode: SpectralMode,
@@ -311,7 +312,7 @@ pub async fn wave_spectral_edit(
     }
     let start = m0.max(0.0) as u64;
     let end = m1.max(0.0).ceil() as u64;
-    let dir = crate::commands::cache::cache_root(&app)?.join("spectral");
+    let dir = app.cache_root()?.join("spectral");
     spawn_blocking(move || -> Result<SpectralResult, String> {
         let rate = session.sample_rate;
         let total = mixdown::session_end(&session);
@@ -372,7 +373,7 @@ pub struct SpectralPlay {
 /// Nothing in the open file changes.
 #[tauri::command]
 pub async fn wave_spectral_play(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     wave: State<'_, OpenWave>,
     mask: Mask,
 ) -> Result<SpectralPlay, String> {
@@ -387,7 +388,7 @@ pub async fn wave_spectral_play(
     if (end.saturating_sub(start)) as f64 / f64::from(rate) > MAX_PLAY_SECONDS {
         return Err("Select a shorter stretch (up to five minutes) to play it.".into());
     }
-    let dir = crate::commands::cache::cache_root(&app)?.join("spectral");
+    let dir = app.cache_root()?.join("spectral");
     spawn_blocking(move || -> Result<SpectralPlay, String> {
         let n = FFT_SIZE as u64;
         // One frame of room each side so the ends rebuild fully.

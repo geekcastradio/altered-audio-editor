@@ -9,9 +9,10 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::app_core::AppCore;
 use serde::Serialize;
 use tauri::async_runtime::spawn_blocking;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, State};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CacheFolder {
@@ -58,15 +59,11 @@ pub fn cache_root(app: &AppHandle) -> Result<PathBuf, String> {
     app.state::<crate::app_core::AppCore>().cache_root()
 }
 
-fn cache_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    cache_root(app)
-}
-
 /// Uses `path` for working files from now on (None goes back to the
 /// default). Files already made stay where they are; drawings are rebuilt.
 #[tauri::command]
-pub fn cache_set_folder(app: AppHandle, path: Option<String>) -> Result<(), String> {
-    let cfg = crate::paths::config_dir(&app)?;
+pub fn cache_set_folder(app: State<'_, AppCore>, path: Option<String>) -> Result<(), String> {
+    let cfg = app.config_dir()?;
     std::fs::create_dir_all(&cfg).map_err(|e| e.to_string())?;
     let file = cfg.join(FOLDER_SETTING);
     match path.filter(|p| !p.trim().is_empty()) {
@@ -87,8 +84,8 @@ pub fn cache_set_folder(app: AppHandle, path: Option<String>) -> Result<(), Stri
 }
 
 #[tauri::command]
-pub async fn cache_info(app: AppHandle) -> Result<CacheInfo, String> {
-    let dir = cache_dir(&app)?;
+pub async fn cache_info(app: State<'_, AppCore>) -> Result<CacheInfo, String> {
+    let dir = app.cache_root()?;
     spawn_blocking(move || CacheInfo {
         folders: FOLDERS
             .iter()
@@ -106,8 +103,8 @@ pub async fn cache_info(app: AppHandle) -> Result<CacheInfo, String> {
 
 /// Deletes the waveform drawings. Returns the bytes freed.
 #[tauri::command]
-pub async fn cache_clear_peaks(app: AppHandle) -> Result<u64, String> {
-    let dir = cache_dir(&app)?.join("peaks");
+pub async fn cache_clear_peaks(app: State<'_, AppCore>) -> Result<u64, String> {
+    let dir = app.cache_root()?.join("peaks");
     spawn_blocking(move || {
         let freed = size(&dir);
         if dir.exists() {

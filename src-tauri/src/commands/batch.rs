@@ -14,10 +14,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use crate::events::EventSinkExt;
+use crate::app_core::AppCore;
 use serde::{Deserialize, Serialize};
 use tauri::async_runtime::spawn_blocking;
-use tauri::{AppHandle, State};
+use tauri::State;
 
 use crate::codecs::cue::{read_cues, write_cues, Cue};
 use crate::export::chapters::{embed_chapters, read_chapters, Chapter};
@@ -162,7 +162,7 @@ pub struct BatchSummary {
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn batch_convert(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     cancel: State<'_, BatchCancel>,
     jobs: Vec<BatchJob>,
     format: OutputFormat,
@@ -171,6 +171,7 @@ pub async fn batch_convert(
     process: Option<EffectChain>,
     shape: Option<Shaping>,
 ) -> Result<BatchSummary, String> {
+    let app = app.inner().clone();
     let shape = shape.unwrap_or_default();
     let copy = copy_tags.unwrap_or(false);
     let flag = cancel.0.clone();
@@ -198,7 +199,7 @@ pub async fn batch_convert(
                     "failed" => "Not saved",
                     _ => "",
                 };
-                let _ = app.emit_event(
+                let _ = app.emit(
                     "batch-progress",
                     BatchProgress {
                         id: job.id.clone(),

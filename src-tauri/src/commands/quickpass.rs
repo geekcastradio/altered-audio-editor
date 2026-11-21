@@ -13,10 +13,10 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::events::EventSinkExt;
+use crate::app_core::AppCore;
 use serde::Serialize;
 use tauri::async_runtime::spawn_blocking;
-use tauri::{AppHandle, State};
+use tauri::State;
 
 use super::session::OpenSession;
 use crate::dsp::effects::{find_spots, repair_spots, Spots};
@@ -229,13 +229,14 @@ fn pick_session(
 /// Finds clicks or clipping in the given clips, as they play.
 #[tauri::command]
 pub async fn quickpass_spots(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     open: State<'_, OpenSession>,
     wave_doc: State<'_, super::wave::OpenWave>,
     wave: Option<bool>,
     clip_ids: Vec<Id>,
     spots: Spots,
 ) -> Result<Vec<ClipSpots>, String> {
+    let app = app.inner().clone();
     let session = pick_session(&open, &wave_doc, wave.unwrap_or(false))?;
     let wanted: HashSet<Id> = clip_ids.into_iter().collect();
     let cancel = begin_scan();
@@ -273,7 +274,7 @@ pub async fn quickpass_spots(
                     failed.note(e);
                 }
             }
-            let _ = app.emit_event(
+            let _ = app.emit(
                 "quickpass-progress",
                 ScanProgress {
                     done: n + 1,
@@ -338,13 +339,14 @@ pub async fn quickpass_repair_copy(
 /// Measures the given clips as they play (gain and Voice Chain included).
 #[tauri::command]
 pub async fn quickpass_levels(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     open: State<'_, OpenSession>,
     wave_doc: State<'_, super::wave::OpenWave>,
     wave: Option<bool>,
     clip_ids: Vec<Id>,
     window_ms: u32,
 ) -> Result<Vec<ClipLevels>, String> {
+    let app = app.inner().clone();
     let session = pick_session(&open, &wave_doc, wave.unwrap_or(false))?;
     let wanted: HashSet<Id> = clip_ids.into_iter().collect();
     let cancel = begin_scan();
@@ -374,7 +376,7 @@ pub async fn quickpass_levels(
                     failed.note(e);
                 }
             }
-            let _ = app.emit_event(
+            let _ = app.emit(
                 "quickpass-progress",
                 ScanProgress {
                     done: n + 1,
