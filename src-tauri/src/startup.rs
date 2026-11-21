@@ -30,6 +30,18 @@ fn state() -> &'static Mutex<State> {
     })
 }
 
+/// Writes the log so a reader never sees it half written: the text goes to a
+/// side file first, which then replaces the log. If the replace fails (a
+/// reader holding the file open on Windows), it falls back to a direct write.
+fn write_log(file: &Path, text: &str) {
+    let side = file.with_extension("log.tmp");
+    if std::fs::write(&side, text).is_ok() && std::fs::rename(&side, file).is_ok() {
+        return;
+    }
+    let _ = std::fs::remove_file(&side);
+    let _ = std::fs::write(file, text);
+}
+
 /// Text of the log: one line per stage, in the order they happened.
 pub fn render(marks: &[(u128, String)]) -> String {
     let mut out = String::from("Startup timing (milliseconds since the process began)\n");
@@ -64,7 +76,7 @@ pub fn mark(stage: &str) {
     let at = s.began.elapsed().as_millis();
     s.marks.push((at, stage.to_string()));
     if let Some(file) = &s.file {
-        let _ = std::fs::write(file, render(&s.marks));
+        write_log(file, &render(&s.marks));
     }
 }
 
@@ -73,7 +85,7 @@ pub fn set_folder(dir: &Path) {
     let mut s = state().lock().unwrap_or_else(|e| e.into_inner());
     let file = dir.join("startup-timing.log");
     let _ = std::fs::create_dir_all(dir);
-    let _ = std::fs::write(&file, render(&s.marks));
+    write_log(&file, &render(&s.marks));
     s.file = Some(file);
 }
 
@@ -109,6 +121,25 @@ mod tests {
         let text = std::fs::read_to_string(dir.join("startup-timing.log")).unwrap();
         assert!(text.contains("before folder"));
         assert!(text.contains("after folder"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_reader_never_sees_a_half_written_log() {
+        let dir = std::env::temp_dir().join(format!("aae-startup-race-{}", std::process::id()));
+        set_folder(&dir);
+        let writer = std::thread::spawn(|| {
+            for i in 0..400 {
+                mark(&format!("race stage {i}"));
+            }
+        });
+        let file = dir.join("startup-timing.log");
+        for _ in 0..400 {
+            if let Ok(text) = std::fs::read_to_string(&file) {
+                assert!(text.starts_with("Startup timing"), "partial log: {text:?}");
+            }
+        }
+        writer.join().unwrap();
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
