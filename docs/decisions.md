@@ -1978,3 +1978,11 @@ The rules behind Edit > Select and the empty-track menu (`src/app/clip-select.ts
 ## 2026-11-21: Bug report link in Rust
 
 The Help > Report a Problem link (`src/app/bug-report-link.ts`: `osFrom`, `reportUrl`) now has a Rust copy in `src-tauri/src/bug_report_link.rs`, tested against `shared-fixtures/bug-report-link.json` with the TypeScript copy (16 user agents, and 17 version strings plus "none" against each, compared as whole URLs). The link still carries only the app version and the system name, and a version that looks like a path or a sentence is left out; the fixture includes both. The query is encoded by a small function that follows the browser's form encoding (a plus in a version becomes `%2B`), so no new dependency is added. No behavior change; the interface still uses the TypeScript copy.
+
+## 2026-11-21: Analysis number formats and scales in Rust
+
+The number formats and scales behind the Analysis panel (`src/app/analysis.ts`: `fmtDb`, `fmtSample`, `fmtHz`, `fmtAt`, `logX`, `dbY`, `histogramBars`, `binDb`, `FREQ_TICKS` and `humCutFix`) now have a Rust copy in `src-tauri/src/analysis.rs`, tested against `shared-fixtures/analysis.json` with the TypeScript copy (levels around the silence floor and at rounding ties, sample values, axis labels, times past a minute and an hour, the log axis for four ranges, the histogram scale and eight hum findings).
+
+To match JavaScript's `toFixed` and number printing, `js_compat.rs` now has `js_to_fixed(x, digits)` (the old one-decimal function is a thin wrapper) and `js_number_to_string`. The first handles exact ties by rounding up in size, as JavaScript does and Rust's own formatting does not. The second covers the ranges the interface uses and not the exponent forms for numbers below 1e-6 or from 1e21.
+
+Left in TypeScript on purpose: `findings`, the finding texts. They write counts with `toLocaleString()`, which groups digits by the machine's language, so a Rust copy would either change what some people see or need a locale table. That is a decision for the move of the interface itself, not for a port that promises no change. No behavior change; the interface still uses the TypeScript copy.

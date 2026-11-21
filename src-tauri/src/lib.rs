@@ -7,6 +7,7 @@
 //! The interface never touches audio. It sends commands to this core
 //! and renders the state it gets back.
 
+pub mod analysis;
 pub mod app_core;
 pub mod backup;
 pub mod bleed_copy;

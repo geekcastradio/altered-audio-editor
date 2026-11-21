@@ -15,27 +15,60 @@ pub fn js_round(x: f64) -> f64 {
     }
 }
 
-/// JavaScript's `Number.prototype.toFixed(1)`: the nearest tenth of the exact
-/// value, and an exact tie goes up in size (away from zero for negatives).
+/// JavaScript's `Number.prototype.toFixed(1)`. See `js_to_fixed`.
 pub fn js_to_fixed1(x: f64) -> String {
+    js_to_fixed(x, 1)
+}
+
+/// JavaScript's `Number.prototype.toFixed(digits)` for finite numbers: the
+/// nearest value with that many decimals, and an exact tie goes up in size
+/// (away from zero for negatives). Rust's own formatting breaks ties to even.
+pub fn js_to_fixed(x: f64, digits: usize) -> String {
     if x == 0.0 {
         // Negative zero has no sign in JavaScript's output.
-        return "0.0".to_string();
+        return js_to_fixed_zero(digits);
     }
     if x < 0.0 {
-        return format!("-{}", js_to_fixed1(-x));
+        return format!("-{}", js_to_fixed(-x, digits));
     }
     let exact = format!("{x:.60}");
     let (whole, frac) = exact.split_once('.').unwrap_or((&exact, ""));
-    let mut digits = frac.bytes();
-    let tenth = digits.next().map_or(0, |d| u128::from(d - b'0'));
-    let rest: Vec<u8> = digits.collect();
+    let kept = &frac[..digits.min(frac.len())];
+    let rest = &frac.as_bytes()[kept.len()..];
     let tie = rest.first() == Some(&b'5') && rest[1..].iter().all(|&d| d == b'0');
     if !tie {
-        return format!("{x:.1}");
+        return format!("{x:.digits$}");
     }
-    let n = whole.parse::<u128>().unwrap_or(0) * 10 + tenth + 1;
-    format!("{}.{}", n / 10, n % 10)
+    let scale = 10u128.pow(digits as u32);
+    let n = whole.parse::<u128>().unwrap_or(0) * scale + kept.parse::<u128>().unwrap_or(0) + 1;
+    if digits == 0 {
+        n.to_string()
+    } else {
+        format!("{}.{:0width$}", n / scale, n % scale, width = digits)
+    }
+}
+
+fn js_to_fixed_zero(digits: usize) -> String {
+    if digits == 0 {
+        "0".to_string()
+    } else {
+        format!("0.{}", "0".repeat(digits))
+    }
+}
+
+/// JavaScript's string form of a number (`String(x)`, or `${x}`) for the
+/// ranges the interface uses. Negative zero prints as "0". Numbers below 1e-6
+/// or from 1e21 up, which JavaScript writes with an exponent, are not handled.
+pub fn js_number_to_string(x: f64) -> String {
+    if x == 0.0 {
+        "0".to_string()
+    } else if x.is_nan() {
+        "NaN".to_string()
+    } else if x.is_infinite() {
+        if x > 0.0 { "Infinity" } else { "-Infinity" }.to_string()
+    } else {
+        format!("{x}")
+    }
 }
 
 #[cfg(test)]
@@ -65,5 +98,27 @@ mod tests {
         assert_eq!(js_to_fixed1(9.95), "9.9");
         assert_eq!(js_to_fixed1(0.0), "0.0");
         assert_eq!(js_to_fixed1(-0.0), "0.0");
+    }
+
+    #[test]
+    fn js_to_fixed_other_digits() {
+        assert_eq!(js_to_fixed(0.5, 0), "1");
+        assert_eq!(js_to_fixed(1.5, 0), "2");
+        assert_eq!(js_to_fixed(2.5, 0), "3");
+        assert_eq!(js_to_fixed(-2.5, 0), "-3");
+        assert_eq!(js_to_fixed(0.0, 0), "0");
+        assert_eq!(js_to_fixed(0.0049, 4), "0.0049");
+        assert_eq!(js_to_fixed(1.00005, 4), "1.0001");
+        assert_eq!(js_to_fixed(0.0000005, 6), "0.000000");
+        assert_eq!(js_to_fixed(-0.0, 6), "0.000000");
+        assert_eq!(js_to_fixed(123.456, 2), "123.46");
+    }
+
+    #[test]
+    fn js_number_to_string_matches_javascript() {
+        assert_eq!(js_number_to_string(20.0), "20");
+        assert_eq!(js_number_to_string(1.5), "1.5");
+        assert_eq!(js_number_to_string(-0.0), "0");
+        assert_eq!(js_number_to_string(0.1 + 0.2), "0.30000000000000004");
     }
 }
