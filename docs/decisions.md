@@ -1846,3 +1846,7 @@ Steve decided the Rust move continues as a port (the interface and its logic mov
 ## 2026-11-20: ideas adopted from AudiForm 2's README
 
 Steve agreed all nine ideas listed in docs/backlog.md ("Ideas adopted from reading AudiForm 2's README") are needed, with one change: no named theme set. The only theme work is a light and dark pair with a toggle. Items 1 to 3 (Report a Problem diagnostics, the ASIO probe, the speed benchmark) go into 0.50.0 with the document review and the next AppCore batch.
+
+## 2026-11-20: update notice moves to the middle of the window
+
+Steve found the bottom right corner notice too easy to miss. The update notice now sits in the middle of the window, still non-blocking (work continues behind it), with "See what's new" and "Later". The fallback after a declined install-at-launch uses the same notice. Rules unchanged: off by default, never during playback or recording.
