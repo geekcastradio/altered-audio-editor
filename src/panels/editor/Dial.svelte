@@ -5,8 +5,11 @@
 
   A small round dial with its value beside it. Drag up or right to raise
   it, down or left to lower it; Shift for fine steps; double-click resets.
+  Click the number to type a value, then press Enter.
 -->
 <script lang="ts">
+  import { parseNumber } from "./dial-input";
+
   interface Props {
     value: number;
     min: number;
@@ -19,13 +22,42 @@
     /** Small symbol before the dial so volume and pan read at a glance. */
     icon?: "volume" | "pan";
     format: (v: number) => string;
+    /** Reads text typed over the number. Plain numbers (with or without dB) when not given. */
+    parse?: (text: string) => number | null;
     onChange: (v: number) => void;
     /** The dial was grabbed / let go (automation recording follows touches). */
     onGrab?: () => void;
     onRelease?: () => void;
   }
 
-  const { value, min, max, step, origin, label, icon, format, onChange, onGrab, onRelease }: Props = $props();
+  const { value, min, max, step, origin, label, icon, format, parse = parseNumber, onChange, onGrab, onRelease }: Props = $props();
+
+  let editing = $state(false);
+  let text = $state("");
+
+  function startEdit(e: MouseEvent) {
+    e.stopPropagation();
+    text = format(value);
+    editing = true;
+  }
+
+  /** Applies the typed value, held inside the dial's range. A bad entry leaves the value alone. */
+  function commit() {
+    if (!editing) return;
+    editing = false;
+    const v = parse(text);
+    if (v === null) return;
+    const c = Math.min(max, Math.max(min, v));
+    if (c === value) return;
+    onGrab?.();
+    onChange(c);
+    onRelease?.();
+  }
+
+  function focusAndSelect(el: HTMLInputElement) {
+    el.focus();
+    el.select();
+  }
 
   // The origin (0 dB, or center for pan) sits at 12 o'clock; the ends sweep 135 degrees either way.
   const angle = (v: number) => {
@@ -101,7 +133,26 @@
     {#if arc}<path d={arc} fill="none" stroke="var(--value)" stroke-width="1.6" />{/if}
     <line x1="8" y1="8" x2={tick[0]} y2={tick[1]} stroke="var(--text)" stroke-width="1.5" stroke-linecap="round" />
   </svg>
-  <span class="val">{format(value)}</span>
+  {#if editing}
+    <input
+      class="edit"
+      aria-label={label}
+      bind:value={text}
+      use:focusAndSelect
+      onpointerdown={(e) => e.stopPropagation()}
+      ondblclick={(e) => e.stopPropagation()}
+      onblur={commit}
+      onkeydown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") commit();
+        else if (e.key === "Escape") editing = false;
+      }}
+    />
+  {:else}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <span class="val" title="Click to type a value" onpointerdown={(e) => e.stopPropagation()} ondblclick={(e) => e.stopPropagation()} onclick={startEdit}>{format(value)}</span>
+  {/if}
 </span>
 
 <style>
@@ -131,10 +182,21 @@
   }
 
   .val {
+    cursor: text;
     min-width: 34px;
     color: var(--value);
     font-family: var(--font-mono);
     font-size: 11px;
     white-space: nowrap;
+  }
+  .edit {
+    width: 42px;
+    padding: 0 2px;
+    border: 1px solid var(--accent);
+    border-radius: 2px;
+    background: var(--surface-0);
+    color: var(--value);
+    font-family: var(--font-mono);
+    font-size: 11px;
   }
 </style>
