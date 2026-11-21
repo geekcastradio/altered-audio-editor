@@ -1996,3 +1996,6 @@ Left in TypeScript on purpose: `matchChanges` and `matchItems`, which read the s
 ## 2026-11-21: QuickPass lists only tracks with audio
 
 The Tracks menu offered every track, including empty ones. It now lists tracks that hold at least one clip, and the button only appears when two or more do. The count text uses the same set. Scan behavior is unchanged (empty tracks never had clips to scan).
+## 2026-11-21: Batch Convert one-job starter chains
+
+A user asked for a quick list of single-job batch presets (de-ess, reduce noise, fades, peak level, hum, pitch, vocal removal, DC offset, telephone). Reframed as a function: the Chain picker in Batch Convert should offer one pick per common single job. Added 16 starter chains built from presets and steps we already had, plus a De-Ess Voice preset. A test checks that every preset a starter names exists. Not tested by ear.

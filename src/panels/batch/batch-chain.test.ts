@@ -53,3 +53,21 @@ describe("Batch chains", () => {
     expect(new Set(BUILTIN_CHAINS.map((c) => c.name.toLowerCase())).size).toBe(BUILTIN_CHAINS.length);
   });
 });
+
+describe("Starter chains", () => {
+  it("have unique names and every preset they name exists", async () => {
+    const { BUILTIN_PRESETS } = await import("../voice-chain/chain");
+    const { BATCH_RECIPES } = await import("../voice-chain/batch-recipes");
+    const names = new Set([...BUILTIN_PRESETS, ...BATCH_RECIPES].map((p) => p.name));
+    const seen = new Set<string>();
+    for (const c of BUILTIN_CHAINS) {
+      expect(seen.has(c.name.toLowerCase())).toBe(false);
+      seen.add(c.name.toLowerCase());
+      if (c.process) expect(names.has(c.process), `${c.name} -> ${c.process}`).toBe(true);
+    }
+  });
+
+  it("each does at least one thing", () => {
+    for (const c of BUILTIN_CHAINS) expect(describeChain(c).length).toBeGreaterThan(0);
+  });
+});
