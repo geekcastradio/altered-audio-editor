@@ -7,51 +7,21 @@
 
 use std::path::PathBuf;
 
-use crate::events::EventSinkExt;
-use serde::Serialize;
 use tauri::async_runtime::spawn_blocking;
 use tauri::ipc::Response;
-use tauri::AppHandle;
 
 use crate::peaks::{self, PeakSummary};
 
-/// The waveform files older versions kept on disk are removed once per run: peaks live in memory now.
-fn remove_old_peak_files(app: &AppHandle) {
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(|| {
-        if let Ok(root) = crate::commands::cache::cache_root(app) {
-            let _ = std::fs::remove_dir_all(root.join("peaks"));
-        }
-    });
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Progress {
-    path: PathBuf,
-    progress: f64,
-}
-
 /// Builds a file's waveform peaks if they are not held already and returns their summary.
 #[tauri::command]
-pub async fn peaks_ensure(app: AppHandle, path: PathBuf) -> Result<PeakSummary, String> {
-    remove_old_peak_files(&app);
-    spawn_blocking(move || {
-        let p = path.clone();
-        peaks::ensure(&path, |progress| {
-            let _ = app.emit_event(
-                "peaks-progress",
-                Progress {
-                    path: p.clone(),
-                    progress,
-                },
-            );
-            true
-        })
-        .map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+pub async fn peaks_ensure(
+    core: tauri::State<'_, crate::app_core::AppCore>,
+    path: PathBuf,
+) -> Result<PeakSummary, String> {
+    let core = core.inner().clone();
+    spawn_blocking(move || core.peaks_ensure(&path))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// One level of peaks as raw little-endian i16 pairs (min, max per channel).

@@ -1858,3 +1858,7 @@ Steve, after publishing 0.49.0: DeepFilterNet goes into 1.0, and sooner rather t
 ## 2026-11-20: 0.50.0 document review done (full)
 
 Ran the full review in `docs/doc-review-0.50.0.md`. Fixed the README downloads, ROADMAP (1.0 line, product name), PRIVACY (links, Report a Problem, Copy Bug Report Details), SECURITY wording and RELEASING (real release flow). npm licences are clean. Open for Steve: a Rust licence audit in CI (`cargo deny`), a pass over other products' names outside the deliberate compatibility mentions, the in-app guide pass, and the web pages outside the repo.
+
+## 2026-11-20: AppCore batch for 0.50.0 (libraries root, working-files folder, peaks)
+
+Three more pieces of logic moved out of Tauri command bodies into `AppCore`, so an interface that is not Tauri can call them: `libraries_root()` (where new libraries go), `cache_root()` (the working-files folder, honouring the folder picked in Settings) and `peaks_ensure()` (builds waveform peaks and sends `peaks-progress` through the event sink). `Dirs` now also carries the Documents, home and app cache folders, worked out once at startup. The commands `library_default_root`, `peaks_ensure` and `cache::cache_root` are thin wrappers, so nothing in the interface or in other commands changed. Tests cover the Documents, home and app cache fallbacks and the picked-folder rule, and run on Linux.

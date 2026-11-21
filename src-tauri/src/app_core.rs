@@ -15,6 +15,17 @@ use std::sync::Arc;
 use serde::Serialize;
 
 use crate::events::{EventSink, EventSinkExt};
+use crate::peaks::{self, PeakSummary};
+
+/// File in the config folder that holds a working-files folder the user picked.
+pub const CACHE_FOLDER_SETTING: &str = "cache-folder.txt";
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PeaksProgress {
+    path: PathBuf,
+    progress: f64,
+}
 
 /// The folders the core keeps its files in, worked out once at startup.
 /// A folder that could not be found keeps the reason, so a command can
@@ -23,6 +34,12 @@ use crate::events::{EventSink, EventSinkExt};
 pub struct Dirs {
     pub config: Result<PathBuf, String>,
     pub backups: Result<PathBuf, String>,
+    /// The user's Documents folder, when the system has one.
+    pub documents: Option<PathBuf>,
+    /// The user's home folder, used when there is no Documents folder.
+    pub home: Option<PathBuf>,
+    /// The app's own cache folder, the last place working files can go.
+    pub app_cache: Result<PathBuf, String>,
 }
 
 impl Dirs {
@@ -31,6 +48,9 @@ impl Dirs {
         Self {
             config: Ok(root.join("config")),
             backups: Ok(root.join("backups")),
+            documents: Some(root.join("documents")),
+            home: Some(root.join("home")),
+            app_cache: Ok(root.join("app-cache")),
         }
     }
 }
@@ -71,6 +91,59 @@ impl AppCore {
     /// The folder settings backups are kept in.
     pub fn backups_dir(&self) -> Result<PathBuf, String> {
         self.dirs.backups.clone()
+    }
+
+    /// Where new libraries go by default: Documents/Altered Audio/Libraries
+    /// (the home folder when there is no Documents folder).
+    pub fn libraries_root(&self) -> Result<PathBuf, String> {
+        let docs = self
+            .dirs
+            .documents
+            .clone()
+            .or_else(|| self.dirs.home.clone())
+            .ok_or_else(|| "The Documents folder could not be found.".to_string())?;
+        Ok(docs.join("Altered Audio").join("Libraries"))
+    }
+
+    /// Where working files go: the folder the user picked in Settings, else
+    /// `Documents/Altered Audio/Cache`, else the app's own cache folder when
+    /// Documents can't be found. A picked folder that is gone falls back to the default.
+    pub fn cache_root(&self) -> Result<PathBuf, String> {
+        if let Ok(cfg) = self.config_dir() {
+            if let Ok(text) = std::fs::read_to_string(cfg.join(CACHE_FOLDER_SETTING)) {
+                let p = PathBuf::from(text.trim());
+                if !text.trim().is_empty() && p.is_dir() {
+                    return Ok(p);
+                }
+            }
+        }
+        match &self.dirs.documents {
+            Some(docs) => Ok(docs.join("Altered Audio").join("Cache")),
+            None => self.dirs.app_cache.clone(),
+        }
+    }
+
+    /// Builds a file's waveform peaks if they are not held already and returns
+    /// their summary, sending `peaks-progress` events while it works. Blocks.
+    pub fn peaks_ensure(&self, path: &std::path::Path) -> Result<PeakSummary, String> {
+        // Waveform files older versions kept on disk are removed once per run: peaks live in memory now.
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| {
+            if let Ok(root) = self.cache_root() {
+                let _ = std::fs::remove_dir_all(root.join("peaks"));
+            }
+        });
+        peaks::ensure(path, |progress| {
+            let _ = self.emit(
+                "peaks-progress",
+                PeaksProgress {
+                    path: path.to_path_buf(),
+                    progress,
+                },
+            );
+            true
+        })
+        .map_err(|e| e.to_string())
     }
 
     /// The folder session templates are kept in.
@@ -137,10 +210,65 @@ mod tests {
             Dirs {
                 config: Err("no settings folder".to_string()),
                 backups: Err("no backups folder".to_string()),
+                documents: None,
+                home: None,
+                app_cache: Err("no cache folder".to_string()),
             },
         );
         assert_eq!(broken.config_dir().unwrap_err(), "no settings folder");
         assert_eq!(broken.templates_dir().unwrap_err(), "no settings folder");
+    }
+
+    #[test]
+    fn libraries_and_cache_go_under_documents() {
+        let core = AppCore::new(
+            Arc::new(MemorySink::default()),
+            Dirs::under(std::path::Path::new("root")),
+        );
+        let docs = PathBuf::from("root")
+            .join("documents")
+            .join("Altered Audio");
+        assert_eq!(core.libraries_root().unwrap(), docs.join("Libraries"));
+        assert_eq!(core.cache_root().unwrap(), docs.join("Cache"));
+    }
+
+    #[test]
+    fn libraries_fall_back_to_home_and_cache_to_the_app_cache() {
+        let mut dirs = Dirs::under(std::path::Path::new("root"));
+        dirs.documents = None;
+        let core = AppCore::new(Arc::new(MemorySink::default()), dirs.clone());
+        assert_eq!(
+            core.libraries_root().unwrap(),
+            PathBuf::from("root")
+                .join("home")
+                .join("Altered Audio")
+                .join("Libraries")
+        );
+        assert_eq!(
+            core.cache_root().unwrap(),
+            PathBuf::from("root").join("app-cache")
+        );
+        dirs.home = None;
+        let core = AppCore::new(Arc::new(MemorySink::default()), dirs);
+        assert!(core.libraries_root().is_err());
+    }
+
+    #[test]
+    fn a_picked_cache_folder_wins_only_while_it_exists() {
+        let root = tempfile::tempdir().unwrap();
+        let core = AppCore::new(Arc::new(MemorySink::default()), Dirs::under(root.path()));
+        let cfg = core.config_dir().unwrap();
+        std::fs::create_dir_all(&cfg).unwrap();
+        let picked = root.path().join("fast-disk");
+        std::fs::create_dir_all(&picked).unwrap();
+        std::fs::write(
+            cfg.join(CACHE_FOLDER_SETTING),
+            picked.to_string_lossy().as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(core.cache_root().unwrap(), picked);
+        std::fs::remove_dir(&picked).unwrap();
+        assert!(core.cache_root().unwrap().ends_with("Cache"));
     }
 
     #[test]
