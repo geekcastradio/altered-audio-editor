@@ -48,12 +48,15 @@ export interface BugInfoContext {
   plugins: string[];
   /** Audio driver, device and buffer lines. Left out when empty. */
   audio?: string[];
+  /** The startup timing log, one line per stage. Left out when empty. */
+  startup?: string[];
 }
 
 export function bugInfoText(ctx: BugInfoContext, list: readonly RecordedError[] = errors): string {
   const out = [`Altered Audio Editor ${ctx.appVersion}`, scrub(ctx.system), ...ctx.state];
   if (ctx.audio?.length) out.push(...ctx.audio.map(scrub));
   out.push(ctx.plugins.length ? `Plug-ins in use: ${ctx.plugins.join(", ")}` : "Plug-ins in use: none");
+  if (ctx.startup?.length) out.push("", "Startup timing:", ...ctx.startup.map(scrub));
   if (list.length === 0) {
     out.push("", "No errors recorded since the app started.");
   } else {

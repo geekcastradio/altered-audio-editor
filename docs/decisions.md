@@ -1900,3 +1900,7 @@ The native interface spike is its own crate with its own workspace, so the app's
 ## 2026-11-21: export and plug-in scan progress through AppCore
 
 The five export commands that report progress (`export_mixdown`, `export_mix_into_video`, `export_merge`, `loudness_check`, `analyze_audio`) and `plugins_scan` take the core and send `export-progress` and `plugins-scan-progress` through `AppCore::emit`. The file dialogs in `export.rs`, `media.rs` and `session.rs` stay on the Tauri handle on purpose: a dialog and its parent window belong to the interface layer, and the native interface will bring its own. The video commands (`video.rs`) fetch their state from the handle inside a worker thread; moving them needs a shared handle type for open videos, so they wait for a change that is worth its risk.
+
+## 2026-11-21: startup log gets more stages and joins the bug report
+
+A cold-start reading from Steve's PC (0.50.0) showed the first frame at 1.42 s, with 0.33 s in the core and 1.08 s for the interface to mount in WebView2. His launches feel much longer than that, so the slow part is outside what the log covered. The interface now also stamps "settings loaded", "libraries restored", "settings applied", "recovery checked" and "launch files opened". Help > Copy Bug Report Details includes the log (new command `startup_timing`). Time before the process starts (a Windows scan of a new `.exe`, a cold WebView2) cannot be logged from inside the app; the stopwatch from double-click to window remains the way to see it.

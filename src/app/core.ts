@@ -1656,6 +1656,11 @@ export function startupMark(stage: string): Promise<void> {
   return invoke<void>("startup_mark", { stage });
 }
 
+/** The startup timing log so far (one line per stage). */
+export function startupTiming(): Promise<string> {
+  return invoke<string>("startup_timing");
+}
+
 /** Calls `fn` with files opened from File Explorer while the app runs. Returns the stop function. */
 export function onOpenPaths(fn: (paths: string[]) => void): Promise<() => void> {
   return listen<string[]>("open-paths", (e) => fn(e.payload));
