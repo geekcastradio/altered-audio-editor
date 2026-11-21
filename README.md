@@ -110,7 +110,7 @@ The full guide is built into the app: choose **Help > User Guide**. It is search
 - **Plug-ins run in their own process.** A VST3 plug-in that crashes shows an error on its slot; your session carries on.
 - **Predictable output.** The same session renders to the same bits every time, whatever block size the sound card uses, and every built-in effect gives identical results on a repeat run. Tests check this on every change.
 - **Native 64-bit.** Big sessions are fine.
-- **Audio on the CPU.** Sound processing stays off the graphics card on purpose: it is light work, and the CPU keeps latency low and results exact.
+- **Live audio on the CPU.** Playback, recording and the effects chain stay off the graphics card on purpose: the work is light, and the CPU keeps latency low and results the same on every machine. Heavy offline jobs such as stem separation and transcription may use the GPU later, and only when you ask.
 
 ## Private by design
 
