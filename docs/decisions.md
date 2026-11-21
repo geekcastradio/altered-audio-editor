@@ -1850,3 +1850,7 @@ Steve agreed all nine ideas listed in docs/backlog.md ("Ideas adopted from readi
 ## 2026-11-20: update notice moves to the middle of the window
 
 Steve found the bottom right corner notice too easy to miss. The update notice now sits in the middle of the window, still non-blocking (work continues behind it), with "See what's new" and "Later". The fallback after a declined install-at-launch uses the same notice. Rules unchanged: off by default, never during playback or recording.
+
+## 2026-11-20: DeepFilterNet stays in 1.0; new features are written in Rust
+
+Steve, after publishing 0.49.0: DeepFilterNet goes into 1.0, and sooner rather than later. It is already in Rust and shipping: Speech Denoiser (High Quality), DeepFilterNet3 through `deep-filter-rt` on tract, since 0.36.0. So the work left is the tuning and speed side, not a port. It stays on the user's machine, so it fits the 1.0 rule (no outside calls). Also from Steve: new features are built in Rust. From now on the logic of every new feature goes in the Rust core (`AppCore` and the engine, with tests that run on Linux), and the Svelte side stays a thin view over it, so each feature moves to the native interface with no rewrite. The open question of freezing new Svelte-only features at the Phase 2 gate is settled by this rule.
