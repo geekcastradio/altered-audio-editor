@@ -1882,3 +1882,9 @@ Steve wanted themes limited to one light and one dark with a toggle, nothing els
 ## 2026-11-20: Autosave and new-session folders move onto AppCore
 
 `AppCore::autosave_dir` and `AppCore::sessions_default_folder` now work out the crash-recovery folder and the default folder for new sessions. The session commands call them; `session_default_folder` takes the core directly and `autosave_dir` is a one-line wrapper, so no command signature changed. Media and export commands were checked and left alone: they only use the Tauri handle for file dialogs (shell UI) and progress events, which already go through the event sink.
+
+## 2026-11-20: README claim-by-claim audit (for 0.51.0)
+
+Each statement in the README was checked against the code, CI and this log. Fixed: the Speech Denoiser line now names DeepFilterNet3 (High Quality) beside RNNoise; the "Music Remix" bullet is gone (no such feature, it repeated Music Fit); `.otio` import is listed; "Also from this release" is reworded; the update line now says the install-at-start option exists (off by default); the file-formats table gains the preferences file (`altaudio.preferences`, `.alprefs`); the build line says "from this repository's source" (releases are built from main, and the tag is made when the draft is published); the clippy command matches CI (`--workspace`); a comma typo; the CPU line covers live audio only (the app crate forbids `unsafe` and the plug-in host is the one exception, stated). Checked and true: the determinism claims (tests render the same bits at every block size and for every built-in effect), installer modes, MSI name, schema list, update-check settings, 16 slots.
+
+Not verified here, to check in the 0.55 review: the Windows-only claims (System audio input, Mixdown Into Video, AAC export), Publish Package file contents, the markers table (ffprobe and flac -t results), and the guide's chapter list.
