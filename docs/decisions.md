@@ -2018,3 +2018,7 @@ The numbers behind Multitrack > Speaker Balance (`balance` and `describeBalance`
 ## 2026-11-21: File tag helpers in Rust
 
 The helpers behind the File Tags dialog and the Metadata panel (`cleanTags`, `saveTags` and the list of formats that take tags in `src/app/tags.ts`) now have a Rust copy in `src-tauri/src/tags.rs`. Trimming follows JavaScript's white space rules, which moved to `js_compat.rs` so track names and tags share it. Both copies read `shared-fixtures/tags.json`. The TypeScript copy stays in use until the interface moves to Rust.
+
+## 2026-11-21: Type to jump in Rust
+
+The type-to-jump rules for lists and menus (`src/app/typeahead.ts`) have a Rust copy in `src-tauri/src/typeahead.rs`. The clock is passed in, as the TypeScript allows. Key lengths count UTF-16 units and lowercasing follows JavaScript. Both copies read `shared-fixtures/typeahead.json`. The TypeScript copy stays in use until the interface moves to Rust.
