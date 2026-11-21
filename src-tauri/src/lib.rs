@@ -43,6 +43,7 @@ pub mod session;
 pub mod sesx;
 pub mod speaker_balance;
 pub mod startup;
+pub mod tags;
 pub mod time;
 pub mod time_input;
 pub mod track_names;

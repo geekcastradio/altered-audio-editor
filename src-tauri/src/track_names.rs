@@ -5,29 +5,11 @@
 //! Track names. The Rust copy of `src/app/track-names.ts`; both are tested
 //! against `shared-fixtures/track-names.json`.
 
+use crate::js_compat::{is_js_space, js_trim};
 use std::collections::HashSet;
-
-/// What JavaScript counts as white space (`\s`, and what `trim` removes).
-fn is_js_space(c: char) -> bool {
-    matches!(
-        c,
-        '\t' | '\n' | '\u{0b}' | '\u{0c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
-            ..='\u{200a}'
-                | '\u{2028}'
-                | '\u{2029}'
-                | '\u{202f}'
-                | '\u{205f}'
-                | '\u{3000}'
-                | '\u{feff}'
-    )
-}
 
 fn is_line_end(c: char) -> bool {
     matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}')
-}
-
-fn js_trim(s: &str) -> &str {
-    s.trim_matches(is_js_space)
 }
 
 /// The file name after the last `/` or `\`. Like the TypeScript `^.*[\\/]`,
