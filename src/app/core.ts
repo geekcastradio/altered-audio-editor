@@ -31,19 +31,6 @@ export function exitApp(): Promise<void> {
   return invoke<void>("app_exit");
 }
 
-/** Saved panel layout, or null when none has been saved. */
-export function loadWorkspaceLayout(): Promise<unknown | null> {
-  return invoke<unknown | null>("workspace_load");
-}
-
-export function saveWorkspaceLayout(layout: unknown): Promise<void> {
-  return invoke<void>("workspace_save", { layout });
-}
-
-export function clearWorkspaceLayout(): Promise<void> {
-  return invoke<void>("workspace_clear");
-}
-
 /** Minimizes the main window. */
 export function minimizeWindow(): Promise<void> {
   return invoke<void>("app_minimize");
@@ -374,10 +361,6 @@ export function waveNew<S>(name: string, sampleRate: number, channels: number, b
 
 export function waveOpen<S>(path: string): Promise<WaveDocRaw<S>> {
   return invoke<WaveDocRaw<S>>("wave_open", { path });
-}
-
-export function waveGet<S>(): Promise<WaveDocRaw<S> | null> {
-  return invoke<WaveDocRaw<S> | null>("wave_get");
 }
 
 export function waveClose(): Promise<void> {

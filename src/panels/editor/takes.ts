@@ -26,10 +26,6 @@ export interface TakeSet {
   lanes: TakeLane[];
 }
 
-export function isTake(c: ClipDoc): boolean {
-  return !!c.take;
-}
-
 /** True for a take that is not the chosen one: it stays on the track, silent. */
 export function isOffTake(c: ClipDoc): boolean {
   return !!c.take && !c.take.active;
