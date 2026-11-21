@@ -11,10 +11,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 
-use crate::events::EventSinkExt;
+use crate::app_core::AppCore;
 use serde::Serialize;
 use tauri::async_runtime::spawn_blocking;
-use tauri::{AppHandle, State};
+use tauri::State;
 
 use super::session::Applied;
 use crate::codecs;
@@ -380,7 +380,7 @@ pub fn wave_play(
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn wave_new(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     wave: State<'_, OpenWave>,
     transport: State<'_, Transport>,
     playing: State<'_, Playing>,
@@ -396,7 +396,7 @@ pub async fn wave_new(
     } else {
         32
     };
-    let dir = crate::commands::cache::cache_root(&app)?.join("untitled");
+    let dir = app.cache_root()?.join("untitled");
     let path = spawn_blocking(move || -> Result<PathBuf, String> {
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let path = mixdown::unique_path(&dir, &name, "wav");
@@ -458,7 +458,7 @@ pub async fn wave_new(
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn wave_new_from_clips(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     wave: State<'_, OpenWave>,
     transport: State<'_, Transport>,
     playing: State<'_, Playing>,
@@ -483,7 +483,7 @@ pub async fn wave_new_from_clips(
     );
     track.clips = clips;
     s.tracks.push(track);
-    let dir = crate::commands::cache::cache_root(&app)?.join("untitled");
+    let dir = app.cache_root()?.join("untitled");
     let channels = channels.clamp(1, 2);
     let path = spawn_blocking(move || -> Result<PathBuf, String> {
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -621,13 +621,14 @@ struct Progress {
 /// with a fresh edit list.
 #[tauri::command]
 pub async fn wave_save(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     wave: State<'_, OpenWave>,
     transport: State<'_, Transport>,
     playing: State<'_, Playing>,
     path: Option<PathBuf>,
     bit_depth: Option<u16>,
 ) -> Result<WaveDoc, String> {
+    let app = app.inner().clone();
     let (session, source) = {
         let w = wave.0.lock().map_err(|e| e.to_string())?;
         let state = w
@@ -698,7 +699,7 @@ pub async fn wave_save(
         let mut progress = |done: u64, total: u64| {
             if done == total || done - last >= total / 100 {
                 last = done;
-                let _ = app.emit_event("export-progress", Progress { done, total });
+                let _ = app.emit("export-progress", Progress { done, total });
             }
         };
         let r = if all_channels > 2 {
@@ -758,7 +759,7 @@ pub async fn wave_save(
 /// The open file and its edit list are left as they are.
 #[tauri::command]
 pub async fn wave_render_copy(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     wave: State<'_, OpenWave>,
     parked: State<'_, ParkedWaves>,
     path: PathBuf,
@@ -777,7 +778,7 @@ pub async fn wave_render_copy(
         }
     };
     let session = found.ok_or("That file is not open in the Waveform editor.")?;
-    let dir = crate::commands::cache::cache_root(&app)?.join("untitled");
+    let dir = app.cache_root()?.join("untitled");
     let stem = path
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
@@ -947,7 +948,7 @@ mod tests {
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn wave_new_from_mix(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     open: State<'_, super::session::OpenSession>,
     cancel: State<'_, super::export::ExportCancel>,
     wave: State<'_, OpenWave>,
@@ -961,8 +962,8 @@ pub async fn wave_new_from_mix(
     flag.store(false, std::sync::atomic::Ordering::Relaxed);
     request.bit_depth = Some(32);
     request.format = None;
-    let dir = crate::commands::cache::cache_root(&app)?.join("untitled");
-    let progress = app.clone();
+    let dir = app.cache_root()?.join("untitled");
+    let progress = app.inner().clone();
     let (path, result) = spawn_blocking(
         move || -> Result<(PathBuf, mixdown::MixdownResult), String> {
             std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -971,7 +972,7 @@ pub async fn wave_new_from_mix(
             let r = mixdown::mixdown(&session, &request, &path, &flag, |done, total| {
                 if done == total || done - last >= total / 100 {
                     last = done;
-                    let _ = progress.emit_event(
+                    let _ = progress.emit(
                         "export-progress",
                         serde_json::json!({ "done": done, "total": total }),
                     );

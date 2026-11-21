@@ -97,11 +97,6 @@ export function filterEntries(entries: Entry[], query: string): Entry[] {
   });
 }
 
-/** The tags a set would write: just its own fields. */
-export function setToTags(s: TagSet): FileTags {
-  return { ...s.tags };
-}
-
 /** Shows a set's values over a file's tags, keeping fields the set does not have. */
 export function overlay(tags: FileTags, s: TagSet): FileTags {
   return { ...tags, ...s.tags };

@@ -35,7 +35,7 @@ Windows 10 and 11 (64-bit). Get the latest build from the [Releases page](https:
 - **`Altered-Audio-Editor-<version>-x64.msi`** is the same app as an MSI package, for managed computers and schools that install with Group Policy or similar tools.
 - **`SHA256SUMS.txt`** lists a checksum for each file so you can confirm your download is intact.
 
-The app is not code signed yet, so Windows SmartScreen may say it does not recognize it. Choose More info, then Run anyway. Builds are made by GitHub Actions from the tagged source, so what you download matches what is in this repository.
+The app is not code signed yet, so Windows SmartScreen may say it does not recognize it. Choose More info, then Run anyway. Builds are made by GitHub Actions from this repository's source, so what you download matches what is in it.
 
 A few antivirus scanners may flag the installer with a low-confidence guess. That is common for new, unsigned installers and goes away as the file builds a reputation. To check your copy, compare its SHA-256 with `SHA256SUMS.txt` (in PowerShell: `Get-FileHash <file>`).
 
@@ -86,27 +86,26 @@ The full guide is built into the app: choose **Help > User Guide**. It is search
 - **Chapters:** chapter markers export as a timestamp list for video descriptions, a CSV spreadsheet, or podcast chapters JSON, with an optional link each and tips on titles. They are written into exported WAV, FLAC, MP3 and M4A files and read back when you open one.
 - **Batch Convert:** turn a folder of files into WAV, FLAC, MP3 or AAC in one go, optionally running a Voice Chain preset on each, then normalizing the peak and fading the ends, with naming, a destination folder, sample rate, channel and dither settings, per-file progress, and tags copied across or set for every file (WAV, FLAC, MP3 and M4A).
 - **Speaker Balance and host profiles:** level every voice track to the quietest in one click before processing, and start each host's track from a Close Mic, Standard Mic or Remote Guest profile.
-- **Settings:** zoom, fades, colors, output device, autosave, solo, meter colors, recording offset, time format loudness defaults, session backups and a record count-in in one place (Edit > Settings).
+- **Settings:** zoom, fades, colors, output device, autosave, solo, meter colors, recording offset, time format, loudness defaults, session backups and a record count-in in one place (Edit > Settings).
 - **Session templates:** start every episode from your show's track layout.
-- **Music Mode (off by default):** View > Music Mode adds the music tools without changing the podcast layouts: MIDI tracks with a piano roll and VST3 instruments, an Amp Model effect that loads Neural Amp Modeler captures, a metronome, a tempo strip and Bars and Beats time. The Music workspace (Window > Workspace) turns it on for you. Also from this release: buses, sends and sidechain, VST3 plug-ins in Voice Chains (each in its own process), a Phase Wheel, and a 3D Space panel (Window menu).
+- **Music Mode (off by default):** View > Music Mode adds the music tools without changing the podcast layouts: MIDI tracks with a piano roll and VST3 instruments, an Amp Model effect that loads Neural Amp Modeler captures, a metronome, a tempo strip and Bars and Beats time. The Music workspace (Window > Workspace) turns it on for you. Also built: buses, sends and sidechain, VST3 plug-ins in Voice Chains (each in its own process), a Phase Wheel, and a 3D Space panel (Window menu).
 - **Export check and Publish Package:** after each export the app reopens the file and confirms it opens, decodes, has the right length and sample rate, is not silent and holds its chapters. A loudness scan shows the result before you export. File > Publish Package exports the MP3 and writes a folder with episode.json (RSS.com API fields), show notes, chapters (JSON and WebVTT), ad positions and soundbites. Nothing is uploaded.
 - **From the Audiform project:** Convolution Reverb, Vox Strip, Reverse and Invert Polarity, fade bending, and searchable effect lists (see ATTRIBUTION.md).
 - **Duck Music Under Voice and the Audio FX Panel:** Multitrack > Duck Music Under Voice turns a music track down while a voice track talks (light, medium or deep), using plain Dynamics effects you can still edit. The Audio FX Panel gives a voice Restoration, Level, Clarity and Polish at Light, Medium or Strong in one step; it writes ordinary Voice Chain effects, so nothing is hidden.
 - **Help > Check for Updates** finds new versions and can install them (installer copies only; the portable zip gets the download page).
-- **Imports `.sesx` sessions and `.rpp` projects:** brings in tracks, clips, positions, fades, markers and regions from multitrack session files. What cannot come across (plug-ins, sends, automation) is listed in a notice.
+- **Imports `.sesx` sessions, `.rpp` projects and `.otio` timelines:** brings in tracks, clips, positions, fades, markers and regions from multitrack session files (`.otio` carries clips, positions, track names and markers only). What cannot come across (plug-ins, sends, automation, transitions) is listed in a notice.
 - **Takes and comping:** stack several takes of a line over one stretch, pick the best part of each over a time selection, and flatten them into ordinary clips. Takes that are not playing stay silent and out of every export.
 - **Multi-mic shows and double-enders:** Auto Mic Mix and Talk Time turns each mic down while someone else speaks and reports who talked how long. Reduce Bleed cleans one mic of the other voices it picked up, with ordinary signal processing and no model. Sync Tracks lines up two recordings of the same conversation. Close Dead Space and Find Isolated Short Clips tighten a long edit.
 - **Process chains:** run a saved list of steps (Auto Mic Mix, Close Dead Space, Loudness Target, a Voice Chain preset, QuickPass) on a session as one undo.
 - **Video reference:** open a video and cut against its picture in the Video panel, with a Video Reference bar under the ruler. Mixdown Into Video writes a copy of an H.264 video with your mix as its sound, without re-encoding the picture (Windows).
 - **Edit lists:** File > Export > Edit Lists writes EDLs, a marker list or an OpenTimelineIO file for other editors.
 - **Very large files:** opens and writes RF64, BW64 and Wave64 audio past 4 GB.
-- **Speech Denoiser:** takes steady background noise out of a voice with the RNNoise model, running on your computer. The Limiter has a true-peak mode.
+- **Speech Denoiser:** takes background noise out of a voice with the RNNoise model, or with DeepFilterNet3 in its High Quality version, running on your computer. The Limiter has a true-peak mode.
 - **Marking while recording:** Retake, Cut This and Great Bit markers at the press of a key, and a Review panel that steps through them.
-- **Music Remix:** set a target length for a music clip and pick one of up to three plans that cut or repeat it where the music lines up.
 - **Control surfaces:** map MIDI faders and knobs, with a Mackie Control layout. Motor fader feedback is experimental.
 
 ## Under the hood
-- **A Rust audio engine.** Memory-safe by design, with no `unsafe` code in the app's own engine and file handling.
+- **A Rust audio engine.** Memory-safe by design, and the app itself forbids `unsafe` code. The one place that needs it, talking to VST3 plug-ins, is a separate program (the plug-in host).
 - **Plug-ins run in their own process.** A VST3 plug-in that crashes shows an error on its slot; your session carries on.
 - **Predictable output.** The same session renders to the same bits every time, whatever block size the sound card uses, and every built-in effect gives identical results on a repeat run. Tests check this on every change.
 - **Native 64-bit.** Big sessions are fine.
@@ -116,7 +115,7 @@ The full guide is built into the app: choose **Help > User Guide**. It is search
 
 - No account and no login. Ever.
 - No telemetry, analytics or tracking. The app makes no network calls on its own.
-- Update checks run only when you click Help > Check for Updates, or if you turn on the update notice in Settings (every start, or once a week). Nothing installs without your click.
+- Update checks run only when you click Help > Check for Updates, or if you turn on the update notice in Settings (every start, or once a week). Nothing installs without your click, unless you turn on the install-at-start option, which is off by default.
 - Your audio never leaves your computer.
 
 ## Support the project
@@ -150,7 +149,7 @@ npm test
 npm run build
 cd src-tauri
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings
 cargo test
 ```
 
@@ -166,6 +165,7 @@ Every file the app writes is versioned JSON with a `format` and `schema_version`
 | Workspace | `altaudio.workspace` | `.alworkspace` |
 | Host voice profile | `altaudio.host_profile` | `.alhost` |
 | Keyboard shortcuts | `altaudio.keymap` | `.alkeys` |
+| App preferences | `altaudio.preferences` | `.alprefs` |
 
 ## Markers and chapters inside exported files
 

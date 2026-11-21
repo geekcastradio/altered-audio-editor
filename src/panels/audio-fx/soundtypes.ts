@@ -218,8 +218,6 @@ export function withSetup(chain: EffectChainDoc, setup: Setup, newId: () => stri
 
 export const withoutSetup = (chain: EffectChainDoc): EffectChainDoc => ({ ...chain, slots: chain.slots.filter((s) => !isSoundSlot(s)) });
 
-export const describeSetup = (s: Setup): string => `${typeInfo(s.type).label}: ${typeInfo(s.type).presets.find((p) => p.id === s.preset)?.label ?? "Custom"}, ${Math.round(s.amount)}%`;
-
 export function presetSetup(type: SoundType, presetId: string): Setup {
   const info = typeInfo(type);
   const p = info.presets.find((x) => x.id === presetId) ?? info.presets[0]!;

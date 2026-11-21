@@ -27,9 +27,6 @@ export type RecordMode = "write" | "latch" | "touch";
 /** How long the lane takes to come back after a release, in seconds. */
 export const GLIDE_SECONDS = 0.02;
 
-/** Default share of a lane's range under which a point is not worth keeping. */
-export const DEFAULT_THIN = 0.003;
-
 interface Segment {
   from: number;
   /** Null while it is still writing. */

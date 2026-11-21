@@ -10,9 +10,9 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::events::EventSinkExt;
+use crate::app_core::AppCore;
 use tauri::async_runtime::spawn_blocking;
-use tauri::{AppHandle, State};
+use tauri::State;
 
 use super::spectral::{by_pairs, render_n, snapshot, write_n, SpectralResult};
 use super::wave::OpenWave;
@@ -107,7 +107,7 @@ fn settled_latency(chain: &EffectChain, rate: u32) -> Option<usize> {
 /// file in the app's cache folder, for the interface to swap in.
 #[tauri::command]
 pub async fn wave_apply_chain(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     wave: State<'_, OpenWave>,
     cancel: State<'_, super::export::ExportCancel>,
     chain: EffectChain,
@@ -115,10 +115,10 @@ pub async fn wave_apply_chain(
     end: u64,
 ) -> Result<SpectralResult, String> {
     let session = snapshot(&wave)?;
-    let dir = crate::commands::cache::cache_root(&app)?.join("wave-fx");
+    let dir = app.cache_root()?.join("wave-fx");
     let flag = cancel.0.clone();
     flag.store(false, Ordering::Relaxed);
-    let progress = app.clone();
+    let progress = app.inner().clone();
     spawn_blocking(move || -> Result<SpectralResult, String> {
         let rate = session.sample_rate;
         let total = mixdown::session_end(&session);
@@ -149,7 +149,7 @@ pub async fn wave_apply_chain(
                 let whole = (p as f32 + f) / pairs as f32;
                 if whole - last >= 0.01 || whole >= 1.0 {
                     last = whole;
-                    let _ = progress.emit_event(
+                    let _ = progress.emit(
                         "export-progress",
                         serde_json::json!({ "done": (whole * 1000.0) as u64, "total": 1000u64 }),
                     );
@@ -190,17 +190,17 @@ const SCAN_WINDOWS: usize = 600;
 /// result in; Undo takes it back.
 #[tauri::command]
 pub async fn wave_room_tone(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     wave: State<'_, OpenWave>,
     cancel: State<'_, super::export::ExportCancel>,
     start: u64,
     end: u64,
 ) -> Result<RoomToneResult, String> {
     let session = snapshot(&wave)?;
-    let dir = crate::commands::cache::cache_root(&app)?.join("wave-fx");
+    let dir = app.cache_root()?.join("wave-fx");
     let flag = cancel.0.clone();
     flag.store(false, Ordering::Relaxed);
-    let progress = app.clone();
+    let progress = app.inner().clone();
     spawn_blocking(move || -> Result<RoomToneResult, String> {
         let rate = session.sample_rate;
         let total = mixdown::session_end(&session);
@@ -235,7 +235,7 @@ pub async fn wave_room_tone(
                     _ => None,
                 });
             }
-            let _ = progress.emit_event(
+            let _ = progress.emit(
                 "export-progress",
                 serde_json::json!({ "done": w1 as u64, "total": windows as u64 }),
             );
@@ -289,14 +289,14 @@ const FILL_CLICK_LONGEST_SECONDS: f64 = 0.100;
 /// swaps the result in as one undoable edit.
 #[tauri::command]
 pub async fn wave_fill_click(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     wave: State<'_, OpenWave>,
     start: u64,
     end: u64,
     texture: Option<String>,
 ) -> Result<SpectralResult, String> {
     let session = snapshot(&wave)?;
-    let dir = crate::commands::cache::cache_root(&app)?.join("wave-fx");
+    let dir = app.cache_root()?.join("wave-fx");
     let texture = FillTexture::from_name(texture.as_deref());
     spawn_blocking(move || -> Result<SpectralResult, String> {
         let rate = session.sample_rate;
@@ -370,14 +370,14 @@ pub fn stretch_to(audio: &[f32], frames: usize, rate: u32) -> Vec<f32> {
 /// The interface swaps the result in and moves what follows.
 #[tauri::command]
 pub async fn wave_stretch(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     wave: State<'_, OpenWave>,
     start: u64,
     end: u64,
     frames: u64,
 ) -> Result<SpectralResult, String> {
     let session = snapshot(&wave)?;
-    let dir = crate::commands::cache::cache_root(&app)?.join("wave-fx");
+    let dir = app.cache_root()?.join("wave-fx");
     spawn_blocking(move || -> Result<SpectralResult, String> {
         let rate = session.sample_rate;
         let end = end.min(mixdown::session_end(&session));
@@ -412,14 +412,14 @@ pub struct PitchEditResult {
 /// are. The interface swaps the result in; Undo takes it back.
 #[tauri::command]
 pub async fn wave_pitch_edit(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     wave: State<'_, OpenWave>,
     start: u64,
     end: u64,
     edit: crate::dsp::pitchedit::Edit,
 ) -> Result<PitchEditResult, String> {
     let session = snapshot(&wave)?;
-    let dir = crate::commands::cache::cache_root(&app)?.join("wave-fx");
+    let dir = app.cache_root()?.join("wave-fx");
     spawn_blocking(move || -> Result<PitchEditResult, String> {
         let rate = session.sample_rate;
         let end = end.min(mixdown::session_end(&session));
@@ -453,14 +453,14 @@ fn reverse_or_invert(audio: &[f32], n: usize, mode: &str) -> Result<Vec<f32>, St
 /// "invert"). The interface swaps the result in; Undo takes it back.
 #[tauri::command]
 pub async fn wave_reverse_invert(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     wave: State<'_, OpenWave>,
     start: u64,
     end: u64,
     mode: String,
 ) -> Result<SpectralResult, String> {
     let session = snapshot(&wave)?;
-    let dir = crate::commands::cache::cache_root(&app)?.join("wave-fx");
+    let dir = app.cache_root()?.join("wave-fx");
     spawn_blocking(move || -> Result<SpectralResult, String> {
         let rate = session.sample_rate;
         let end = end.min(mixdown::session_end(&session));
@@ -508,7 +508,7 @@ pub fn merge_channels(before: &[f32], after: &[f32], n: usize, take: &[ChannelSo
 /// other channel keeps exactly what it had.
 #[tauri::command]
 pub async fn wave_channel_edit(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     wave: State<'_, OpenWave>,
     op: crate::session::ops::Op,
     start: u64,
@@ -516,7 +516,7 @@ pub async fn wave_channel_edit(
     take: Vec<ChannelSource>,
 ) -> Result<SpectralResult, String> {
     let before = snapshot(&wave)?;
-    let dir = crate::commands::cache::cache_root(&app)?.join("wave-fx");
+    let dir = app.cache_root()?.join("wave-fx");
     spawn_blocking(move || -> Result<SpectralResult, String> {
         let end = end.min(mixdown::session_end(&before));
         if end <= start {
