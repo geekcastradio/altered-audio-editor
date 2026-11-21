@@ -29,31 +29,56 @@ pub fn portable_root_for(exe_dir: &Path) -> Option<PathBuf> {
 /// Windows). Older versions used a folder named after the app identifier.
 const SETTINGS_FOLDER: &str = "Altered Audio";
 
+/// The folders the system names for this user, read once from the shell so the
+/// rest of this file needs no window handle. A native interface fills the same
+/// struct from its own system calls.
+#[derive(Clone, Debug, Default)]
+pub struct SystemDirs {
+    /// The per-user config area (Roaming on Windows).
+    pub config: Option<PathBuf>,
+    /// Where older versions kept settings, named after the app identifier.
+    pub app_config: Option<PathBuf>,
+    pub app_data: Option<PathBuf>,
+    /// The Documents folder.
+    pub documents: Option<PathBuf>,
+}
+
+impl SystemDirs {
+    pub fn from_tauri(app: &AppHandle) -> Self {
+        let p = app.path();
+        Self {
+            config: p.config_dir().ok(),
+            app_config: p.app_config_dir().ok(),
+            app_data: p.app_data_dir().ok(),
+            documents: p.document_dir().ok(),
+        }
+    }
+}
+
 /// The folder holding settings, presets, shortcuts, layouts, templates and
 /// recovery copies: `Altered Audio` in the per-user config area, or
 /// `data/config` in portable mode.
-pub fn config_dir(app: &AppHandle) -> Result<PathBuf, String> {
+pub fn config_dir(sys: &SystemDirs) -> Result<PathBuf, String> {
     if let Some(root) = portable_root() {
         return Ok(root.join("config"));
     }
-    app.path()
-        .config_dir()
+    sys.config
+        .as_ref()
         .map(|d| d.join(SETTINGS_FOLDER))
-        .map_err(|e| e.to_string())
+        .ok_or_else(|| "The settings folder could not be found.".to_string())
 }
 
 /// Moves settings from the folders older versions used (named after the
 /// app identifier) into [`config_dir`]. Run once, early at startup, before
 /// anything reads settings. Nothing is overwritten, and an old file is only
 /// removed after its copy is checked. Failures leave the old folder alone.
-pub fn migrate_settings(app: &AppHandle) {
+pub fn migrate_settings(sys: &SystemDirs) {
     if portable_root().is_some() {
         return;
     }
-    let Ok(new) = config_dir(app) else { return };
-    let resolver = app.path();
+    let Ok(new) = config_dir(sys) else { return };
     let mut olds: Vec<PathBuf> = Vec::new();
-    for old in [resolver.app_config_dir(), resolver.app_data_dir()]
+    for old in [sys.app_config.clone(), sys.app_data.clone()]
         .into_iter()
         .flatten()
     {
@@ -155,13 +180,13 @@ const OLD_DOCS_FOLDER: &str = "Altered Audio Editor";
 /// The folder for backups: `Documents/Altered Audio/Backups`, or
 /// `data/Backups` in portable mode, or inside the config folder when
 /// Documents can't be found.
-pub fn backups_dir(app: &AppHandle) -> Result<PathBuf, String> {
+pub fn backups_dir(sys: &SystemDirs) -> Result<PathBuf, String> {
     if let Some(root) = portable_root() {
         return Ok(root.join("Backups"));
     }
-    match app.path().document_dir() {
-        Ok(docs) => Ok(docs.join(DOCS_FOLDER).join("Backups")),
-        Err(_) => Ok(config_dir(app)?.join("Backups")),
+    match &sys.documents {
+        Some(docs) => Ok(docs.join(DOCS_FOLDER).join("Backups")),
+        None => Ok(config_dir(sys)?.join("Backups")),
     }
 }
 
@@ -169,11 +194,11 @@ pub fn backups_dir(app: &AppHandle) -> Result<PathBuf, String> {
 /// Documents into `Altered Audio`. Run early at startup. Files are renamed,
 /// not copied, so a large cache moves at once; nothing is overwritten and
 /// nothing is deleted except folders left empty.
-pub fn migrate_documents(app: &AppHandle) {
+pub fn migrate_documents(sys: &SystemDirs) {
     if portable_root().is_some() {
         return;
     }
-    let Ok(docs) = app.path().document_dir() else {
+    let Some(docs) = sys.documents.clone() else {
         return;
     };
     let (old, new) = (docs.join(OLD_DOCS_FOLDER), docs.join(DOCS_FOLDER));
@@ -312,5 +337,35 @@ mod tests {
         assert!(portable_root_for(dir.path()).is_none());
         std::fs::write(dir.path().join("portable"), b"").unwrap();
         assert_eq!(portable_root_for(dir.path()), Some(dir.path().join("data")));
+    }
+
+    #[test]
+    fn folders_come_from_the_system_dirs() {
+        if portable_root().is_some() {
+            return;
+        }
+        let sys = SystemDirs {
+            config: Some(PathBuf::from("cfg")),
+            documents: Some(PathBuf::from("docs")),
+            ..SystemDirs::default()
+        };
+        assert_eq!(
+            config_dir(&sys).unwrap(),
+            PathBuf::from("cfg").join("Altered Audio")
+        );
+        assert_eq!(
+            backups_dir(&sys).unwrap(),
+            PathBuf::from("docs").join("Altered Audio").join("Backups")
+        );
+        // With no Documents folder the backups sit inside the settings folder.
+        let no_docs = SystemDirs {
+            documents: None,
+            ..sys.clone()
+        };
+        assert_eq!(
+            backups_dir(&no_docs).unwrap(),
+            PathBuf::from("cfg").join("Altered Audio").join("Backups")
+        );
+        assert!(config_dir(&SystemDirs::default()).is_err());
     }
 }

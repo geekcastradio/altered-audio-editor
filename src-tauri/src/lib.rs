@@ -68,14 +68,15 @@ pub fn run() {
         .manage(commands::update::PendingUpdate::default())
         .manage(commands::video::Videos::default())
         .setup(|app| {
+            let sys = paths::SystemDirs::from_tauri(app.handle());
             // The handle core logic uses to reach the interface (Phase 0 of the native move).
             tauri::Manager::manage(
                 &*app,
                 app_core::AppCore::new(
                     std::sync::Arc::new(app.handle().clone()),
                     app_core::Dirs {
-                        config: paths::config_dir(app.handle()),
-                        backups: paths::backups_dir(app.handle()),
+                        config: paths::config_dir(&sys),
+                        backups: paths::backups_dir(&sys),
                         documents: tauri::Manager::path(app.handle()).document_dir().ok(),
                         home: tauri::Manager::path(app.handle()).home_dir().ok(),
                         app_cache: tauri::Manager::path(app.handle())
@@ -100,16 +101,16 @@ pub fn run() {
             );
             // Settings from older versions are moved to the Altered Audio folder first.
             startup::mark("window and core ready");
-            if let Ok(dir) = paths::config_dir(app.handle()) {
+            if let Ok(dir) = paths::config_dir(&sys) {
                 startup::set_folder(&dir);
             }
-            paths::migrate_settings(app.handle());
+            paths::migrate_settings(&sys);
             // Backups and the cache move into Documents\Altered Audio with the libraries.
-            paths::migrate_documents(app.handle());
-            if let Ok(dir) = paths::config_dir(app.handle()) {
+            paths::migrate_documents(&sys);
+            if let Ok(dir) = paths::config_dir(&sys) {
                 // Settings are backed up before anything reads them: one snapshot per
                 // changed launch, and always one before the first launch of a new version.
-                if let Ok(backups) = paths::backups_dir(app.handle()) {
+                if let Ok(backups) = paths::backups_dir(&sys) {
                     let (config, version) = (dir.clone(), app.package_info().version.to_string());
                     std::thread::spawn(move || backup::on_launch(&config, &backups, &version));
                 }
