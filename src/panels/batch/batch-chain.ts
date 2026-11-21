@@ -33,6 +33,23 @@ export const BUILTIN_CHAINS: readonly BatchChain[] = [
   { name: "Voiceover, trim and level", process: null, level: { ...DEFAULT_LEVEL, trim: true, trimKeepMs: 400, loudness: true, loudnessLufs: -19, ceilingDb: -3 }, format: null },
   { name: "Audiobook, quiet and clean", process: null, level: { ...DEFAULT_LEVEL, trim: true, trimKeepMs: 700, loudness: true, loudnessLufs: -20, ceilingDb: -3 }, format: null },
   { name: "Quick peak match, -1 dB", process: null, level: { ...DEFAULT_LEVEL, normalize: true, normalizeDb: -1 }, format: null },
+  // One-job starters: each runs a single preset or step, so a whole folder can be fixed in one pick.
+  { name: "Peak to -0.1 dB", process: null, level: { ...DEFAULT_LEVEL, normalize: true, normalizeDb: -0.1 }, format: null },
+  { name: "Peak to -3 dB", process: null, level: { ...DEFAULT_LEVEL, normalize: true, normalizeDb: -3 }, format: null },
+  { name: "Fade in, 2 s", process: null, level: { ...DEFAULT_LEVEL, fadeInMs: 2000 }, format: null },
+  { name: "Fade out, 2 s", process: null, level: { ...DEFAULT_LEVEL, fadeOutMs: 2000 }, format: null },
+  { name: "Hard limit to -0.1 dB", process: "Hard Limit to -0.1 dB", level: { ...DEFAULT_LEVEL }, format: null },
+  { name: "Voice-over compressor", process: "Voice-Over Compressor", level: { ...DEFAULT_LEVEL }, format: null },
+  { name: "De-ess voice", process: "De-Ess Voice", level: { ...DEFAULT_LEVEL }, format: null },
+  { name: "Reduce noise", process: "Noise, Medium", level: { ...DEFAULT_LEVEL }, format: null },
+  { name: "Reduce hiss", process: "Reduce Hiss", level: { ...DEFAULT_LEVEL }, format: null },
+  { name: "Reduce room echo", process: "Reduce Room Echo", level: { ...DEFAULT_LEVEL }, format: null },
+  { name: "Remove 60 Hz hum", process: "Hum Cut 60 Hz (US)", level: { ...DEFAULT_LEVEL }, format: null },
+  { name: "Remove vocals", process: "Remove Vocals", level: { ...DEFAULT_LEVEL }, format: null },
+  { name: "Fix DC offset", process: "Fix DC Offset", level: { ...DEFAULT_LEVEL }, format: null },
+  { name: "Telephone voice", process: "Telephone - Receiver", level: { ...DEFAULT_LEVEL }, format: null },
+  { name: "Raise pitch, 2 semitones", process: "Raise Pitch", level: { ...DEFAULT_LEVEL }, format: null },
+  { name: "Lower pitch, 2 semitones", process: "Lower Pitch", level: { ...DEFAULT_LEVEL }, format: null },
 ];
 
 /** Chains read back from saved settings or a shared file; anything odd is dropped. */
