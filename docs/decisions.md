@@ -1928,3 +1928,7 @@ CI on the dial maths PR failed once on `startup::tests::marks_are_written_once_a
 ## 2026-11-21: In and Out rules in Rust
 
 The In and Out point rules (`markIn`, `markOut`, `clearIn`, `clearOut` in `src/app/in-out.ts`) now have a Rust copy in `src-tauri/src/in_out.rs`, tested against `shared-fixtures/in-out.json` with the TypeScript copy. It reuses the `Selection` type from `selection.rs`. No behavior change; the interface still uses the TypeScript copy.
+
+## 2026-11-21: audiobook delivery check in Rust
+
+The audiobook delivery check (`acxCheck` in `src/app/delivery.ts`) now has a Rust copy in `src-tauri/src/delivery.rs`, tested against `shared-fixtures/delivery.json` with the TypeScript copy. The expected values come from the TypeScript check, so the grades, the gain figure and the advice text match word for word. Two JavaScript behaviors needed exact copies: `Math.round` sends halves toward positive infinity (Rust's `round` sends them away from zero, which differs for negative gains), and `toFixed(1)` rounds an exact tie up in size. Both have helpers and tests. No behavior change; the interface still uses the TypeScript copy.
