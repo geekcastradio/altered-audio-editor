@@ -2026,3 +2026,7 @@ The type-to-jump rules for lists and menus (`src/app/typeahead.ts`) have a Rust 
 ## 2026-11-21: Reduce Bleed notice and mixdown size in Rust
 
 The clip filter and the notice text for Multitrack > Reduce Bleed (`bleedWork`, `bleedSummary` in `src/app/bleed.ts`) and the mixdown size arithmetic (`mixdownBytes` in `src/app/session-properties.ts`) have a Rust copy in `src-tauri/src/bleed_notice.rs`. Both copies read `shared-fixtures/bleed-notice.json`. The edit builders in those files read the session document and stay in TypeScript. The TypeScript copies stay in use until the interface moves to Rust.
+
+## 2026-11-21: Editing rules in Rust (Follow Playhead, selection edges, silence span)
+
+The Follow Playhead rules (`followEffect`, `maxScroll`), the grab rule for a time selection's border (`edgeAt`, `anchorFor`) and the volume dip for Silence Time Selection (`silenceSpan`, with `levelAt`) have a Rust copy in `src-tauri/src/editor_rules.rs`. All read `shared-fixtures/editor-rules.json`. The functions that read the session document (`silenceChanges`) stay in TypeScript. The TypeScript copies stay in use until the interface moves to Rust.
