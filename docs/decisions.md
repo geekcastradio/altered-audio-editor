@@ -1974,3 +1974,7 @@ Fix: the limit is now a small function, `maxScroll` in `src/panels/editor/follow
 ## 2026-11-21: Clip selection rules in Rust
 
 The rules behind Edit > Select and the empty-track menu (`src/app/clip-select.ts`: `anchorStart`, `clipsFrom`, `clipsUpTo`, `nextClipId`) now have a Rust copy in `src-tauri/src/clip_select.rs`, tested against `shared-fixtures/clip-select.json` with the TypeScript copy (six clip layouts, including shuffled order, clips that start together and fractional starts, against twelve chosen sets and eleven playhead positions). Clips that start together keep their track order in both copies, since both sorts are stable. No behavior change; the interface still uses the TypeScript copy.
+
+## 2026-11-21: Bug report link in Rust
+
+The Help > Report a Problem link (`src/app/bug-report-link.ts`: `osFrom`, `reportUrl`) now has a Rust copy in `src-tauri/src/bug_report_link.rs`, tested against `shared-fixtures/bug-report-link.json` with the TypeScript copy (16 user agents, and 17 version strings plus "none" against each, compared as whole URLs). The link still carries only the app version and the system name, and a version that looks like a path or a sentence is left out; the fixture includes both. The query is encoded by a small function that follows the browser's form encoding (a plus in a version becomes `%2B`), so no new dependency is added. No behavior change; the interface still uses the TypeScript copy.

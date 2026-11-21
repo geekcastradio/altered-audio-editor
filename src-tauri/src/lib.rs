@@ -11,6 +11,7 @@ pub mod app_core;
 pub mod backup;
 pub mod bleed_copy;
 pub mod browse;
+pub mod bug_report_link;
 pub mod chain;
 pub mod clip_select;
 pub mod codecs;
