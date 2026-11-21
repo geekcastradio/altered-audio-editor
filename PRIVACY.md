@@ -17,7 +17,7 @@ Everything the app saves stays in folders on your own computer:
 
 ## The only time the app touches the web
 
-The Help menu has links (The GCRN website, the book, and an optional PayPal page to support the project). They open in your own web browser only when you pick them. The app itself only opens https links on a short allow list, kept in `src-tauri/src/commands/links.rs`.
+The Help menu has links (The GCRN website, the book, the project's Discord invite and GitHub page, and an optional PayPal page to support the project). They open in your own web browser only when you pick them. The app itself only opens https links on a short allow list, kept in `src-tauri/src/commands/links.rs`.
 
 ## Update checks
 
@@ -27,7 +27,7 @@ Help > Check for Updates reads one small file (`latest.json`) from this project'
 
 The speech models behind the noise and speech tools are built into the app. Nothing is downloaded, and your audio is never sent anywhere to be processed. Video pictures are decoded by your operating system's own decoders, and the files you open are only read from disk.
 
-Help > Report a Bug opens a new GitHub issue in your web browser with details about the app and your system filled in. You can read and change all of it before you submit, and nothing is sent unless you submit it on GitHub.
+Help > Report a Problem opens a new GitHub issue in your web browser with details about the app and your system filled in. Help > Copy Bug Report Details puts a short text on your clipboard instead: the app version, your system, the audio driver and output device, which plug-ins are in use, and the last few errors, with your user name left out of any file paths. You can read and change all of it before you paste it into a report, and nothing is sent unless you submit it on GitHub.
 
 ## Plug-ins
 

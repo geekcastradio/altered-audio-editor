@@ -1854,3 +1854,7 @@ Steve found the bottom right corner notice too easy to miss. The update notice n
 ## 2026-11-20: DeepFilterNet stays in 1.0; new features are written in Rust
 
 Steve, after publishing 0.49.0: DeepFilterNet goes into 1.0, and sooner rather than later. It is already in Rust and shipping: Speech Denoiser (High Quality), DeepFilterNet3 through `deep-filter-rt` on tract, since 0.36.0. So the work left is the tuning and speed side, not a port. It stays on the user's machine, so it fits the 1.0 rule (no outside calls). Also from Steve: new features are built in Rust. From now on the logic of every new feature goes in the Rust core (`AppCore` and the engine, with tests that run on Linux), and the Svelte side stays a thin view over it, so each feature moves to the native interface with no rewrite. The open question of freezing new Svelte-only features at the Phase 2 gate is settled by this rule.
+
+## 2026-11-20: 0.50.0 document review done (full)
+
+Ran the full review in `docs/doc-review-0.50.0.md`. Fixed the README downloads, ROADMAP (1.0 line, product name), PRIVACY (links, Report a Problem, Copy Bug Report Details), SECURITY wording and RELEASING (real release flow). npm licences are clean. Open for Steve: a Rust licence audit in CI (`cargo deny`), a pass over other products' names outside the deliberate compatibility mentions, the in-app guide pass, and the web pages outside the repo.
