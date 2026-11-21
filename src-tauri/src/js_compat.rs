@@ -71,6 +71,26 @@ pub fn js_number_to_string(x: f64) -> String {
     }
 }
 
+/// What JavaScript counts as white space (`\s`, and what `trim` removes).
+pub fn is_js_space(c: char) -> bool {
+    matches!(
+        c,
+        '\t' | '\n' | '\u{0b}' | '\u{0c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
+    )
+}
+
+/// JavaScript's `String.prototype.trim`.
+pub fn js_trim(s: &str) -> &str {
+    s.trim_matches(is_js_space)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

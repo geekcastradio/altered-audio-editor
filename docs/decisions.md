@@ -2014,3 +2014,7 @@ Each will get its own backlog line and be designed fresh before building.
 ## 2026-11-21: Speaker Balance arithmetic in Rust
 
 The numbers behind Multitrack > Speaker Balance (`balance` and `describeBalance` in `src/app/speaker-balance.ts`) now have a Rust copy in `src-tauri/src/speaker_balance.rs`, built on the Loudness Match rows. Both read `shared-fixtures/speaker-balance.json`. Left in TypeScript on purpose: which tracks count as voices and the clip gain changes, since they read the session. The TypeScript copy stays in use until the interface moves to Rust.
+
+## 2026-11-21: File tag helpers in Rust
+
+The helpers behind the File Tags dialog and the Metadata panel (`cleanTags`, `saveTags` and the list of formats that take tags in `src/app/tags.ts`) now have a Rust copy in `src-tauri/src/tags.rs`. Trimming follows JavaScript's white space rules, which moved to `js_compat.rs` so track names and tags share it. Both copies read `shared-fixtures/tags.json`. The TypeScript copy stays in use until the interface moves to Rust.

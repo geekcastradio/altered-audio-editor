@@ -1,0 +1,225 @@
+{
+  "clean": [
+    {
+      "draft": {},
+      "want": {}
+    },
+    {
+      "draft": {
+        "title": "  Episode 12 ",
+        "artist": "",
+        "album": "   ",
+        "comment": "Notes\nline two"
+      },
+      "want": {
+        "title": "Episode 12",
+        "comment": "Notes\nline two"
+      }
+    },
+    {
+      "draft": {
+        "title": "A",
+        "artist": "B",
+        "album": "C",
+        "year": "2026",
+        "genre": "Talk",
+        "track": "3",
+        "comment": "x"
+      },
+      "want": {
+        "title": "A",
+        "artist": "B",
+        "album": "C",
+        "year": "2026",
+        "genre": "Talk",
+        "track": "3",
+        "comment": "x"
+      }
+    },
+    {
+      "draft": {
+        "title": " pad ",
+        "artist": "﻿",
+        "album": "\t\n"
+      },
+      "want": {
+        "title": "pad"
+      }
+    },
+    {
+      "draft": {
+        "bogus": "ignored",
+        "title": " t "
+      },
+      "want": {
+        "title": "t"
+      }
+    },
+    {
+      "draft": {
+        "year": " 2026 "
+      },
+      "want": {
+        "year": "2026"
+      }
+    }
+  ],
+  "save": [
+    {
+      "draft": {},
+      "want": {
+        "title": "",
+        "artist": "",
+        "album": "",
+        "year": "",
+        "genre": "",
+        "track": "",
+        "comment": ""
+      }
+    },
+    {
+      "draft": {
+        "title": "  Episode 12 ",
+        "artist": "",
+        "album": "   ",
+        "comment": "Notes\nline two"
+      },
+      "want": {
+        "title": "Episode 12",
+        "artist": "",
+        "album": "",
+        "year": "",
+        "genre": "",
+        "track": "",
+        "comment": "Notes\nline two"
+      }
+    },
+    {
+      "draft": {
+        "title": "A",
+        "artist": "B",
+        "album": "C",
+        "year": "2026",
+        "genre": "Talk",
+        "track": "3",
+        "comment": "x"
+      },
+      "want": {
+        "title": "A",
+        "artist": "B",
+        "album": "C",
+        "year": "2026",
+        "genre": "Talk",
+        "track": "3",
+        "comment": "x"
+      }
+    },
+    {
+      "draft": {
+        "title": " pad ",
+        "artist": "﻿",
+        "album": "\t\n"
+      },
+      "want": {
+        "title": "pad",
+        "artist": "",
+        "album": "",
+        "year": "",
+        "genre": "",
+        "track": "",
+        "comment": ""
+      }
+    },
+    {
+      "draft": {
+        "bogus": "ignored",
+        "title": " t "
+      },
+      "want": {
+        "title": "t",
+        "artist": "",
+        "album": "",
+        "year": "",
+        "genre": "",
+        "track": "",
+        "comment": ""
+      }
+    },
+    {
+      "draft": {
+        "year": " 2026 "
+      },
+      "want": {
+        "title": "",
+        "artist": "",
+        "album": "",
+        "year": "2026",
+        "genre": "",
+        "track": "",
+        "comment": ""
+      }
+    }
+  ],
+  "taggable": [
+    {
+      "path": "a/b/Show.MP3",
+      "want": true
+    },
+    {
+      "path": "a/b/Show.ogg",
+      "want": false
+    },
+    {
+      "path": "x.WAV",
+      "want": true
+    },
+    {
+      "path": "x.wave",
+      "want": true
+    },
+    {
+      "path": "x.Flac",
+      "want": true
+    },
+    {
+      "path": "x.m4a",
+      "want": true
+    },
+    {
+      "path": "x.mp4",
+      "want": true
+    },
+    {
+      "path": "x.M4B",
+      "want": true
+    },
+    {
+      "path": "x.mp3 ",
+      "want": false
+    },
+    {
+      "path": "mp3",
+      "want": false
+    },
+    {
+      "path": ".mp3",
+      "want": true
+    },
+    {
+      "path": "x.mp3.txt",
+      "want": false
+    },
+    {
+      "path": "C:\\a\\b.WaV",
+      "want": true
+    },
+    {
+      "path": "x.aac",
+      "want": false
+    },
+    {
+      "path": "x.mp3\n",
+      "want": false
+    }
+  ]
+}
