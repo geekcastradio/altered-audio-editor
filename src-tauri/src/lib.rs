@@ -22,6 +22,7 @@ pub mod dsp;
 pub mod engine;
 pub mod events;
 pub mod export;
+pub mod fader;
 pub mod in_out;
 pub mod js_compat;
 pub mod knob;

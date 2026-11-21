@@ -1936,3 +1936,7 @@ The audiobook delivery check (`acxCheck` in `src/app/delivery.ts`) now has a Rus
 ## 2026-11-21: color ramps in Rust
 
 The analysis color rules (`src/app/colors.ts`: hex and HSL conversion, `ramp`, and the 256-entry `spectrumLut`) now have a Rust copy in `src-tauri/src/colors.rs`, tested against `shared-fixtures/colors.json` with the TypeScript copy. Hex strings and palette bytes match exactly across six color pairs, including an unreadable color that falls back to the default. The native interface will draw spectrograms from this. The JavaScript-compatible `js_round` and `js_to_fixed1` helpers moved to `src-tauri/src/js_compat.rs` so the delivery check and the colors share one copy. No behavior change; the interface still uses the TypeScript copy.
+
+## 2026-11-21: fader maths in Rust
+
+The mixer fader rules (`src/panels/mixer/fader.ts`: travel to dB and back, and the dB and pan labels) now have a Rust copy in `src-tauri/src/fader.rs`, tested against `shared-fixtures/fader.json` with the TypeScript copy. The labels match exactly, including JavaScript's rounding of halves: a pan of -50.5 reads L50 and -0.5 reads C. Writing the fixture exposed a gap in the shared `toFixed` helper: JavaScript prints negative zero as 0.0, so `js_to_fixed1` now does too, with a test. No behavior change; the interface still uses the TypeScript copy.
