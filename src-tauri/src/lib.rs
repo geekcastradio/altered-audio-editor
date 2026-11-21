@@ -38,6 +38,7 @@ pub mod selection;
 pub mod session;
 pub mod sesx;
 pub mod startup;
+pub mod time;
 pub mod time_input;
 
 /// Starts the desktop app.
