@@ -1986,3 +1986,9 @@ The number formats and scales behind the Analysis panel (`src/app/analysis.ts`: 
 To match JavaScript's `toFixed` and number printing, `js_compat.rs` now has `js_to_fixed(x, digits)` (the old one-decimal function is a thin wrapper) and `js_number_to_string`. The first handles exact ties by rounding up in size, as JavaScript does and Rust's own formatting does not. The second covers the ranges the interface uses and not the exponent forms for numbers below 1e-6 or from 1e21.
 
 Left in TypeScript on purpose: `findings`, the finding texts. They write counts with `toLocaleString()`, which groups digits by the machine's language, so a Rust copy would either change what some people see or need a locale table. That is a decision for the move of the interface itself, not for a port that promises no change. No behavior change; the interface still uses the TypeScript copy.
+
+## 2026-11-21: Loudness Match arithmetic in Rust
+
+The arithmetic behind Loudness Match (`src/app/loudness-match.ts`: `changeFor`, `matchRow`, `levelsOf`, `levelRow`, `truePeakRow` and the constants) now has a Rust copy in `src-tauri/src/loudness_match.rs`, tested against `shared-fixtures/loudness-match.json` with the TypeScript copy (about 450 gain changes at rounding ties and tolerances, and rows for loudness, peak, RMS and true peak against nine readings including silence, NaN and the infinities, with the peak warning checked in each). NaN and the infinities are written as text in the fixture, since JSON cannot hold them, and both sides decode them the same way.
+
+Left in TypeScript on purpose: `matchChanges` and `matchItems`, which read the session and build the clip gain edit. They move with the session, not before it. No behavior change; the interface still uses the TypeScript copy.
