@@ -1999,3 +1999,14 @@ The Tracks menu offered every track, including empty ones. It now lists tracks t
 ## 2026-11-21: Batch Convert one-job starter chains
 
 A user asked for a quick list of single-job batch presets (de-ess, reduce noise, fades, peak level, hum, pitch, vocal removal, DC offset, telephone). Reframed as a function: the Chain picker in Batch Convert should offer one pick per common single job. Added 16 starter chains built from presets and steps we already had, plus a De-Ess Voice preset. A test checks that every preset a starter names exists. Not tested by ear.
+
+## 2026-11-21: Track names in Rust
+
+`src/app/track-names.ts` (a track name from a file name, and "Track N" or "Guest N" names for new tracks) now has a Rust copy in `src-tauri/src/track_names.rs`. White space follows JavaScript's rules, and the leading recorder number backs off the way the regular expression did. Both copies read `shared-fixtures/track-names.json`. The TypeScript copy stays in use until the interface moves to Rust.
+
+## 2026-11-21: Ideas from a competitor's screenshots (clean-room reframe)
+
+The project lead shared screenshots of another editor's settings and stem-separation pages. Per the clean-room rule we take only functions, written in our own words, and nothing of the layout, look or names:
+- Stem separation (after 1.0, AI): pick a model by purpose (vocals, instruments, denoise), show size and a quality figure before download, run on the graphics card with a processor fallback, an overlap quality setting.
+- Settings ideas to check against ours: a one-line reason under each setting, a Reset This Page button, a log file for audio device problems with a Copy Path button, a note when a device is unplugged and the system default plays instead, session media copy policy (copy in, ask, leave) with a collect-all command, a backups count per session, linked crossfades, mouse wheel zoom centered on the pointer or the playhead.
+Each will get its own backlog line and be designed fresh before building.
