@@ -92,6 +92,11 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      # Without this, a cached build skips cpal's SDK download, so a change
+      # to the SDK would pass here and break the release build.
+      - name: Fetch the ASIO SDK
+        uses: ./.github/actions/asio-sdk
+
       - name: cargo clippy with ASIO
         working-directory: src-tauri
         run: cargo clippy --all-targets --features asio -- -D warnings

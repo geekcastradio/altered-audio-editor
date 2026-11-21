@@ -1944,3 +1944,11 @@ The mixer fader rules (`src/panels/mixer/fader.ts`: travel to dB and back, and t
 ## 2026-11-21: Dynamics curve in Rust
 
 The Dynamics window's graph maths (`src/panels/voice-chain/dynamics.ts`: `transfer`, `curvePoints`, `ratioFromSlope`) now has a Rust copy in `src-tauri/src/dynamics_curve.rs`, tested against `shared-fixtures/dynamics-curve.json` with the TypeScript copy (6 curves across 16 input levels, point lists with the default and custom ranges, and the slope clamp). Rust has no default arguments, so the default range and steps are named constants. No behavior change; the interface still uses the TypeScript copy.
+
+## 2026-11-21: the ASIO build fetches its own SDK, and a missing ASIO build is stated on the draft
+
+Issue 167: ASIO was greyed out in 0.51.0 and 0.52.0. What the 0.52.0 Release log shows: the ASIO build step failed inside `asio-sys`'s build script. It downloaded the SDK from Steinberg, extracted it, then could not find `asio_sdk\host`. That script is meant to rename the extracted folder (any name starting with "asio") to `asio_sdk`, and that did not happen. The release workflow then fell back to a build without ASIO and logged only a warning, so two releases shipped without ASIO. CI did not catch it because the ASIO check job restores a cached build and never reruns the build script.
+
+What is not proven: why the rename did not happen. Today's download unpacks to a folder named `ASIOSDK`, which that lookup should accept, so the download may have been laid out differently when the release ran, or something else in the temp folder got in the way. The fix does not depend on the answer.
+
+Fix: a small shared step (`.github/actions/asio-sdk`) downloads the SDK, finds the folder that holds both `host/pc` and `common`, and sets `CPAL_ASIO_DIR` to it, so cpal's own lookup is never used. If it cannot find them it prints the SDK's folder layout. The ASIO check job in CI runs the same step, so a change to the SDK fails CI instead of the next release; on its first run it built `asio-sys` from scratch on a fresh Windows runner and passed. In the release workflow the step is allowed to fail (the release still falls back), but the draft release text now starts with a plain "No ASIO in this build" note when that happens. The in-app updater notes are not changed by it. ASIO has still not been tested with real hardware.
