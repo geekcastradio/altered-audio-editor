@@ -7,16 +7,17 @@
 
 use std::path::PathBuf;
 
-use tauri::{AppHandle, State};
+use crate::app_core::AppCore;
+use tauri::State;
 
 use super::session::OpenSession;
 use crate::engine::{PreviewPlayer, RecordStatus, RecordTarget, Recorder, Take};
 
-fn take_dir(app: &AppHandle, open: &State<'_, OpenSession>) -> Result<PathBuf, String> {
+fn take_dir(core: &AppCore, open: &State<'_, OpenSession>) -> Result<PathBuf, String> {
     let saved = open.0.lock().map_err(|e| e.to_string())?.path.clone();
     match saved.as_ref().and_then(|p| p.parent()) {
         Some(dir) => Ok(dir.join("Recordings")),
-        None => Ok(crate::commands::cache::cache_root(app)?.join("recordings")),
+        None => Ok(core.cache_root()?.join("recordings")),
     }
 }
 
@@ -24,7 +25,7 @@ fn take_dir(app: &AppHandle, open: &State<'_, OpenSession>) -> Result<PathBuf, S
 /// interface right after, so the take lines up with what plays.
 #[tauri::command]
 pub fn record_start(
-    app: AppHandle,
+    app: State<'_, AppCore>,
     recorder: State<'_, Recorder>,
     preview: State<'_, PreviewPlayer>,
     open: State<'_, OpenSession>,
