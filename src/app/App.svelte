@@ -7452,19 +7452,20 @@
 <style>
   .update-toast {
     position: fixed;
-    right: 16px;
-    bottom: 36px;
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     z-index: 5500;
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 14px;
+    gap: 12px;
+    padding: 16px 22px;
     border: 1px solid var(--border-strong);
     border-radius: 4px;
     background: var(--surface-2);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
     color: var(--text);
-    font-size: 13px;
+    font-size: 14px;
   }
   .update-toast button {
     border: 1px solid var(--border-strong);
