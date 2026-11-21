@@ -1992,3 +1992,7 @@ Left in TypeScript on purpose: `findings`, the finding texts. They write counts 
 The arithmetic behind Loudness Match (`src/app/loudness-match.ts`: `changeFor`, `matchRow`, `levelsOf`, `levelRow`, `truePeakRow` and the constants) now has a Rust copy in `src-tauri/src/loudness_match.rs`, tested against `shared-fixtures/loudness-match.json` with the TypeScript copy (about 450 gain changes at rounding ties and tolerances, and rows for loudness, peak, RMS and true peak against nine readings including silence, NaN and the infinities, with the peak warning checked in each). NaN and the infinities are written as text in the fixture, since JSON cannot hold them, and both sides decode them the same way.
 
 Left in TypeScript on purpose: `matchChanges` and `matchItems`, which read the session and build the clip gain edit. They move with the session, not before it. No behavior change; the interface still uses the TypeScript copy.
+
+## 2026-11-21: Batch Convert one-job starter chains
+
+A user asked for a quick list of single-job batch presets (de-ess, reduce noise, fades, peak level, hum, pitch, vocal removal, DC offset, telephone). Reframed as a function: the Chain picker in Batch Convert should offer one pick per common single job. Added 16 starter chains built from presets and steps we already had, plus a De-Ess Voice preset. A test checks that every preset a starter names exists. Not tested by ear.

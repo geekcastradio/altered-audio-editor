@@ -636,6 +636,9 @@ export const BUILTIN_PRESETS: ChainPreset[] = [
       makeup: 6,
     }),
   ]),
+  chainP("De-Ess Voice", "Processing", [
+    fx("deesser", { freq: 6500, threshold: -30, reduction: 8 }),
+  ]),
   chainP("Raise Pitch", "Processing", [
     fx("pitch_shift", { semitones: 2, cents: 0 }),
   ]),
