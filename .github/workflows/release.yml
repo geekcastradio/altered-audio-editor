@@ -99,9 +99,14 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # ASIO needs LLVM (preinstalled on the runner) and the ASIO SDK,
-      # which cpal's build script downloads. If that build fails, the
-      # release still ships without ASIO.
+      # ASIO needs LLVM (preinstalled on the runner) and the ASIO SDK.
+      # The SDK is fetched here and located by its contents, because cpal's
+      # own download assumes a folder name. If this or the build fails, the
+      # release still ships without ASIO, and the draft says so.
+      - name: Fetch the ASIO SDK
+        continue-on-error: true
+        uses: ./.github/actions/asio-sdk
+
       - name: Build installer (with ASIO)
         id: asio
         continue-on-error: true
@@ -362,7 +367,8 @@ jobs:
         run: |
           tag="${{ env.TAG }}"
           cd files
-          if [ -f NO-ASIO.txt ]; then echo "::warning::The ASIO build failed; the Windows installer has no ASIO."; rm NO-ASIO.txt; fi
+          no_asio=0
+          if [ -f NO-ASIO.txt ]; then no_asio=1; echo "::warning::The ASIO build failed; the Windows installer has no ASIO."; rm NO-ASIO.txt; fi
           # The manifest the in-app updater reads. Windows is required; each other platform is
           # listed only when its file and signature both built.
           setup="Altered-Audio-Editor-$tag-setup.exe"
@@ -370,6 +376,11 @@ jobs:
           # What changed: this version's release notes from the repo, shown in the update dialog and on the release page.
           notesfile="../src/docs/release-notes-${tag#v}.md"
           if [ -f "$notesfile" ]; then cp "$notesfile" ../notes.md; else echo "See the release page for what changed." > ../notes.md; fi
+          # The release page text. It carries a plain warning when ASIO did not build; the updater notes above do not.
+          cp ../notes.md ../body.md
+          if [ "$no_asio" = 1 ]; then
+            { echo "> **No ASIO in this build.** The ASIO build step failed, so ASIO is greyed out in the Windows installer and portable zip. Check the Release run before you publish."; echo; cat ../notes.md; } > ../body.md
+          fi
           if [ -f "$setup.sig" ]; then
             platforms=$(jq -n --arg sig "$(cat "$setup.sig")" --arg url "$base/$setup" '{"windows-x86_64": {signature: $sig, url: $url}}')
             add_platform() {
@@ -389,7 +400,7 @@ jobs:
           sha256sum * > SHA256SUMS.txt
           ls -la
           if [ -f "$notesfile" ]; then
-            gh release create "$tag" --target "$GITHUB_SHA" --draft --title "Altered Audio Editor $tag" --notes-file ../notes.md ./*
+            gh release create "$tag" --target "$GITHUB_SHA" --draft --title "Altered Audio Editor $tag" --notes-file ../body.md ./*
           else
             gh release create "$tag" --target "$GITHUB_SHA" --draft --title "Altered Audio Editor $tag" --generate-notes ./*
           fi

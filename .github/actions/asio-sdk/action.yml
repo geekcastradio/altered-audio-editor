@@ -1,0 +1,29 @@
+name: Fetch the ASIO SDK
+description: >
+  Downloads the ASIO SDK, finds the folder that holds host and common, and
+  points the build at it (CPAL_ASIO_DIR). cpal's own download only looks for a
+  folder whose name starts with "asio", which broke when the download changed.
+  Windows only.
+runs:
+  using: composite
+  steps:
+    - name: Download and locate the SDK
+      shell: pwsh
+      run: |
+        $ProgressPreference = "SilentlyContinue"
+        $zip = Join-Path $env:RUNNER_TEMP "asiosdk.zip"
+        $dir = Join-Path $env:RUNNER_TEMP "asiosdk"
+        if (Test-Path $dir) { Remove-Item $dir -Recurse -Force }
+        Invoke-WebRequest -Uri "https://www.steinberg.net/asiosdk" -OutFile $zip
+        Expand-Archive -Path $zip -DestinationPath $dir -Force
+        $root = Get-ChildItem $dir -Recurse -Directory -Filter host |
+          ForEach-Object { $_.Parent.FullName } |
+          Where-Object { (Test-Path (Join-Path $_ "common")) -and (Test-Path (Join-Path $_ "host/pc")) } |
+          Select-Object -First 1
+        if (-not $root) {
+          Write-Host "Folders in the ASIO SDK download:"
+          Get-ChildItem $dir -Recurse -Directory -Depth 3 | ForEach-Object { Write-Host ("  " + $_.FullName.Substring($dir.Length)) }
+          throw "The ASIO SDK download has no folder holding both host/pc and common."
+        }
+        Write-Host "ASIO SDK folder: $root"
+        "CPAL_ASIO_DIR=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
