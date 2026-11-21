@@ -19,6 +19,7 @@ pub mod controllers;
 pub mod delivery;
 pub mod dial_input;
 pub mod dsp;
+pub mod dynamics_curve;
 pub mod engine;
 pub mod events;
 pub mod export;

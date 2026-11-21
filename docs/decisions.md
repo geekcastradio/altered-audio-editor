@@ -1940,3 +1940,7 @@ The analysis color rules (`src/app/colors.ts`: hex and HSL conversion, `ramp`, a
 ## 2026-11-21: fader maths in Rust
 
 The mixer fader rules (`src/panels/mixer/fader.ts`: travel to dB and back, and the dB and pan labels) now have a Rust copy in `src-tauri/src/fader.rs`, tested against `shared-fixtures/fader.json` with the TypeScript copy. The labels match exactly, including JavaScript's rounding of halves: a pan of -50.5 reads L50 and -0.5 reads C. Writing the fixture exposed a gap in the shared `toFixed` helper: JavaScript prints negative zero as 0.0, so `js_to_fixed1` now does too, with a test. No behavior change; the interface still uses the TypeScript copy.
+
+## 2026-11-21: Dynamics curve in Rust
+
+The Dynamics window's graph maths (`src/panels/voice-chain/dynamics.ts`: `transfer`, `curvePoints`, `ratioFromSlope`) now has a Rust copy in `src-tauri/src/dynamics_curve.rs`, tested against `shared-fixtures/dynamics-curve.json` with the TypeScript copy (6 curves across 16 input levels, point lists with the default and custom ranges, and the slope clamp). Rust has no default arguments, so the default range and steps are named constants. No behavior change; the interface still uses the TypeScript copy.
