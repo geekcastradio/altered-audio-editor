@@ -31,6 +31,7 @@ pub mod in_out;
 pub mod js_compat;
 pub mod knob;
 pub mod library;
+pub mod loudness_match;
 pub mod otio_import;
 pub mod paths;
 pub mod peaks;
