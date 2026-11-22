@@ -2046,3 +2046,7 @@ The notice line and the start rule for Clip > Phase Align (`describeAlign` and t
 ## 2026-11-22: Track visibility rules in Rust
 
 The pure parts of `src/panels/editor/visibility.ts` (which tracks change when only some should show, hidden track names, matching a track to a saved preset, saving and reading presets, the clip overlap test) have a Rust copy in `src-tauri/src/visibility.rs`. Both copies read `shared-fixtures/visibility.json`. Names are matched lower-cased and trimmed; the fixture uses plain and accented letters, and exotic case rules (such as the Turkish dotted capital I) are not matched. The TypeScript copy stays in use until the interface moves to Rust.
+
+## 2026-11-22: Envelope, silence dip, stretch input and session tab rules in Rust (first batch)
+
+The pure parts of `envelope.ts` (level maths, snapping, value text, point add, move and slice, chip label and box), `silence-span.ts` (the Silence Time Selection dip), `stretch.ts` (percent text and the time-entry reader) and `session-tabs.ts` have a Rust copy in `src-tauri/src/envelope.rs`. All read `shared-fixtures/envelope-batch.json`. From now on related ports go in one PR and one release, so there are fewer builds to hand-test. Functions that read the session or the effect catalog stay in TypeScript, and the TypeScript copies stay in use until the interface moves to Rust.
