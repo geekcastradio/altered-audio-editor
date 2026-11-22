@@ -84,6 +84,7 @@ pub mod session;
 pub mod session_rules;
 pub mod sesx;
 pub mod sound_types;
+pub mod space_ui;
 pub mod speaker_balance;
 pub mod startup;
 pub mod tags;
@@ -97,6 +98,7 @@ pub mod update_notes;
 pub mod visibility;
 pub mod voice_chain;
 pub mod voice_chain_math;
+pub mod wave_rows;
 pub mod welcome;
 
 /// Starts the desktop app.
