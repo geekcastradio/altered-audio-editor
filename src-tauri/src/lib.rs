@@ -41,6 +41,7 @@ pub mod in_out;
 pub mod js_compat;
 pub mod knob;
 pub mod library;
+pub mod library_view;
 pub mod loudness_check;
 pub mod loudness_match;
 pub mod markers;
