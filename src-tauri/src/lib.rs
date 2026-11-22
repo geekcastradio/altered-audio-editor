@@ -28,6 +28,7 @@ pub mod dsp;
 pub mod dynamics_curve;
 pub mod editor_rules;
 pub mod engine;
+pub mod envelope;
 pub mod events;
 pub mod export;
 pub mod fader;
