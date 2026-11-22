@@ -356,13 +356,14 @@ Rules for implementing these:
 
 The editing model follows common professional practice (two editors, non-destructive multitrack, effects chains). No commercial product's visual design or naming is a reference.
 
-Three open-source projects may be studied for specific technical problems:
+Four open-source projects may be studied for specific technical problems:
 
 - **Audacity** (GPL): effects and processing, especially noise reduction, silence trimming, click removal, loudness normalization.
 - **SoundCraft / ArtCraft** (MIT or Apache-2.0): Rust audio engine patterns, playback, file handling.
+- **transit** (transit-audio.com, MIT or Apache-2.0, added 2026-11-22): an open-source Rust music workstation. Study it for interchange (DAWproject import and export), plug-in hosting (CLAP and VST3) and take recording. Code is studied and rewritten, never copied; credit any ported algorithm in `ATTRIBUTION.md`.
 - **Kdenlive** (GPL-3.0-or-later overall, added 2026-11-20): file-format handling and interchange (OpenTimelineIO and similar), clip alignment and other single algorithms. It is C++ with Qt and MLT, so code is studied and rewritten in Rust, not copied across. Check the SPDX header of every file read: only files that allow GPL-3.0 may inform ported code, and a file that is GPL-2.0-only is read for ideas, never ported.
 
-A fourth source is for ideas only (added 2026-11-20): **AudiForm 2** (github.com/nwh212/AudiForm2, GPL-3.0-or-later), a Rust rewrite by the author of an earlier fork of this program. We may read its public README and docs to learn what works and what users want, then design our own version in our own words. We take no code from it, and nothing from its interface, themes or names. Its clean-room claim is not ours to rely on.
+Two more sources are for ideas only. **Gtk Wave Cleaner** (sourceforge.net/projects/gwc, GPL-2.0 only, added 2026-11-22) is read for how it finds clicks and crackle, never ported, because GPL-2.0-only code cannot go into a GPLv3 program. **AudiForm 2** (added 2026-11-20; its releases are now at github.com/AudiFormer/AudiForm2, earlier at github.com/nwh212/AudiForm2, GPL-3.0-or-later), a Rust rewrite by the author of an earlier fork of this program. We may read its public README and docs to learn what works and what users want, then design our own version in our own words. We take no code from it, and nothing from its interface, themes or names. Its clean-room claim is not ours to rely on.
 
 Rules:
 - Never copy their interface, workflow, or data model.
