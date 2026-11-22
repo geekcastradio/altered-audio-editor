@@ -285,7 +285,7 @@ Open a file with File > Open, or send a clip over with Clip > Open in Waveform E
 - Playing a selection stops at its end when playback starts inside it. Edit > Settings > Playback and Recording > "When playback starts within a selection, stop at the end of the selection" turns that off.
 - To fix a selection you made a little off, hold Shift and click to change its borders, or use Edit > Select > Adjust Selection: Move Start Left, Move Start Right, Move End Left and Move End Right. They move one pixel at the current zoom. Keys: Shift+H and Shift+J move the left side, Shift+K and Shift+L move the right side (Shift+Left and Shift+Right move the start, Ctrl+Shift+Left and Ctrl+Shift+Right move the end), and you can change them in Edit > Keyboard Shortcuts. They work in the multitrack view too. Transport > Stop at End of Selection (Shift+V) turns the stop-at-selection behavior on and off.
 - The Spectrum view (View > Show Spectrum) shows frequency over time, with selection tools to reduce, remove or repair a marked area.
-- Effects > Spectrum > Play Selected Area plays only the sound inside the selection, so you can hear what you are about to remove, without changing the file. The selection can be up to five minutes long.
+- Play Selected Area plays only the sound inside the selection, so you can hear what you are about to remove, without changing the file. Use the Play button on the bar that appears over the selection, right-click the spectrum, or choose Effects > Spectrum > Play Selected Area. The selection can be up to five minutes long.
 
 Drag the level knob in the corner of the view to turn the selection, or the whole file, up or down.
 

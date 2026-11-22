@@ -195,6 +195,8 @@
       x: e.clientX,
       y: e.clientY,
       items: [
+        { kind: "item", label: "Play Selected Area", disabled: !shapes || shapes.length === 0, reason: "Draw a selection with Box, Lasso or Brush first.", run: () => run("fx.spectrum.play") },
+        { kind: "sep" },
         { kind: "item", label: "Zoom In (Frequency)", run: () => setSv(zoomFreq(sv, hz, 0.5, nyquist)) },
         { kind: "item", label: "Zoom Out (Frequency)", disabled: !zoomed, reason: "Showing every frequency already.", run: () => setSv(zoomFreq(sv, hz, 2, nyquist)) },
         { kind: "item", label: "Zoom Reset (Frequency)", disabled: !zoomed, reason: "Showing every frequency already.", run: () => setSv({ lo: sv.log >= 0.5 ? 30 : 0, hi: null }) },
@@ -461,7 +463,7 @@
         }
       }
     }
-    return { x: Math.max(4, Math.min(width - 330, left)), y: Math.max(4, top - 30) };
+    return { x: Math.max(4, Math.min(width - 390, left)), y: Math.max(4, top - 30) };
   });
 
   // The palette: the built-in one, or the quiet and loud colors picked in Settings or the right-click menu.
@@ -494,6 +496,7 @@
   {/if}
   {#if bar}
     <div class="bar" style:left="{bar.x}px" style:top="{bar.y}px" role="toolbar" aria-label="Spectral edit">
+      <button type="button" title={tip("Hear only the selected area. The file is not changed.", "fx.spectrum.play")} onclick={() => run("fx.spectrum.play")}>Play</button>
       <button type="button" title={tip("Reduce the selected area by 12 dB", "fx.spectrum.reduce-12")} onclick={() => run("fx.spectrum.reduce-12")}>-12 dB</button>
       <button type="button" title={tip("Reduce the selected area by 24 dB", "fx.spectrum.reduce-24")} onclick={() => run("fx.spectrum.reduce-24")}>-24 dB</button>
       <button type="button" title={tip("Remove the selected area", "fx.spectrum.remove")} onclick={() => run("fx.spectrum.remove")}>Remove</button>
