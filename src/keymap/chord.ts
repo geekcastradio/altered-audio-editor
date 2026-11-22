@@ -44,7 +44,9 @@ const MODIFIER_KEYS = new Set(["Control", "Alt", "Shift", "Meta", "AltGraph", "O
 function canonicalKey(raw: string): string | null {
   if (raw.length === 1) return raw === " " ? "Space" : raw.toUpperCase();
   const lower = raw.toLowerCase();
-  if (NAMED[lower]) return NAMED[lower];
+  // Own keys only: a plain object also answers "constructor" and "__proto__", which are not key names.
+  const named = Object.prototype.hasOwnProperty.call(NAMED, lower) ? NAMED[lower] : undefined;
+  if (named) return named;
   const f = /^f([1-9]|1[0-9]|2[0-4])$/.exec(lower);
   if (f) return `F${f[1]}`;
   return null;
