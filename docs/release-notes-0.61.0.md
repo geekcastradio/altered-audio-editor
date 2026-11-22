@@ -11,11 +11,17 @@ Another batch of the move from TypeScript to Rust, plus a dependency fix. Nothin
 - Tag sets, soundboard pads and library bins: reading saved lists, labels, starter bins and colors.
 - Batch Convert: level settings, saved settings, name tokens, where each file converts to, the checks for two files writing one name, and saved chains with the built-in starters.
 
+## New
+
+- Help > Ask a Question or Share an Idea... opens the project's GitHub Discussions page in your browser. Questions and ideas go there, bugs stay in Issues.
+
 ## Fixed
+
+- The macOS build now retries its disk image step, which failed once in the last release run. Only a release run can show whether this helps.
 
 - Updated the URL parsing library (url 2.5.9) after a published security advisory. The app makes no network calls beyond the update check, so this was housekeeping.
 
 ## Notes
 
-- No new settings, shortcuts or menu items.
+- No new settings or shortcuts. One new Help menu item.
 - Free, GPLv3, no telemetry.

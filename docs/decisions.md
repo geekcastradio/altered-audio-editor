@@ -2121,3 +2121,7 @@ The name tokens copy how JavaScript's `replace` treats a text replacement, so a 
 The 0.61.0 Release run lost its Apple silicon build when the disk image tool (`bundle_dmg.sh`) failed about 16 seconds after the app itself had built and signed. The Intel build, which runs the same step, passed in the same run, and 0.60.0 built both, so this looks like a one-off failure on the hosted runner and not a problem in the app. The cause is not proven from the log, which only says the script failed.
 
 Both macOS jobs now run `scripts/build-mac.sh`, which unmounts any leftover images, removes half-written ones and tries the build up to three times. The Rust code is already built by the second try, so a retry costs seconds. If all three fail, the job still fails and the draft still ships without that build, as before. This cannot be tested outside a Release run, so the next release shows whether it helped.
+
+## 2026-11-22: Help link to GitHub Discussions
+
+Help gets one more item, "Ask a Question or Share an Idea...", under the GitHub link. It opens the repository's Discussions page in the browser. The project lead's reason: it keeps questions and ideas on the official repository, which builds the project's own standing, and leaves Issues for bugs. No new host is allowed (github.com was already on the list), so the privacy guard is unchanged. The Discord item stays as it is until a permanent invite to a dedicated AAE channel exists.
