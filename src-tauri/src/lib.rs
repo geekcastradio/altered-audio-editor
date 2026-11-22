@@ -55,6 +55,7 @@ pub mod time;
 pub mod time_input;
 pub mod track_names;
 pub mod typeahead;
+pub mod visibility;
 
 /// Starts the desktop app.
 pub fn run() {

@@ -1,0 +1,888 @@
+{
+  "showOnly": {
+    "tracks": [
+      [
+        "a",
+        true
+      ],
+      [
+        "b",
+        false
+      ],
+      [
+        "c",
+        false
+      ],
+      [
+        "d",
+        true
+      ]
+    ],
+    "cases": [
+      {
+        "keep": [
+          true,
+          true,
+          true,
+          true
+        ],
+        "want": [
+          [
+            "a",
+            false
+          ],
+          [
+            "d",
+            false
+          ]
+        ]
+      },
+      {
+        "keep": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "want": [
+          [
+            "b",
+            true
+          ],
+          [
+            "c",
+            true
+          ]
+        ]
+      },
+      {
+        "keep": [
+          false,
+          true,
+          true,
+          false
+        ],
+        "want": []
+      },
+      {
+        "keep": [
+          true,
+          false,
+          true,
+          true
+        ],
+        "want": [
+          [
+            "a",
+            false
+          ],
+          [
+            "b",
+            true
+          ],
+          [
+            "d",
+            false
+          ]
+        ]
+      }
+    ]
+  },
+  "hiddenNames": {
+    "tracks": [
+      [
+        "Host",
+        true
+      ],
+      [
+        "Guest",
+        false
+      ],
+      [
+        " music ",
+        false
+      ],
+      [
+        "SFX",
+        true
+      ]
+    ],
+    "want": [
+      "Host",
+      "SFX"
+    ]
+  },
+  "keptByPreset": [
+    {
+      "hidden": [
+        "host",
+        " SFX "
+      ],
+      "results": [
+        [
+          "Host",
+          false
+        ],
+        [
+          "Guest",
+          true
+        ],
+        [
+          "music",
+          true
+        ],
+        [
+          "sfx",
+          false
+        ],
+        [
+          "Music",
+          true
+        ],
+        [
+          "Other",
+          true
+        ]
+      ]
+    },
+    {
+      "hidden": [],
+      "results": [
+        [
+          "a",
+          true
+        ]
+      ]
+    },
+    {
+      "hidden": [
+        "Ünï",
+        "ÄÖ"
+      ],
+      "results": [
+        [
+          "ünï",
+          false
+        ],
+        [
+          "äö",
+          false
+        ],
+        [
+          "Ünï ",
+          false
+        ],
+        [
+          "x",
+          true
+        ]
+      ]
+    }
+  ],
+  "withPreset": [
+    {
+      "list": [
+        {
+          "name": "P0",
+          "hidden": [
+            "0"
+          ]
+        },
+        {
+          "name": "P1",
+          "hidden": [
+            "1"
+          ]
+        }
+      ],
+      "preset": {
+        "name": "New",
+        "hidden": [
+          "x"
+        ]
+      },
+      "want": [
+        {
+          "name": "P0",
+          "hidden": [
+            "0"
+          ]
+        },
+        {
+          "name": "P1",
+          "hidden": [
+            "1"
+          ]
+        },
+        {
+          "name": "New",
+          "hidden": [
+            "x"
+          ]
+        }
+      ]
+    },
+    {
+      "list": [
+        {
+          "name": "P0",
+          "hidden": [
+            "0"
+          ]
+        },
+        {
+          "name": "P1",
+          "hidden": [
+            "1"
+          ]
+        }
+      ],
+      "preset": {
+        "name": " p1 ",
+        "hidden": [
+          "y"
+        ]
+      },
+      "want": [
+        {
+          "name": "P0",
+          "hidden": [
+            "0"
+          ]
+        },
+        {
+          "name": " p1 ",
+          "hidden": [
+            "y"
+          ]
+        }
+      ]
+    },
+    {
+      "list": [
+        {
+          "name": "P0",
+          "hidden": [
+            "0"
+          ]
+        },
+        {
+          "name": "P1",
+          "hidden": [
+            "1"
+          ]
+        },
+        {
+          "name": "P2",
+          "hidden": [
+            "2"
+          ]
+        },
+        {
+          "name": "P3",
+          "hidden": [
+            "3"
+          ]
+        },
+        {
+          "name": "P4",
+          "hidden": [
+            "4"
+          ]
+        },
+        {
+          "name": "P5",
+          "hidden": [
+            "5"
+          ]
+        },
+        {
+          "name": "P6",
+          "hidden": [
+            "6"
+          ]
+        },
+        {
+          "name": "P7",
+          "hidden": [
+            "7"
+          ]
+        }
+      ],
+      "preset": {
+        "name": "Ninth",
+        "hidden": []
+      },
+      "want": [
+        {
+          "name": "P1",
+          "hidden": [
+            "1"
+          ]
+        },
+        {
+          "name": "P2",
+          "hidden": [
+            "2"
+          ]
+        },
+        {
+          "name": "P3",
+          "hidden": [
+            "3"
+          ]
+        },
+        {
+          "name": "P4",
+          "hidden": [
+            "4"
+          ]
+        },
+        {
+          "name": "P5",
+          "hidden": [
+            "5"
+          ]
+        },
+        {
+          "name": "P6",
+          "hidden": [
+            "6"
+          ]
+        },
+        {
+          "name": "P7",
+          "hidden": [
+            "7"
+          ]
+        },
+        {
+          "name": "Ninth",
+          "hidden": []
+        }
+      ]
+    },
+    {
+      "list": [
+        {
+          "name": "P0",
+          "hidden": [
+            "0"
+          ]
+        },
+        {
+          "name": "P1",
+          "hidden": [
+            "1"
+          ]
+        },
+        {
+          "name": "P2",
+          "hidden": [
+            "2"
+          ]
+        },
+        {
+          "name": "P3",
+          "hidden": [
+            "3"
+          ]
+        },
+        {
+          "name": "P4",
+          "hidden": [
+            "4"
+          ]
+        },
+        {
+          "name": "P5",
+          "hidden": [
+            "5"
+          ]
+        },
+        {
+          "name": "P6",
+          "hidden": [
+            "6"
+          ]
+        },
+        {
+          "name": "P7",
+          "hidden": [
+            "7"
+          ]
+        }
+      ],
+      "preset": {
+        "name": "P3",
+        "hidden": [
+          "z"
+        ]
+      },
+      "want": [
+        {
+          "name": "P0",
+          "hidden": [
+            "0"
+          ]
+        },
+        {
+          "name": "P1",
+          "hidden": [
+            "1"
+          ]
+        },
+        {
+          "name": "P2",
+          "hidden": [
+            "2"
+          ]
+        },
+        {
+          "name": "P4",
+          "hidden": [
+            "4"
+          ]
+        },
+        {
+          "name": "P5",
+          "hidden": [
+            "5"
+          ]
+        },
+        {
+          "name": "P6",
+          "hidden": [
+            "6"
+          ]
+        },
+        {
+          "name": "P7",
+          "hidden": [
+            "7"
+          ]
+        },
+        {
+          "name": "P3",
+          "hidden": [
+            "z"
+          ]
+        }
+      ]
+    },
+    {
+      "list": [],
+      "preset": {
+        "name": "Only",
+        "hidden": []
+      },
+      "want": [
+        {
+          "name": "Only",
+          "hidden": []
+        }
+      ]
+    }
+  ],
+  "sanitize": [
+    {
+      "raw": null,
+      "want": []
+    },
+    {
+      "raw": 5,
+      "want": []
+    },
+    {
+      "raw": "x",
+      "want": []
+    },
+    {
+      "raw": {},
+      "want": []
+    },
+    {
+      "raw": [],
+      "want": []
+    },
+    {
+      "raw": [
+        null,
+        3,
+        "s",
+        {}
+      ],
+      "want": []
+    },
+    {
+      "raw": [
+        {
+          "name": "A",
+          "hidden": [
+            "x",
+            3,
+            "y",
+            null
+          ]
+        }
+      ],
+      "want": [
+        {
+          "name": "A",
+          "hidden": [
+            "x",
+            "y"
+          ]
+        }
+      ]
+    },
+    {
+      "raw": [
+        {
+          "name": "  ",
+          "hidden": []
+        }
+      ],
+      "want": []
+    },
+    {
+      "raw": [
+        {
+          "name": " Pad ",
+          "hidden": []
+        }
+      ],
+      "want": [
+        {
+          "name": "Pad",
+          "hidden": []
+        }
+      ]
+    },
+    {
+      "raw": [
+        {
+          "name": "A"
+        }
+      ],
+      "want": []
+    },
+    {
+      "raw": [
+        {
+          "name": 4,
+          "hidden": []
+        }
+      ],
+      "want": []
+    },
+    {
+      "raw": [
+        {
+          "name": "A",
+          "hidden": "no"
+        }
+      ],
+      "want": []
+    },
+    {
+      "raw": [
+        {
+          "name": " Nb ",
+          "hidden": []
+        }
+      ],
+      "want": [
+        {
+          "name": "Nb",
+          "hidden": []
+        }
+      ]
+    },
+    {
+      "raw": [
+        {
+          "name": "n0",
+          "hidden": []
+        },
+        {
+          "name": "n1",
+          "hidden": []
+        },
+        {
+          "name": "n2",
+          "hidden": []
+        },
+        {
+          "name": "n3",
+          "hidden": []
+        },
+        {
+          "name": "n4",
+          "hidden": []
+        },
+        {
+          "name": "n5",
+          "hidden": []
+        },
+        {
+          "name": "n6",
+          "hidden": []
+        },
+        {
+          "name": "n7",
+          "hidden": []
+        },
+        {
+          "name": "n8",
+          "hidden": []
+        },
+        {
+          "name": "n9",
+          "hidden": []
+        },
+        {
+          "name": "n10",
+          "hidden": []
+        }
+      ],
+      "want": [
+        {
+          "name": "n3",
+          "hidden": []
+        },
+        {
+          "name": "n4",
+          "hidden": []
+        },
+        {
+          "name": "n5",
+          "hidden": []
+        },
+        {
+          "name": "n6",
+          "hidden": []
+        },
+        {
+          "name": "n7",
+          "hidden": []
+        },
+        {
+          "name": "n8",
+          "hidden": []
+        },
+        {
+          "name": "n9",
+          "hidden": []
+        },
+        {
+          "name": "n10",
+          "hidden": []
+        }
+      ]
+    }
+  ],
+  "hasClipIn": [
+    {
+      "spans": [
+        [
+          0,
+          100
+        ],
+        [
+          200,
+          50
+        ]
+      ],
+      "start": 0,
+      "end": 0,
+      "want": true
+    },
+    {
+      "spans": [
+        [
+          0,
+          100
+        ],
+        [
+          200,
+          50
+        ]
+      ],
+      "start": 50,
+      "end": 50,
+      "want": true
+    },
+    {
+      "spans": [
+        [
+          0,
+          100
+        ],
+        [
+          200,
+          50
+        ]
+      ],
+      "start": 100,
+      "end": 100,
+      "want": false
+    },
+    {
+      "spans": [
+        [
+          0,
+          100
+        ],
+        [
+          200,
+          50
+        ]
+      ],
+      "start": 99,
+      "end": 100,
+      "want": true
+    },
+    {
+      "spans": [
+        [
+          0,
+          100
+        ],
+        [
+          200,
+          50
+        ]
+      ],
+      "start": 100,
+      "end": 150,
+      "want": false
+    },
+    {
+      "spans": [
+        [
+          0,
+          100
+        ],
+        [
+          200,
+          50
+        ]
+      ],
+      "start": 150,
+      "end": 200,
+      "want": false
+    },
+    {
+      "spans": [
+        [
+          0,
+          100
+        ],
+        [
+          200,
+          50
+        ]
+      ],
+      "start": 150,
+      "end": 201,
+      "want": true
+    },
+    {
+      "spans": [
+        [
+          0,
+          100
+        ],
+        [
+          200,
+          50
+        ]
+      ],
+      "start": 249,
+      "end": 249,
+      "want": true
+    },
+    {
+      "spans": [
+        [
+          0,
+          100
+        ],
+        [
+          200,
+          50
+        ]
+      ],
+      "start": 250,
+      "end": 250,
+      "want": false
+    },
+    {
+      "spans": [
+        [
+          0,
+          100
+        ],
+        [
+          200,
+          50
+        ]
+      ],
+      "start": 249.5,
+      "end": 249.5,
+      "want": true
+    },
+    {
+      "spans": [
+        [
+          0,
+          100
+        ],
+        [
+          200,
+          50
+        ]
+      ],
+      "start": -10,
+      "end": 1,
+      "want": true
+    },
+    {
+      "spans": [
+        [
+          0,
+          100
+        ],
+        [
+          200,
+          50
+        ]
+      ],
+      "start": -10,
+      "end": 0,
+      "want": false
+    },
+    {
+      "spans": [
+        [
+          0,
+          100
+        ],
+        [
+          200,
+          50
+        ]
+      ],
+      "start": 0,
+      "end": -5,
+      "want": true
+    },
+    {
+      "spans": [],
+      "start": 0,
+      "end": 10,
+      "want": false
+    }
+  ]
+}
