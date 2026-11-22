@@ -109,6 +109,8 @@ export interface AppSettings {
   takeLanes: boolean;
   /** Playback speed: the Transport > Playback Speed choices (0.5x to 2x, pitch kept). Off until turned on. */
   playbackSpeed: boolean;
+  /** Finished export notices offer a button that shows the file in the system file manager. */
+  revealAfterExport: boolean;
   /** Dragging the playhead along the ruler plays the audio under it. */
   scrubAudio: boolean;
   /** Offer the Amp Model in the Add effect menus even with Music Mode off (it is a music tool, so off by default). */
@@ -239,6 +241,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   returnOnStop: true,
   takeLanes: true,
   playbackSpeed: false,
+  revealAfterExport: true,
   scrubAudio: false,
   ampModelAlways: false,
   stopAtSelectionEnd: true,
@@ -355,6 +358,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
     returnOnStop: bool(o.returnOnStop, d.returnOnStop),
     takeLanes: bool(o.takeLanes, d.takeLanes),
     playbackSpeed: bool(o.playbackSpeed, d.playbackSpeed),
+    revealAfterExport: bool(o.revealAfterExport, d.revealAfterExport),
     scrubAudio: bool(o.scrubAudio, d.scrubAudio),
     ampModelAlways: bool(o.ampModelAlways, d.ampModelAlways),
     stopAtSelectionEnd: bool(o.stopAtSelectionEnd, d.stopAtSelectionEnd),

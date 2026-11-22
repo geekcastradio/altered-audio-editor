@@ -350,6 +350,7 @@
             <label><input type="radio" bind:group={d.app.fillClickTexture} value="natural" /> Natural (matches the room around the click)</label>
             <label><input type="radio" bind:group={d.app.fillClickTexture} value="smooth" /> Smooth (no added noise)</label>
           </fieldset>
+          <label><input type="checkbox" bind:checked={d.app.revealAfterExport} /> Offer to show the file when an export finishes</label>
           <label><input type="checkbox" bind:checked={d.app.realtimePlugins} /> Mix down sessions that use VST3 plug-ins in real time</label>
           <p class="note">Some plug-ins only work while audio plays at normal speed: pitch correction, immersive panners and other tools that follow the clock. With this on, any mixdown, stem export or Mix Down to New File of a session with VST3 plug-ins runs at playback speed, so an hour takes an hour. Built-in effects never need it.</p>
         {:else if page === "Cache and Files"}

@@ -578,7 +578,7 @@ Also checked: we already read RF64, BWF, W64 and MKV audio. CAF and MP2 are not 
 Written as plain descriptions of what to build, in our own words. Nothing started.
 
 1. **Feedback guard for input monitoring.** When monitored input starts to howl, mute the monitor path for a moment and show a notice, so a speaker next to the mic never hurts anyone's ears. The recorded take is untouched. Needs a level-growth check on the audio thread that allocates nothing.
-2. **Open the folder when a mixdown or export finishes.** The finished notice gets a button that shows the file in the system file manager (Explorer, File Manager, Finder). Setting to turn it off.
+2. **Open the folder when a mixdown or export finishes (built 2026-11-22, 0.63.0).** The finished notice gets a button that shows the file in the system file manager (Explorer, File Manager, Finder). Setting to turn it off.
 3. **DAWproject import and export (Music Mode only, low priority).** Read and write the open DAWproject interchange format, from its public specification, for moving songs to and from other music programs. Sits beside the `.sesx`, `.rpp` and OpenTimelineIO importers. Not needed for podcast work.
 4. **CLAP plug-ins in Voice Chains (after 1.0).** Host CLAP plug-ins in their own process, the same way VST3 is planned, once VST3 hosting is settled.
 5. **Compare Click Repair on worn recordings.** When a sample clip arrives for issue 149, run Click Repair and Clip Repair on it, read how Gtk Wave Cleaner finds clicks (ideas only; its licence is GPL-2.0 only, so no code), and keep only changes that clearly improve the result.
@@ -587,3 +587,6 @@ Written as plain descriptions of what to build, in our own words. Nothing starte
 8. **Check the Linux taskbar icon on Wayland (when Linux testers appear).** Confirm the window shows our icon and app name in the taskbar and title bar on Wayland and X11, with the AppImage and the deb. Fix through the packaged desktop entry if it does not.
 
 Already on this list above and unchanged: pre-render heavy tracks (idea 8 under "Ideas adopted") and listen to a spectral selection (built in 0.62.0 as Play Selected Area; the looped version is not built).
+
+9. **Check the Linux look (added 2026-11-22).** Another project's release notes fixed buttons that drew as squares and symbols that were missing on Linux when the system font lacked them. We use some Unicode symbols in buttons and menus. Check the AppImage on Zorin and Fedora; where a symbol is missing, bundle a symbol font or draw it as an inline icon of our own.
+10. **Known limitations list in release notes (built 2026-11-22, 0.63.0).** A short honest list at the end of each release, kept in `docs/known-limitations.md` and copied into the notes.
