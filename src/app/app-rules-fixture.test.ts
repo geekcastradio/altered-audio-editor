@@ -6,7 +6,12 @@
 // same fixture the Rust tests read (shared-fixtures/app-rules.json).
 import { describe, expect, it } from "vitest";
 import fx from "../../shared-fixtures/app-rules.json";
-import { describeReport, editFor, isNoChange, sanitizeChoices } from "./pitch-edit";
+import {
+  describeReport,
+  editFor,
+  isNoChange,
+  sanitizeChoices,
+} from "./pitch-edit";
 import { welcomePlan } from "./welcome";
 import { bugInfoText, recordError, recordedErrors, scrub } from "./bug-info";
 
@@ -24,9 +29,15 @@ describe("app rules fixture", () => {
   });
   it("welcome plan", () => {
     for (const w of fx.welcome) {
-      const pages = w.revs.map((rev, i) => ({ rev, title: String(i), body: [] }));
+      const pages = w.revs.map((rev, i) => ({
+        rev,
+        title: String(i),
+        body: [],
+      }));
       const p = welcomePlan(w.saved, pages);
-      expect(p ? { kind: p.kind, idx: p.pages.map((x) => Number(x.title)) } : null).toEqual(w.expect);
+      expect(
+        p ? { kind: p.kind, idx: p.pages.map((x) => Number(x.title)) } : null,
+      ).toEqual(w.expect);
     }
   });
   it("scrub", () => {

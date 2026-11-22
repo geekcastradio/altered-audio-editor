@@ -91,6 +91,45 @@ pub fn js_trim(s: &str) -> &str {
     s.trim_matches(is_js_space)
 }
 
+/// JavaScript's `Number(text)` for plain text: a decimal number with an
+/// optional sign and exponent, `0x`, `0o` and `0b` numbers, "Infinity", and
+/// empty or blank text as 0. Anything else is None (NaN in JavaScript).
+pub fn js_string_to_number(text: &str) -> Option<f64> {
+    let t = js_trim(text);
+    if t.is_empty() {
+        return Some(0.0);
+    }
+    for (prefix, radix) in [
+        ("0x", 16),
+        ("0X", 16),
+        ("0o", 8),
+        ("0O", 8),
+        ("0b", 2),
+        ("0B", 2),
+    ] {
+        if let Some(rest) = t.strip_prefix(prefix) {
+            return u64::from_str_radix(rest, radix).ok().map(|v| v as f64);
+        }
+    }
+    let (sign, body) = match t.as_bytes()[0] {
+        b'-' => (-1.0, &t[1..]),
+        b'+' => (1.0, &t[1..]),
+        _ => (1.0, t),
+    };
+    if body == "Infinity" {
+        return Some(sign * f64::INFINITY);
+    }
+    if body.is_empty()
+        || !body
+            .bytes()
+            .all(|b| b.is_ascii_digit() || matches!(b, b'.' | b'e' | b'E' | b'+' | b'-'))
+        || !body.bytes().any(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    t.parse::<f64>().ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
