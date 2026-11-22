@@ -17,7 +17,7 @@ const owner = { volume_db: 0, pan: 0 } as never;
 describe("automation fixture", () => {
   it("lanes, ranges and keys", () => {
     for (const c of fx.lane)
-      expect(A.laneHeight({ height: c.h ?? undefined })).toBe(c.out);
+      expect(A.laneHeight(c.h === null ? {} : { height: c.h })).toBe(c.out);
     for (const c of fx.keys) expect(A.targetKey(T(c.t))).toBe(c.out);
     for (const c of fx.ranges)
       expect(
