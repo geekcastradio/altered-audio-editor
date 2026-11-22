@@ -2058,3 +2058,7 @@ The pure parts of `src/panels/editor/timeline.ts` (pixel and sample conversion, 
 ## 2026-11-22: Check Loudness and recording rules in Rust (third batch)
 
 The pure parts of `src/app/loudness.ts` (the broadcast regions, the region a time zone suggests, the target list, the pass or fail verdict with its advice, and the export prediction) and all of `src/app/recording.ts` (reading saved options, the punch-in plan, when a punch-in stops, and where a finished take lands) have a Rust copy in `src-tauri/src/loudness_check.rs` and `recording.rs`. Both read `shared-fixtures/loudness-recording.json`; silent mixes appear in it as the text "-Infinity". Reading the computer's time zone and the custom target held in settings stay in TypeScript. The TypeScript copies stay in use until the interface moves to Rust.
+
+## 2026-11-22: Output format rules in Rust (fourth batch)
+
+The pure parts of `src/app/output-format.ts` (which bit depths a format offers, the format a file name suggests, reading saved settings back, the lines that say what a file will be, the size estimate and the per-format memory) have a Rust copy in `src-tauri/src/output_format.rs`. Both read `shared-fixtures/output-format.json`. Menu labels, help text, the sample-type presets and the dither patch helpers stay in TypeScript. The TypeScript copy stays in use until the interface moves to Rust.

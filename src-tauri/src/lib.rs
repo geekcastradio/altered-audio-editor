@@ -40,6 +40,7 @@ pub mod library;
 pub mod loudness_check;
 pub mod loudness_match;
 pub mod otio_import;
+pub mod output_format;
 pub mod paths;
 pub mod peaks;
 pub mod playlist;
