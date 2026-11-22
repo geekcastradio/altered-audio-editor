@@ -2050,3 +2050,7 @@ The pure parts of `src/panels/editor/visibility.ts` (which tracks change when on
 ## 2026-11-22: Envelope, silence dip, stretch input and session tab rules in Rust (first batch)
 
 The pure parts of `envelope.ts` (level maths, snapping, value text, point add, move and slice, chip label and box), `silence-span.ts` (the Silence Time Selection dip), `stretch.ts` (percent text and the time-entry reader) and `session-tabs.ts` have a Rust copy in `src-tauri/src/envelope.rs`. All read `shared-fixtures/envelope-batch.json`. From now on related ports go in one PR and one release, so there are fewer builds to hand-test. Functions that read the session or the effect catalog stay in TypeScript, and the TypeScript copies stay in use until the interface moves to Rust.
+
+## 2026-11-22: Timeline view rules in Rust (second batch)
+
+The pure parts of `src/panels/editor/timeline.ts` (pixel and sample conversion, edge scrolling, zoom limits and zoom around a point, fit, the ruler ticks, time and timecode text, peak level picking and ranges, the overview strip and its edge drag, default track colors and track heights) have a Rust copy in `src-tauri/src/timeline.rs`. Both read `shared-fixtures/timeline.json`. Timecode is tested with whole frame rates (24, 25, 30), the only ones the setting offers. Bars and beats, the display format switch (it reads settings) and the tempo grid stay in TypeScript. The TypeScript copies stay in use until the interface moves to Rust.
