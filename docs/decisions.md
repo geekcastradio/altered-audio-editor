@@ -2034,3 +2034,7 @@ The Follow Playhead rules (`followEffect`, `maxScroll`), the grab rule for a tim
 ## 2026-11-21: Clip level handle and Time Info view rules in Rust
 
 The arithmetic for the clip level handle (`gainBox`, `dragGain`, `gainText` in `src/panels/editor/clip-gain.ts`) and for Time Info's View row (`viewRange`, `viewFor`, `editSelection` in `src/panels/time-info/time-info.ts`) have a Rust copy in `src-tauri/src/clip_gain.rs`. The canvas drawing and the typed-time parser (which already has its own Rust copy in `time_input.rs`) are not part of it. Both copies read `shared-fixtures/clip-gain.json`. The TypeScript copies stay in use until the interface moves to Rust.
+
+## 2026-11-22: Playlist and review marks rules in Rust
+
+The Playlist rules (`src/panels/playlist/playlist.ts`: items, what is available, add, remove, move, next start and export file names) and the review marks rules (`src/panels/review/review.ts`: which marker is a Cut this, Retake or Great bit, filtering, counts and stepping) have a Rust copy in `src-tauri/src/playlist.rs` and `review.rs`. The Rust functions take the markers and the saved id list, not the whole session. Both copies read `shared-fixtures/playlist-review.json`. The TypeScript copies stay in use until the interface moves to Rust.

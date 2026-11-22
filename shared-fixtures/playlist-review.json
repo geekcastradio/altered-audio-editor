@@ -1,0 +1,922 @@
+{
+  "markers": [
+    {
+      "id": "a",
+      "name": "Cold open",
+      "position": 0,
+      "duration": 100
+    },
+    {
+      "id": "b",
+      "name": "Intro",
+      "position": 500,
+      "duration": 200
+    },
+    {
+      "id": "c",
+      "name": "Point",
+      "position": 800,
+      "duration": 0
+    },
+    {
+      "id": "d",
+      "name": "Ad: Spot?",
+      "position": 900,
+      "duration": 50
+    },
+    {
+      "id": "e",
+      "name": "Outro",
+      "position": 100,
+      "duration": 40
+    },
+    {
+      "id": "f",
+      "name": "Cut this 1",
+      "position": 300,
+      "duration": 0
+    },
+    {
+      "id": "g",
+      "name": "retake 2",
+      "position": 100,
+      "duration": 0
+    },
+    {
+      "id": "h",
+      "name": "  Great bit",
+      "position": 700,
+      "duration": 0
+    },
+    {
+      "id": "i",
+      "name": "Great bit",
+      "position": 700,
+      "duration": 0
+    },
+    {
+      "id": "j",
+      "name": "Cut thisx",
+      "position": 50,
+      "duration": 0
+    },
+    {
+      "id": "k",
+      "name": "Other",
+      "position": 10,
+      "duration": 0
+    }
+  ],
+  "playlist": [
+    {
+      "playlist": null,
+      "items": [],
+      "available": [
+        "a",
+        "e",
+        "b",
+        "d"
+      ],
+      "added": [
+        [
+          "a",
+          "e",
+          "e",
+          "zzz"
+        ],
+        []
+      ],
+      "removed": [
+        [],
+        [],
+        []
+      ],
+      "moved": [
+        {
+          "id": "a",
+          "by": -1,
+          "want": []
+        },
+        {
+          "id": "a",
+          "by": 1,
+          "want": []
+        },
+        {
+          "id": "b",
+          "by": -1,
+          "want": []
+        },
+        {
+          "id": "b",
+          "by": 1,
+          "want": []
+        },
+        {
+          "id": "e",
+          "by": 1,
+          "want": []
+        },
+        {
+          "id": "nope",
+          "by": 1,
+          "want": []
+        }
+      ],
+      "next": [],
+      "names": []
+    },
+    {
+      "playlist": [],
+      "items": [],
+      "available": [
+        "a",
+        "e",
+        "b",
+        "d"
+      ],
+      "added": [
+        [
+          "a",
+          "e",
+          "e",
+          "zzz"
+        ],
+        []
+      ],
+      "removed": [
+        [],
+        [],
+        []
+      ],
+      "moved": [
+        {
+          "id": "a",
+          "by": -1,
+          "want": []
+        },
+        {
+          "id": "a",
+          "by": 1,
+          "want": []
+        },
+        {
+          "id": "b",
+          "by": -1,
+          "want": []
+        },
+        {
+          "id": "b",
+          "by": 1,
+          "want": []
+        },
+        {
+          "id": "e",
+          "by": 1,
+          "want": []
+        },
+        {
+          "id": "nope",
+          "by": 1,
+          "want": []
+        }
+      ],
+      "next": [],
+      "names": []
+    },
+    {
+      "playlist": [
+        "b",
+        "a"
+      ],
+      "items": [
+        "b",
+        "a"
+      ],
+      "available": [
+        "e",
+        "d"
+      ],
+      "added": [
+        [
+          "b",
+          "a",
+          "e",
+          "e",
+          "zzz"
+        ],
+        [
+          "b",
+          "a"
+        ]
+      ],
+      "removed": [
+        [
+          "b"
+        ],
+        [
+          "a"
+        ],
+        [
+          "b",
+          "a"
+        ]
+      ],
+      "moved": [
+        {
+          "id": "a",
+          "by": -1,
+          "want": [
+            "a",
+            "b"
+          ]
+        },
+        {
+          "id": "a",
+          "by": 1,
+          "want": [
+            "b",
+            "a"
+          ]
+        },
+        {
+          "id": "b",
+          "by": -1,
+          "want": [
+            "b",
+            "a"
+          ]
+        },
+        {
+          "id": "b",
+          "by": 1,
+          "want": [
+            "a",
+            "b"
+          ]
+        },
+        {
+          "id": "e",
+          "by": 1,
+          "want": [
+            "b",
+            "a"
+          ]
+        },
+        {
+          "id": "nope",
+          "by": 1,
+          "want": [
+            "b",
+            "a"
+          ]
+        }
+      ],
+      "next": [
+        {
+          "index": 1,
+          "at": 0
+        },
+        null
+      ],
+      "names": [
+        "01 Intro",
+        "02 Cold open"
+      ]
+    },
+    {
+      "playlist": [
+        "zzz",
+        "d",
+        "c",
+        "e"
+      ],
+      "items": [
+        "d",
+        "e"
+      ],
+      "available": [
+        "a",
+        "b"
+      ],
+      "added": [
+        [
+          "d",
+          "e",
+          "a",
+          "zzz"
+        ],
+        [
+          "d",
+          "e"
+        ]
+      ],
+      "removed": [
+        [
+          "d",
+          "e"
+        ],
+        [
+          "d",
+          "e"
+        ],
+        [
+          "d",
+          "e"
+        ]
+      ],
+      "moved": [
+        {
+          "id": "a",
+          "by": -1,
+          "want": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "id": "a",
+          "by": 1,
+          "want": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "id": "b",
+          "by": -1,
+          "want": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "id": "b",
+          "by": 1,
+          "want": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "id": "e",
+          "by": 1,
+          "want": [
+            "d",
+            "e"
+          ]
+        },
+        {
+          "id": "nope",
+          "by": 1,
+          "want": [
+            "d",
+            "e"
+          ]
+        }
+      ],
+      "next": [
+        {
+          "index": 1,
+          "at": 100
+        },
+        null
+      ],
+      "names": [
+        "01 Ad Spot",
+        "02 Outro"
+      ]
+    },
+    {
+      "playlist": [
+        "b",
+        "b",
+        "a"
+      ],
+      "items": [
+        "b",
+        "b",
+        "a"
+      ],
+      "available": [
+        "e",
+        "d"
+      ],
+      "added": [
+        [
+          "b",
+          "b",
+          "a",
+          "e",
+          "e",
+          "zzz"
+        ],
+        [
+          "b",
+          "b",
+          "a"
+        ]
+      ],
+      "removed": [
+        [
+          "b",
+          "b"
+        ],
+        [
+          "a"
+        ],
+        [
+          "b",
+          "b",
+          "a"
+        ]
+      ],
+      "moved": [
+        {
+          "id": "a",
+          "by": -1,
+          "want": [
+            "b",
+            "a",
+            "b"
+          ]
+        },
+        {
+          "id": "a",
+          "by": 1,
+          "want": [
+            "b",
+            "b",
+            "a"
+          ]
+        },
+        {
+          "id": "b",
+          "by": -1,
+          "want": [
+            "b",
+            "b",
+            "a"
+          ]
+        },
+        {
+          "id": "b",
+          "by": 1,
+          "want": [
+            "b",
+            "b",
+            "a"
+          ]
+        },
+        {
+          "id": "e",
+          "by": 1,
+          "want": [
+            "b",
+            "b",
+            "a"
+          ]
+        },
+        {
+          "id": "nope",
+          "by": 1,
+          "want": [
+            "b",
+            "b",
+            "a"
+          ]
+        }
+      ],
+      "next": [
+        {
+          "index": 1,
+          "at": 500
+        },
+        {
+          "index": 2,
+          "at": 0
+        },
+        null
+      ],
+      "names": [
+        "01 Intro",
+        "02 Intro",
+        "03 Cold open"
+      ]
+    },
+    {
+      "playlist": [
+        "e",
+        "d",
+        "b",
+        "a"
+      ],
+      "items": [
+        "e",
+        "d",
+        "b",
+        "a"
+      ],
+      "available": [],
+      "added": [
+        [
+          "e",
+          "d",
+          "b",
+          "a",
+          "zzz"
+        ],
+        [
+          "e",
+          "d",
+          "b",
+          "a"
+        ]
+      ],
+      "removed": [
+        [
+          "e",
+          "d",
+          "b"
+        ],
+        [
+          "e",
+          "d",
+          "a"
+        ],
+        [
+          "e",
+          "d",
+          "b",
+          "a"
+        ]
+      ],
+      "moved": [
+        {
+          "id": "a",
+          "by": -1,
+          "want": [
+            "e",
+            "d",
+            "a",
+            "b"
+          ]
+        },
+        {
+          "id": "a",
+          "by": 1,
+          "want": [
+            "e",
+            "d",
+            "b",
+            "a"
+          ]
+        },
+        {
+          "id": "b",
+          "by": -1,
+          "want": [
+            "e",
+            "b",
+            "d",
+            "a"
+          ]
+        },
+        {
+          "id": "b",
+          "by": 1,
+          "want": [
+            "e",
+            "d",
+            "a",
+            "b"
+          ]
+        },
+        {
+          "id": "e",
+          "by": 1,
+          "want": [
+            "d",
+            "e",
+            "b",
+            "a"
+          ]
+        },
+        {
+          "id": "nope",
+          "by": 1,
+          "want": [
+            "e",
+            "d",
+            "b",
+            "a"
+          ]
+        }
+      ],
+      "next": [
+        {
+          "index": 1,
+          "at": 900
+        },
+        {
+          "index": 2,
+          "at": 500
+        },
+        {
+          "index": 3,
+          "at": 0
+        },
+        null
+      ],
+      "names": [
+        "01 Outro",
+        "02 Ad Spot",
+        "03 Intro",
+        "04 Cold open"
+      ]
+    }
+  ],
+  "exportNames": [
+    {
+      "names": [],
+      "want": []
+    },
+    {
+      "names": [
+        "A"
+      ],
+      "want": [
+        "01 A"
+      ]
+    },
+    {
+      "names": [
+        "Cold open",
+        "cold open",
+        "Cold open"
+      ],
+      "want": [
+        "01 Cold open",
+        "02 cold open",
+        "03 Cold open"
+      ]
+    },
+    {
+      "names": [
+        "a/b",
+        "c:d",
+        "e*f?",
+        "g<h>i|j\"k\\l"
+      ],
+      "want": [
+        "01 a b",
+        "02 c d",
+        "03 e f",
+        "04 g h i j k l"
+      ]
+    },
+    {
+      "names": [
+        "  spaced   out  ",
+        "tab\tname",
+        "nl\nname",
+        " nbsp ",
+        "ctrl\u0001x"
+      ],
+      "want": [
+        "01 spaced out",
+        "02 tab name",
+        "03 nl name",
+        "04 nbsp",
+        "05 ctrl x"
+      ]
+    },
+    {
+      "names": [
+        "Item 0",
+        "Item 1",
+        "Item 2",
+        "Item 3",
+        "Item 4",
+        "Item 5",
+        "Item 6",
+        "Item 7",
+        "Item 8",
+        "Item 9",
+        "Item 10"
+      ],
+      "want": [
+        "01 Item 0",
+        "02 Item 1",
+        "03 Item 2",
+        "04 Item 3",
+        "05 Item 4",
+        "06 Item 5",
+        "07 Item 6",
+        "08 Item 7",
+        "09 Item 8",
+        "10 Item 9",
+        "11 Item 10"
+      ]
+    },
+    {
+      "names": [
+        "01 x"
+      ],
+      "want": [
+        "01 01 x"
+      ]
+    },
+    {
+      "names": [
+        "",
+        " ",
+        "//"
+      ],
+      "want": [
+        "01",
+        "02",
+        "03"
+      ]
+    }
+  ],
+  "reviewKinds": [
+    {
+      "name": "Cut this",
+      "want": "cut"
+    },
+    {
+      "name": "cut THIS 3",
+      "want": "cut"
+    },
+    {
+      "name": "  retake",
+      "want": "retake"
+    },
+    {
+      "name": "Retake 12",
+      "want": "retake"
+    },
+    {
+      "name": "Great bit",
+      "want": "great"
+    },
+    {
+      "name": " great bit!",
+      "want": "great"
+    },
+    {
+      "name": "Cut",
+      "want": null
+    },
+    {
+      "name": "Great",
+      "want": null
+    },
+    {
+      "name": "Intro",
+      "want": null
+    },
+    {
+      "name": "",
+      "want": null
+    },
+    {
+      "name": "retakes",
+      "want": "retake"
+    },
+    {
+      "name": "ÇUT this",
+      "want": null
+    }
+  ],
+  "reviewMarks": [
+    {
+      "filter": "all",
+      "want": [
+        "j",
+        "g",
+        "f",
+        "h",
+        "i"
+      ]
+    },
+    {
+      "filter": "cut",
+      "want": [
+        "j",
+        "f"
+      ]
+    },
+    {
+      "filter": "retake",
+      "want": [
+        "g"
+      ]
+    },
+    {
+      "filter": "great",
+      "want": [
+        "h",
+        "i"
+      ]
+    }
+  ],
+  "reviewCounts": {
+    "cut": 2,
+    "retake": 1,
+    "great": 2
+  },
+  "stepMark": [
+    {
+      "at": -1,
+      "dir": 1,
+      "want": 0
+    },
+    {
+      "at": -1,
+      "dir": -1,
+      "want": null
+    },
+    {
+      "at": 0,
+      "dir": 1,
+      "want": 0
+    },
+    {
+      "at": 0,
+      "dir": -1,
+      "want": null
+    },
+    {
+      "at": 50,
+      "dir": 1,
+      "want": 1
+    },
+    {
+      "at": 50,
+      "dir": -1,
+      "want": null
+    },
+    {
+      "at": 100,
+      "dir": 1,
+      "want": 2
+    },
+    {
+      "at": 100,
+      "dir": -1,
+      "want": 0
+    },
+    {
+      "at": 300,
+      "dir": 1,
+      "want": 3
+    },
+    {
+      "at": 300,
+      "dir": -1,
+      "want": 1
+    },
+    {
+      "at": 699,
+      "dir": 1,
+      "want": 3
+    },
+    {
+      "at": 699,
+      "dir": -1,
+      "want": 2
+    },
+    {
+      "at": 700,
+      "dir": 1,
+      "want": null
+    },
+    {
+      "at": 700,
+      "dir": -1,
+      "want": 2
+    },
+    {
+      "at": 701,
+      "dir": 1,
+      "want": null
+    },
+    {
+      "at": 701,
+      "dir": -1,
+      "want": 4
+    },
+    {
+      "at": 1000,
+      "dir": 1,
+      "want": null
+    },
+    {
+      "at": 1000,
+      "dir": -1,
+      "want": 4
+    }
+  ]
+}
