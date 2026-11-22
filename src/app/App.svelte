@@ -52,7 +52,7 @@
   import WelcomeDialog from "./WelcomeDialog.svelte";
   import { WELCOME_REV, welcomePlan, type WelcomePlan } from "./welcome";
   import UpdateDialog from "./UpdateDialog.svelte";
-  import { updateCheck, updateDue, updateInstall, type UpdateInfo } from "./update";
+  import { highlights, updateCheck, updateDue, updateInstall, type UpdateInfo } from "./update";
   import HistoryPanel from "../panels/history/HistoryPanel.svelte";
   import VideoPanel from "../panels/video/VideoPanel.svelte";
   import TakesPanel from "../panels/takes/TakesPanel.svelte";
@@ -7438,9 +7438,24 @@
 
 {#if updateToast && updateInfo && !updateOpen}
   <div class="update-toast" role="status">
-    <span>Version {updateInfo.version} is available.</span>
-    <button type="button" onclick={() => { updateToast = false; updateOpen = true; }}>See what's new</button>
-    <button type="button" aria-label="Dismiss" onclick={() => (updateToast = false)}>Later</button>
+    <div class="ut-head">
+      <strong>Version {updateInfo.version} is available</strong>
+      <span class="ut-from">You have {updateInfo.current}</span>
+    </div>
+    {#if highlights(updateInfo.notes).length > 0}
+      <ul class="ut-list" aria-label="What's new">
+        {#each highlights(updateInfo.notes) as line, i (i)}<li>{line}</li>{/each}
+      </ul>
+    {/if}
+    <div class="ut-actions">
+      <button type="button" onclick={() => (updateToast = false)}>Later</button>
+      <button type="button" onclick={() => { updateToast = false; updateOpen = true; }}>All changes</button>
+      {#if updateInfo.canInstall}
+        <button type="button" class="ut-go" disabled={updateBusy} onclick={() => { updateToast = false; void installUpdate(); }}>Install and Restart</button>
+      {:else}
+        <button type="button" class="ut-go" onclick={() => { updateToast = false; openLink(LINKS.releases); }}>Download</button>
+      {/if}
+    </div>
   </div>
 {/if}
 
@@ -7482,24 +7497,72 @@
     left: 50%;
     transform: translate(-50%, -50%);
     z-index: 5500;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 16px 22px;
-    border: 1px solid var(--border-strong);
+    display: grid;
+    gap: 10px;
+    width: min(440px, calc(100vw - 32px));
+    padding: 16px 20px 14px;
+    border: 1px solid var(--accent);
+    border-left-width: 5px;
     border-radius: 4px;
     background: var(--surface-2);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.4),
+      0 12px 32px rgba(0, 0, 0, 0.6);
     color: var(--text);
     font-size: 14px;
+    animation: update-in 0.18s ease-out;
+  }
+  @keyframes update-in {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -46%);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .update-toast {
+      animation: none;
+    }
+  }
+  .ut-head {
+    display: grid;
+    gap: 2px;
+  }
+  .ut-head strong {
+    font-size: 16px;
+  }
+  .ut-from {
+    color: var(--text-dim);
+    font-size: var(--font-size-small);
+  }
+  .ut-list {
+    margin: 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 3px;
+    line-height: 1.4;
+  }
+  .ut-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
   }
   .update-toast button {
     border: 1px solid var(--border-strong);
     border-radius: 3px;
     background: var(--surface-3);
     color: var(--text);
-    padding: 3px 10px;
+    padding: 4px 12px;
     cursor: pointer;
+  }
+  .update-toast .ut-go {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--accent-text, #fff);
+    font-weight: 600;
+  }
+  .update-toast button:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
   .countdown {
     position: fixed;
