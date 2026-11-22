@@ -12,7 +12,7 @@ use serde_json::{json, Map, Value};
 use std::collections::HashSet;
 
 /// What JavaScript treats as true.
-fn truthy(v: &Value) -> bool {
+pub(crate) fn truthy(v: &Value) -> bool {
     match v {
         Value::Null => false,
         Value::Bool(b) => *b,
