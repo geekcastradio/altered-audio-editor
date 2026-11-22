@@ -2147,3 +2147,7 @@ Not ported yet, and why: `takes.ts`, `rows.ts`, `dead-space.ts` and `split-chann
 ## 2026-11-22: Clip number rules in Rust (fifteenth batch)
 
 `clip_math.rs` has the Rust copy of the number rules under clip editing, checked against `shared-fixtures/clip-math.json` (Vitest reads it too): a clip's length and end on the timeline (with stretch limits, loops and files at another sample rate), the shortest clip and top layer constants, MIDI clip spans through the tempo map, nearest-target and marker snapping, the fade shape list and which fades a shape change reaches. These come from `clip-edit.ts` and `session.ts`; the TypeScript copies stay in use. The rest of `clip-edit.ts` (moves, trims, splits, ripple, paste, crossfades) works on whole sessions and builds edit steps, so it waits for a Rust session edit layer and is not started.
+
+## 2026-11-22: Reference sources and backlog additions
+
+The project lead asked for the useful ideas from a short review of four open-source tools to go into the plan. Transit (MIT or Apache-2.0) joins SoundCraft and Kdenlive as a source we may study and rewrite from, for interchange, plug-in hosting and take recording. Gtk Wave Cleaner (GPL-2.0 only) is for ideas only, never ported, because it cannot be combined with a GPLv3 program. AudiForm 2's releases moved to a new owner name; the ideas-only rule is unchanged and CLAUDE.md names both addresses. Six backlog items were added in `docs/backlog.md`, each described by what it does.
