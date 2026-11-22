@@ -2030,3 +2030,7 @@ The clip filter and the notice text for Multitrack > Reduce Bleed (`bleedWork`, 
 ## 2026-11-21: Editing rules in Rust (Follow Playhead, selection edges, silence span)
 
 The Follow Playhead rules (`followEffect`, `maxScroll`), the grab rule for a time selection's border (`edgeAt`, `anchorFor`) and the volume dip for Silence Time Selection (`silenceSpan`, with `levelAt`) have a Rust copy in `src-tauri/src/editor_rules.rs`. All read `shared-fixtures/editor-rules.json`. The functions that read the session document (`silenceChanges`) stay in TypeScript. The TypeScript copies stay in use until the interface moves to Rust.
+
+## 2026-11-21: Clip level handle and Time Info view rules in Rust
+
+The arithmetic for the clip level handle (`gainBox`, `dragGain`, `gainText` in `src/panels/editor/clip-gain.ts`) and for Time Info's View row (`viewRange`, `viewFor`, `editSelection` in `src/panels/time-info/time-info.ts`) have a Rust copy in `src-tauri/src/clip_gain.rs`. The canvas drawing and the typed-time parser (which already has its own Rust copy in `time_input.rs`) are not part of it. Both copies read `shared-fixtures/clip-gain.json`. The TypeScript copies stay in use until the interface moves to Rust.
