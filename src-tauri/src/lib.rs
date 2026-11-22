@@ -58,6 +58,7 @@ pub mod markers;
 pub mod match_eq;
 pub mod metadata_rules;
 pub mod midi_edit;
+pub mod mix_routing;
 pub mod otio_import;
 pub mod output_format;
 pub mod pads_bins;
