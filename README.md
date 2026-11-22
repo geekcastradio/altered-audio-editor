@@ -28,7 +28,7 @@ It follows the editing workflow that experienced audio editors already know, wit
 
 ## Download
 
-Windows 10 and 11 (64-bit). Get the latest build from the [Releases page](https://github.com/geekcastradio/altered-audio-editor/releases), then pick one file under Assets:
+Windows 10 and 11 (64-bit). Get the latest build from the [Releases page](https://github.com/geekcastradio/altered-audio-editor/releases), then pick one file under Assets. That page is the only official source; see [TRADEMARKS.md](TRADEMARKS.md) for how to tell, and for what forks may and may not do with the name.
 
 - **`Altered-Audio-Editor-<version>-setup.exe`** is the installer. It adds a Start menu entry and an uninstaller, and works per user or for all users.
 - **`Altered-Audio-Editor-<version>-portable.zip`** needs no install. Unzip it anywhere, including a USB drive, and run the app.
