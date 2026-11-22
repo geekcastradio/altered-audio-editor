@@ -4860,6 +4860,7 @@
       actions.register({ id: "help.discord", run: () => openLink(LINKS.discord) }),
       actions.register({ id: "help.update", run: () => void checkUpdate(true) }),
       actions.register({ id: "help.github", run: () => openLink(LINKS.github) }),
+      actions.register({ id: "help.discussions", run: () => openLink(LINKS.discussions) }),
       actions.register({ id: "help.report", run: () => openLink(reportUrl(info?.version ?? null, navigator.userAgent)) }),
       actions.register({
         id: "help.bug-info",
