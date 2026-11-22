@@ -7,6 +7,7 @@
 //! The interface never touches audio. It sends commands to this core
 //! and renders the state it gets back.
 
+pub mod align;
 pub mod analysis;
 pub mod app_core;
 pub mod backup;
@@ -30,6 +31,7 @@ pub mod engine;
 pub mod events;
 pub mod export;
 pub mod fader;
+pub mod graph;
 pub mod in_out;
 pub mod js_compat;
 pub mod knob;

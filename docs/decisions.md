@@ -2038,3 +2038,7 @@ The arithmetic for the clip level handle (`gainBox`, `dragGain`, `gainText` in `
 ## 2026-11-22: Playlist and review marks rules in Rust
 
 The Playlist rules (`src/panels/playlist/playlist.ts`: items, what is available, add, remove, move, next start and export file names) and the review marks rules (`src/panels/review/review.ts`: which marker is a Cut this, Retake or Great bit, filtering, counts and stepping) have a Rust copy in `src-tauri/src/playlist.rs` and `review.rs`. The Rust functions take the markers and the saved id list, not the whole session. Both copies read `shared-fixtures/playlist-review.json`. The TypeScript copies stay in use until the interface moves to Rust.
+
+## 2026-11-22: Phase Align notice and response graph maths in Rust
+
+The notice line and the start rule for Clip > Phase Align (`describeAlign` and the start in `alignOps`, `src/panels/editor/align.ts`) and the response graph maths (`xOf`, `freqAt`, `yOf`, `dbAt`, `range`, `src/panels/voice-chain/graph.ts`) have a Rust copy in `src-tauri/src/align.rs` and `graph.rs`. Both copies read `shared-fixtures/align-graph.json`. Finding the clip pair, building the edit and the curve handles read the session or effect info and stay in TypeScript. The TypeScript copies stay in use until the interface moves to Rust.
