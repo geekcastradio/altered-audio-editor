@@ -91,6 +91,7 @@ pub mod track_names;
 pub mod typeahead;
 pub mod update_notes;
 pub mod visibility;
+pub mod voice_chain;
 pub mod voice_chain_math;
 pub mod welcome;
 
