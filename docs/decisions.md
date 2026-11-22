@@ -2137,3 +2137,9 @@ The library list file keeps its key order (format, version, libraries) on the Ru
 ## 2026-11-22: Play Selected Area where the selection is
 
 Issue #218 said the Spectrum view could not play only the selection. It can: Effects > Spectrum > Play Selected Area has been there since 0.34.0 (our first comment on the issue wrongly said it was not built, and a correction was posted). The real fault was that the command was only in a menu. It is now also a Play button on the bar over the selection and the first item in the Spectrum view's right-click menu. No new shortcut. The backlog idea of looping the selected area is not built.
+
+## 2026-11-22: Source Channels and channel switches in Rust (fourteenth batch)
+
+`channel_rules.rs` is the Rust copy of two pure modules, checked against `shared-fixtures/channel-rules.json` (Vitest reads it too): `src/panels/properties/channel-mix.ts` (channel names for any channel count, the standard fold-down, filling out a clip's own mix, the quick settings and finding which one a mix matches) and the pure part of `src/panels/editor/wave-channels.ts` (switching Waveform editor channels on and off, solo, which channels an edit or paste reaches, and the label for an edit). The TypeScript copies stay in use. The playback copy of the names and fold-down in `dsp/channels.rs` is unchanged; the fixture pins that both agree on names.
+
+Not ported yet, and why: `takes.ts`, `rows.ts`, `dead-space.ts` and `split-channels.ts` read whole sessions through `clip-edit.ts`, so they wait for that module. `soundtypes.ts` waits for the Voice Chain presets in `chain.ts`.
