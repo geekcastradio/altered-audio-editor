@@ -271,7 +271,7 @@ jobs:
       - name: Build
         env:
           APPLE_SIGNING_IDENTITY: "-"
-        run: npm run tauri build -- --bundles app,dmg
+        run: bash scripts/build-mac.sh
 
       - name: Package
         run: |
@@ -325,7 +325,7 @@ jobs:
       - name: Build
         env:
           APPLE_SIGNING_IDENTITY: "-"
-        run: npm run tauri build -- --target x86_64-apple-darwin --bundles app,dmg
+        run: bash scripts/build-mac.sh --target x86_64-apple-darwin
 
       - name: Package
         run: |
