@@ -2042,3 +2042,7 @@ The Playlist rules (`src/panels/playlist/playlist.ts`: items, what is available,
 ## 2026-11-22: Phase Align notice and response graph maths in Rust
 
 The notice line and the start rule for Clip > Phase Align (`describeAlign` and the start in `alignOps`, `src/panels/editor/align.ts`) and the response graph maths (`xOf`, `freqAt`, `yOf`, `dbAt`, `range`, `src/panels/voice-chain/graph.ts`) have a Rust copy in `src-tauri/src/align.rs` and `graph.rs`. Both copies read `shared-fixtures/align-graph.json`. Finding the clip pair, building the edit and the curve handles read the session or effect info and stay in TypeScript. The TypeScript copies stay in use until the interface moves to Rust.
+
+## 2026-11-22: Track visibility rules in Rust
+
+The pure parts of `src/panels/editor/visibility.ts` (which tracks change when only some should show, hidden track names, matching a track to a saved preset, saving and reading presets, the clip overlap test) have a Rust copy in `src-tauri/src/visibility.rs`. Both copies read `shared-fixtures/visibility.json`. Names are matched lower-cased and trimmed; the fixture uses plain and accented letters, and exotic case rules (such as the Turkish dotted capital I) are not matched. The TypeScript copy stays in use until the interface moves to Rust.
