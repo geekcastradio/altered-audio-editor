@@ -54,6 +54,7 @@ pub mod startup;
 pub mod tags;
 pub mod time;
 pub mod time_input;
+pub mod timeline;
 pub mod track_names;
 pub mod typeahead;
 pub mod visibility;
