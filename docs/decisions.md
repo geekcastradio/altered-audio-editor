@@ -2098,3 +2098,14 @@ Four more pure pieces have a Rust copy, each tested against a shared fixture tha
 - `src-tauri/src/curve_presets.rs`: turning a segment table into Dynamics Curve points, and the built-in curve presets. The fixture holds every preset's final settings, so a changed table in either language fails a test.
 
 The state that sits around the take recorder (`AutoTake` in `src/app/auto-take.ts`) reads the session and talks to the engine, so it stays in TypeScript until the interface moves. The TypeScript copies stay in use.
+
+## 2026-11-22: Effect presets, tag sets, soundboard pads and library bins in Rust (eleventh batch)
+
+More pure rules have a Rust copy, each tested against a shared fixture that Vitest also reads:
+
+- `src-tauri/src/effect_presets.rs`: making a preset from a slot, keeping the bank of saved presets in order, applying a preset to one slot, and reading a bank back from preferences (`shared-fixtures/effect-presets.json`). The built-in preset tables stay in TypeScript, since they are data and the effect catalog owns the ranges.
+- `src-tauri/src/metadata_rules.rs`: saved tag sets, the year and track checks, the file list filter, adding paths without repeats (`shared-fixtures/panel-lists.json`).
+- `src-tauri/src/pads_bins.rs`: soundboard pads (labels, reading saved pads back, putting a file on a pad) and the library bin helpers (starter bins, badge letters, default color).
+- `js_compat::js_slice_units`: JavaScript's `slice(0, n)` on UTF-16 units, without cutting a character in two.
+
+Two name orders are involved and they differ, as in the TypeScript. Preset banks sort with numbers by value (`natural_cmp`, "Take 2" before "Take 10"). Tag sets sort with the browser's default order (`locale_cmp`, "Show 10" before "Show 2"). Both match the browser only for names made of letters, digits and spaces; names with punctuation or accents can sort differently in Rust, and a collation library (licence checked first) is needed when the interface moves. The TypeScript copies stay in use.
