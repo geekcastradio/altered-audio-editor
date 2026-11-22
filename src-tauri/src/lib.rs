@@ -23,6 +23,7 @@ pub mod chain;
 pub mod channel_rules;
 pub mod chord;
 pub mod clip_gain;
+pub mod clip_math;
 pub mod clip_props;
 pub mod clip_select;
 pub mod codecs;
