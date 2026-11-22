@@ -1,0 +1,376 @@
+{
+  "describeAlign": [
+    {
+      "lag": 0,
+      "score": 0.9,
+      "rate": 48000,
+      "inverted": false,
+      "want": "Guest.wav was already in line (90% match)."
+    },
+    {
+      "lag": 48,
+      "score": 0.5,
+      "rate": 48000,
+      "inverted": false,
+      "want": "Moved Guest.wav 1.00 ms earlier (50% match)."
+    },
+    {
+      "lag": -48,
+      "score": 0.29,
+      "rate": 48000,
+      "inverted": true,
+      "want": "Moved Guest.wav 1.00 ms later, and flipped the polarity of Track 2 (29% match). The match is weak: these may not be the same sound."
+    },
+    {
+      "lag": 4800,
+      "score": 0.3,
+      "rate": 48000,
+      "inverted": true,
+      "want": "Moved Guest.wav 100.00 ms earlier, and flipped the polarity of Track 2 (30% match)."
+    },
+    {
+      "lag": 1,
+      "score": 1,
+      "rate": 44100,
+      "inverted": false,
+      "want": "Moved Guest.wav 0.02 ms earlier (100% match)."
+    },
+    {
+      "lag": -1234,
+      "score": 0.123,
+      "rate": 44100,
+      "inverted": false,
+      "want": "Moved Guest.wav 27.98 ms later (12% match). The match is weak: these may not be the same sound."
+    },
+    {
+      "lag": 24,
+      "score": 0,
+      "rate": 48000,
+      "inverted": true,
+      "want": "Moved Guest.wav 0.50 ms earlier, and flipped the polarity of Track 2 (0% match). The match is weak: these may not be the same sound."
+    },
+    {
+      "lag": 2400,
+      "score": 0.755,
+      "rate": 48000,
+      "inverted": false,
+      "want": "Moved Guest.wav 50.00 ms earlier (76% match)."
+    },
+    {
+      "lag": 7,
+      "score": 0.005,
+      "rate": 96000,
+      "inverted": false,
+      "want": "Moved Guest.wav 0.07 ms earlier (1% match). The match is weak: these may not be the same sound."
+    },
+    {
+      "lag": 4800.5,
+      "score": 0.995,
+      "rate": 48000,
+      "inverted": false,
+      "want": "Moved Guest.wav 100.01 ms earlier (100% match)."
+    }
+  ],
+  "alignedStart": [
+    {
+      "clip": 1000,
+      "lag": 0,
+      "want": 1000
+    },
+    {
+      "clip": 1000,
+      "lag": 200,
+      "want": 800
+    },
+    {
+      "clip": 1000,
+      "lag": -200,
+      "want": 1200
+    },
+    {
+      "clip": 100,
+      "lag": 500,
+      "want": 0
+    },
+    {
+      "clip": 0,
+      "lag": 0,
+      "want": 0
+    },
+    {
+      "clip": 0,
+      "lag": -5,
+      "want": 5
+    }
+  ],
+  "xOf": [
+    {
+      "freq": 0,
+      "want": 0
+    },
+    {
+      "freq": 10,
+      "want": 0
+    },
+    {
+      "freq": 20,
+      "want": 0
+    },
+    {
+      "freq": 21,
+      "want": 0.007063099689979364
+    },
+    {
+      "freq": 100,
+      "want": 0.2329900014453396
+    },
+    {
+      "freq": 440,
+      "want": 0.44747422694073546
+    },
+    {
+      "freq": 1000,
+      "want": 0.5663233347786729
+    },
+    {
+      "freq": 4000,
+      "want": 0.7670099985546603
+    },
+    {
+      "freq": 20000,
+      "want": 1
+    },
+    {
+      "freq": 25000,
+      "want": 1
+    },
+    {
+      "freq": 19999.5,
+      "want": 0.9999963808340778
+    }
+  ],
+  "freqAt": [
+    {
+      "x": -1,
+      "want": 20
+    },
+    {
+      "x": 0,
+      "want": 20
+    },
+    {
+      "x": 0.1,
+      "want": 39.905246299377595
+    },
+    {
+      "x": 0.25,
+      "want": 112.46826503806983
+    },
+    {
+      "x": 0.5,
+      "want": 632.4555320336758
+    },
+    {
+      "x": 0.75,
+      "want": 3556.5588200778457
+    },
+    {
+      "x": 1,
+      "want": 20000
+    },
+    {
+      "x": 2,
+      "want": 20000
+    },
+    {
+      "x": 0.333333,
+      "want": 199.9995394835116
+    }
+  ],
+  "yOf": [
+    {
+      "db": 0,
+      "top": 24,
+      "bottom": -24,
+      "want": 0.5
+    },
+    {
+      "db": 24,
+      "top": 24,
+      "bottom": -24,
+      "want": 0
+    },
+    {
+      "db": -24,
+      "top": 24,
+      "bottom": -24,
+      "want": 1
+    },
+    {
+      "db": 30,
+      "top": 24,
+      "bottom": -24,
+      "want": 0
+    },
+    {
+      "db": -40,
+      "top": 24,
+      "bottom": -24,
+      "want": 1
+    },
+    {
+      "db": 6,
+      "top": 12,
+      "bottom": -60,
+      "want": 0.08333333333333333
+    }
+  ],
+  "dbAt": [
+    {
+      "y": 0,
+      "top": 24,
+      "bottom": -24,
+      "want": 24
+    },
+    {
+      "y": 0.5,
+      "top": 24,
+      "bottom": -24,
+      "want": 0
+    },
+    {
+      "y": 1,
+      "top": 24,
+      "bottom": -24,
+      "want": -24
+    },
+    {
+      "y": -1,
+      "top": 24,
+      "bottom": -24,
+      "want": 24
+    },
+    {
+      "y": 2,
+      "top": 24,
+      "bottom": -24,
+      "want": -24
+    },
+    {
+      "y": 0.37,
+      "top": 12,
+      "bottom": -60,
+      "want": -14.64
+    }
+  ],
+  "range": [
+    {
+      "points": [],
+      "gains": [],
+      "want": [
+        24,
+        -24
+      ]
+    },
+    {
+      "points": [],
+      "gains": [
+        [
+          -12,
+          12
+        ]
+      ],
+      "want": [
+        24,
+        -24
+      ]
+    },
+    {
+      "points": [],
+      "gains": [
+        [
+          -90,
+          60
+        ]
+      ],
+      "want": [
+        40,
+        -60
+      ]
+    },
+    {
+      "points": [
+        -30,
+        5
+      ],
+      "gains": [],
+      "want": [
+        24,
+        -30
+      ]
+    },
+    {
+      "points": [
+        -70,
+        0
+      ],
+      "gains": [
+        [
+          -100,
+          30
+        ]
+      ],
+      "want": [
+        30,
+        -60
+      ]
+    },
+    {
+      "points": [
+        1,
+        2
+      ],
+      "gains": [
+        [
+          -24,
+          24
+        ],
+        [
+          -6,
+          6
+        ]
+      ],
+      "want": [
+        24,
+        -24
+      ]
+    },
+    {
+      "points": [
+        -24,
+        -25
+      ],
+      "gains": [],
+      "want": [
+        24,
+        -30
+      ]
+    },
+    {
+      "points": [
+        0,
+        -7.5
+      ],
+      "gains": [
+        [
+          -48,
+          18
+        ]
+      ],
+      "want": [
+        24,
+        -48
+      ]
+    }
+  ]
+}
