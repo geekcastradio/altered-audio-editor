@@ -10,6 +10,7 @@
 pub mod align;
 pub mod analysis;
 pub mod app_core;
+pub mod automation;
 pub mod backup;
 pub mod bleed_copy;
 pub mod bleed_notice;
