@@ -2054,3 +2054,7 @@ The pure parts of `envelope.ts` (level maths, snapping, value text, point add, m
 ## 2026-11-22: Timeline view rules in Rust (second batch)
 
 The pure parts of `src/panels/editor/timeline.ts` (pixel and sample conversion, edge scrolling, zoom limits and zoom around a point, fit, the ruler ticks, time and timecode text, peak level picking and ranges, the overview strip and its edge drag, default track colors and track heights) have a Rust copy in `src-tauri/src/timeline.rs`. Both read `shared-fixtures/timeline.json`. Timecode is tested with whole frame rates (24, 25, 30), the only ones the setting offers. Bars and beats, the display format switch (it reads settings) and the tempo grid stay in TypeScript. The TypeScript copies stay in use until the interface moves to Rust.
+
+## 2026-11-22: Check Loudness and recording rules in Rust (third batch)
+
+The pure parts of `src/app/loudness.ts` (the broadcast regions, the region a time zone suggests, the target list, the pass or fail verdict with its advice, and the export prediction) and all of `src/app/recording.ts` (reading saved options, the punch-in plan, when a punch-in stops, and where a finished take lands) have a Rust copy in `src-tauri/src/loudness_check.rs` and `recording.rs`. Both read `shared-fixtures/loudness-recording.json`; silent mixes appear in it as the text "-Infinity". Reading the computer's time zone and the custom target held in settings stay in TypeScript. The TypeScript copies stay in use until the interface moves to Rust.
