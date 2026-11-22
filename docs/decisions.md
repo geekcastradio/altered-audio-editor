@@ -2126,6 +2126,14 @@ Both macOS jobs now run `scripts/build-mac.sh`, which unmounts any leftover imag
 
 Help gets one more item, "Ask a Question or Share an Idea...", under the GitHub link. It opens the repository's Discussions page in the browser. The project lead's reason: it keeps questions and ideas on the official repository, which builds the project's own standing, and leaves Issues for bugs. No new host is allowed (github.com was already on the list), so the privacy guard is unchanged. The Discord item stays as it is until a permanent invite to a dedicated AAE channel exists.
 
+## 2026-11-22: Key chords, library list, tempo map and MIDI edits in Rust (thirteenth batch)
+
+Four more pure modules have a Rust copy, each tested against `shared-fixtures/keys-tempo-midi.json` (read by Vitest too): `chord.rs` (`src/keymap/chord.ts`: reading a typed chord and building one from a key press, including the Windows AltGr case), `library_list.rs` (`src/stores/library-list.ts`: reading, cleaning and writing the list of libraries that moves between computers), `tempo_map.rs` (`src/stores/tempo.ts`: the tempo and time signature map, beats and seconds, bar lines, and the add, move, edit and remove steps) and `midi_edit.rs` (`src/panels/editor/midi.ts`: beats and samples, snapping, note names, and every clip and note edit; the two helpers that read a whole session stay in TypeScript). The TypeScript copies stay in use.
+
+One bug fix found while porting: the chord reader looked names up in a plain object, so the key names "constructor" and "__proto__" were read as real keys and a typed chord like "Ctrl+constructor" came out as the text of a function. Names are now looked up as the object's own keys only, and both sides return nothing for them. The fixture pins it.
+
+The library list file keeps its key order (format, version, libraries) on the Rust side by writing a struct, not a JSON value, since a JSON value sorts its keys.
+
 ## 2026-11-22: Play Selected Area where the selection is
 
 Issue #218 said the Spectrum view could not play only the selection. It can: Effects > Spectrum > Play Selected Area has been there since 0.34.0 (our first comment on the issue wrongly said it was not built, and a correction was posted). The real fault was that the command was only in a menu. It is now also a Play button on the bar over the selection and the first item in the Spectrum view's right-click menu. No new shortcut. The backlog idea of looping the selected area is not built.
