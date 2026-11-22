@@ -2098,3 +2098,7 @@ Four more pure pieces have a Rust copy, each tested against a shared fixture tha
 - `src-tauri/src/curve_presets.rs`: turning a segment table into Dynamics Curve points, and the built-in curve presets. The fixture holds every preset's final settings, so a changed table in either language fails a test.
 
 The state that sits around the take recorder (`AutoTake` in `src/app/auto-take.ts`) reads the session and talks to the engine, so it stays in TypeScript until the interface moves. The TypeScript copies stay in use.
+
+## 2026-11-22: Official source statement in TRADEMARKS.md
+
+Steve asked for a way for people to tell the official program from forks that keep the name. The rename rule for forks and the launcher terms were already in `TRADEMARKS.md` (2026-11-19). Added: a short "The official version" section (the GitHub releases page of this repository, with `SHA256SUMS.txt`, and updates signed with our key), and a line saying a fork that is only a copy, backup or pull request staging area on GitHub may keep the default repository name, because the rule bites on releasing or distributing a changed build. The README Download section now points to it. No new legal claims are made: no registration is stated, and the wording is plain. A lawyer should read it before it is relied on in a dispute.
