@@ -2133,3 +2133,7 @@ Four more pure modules have a Rust copy, each tested against `shared-fixtures/ke
 One bug fix found while porting: the chord reader looked names up in a plain object, so the key names "constructor" and "__proto__" were read as real keys and a typed chord like "Ctrl+constructor" came out as the text of a function. Names are now looked up as the object's own keys only, and both sides return nothing for them. The fixture pins it.
 
 The library list file keeps its key order (format, version, libraries) on the Rust side by writing a struct, not a JSON value, since a JSON value sorts its keys.
+
+## 2026-11-22: Play Selected Area where the selection is
+
+Issue #218 said the Spectrum view could not play only the selection. It can: Effects > Spectrum > Play Selected Area has been there since 0.34.0 (our first comment on the issue wrongly said it was not built, and a correction was posted). The real fault was that the command was only in a menu. It is now also a Play button on the bar over the selection and the first item in the Spectrum view's right-click menu. No new shortcut. The backlog idea of looping the selected area is not built.
