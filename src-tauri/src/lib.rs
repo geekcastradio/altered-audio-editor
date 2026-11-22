@@ -13,6 +13,7 @@ pub mod app_core;
 pub mod auto_record;
 pub mod automation;
 pub mod backup;
+pub mod batch_rules;
 pub mod bleed_copy;
 pub mod bleed_notice;
 pub mod browse;

@@ -2109,3 +2109,9 @@ More pure rules have a Rust copy, each tested against a shared fixture that Vite
 - `js_compat::js_slice_units`: JavaScript's `slice(0, n)` on UTF-16 units, without cutting a character in two.
 
 Two name orders are involved and they differ, as in the TypeScript. Preset banks sort with numbers by value (`natural_cmp`, "Take 2" before "Take 10"). Tag sets sort with the browser's default order (`locale_cmp`, "Show 10" before "Show 2"). Both match the browser only for names made of letters, digits and spaces; names with punctuation or accents can sort differently in Rust, and a collation library (licence checked first) is needed when the interface moves. The TypeScript copies stay in use.
+
+## 2026-11-22: Batch Convert naming, list and saved-chain rules in Rust (twelfth batch)
+
+`src-tauri/src/batch_rules.rs` is the Rust copy of the pure parts of `src/panels/batch/batch.ts` and `batch-chain.ts`, tested against `shared-fixtures/batch-rules.json` (read by Vitest too): level settings and the work they stand for, reading saved Batch settings back (including the older layouts with only a template, or before and after boxes), the name tokens {name}, {number}, {date} and {format}, where each file converts to, the checks for two rows writing one file or a row replacing its source, adding files without repeats, and saved chains (reading, saving, removing, applying, describing) with the built-in starter chains. The list store itself (`batchRows`) stays in TypeScript.
+
+The name tokens copy how JavaScript's `replace` treats a text replacement, so a file called `a$&b` fills the same way in both languages. The fixture includes such names. The date in a token comes in as year, month and day, so the Rust side needs no clock or time zone. The TypeScript copies stay in use.
