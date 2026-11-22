@@ -15,6 +15,7 @@ pub mod bleed_notice;
 pub mod browse;
 pub mod bug_report_link;
 pub mod chain;
+pub mod clip_gain;
 pub mod clip_select;
 pub mod codecs;
 pub mod colors;
