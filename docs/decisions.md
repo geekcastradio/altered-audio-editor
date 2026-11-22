@@ -2088,3 +2088,13 @@ The pure parts of `src/panels/editor/automation.ts` (lane height, the volume, pa
 The pure parts of `src/panels/libraries/arrange.ts` (reading a saved view back, grouping items into bins, types or one list, filtering by kind, sorting by name or date, the draw order for range selection, which sections start folded, opening and folding a section) and of `src/panels/files/format.ts` (sorting the Files list by name, status, duration, rate or channels, and the search box match) have a Rust copy in `src-tauri/src/library_view.rs`, tested against `shared-fixtures/library-view.json`.
 
 Sorting by name is the one place the copy is not exact. The interface uses the browser's locale collation; `natural_cmp` copies it only for names made of letters, digits and spaces (numbers by value, capitals ignored, a space before a digit before a letter), and the fixture stays inside that range, where the two agree. Names with punctuation or accents can sort differently in Rust. When the interface moves to Rust, this needs a real collation library, which needs its licence checked first. The TypeScript copies stay in use until then.
+
+## 2026-11-22: Take recorder, favorites, effect controls and curve presets in Rust (tenth batch)
+
+Four more pure pieces have a Rust copy, each tested against a shared fixture that Vitest also reads:
+
+- `src-tauri/src/auto_record.rs`: the take recorder behind Write, Latch and Touch automation (arm, grab, set, release, finish, the merge with the old lane, the glide, the lane tolerance). `shared-fixtures/auto-record.json` holds six hand-written takes and 40 seeded random ones. Lanes keep the order they were armed in, as the TypeScript map does.
+- `src-tauri/src/effect_ui.rs`: effect favorites (cleaning a saved list, toggling, the starter set), the effect window's control columns, typed values like "1.5k" or "-6 dB", and keeping a value to a control's step and range. List lengths count UTF-16 units, as the TypeScript does.
+- `src-tauri/src/curve_presets.rs`: turning a segment table into Dynamics Curve points, and the built-in curve presets. The fixture holds every preset's final settings, so a changed table in either language fails a test.
+
+The state that sits around the take recorder (`AutoTake` in `src/app/auto-take.ts`) reads the session and talks to the engine, so it stays in TypeScript until the interface moves. The TypeScript copies stay in use.
