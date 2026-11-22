@@ -1,0 +1,1858 @@
+{
+ "builtin": [
+  {
+   "name": "Podcast Voice",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.noise_reducer",
+      "params": {
+       "reduction": 10,
+       "strength": 2,
+       "learn": 2,
+       "smoothing": 50
+      }
+     },
+     {
+      "effect": "altaudio.speech_leveler",
+      "params": {
+       "target": -20,
+       "max_gain": 8,
+       "max_cut": 8,
+       "speed": 2000,
+       "floor": -50
+      }
+     },
+     {
+      "effect": "altaudio.dynamics",
+      "params": {
+       "threshold": -22,
+       "ratio": 3,
+       "attack": 8,
+       "release": 160,
+       "knee": 6,
+       "makeup": 4
+      }
+     },
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 80,
+       "hp_slope": 1,
+       "b1_freq": 300,
+       "b1_gain": -2,
+       "b1_q": 1.2,
+       "b3_freq": 4000,
+       "b3_gain": 2,
+       "b3_q": 0.9
+      }
+     },
+     {
+      "effect": "altaudio.deesser",
+      "params": {
+       "freq": 6500,
+       "threshold": -32,
+       "reduction": 6
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -6,
+       "lookahead": 5,
+       "release": 100
+      }
+     }
+    ]
+   },
+   "trackOnly": true
+  },
+  {
+   "name": "Podcast Voice - Guest",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.noise_reducer",
+      "params": {
+       "reduction": 12,
+       "strength": 2,
+       "learn": 2,
+       "smoothing": 50
+      }
+     },
+     {
+      "effect": "altaudio.speech_leveler",
+      "params": {
+       "target": -20,
+       "max_gain": 8,
+       "max_cut": 8,
+       "speed": 2000,
+       "floor": -50
+      }
+     },
+     {
+      "effect": "altaudio.dynamics",
+      "params": {
+       "threshold": -24,
+       "ratio": 4,
+       "attack": 8,
+       "release": 160,
+       "knee": 6,
+       "makeup": 6
+      }
+     },
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 80,
+       "hp_slope": 1,
+       "b1_freq": 300,
+       "b1_gain": -2,
+       "b1_q": 1.2,
+       "b3_freq": 4000,
+       "b3_gain": 2,
+       "b3_q": 0.9
+      }
+     },
+     {
+      "effect": "altaudio.deesser",
+      "params": {
+       "freq": 6500,
+       "threshold": -30,
+       "reduction": 8
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -6,
+       "lookahead": 5,
+       "release": 100
+      }
+     },
+     {
+      "effect": "altaudio.breath_gate",
+      "params": {
+       "threshold": -45,
+       "attack": 2,
+       "hold": 50,
+       "release": 200,
+       "range": -30
+      }
+     }
+    ]
+   },
+   "trackOnly": true
+  },
+  {
+   "name": "Podcast Voice - Host",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.noise_reducer",
+      "params": {
+       "reduction": 10,
+       "strength": 2,
+       "learn": 2,
+       "smoothing": 50
+      }
+     },
+     {
+      "effect": "altaudio.speech_leveler",
+      "params": {
+       "target": -19.2,
+       "amount": 50,
+       "range": 45,
+       "boost_low": 1,
+       "comp_on": 0,
+       "comp_thr": -1,
+       "gate_on": 0,
+       "gate_off": 15,
+       "max_gain": 8,
+       "max_cut": 8,
+       "speed": 2000,
+       "floor": -50
+      }
+     },
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 80,
+       "hp_slope": 1,
+       "ls_freq": 110,
+       "ls_gain": 6,
+       "b1_freq": 291,
+       "b1_gain": -3,
+       "b1_q": 1.5,
+       "hs_freq": 17458,
+       "hs_gain": 13.9
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -6,
+       "input_boost": 3,
+       "lookahead": 7,
+       "release": 100
+      }
+     },
+     {
+      "effect": "altaudio.breath_gate",
+      "params": {
+       "threshold": -14,
+       "attack": 2,
+       "hold": 50,
+       "release": 200,
+       "range": -30
+      }
+     }
+    ]
+   },
+   "trackOnly": true
+  },
+  {
+   "name": "Podcast Voice - Co-Host",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.noise_reducer",
+      "params": {
+       "reduction": 10,
+       "strength": 2,
+       "learn": 2,
+       "smoothing": 50
+      }
+     },
+     {
+      "effect": "altaudio.speech_leveler",
+      "params": {
+       "target": -19.2,
+       "amount": 50,
+       "range": 45,
+       "boost_low": 1,
+       "comp_on": 0,
+       "comp_thr": -1,
+       "gate_on": 0,
+       "gate_off": 15,
+       "max_gain": 8,
+       "max_cut": 8,
+       "speed": 2000,
+       "floor": -50
+      }
+     },
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 80,
+       "hp_slope": 1,
+       "ls_freq": 110,
+       "ls_gain": 6,
+       "b1_freq": 291,
+       "b1_gain": -3,
+       "b1_q": 1.5,
+       "hs_freq": 17458,
+       "hs_gain": 13.9
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -6,
+       "input_boost": 3,
+       "lookahead": 7,
+       "release": 100
+      }
+     },
+     {
+      "effect": "altaudio.breath_gate",
+      "params": {
+       "threshold": -20,
+       "attack": 2,
+       "hold": 50,
+       "release": 200,
+       "range": -30
+      }
+     }
+    ]
+   },
+   "trackOnly": true
+  },
+  {
+   "name": "Podcast Voice - Rumble Cut",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.precision_filter",
+      "params": {
+       "design": 0,
+       "mode": 1,
+       "order": 3,
+       "freq": 100
+      }
+     },
+     {
+      "effect": "altaudio.noise_reducer",
+      "params": {
+       "reduction": 10,
+       "strength": 2,
+       "learn": 2,
+       "smoothing": 50
+      }
+     },
+     {
+      "effect": "altaudio.speech_leveler",
+      "params": {
+       "target": -20,
+       "max_gain": 8,
+       "max_cut": 8,
+       "speed": 2000,
+       "floor": -50
+      }
+     },
+     {
+      "effect": "altaudio.dynamics",
+      "params": {
+       "threshold": -22,
+       "ratio": 3,
+       "attack": 8,
+       "release": 160,
+       "knee": 6,
+       "makeup": 4
+      }
+     },
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 80,
+       "hp_slope": 1,
+       "b1_freq": 300,
+       "b1_gain": -2,
+       "b1_q": 1.2,
+       "b3_freq": 4000,
+       "b3_gain": 2,
+       "b3_q": 0.9
+      }
+     },
+     {
+      "effect": "altaudio.deesser",
+      "params": {
+       "freq": 6500,
+       "threshold": -32,
+       "reduction": 6
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -6,
+       "lookahead": 5,
+       "release": 100
+      }
+     }
+    ]
+   },
+   "trackOnly": true
+  },
+  {
+   "name": "Podcast Voice - Quick Level",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.speech_leveler",
+      "params": {
+       "target": -20,
+       "max_gain": 8,
+       "max_cut": 8,
+       "speed": 2000,
+       "floor": -50
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -6,
+       "lookahead": 5,
+       "release": 100
+      }
+     }
+    ]
+   },
+   "trackOnly": true
+  },
+  {
+   "name": "Podcast Voice 3",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.dynamics",
+      "params": {
+       "threshold": -20,
+       "ratio": 2.5,
+       "attack": 8,
+       "release": 160,
+       "knee": 6,
+       "makeup": 3
+      }
+     },
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 80,
+       "hp_slope": 1,
+       "b1_freq": 300,
+       "b1_gain": -2,
+       "b1_q": 1.2,
+       "b3_freq": 4000,
+       "b3_gain": 2,
+       "b3_q": 0.9
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -6,
+       "lookahead": 5,
+       "release": 100
+      }
+     }
+    ]
+   },
+   "trackOnly": true
+  },
+  {
+   "name": "Podcast Voice 3 -3 dB",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.dynamics",
+      "params": {
+       "threshold": -20,
+       "ratio": 2.5,
+       "attack": 8,
+       "release": 160,
+       "knee": 6,
+       "makeup": 3
+      }
+     },
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 80,
+       "hp_slope": 1,
+       "b1_freq": 300,
+       "b1_gain": -2,
+       "b1_q": 1.2,
+       "b3_freq": 4000,
+       "b3_gain": 2,
+       "b3_q": 0.9
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -3,
+       "lookahead": 5,
+       "release": 100
+      }
+     }
+    ]
+   },
+   "trackOnly": true
+  },
+  {
+   "name": "Podcast Voice 4 -3 dB",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.noise_reducer",
+      "params": {
+       "reduction": 10,
+       "strength": 2,
+       "learn": 2,
+       "smoothing": 50
+      }
+     },
+     {
+      "effect": "altaudio.speech_leveler",
+      "params": {
+       "target": -20,
+       "max_gain": 8,
+       "max_cut": 8,
+       "speed": 2000,
+       "floor": -50
+      }
+     },
+     {
+      "effect": "altaudio.dynamics",
+      "params": {
+       "threshold": -26,
+       "ratio": 3.5,
+       "attack": 8,
+       "release": 160,
+       "knee": 6,
+       "makeup": 6
+      }
+     },
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 80,
+       "hp_slope": 1,
+       "b1_freq": 300,
+       "b1_gain": -2,
+       "b1_q": 1.2,
+       "b3_freq": 4000,
+       "b3_gain": 2,
+       "b3_q": 0.9
+      }
+     },
+     {
+      "effect": "altaudio.deesser",
+      "params": {
+       "freq": 6000,
+       "threshold": -32,
+       "reduction": 6
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -3,
+       "lookahead": 5,
+       "release": 100
+      }
+     }
+    ]
+   },
+   "trackOnly": true
+  },
+  {
+   "name": "Godlike",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.noise_reducer",
+      "params": {
+       "reduction": 10,
+       "strength": 2,
+       "learn": 2,
+       "smoothing": 50
+      }
+     },
+     {
+      "effect": "altaudio.speech_leveler",
+      "params": {
+       "target": -20,
+       "max_gain": 8,
+       "max_cut": 8,
+       "speed": 2000,
+       "floor": -50
+      }
+     },
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 60,
+       "hp_slope": 1,
+       "ls_freq": 140,
+       "ls_gain": 5,
+       "b2_freq": 2500,
+       "b2_gain": 2,
+       "b2_q": 0.9
+      }
+     },
+     {
+      "effect": "altaudio.dynamics",
+      "params": {
+       "threshold": -24,
+       "ratio": 3,
+       "attack": 8,
+       "release": 160,
+       "knee": 6,
+       "makeup": 5
+      }
+     },
+     {
+      "effect": "altaudio.pitch_shift",
+      "params": {
+       "semitones": -3,
+       "cents": 0
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -3,
+       "lookahead": 5,
+       "release": 100
+      }
+     }
+    ]
+   },
+   "trackOnly": true
+  },
+  {
+   "name": "Demonic",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.noise_reducer",
+      "params": {
+       "reduction": 10,
+       "strength": 2,
+       "learn": 2,
+       "smoothing": 50
+      }
+     },
+     {
+      "effect": "altaudio.speech_leveler",
+      "params": {
+       "target": -20,
+       "max_gain": 8,
+       "max_cut": 8,
+       "speed": 2000,
+       "floor": -50
+      }
+     },
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 70,
+       "hp_slope": 1,
+       "ls_freq": 120,
+       "ls_gain": 6,
+       "b2_freq": 1200,
+       "b2_gain": -3,
+       "b2_q": 1,
+       "hs_freq": 6000,
+       "hs_gain": -3
+      }
+     },
+     {
+      "effect": "altaudio.dynamics",
+      "params": {
+       "threshold": -26,
+       "ratio": 4,
+       "attack": 8,
+       "release": 160,
+       "knee": 6,
+       "makeup": 6
+      }
+     },
+     {
+      "effect": "altaudio.pitch_shift",
+      "params": {
+       "semitones": -8,
+       "cents": 0
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -3,
+       "lookahead": 5,
+       "release": 100
+      }
+     }
+    ]
+   },
+   "trackOnly": true
+  },
+  {
+   "name": "Evil Voice",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.noise_reducer",
+      "params": {
+       "reduction": 10,
+       "strength": 2,
+       "learn": 2,
+       "smoothing": 50
+      }
+     },
+     {
+      "effect": "altaudio.speech_leveler",
+      "params": {
+       "target": -20,
+       "max_gain": 8,
+       "max_cut": 8,
+       "speed": 2000,
+       "floor": -50
+      }
+     },
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 70,
+       "hp_slope": 1,
+       "ls_freq": 150,
+       "ls_gain": 4,
+       "b3_freq": 3200,
+       "b3_gain": 3,
+       "b3_q": 1.2
+      }
+     },
+     {
+      "effect": "altaudio.dynamics",
+      "params": {
+       "threshold": -26,
+       "ratio": 4,
+       "attack": 8,
+       "release": 160,
+       "knee": 6,
+       "makeup": 6
+      }
+     },
+     {
+      "effect": "altaudio.pitch_shift",
+      "params": {
+       "semitones": -5,
+       "cents": 0
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -3,
+       "lookahead": 5,
+       "release": 100
+      }
+     }
+    ]
+   },
+   "trackOnly": true
+  },
+  {
+   "name": "Ethereal",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.noise_reducer",
+      "params": {
+       "reduction": 10,
+       "strength": 2,
+       "learn": 2,
+       "smoothing": 50
+      }
+     },
+     {
+      "effect": "altaudio.speech_leveler",
+      "params": {
+       "target": -20,
+       "max_gain": 8,
+       "max_cut": 8,
+       "speed": 2000,
+       "floor": -50
+      }
+     },
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 120,
+       "hp_slope": 1,
+       "b2_freq": 400,
+       "b2_gain": -2,
+       "b2_q": 1,
+       "hs_freq": 9000,
+       "hs_gain": 4
+      }
+     },
+     {
+      "effect": "altaudio.pitch_shift",
+      "params": {
+       "semitones": 2,
+       "cents": 0
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -3,
+       "lookahead": 5,
+       "release": 100
+      }
+     }
+    ]
+   },
+   "trackOnly": true
+  },
+  {
+   "name": "Angelic",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.noise_reducer",
+      "params": {
+       "reduction": 10,
+       "strength": 2,
+       "learn": 2,
+       "smoothing": 50
+      }
+     },
+     {
+      "effect": "altaudio.speech_leveler",
+      "params": {
+       "target": -20,
+       "max_gain": 8,
+       "max_cut": 8,
+       "speed": 2000,
+       "floor": -50
+      }
+     },
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 100,
+       "hp_slope": 1,
+       "b3_freq": 4500,
+       "b3_gain": 3,
+       "b3_q": 0.9,
+       "hs_freq": 10000,
+       "hs_gain": 3
+      }
+     },
+     {
+      "effect": "altaudio.pitch_shift",
+      "params": {
+       "semitones": 3,
+       "cents": 0
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -3,
+       "lookahead": 5,
+       "release": 100
+      }
+     }
+    ]
+   },
+   "trackOnly": true
+  },
+  {
+   "name": "Voice Leveler and Noise Gate",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.speech_leveler",
+      "params": {
+       "target": -20,
+       "max_gain": 8,
+       "max_cut": 8,
+       "speed": 2000,
+       "floor": -50
+      }
+     },
+     {
+      "effect": "altaudio.breath_gate",
+      "params": {
+       "threshold": -40,
+       "attack": 2,
+       "hold": 50,
+       "release": 200,
+       "range": -30
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Clean Up and Level Voice Over",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.noise_reducer",
+      "params": {
+       "reduction": 8,
+       "strength": 2,
+       "learn": 2,
+       "smoothing": 50
+      }
+     },
+     {
+      "effect": "altaudio.click_repair",
+      "params": {
+       "sensitivity": 40,
+       "width": 1
+      }
+     },
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 70,
+       "hp_slope": 1
+      }
+     },
+     {
+      "effect": "altaudio.speech_leveler",
+      "params": {
+       "target": -20,
+       "max_gain": 8,
+       "max_cut": 8,
+       "speed": 2000,
+       "floor": -50
+      }
+     },
+     {
+      "effect": "altaudio.deesser",
+      "params": {
+       "freq": 6500,
+       "threshold": -30,
+       "reduction": 6
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -3,
+       "lookahead": 5,
+       "release": 100
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Radio Announcer Voice",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.dynamics",
+      "params": {
+       "threshold": -28,
+       "ratio": 6,
+       "attack": 8,
+       "release": 160,
+       "knee": 6,
+       "makeup": 9
+      }
+     },
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 60,
+       "ls_freq": 120,
+       "ls_gain": 4,
+       "b2_freq": 500,
+       "b2_gain": -2,
+       "b3_freq": 3500,
+       "b3_gain": 3,
+       "hs_freq": 10000,
+       "hs_gain": 2
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -1,
+       "lookahead": 5,
+       "release": 100
+      }
+     }
+    ]
+   },
+   "trackOnly": true
+  },
+  {
+   "name": "Voice Over",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 70,
+       "hp_slope": 1
+      }
+     },
+     {
+      "effect": "altaudio.dynamics",
+      "params": {
+       "threshold": -20,
+       "ratio": 2.5,
+       "attack": 8,
+       "release": 160,
+       "knee": 6,
+       "makeup": 3
+      }
+     },
+     {
+      "effect": "altaudio.deesser",
+      "params": {
+       "freq": 6500,
+       "threshold": -30,
+       "reduction": 6
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -3,
+       "lookahead": 5,
+       "release": 100
+      }
+     }
+    ]
+   },
+   "trackOnly": true
+  },
+  {
+   "name": "DeEss and Limit Male Voice Over",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.deesser",
+      "params": {
+       "freq": 5500,
+       "threshold": -30,
+       "reduction": 8
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -3,
+       "lookahead": 5,
+       "release": 100
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "DeEss and Limit Female Voice Over",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.deesser",
+      "params": {
+       "freq": 7500,
+       "threshold": -30,
+       "reduction": 8
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -3,
+       "lookahead": 5,
+       "release": 100
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Remote Guest Cleanup",
+   "group": "Voice chains",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.noise_reducer",
+      "params": {
+       "reduction": 18,
+       "strength": 2,
+       "learn": 2,
+       "smoothing": 50
+      }
+     },
+     {
+      "effect": "altaudio.room_reducer",
+      "params": {
+       "amount": 50,
+       "decay": 0.6,
+       "reduction": 12
+      }
+     },
+     {
+      "effect": "altaudio.speech_leveler",
+      "params": {
+       "target": -20,
+       "max_gain": 8,
+       "max_cut": 8,
+       "speed": 2000,
+       "floor": -50
+      }
+     },
+     {
+      "effect": "altaudio.dynamics",
+      "params": {
+       "threshold": -24,
+       "ratio": 4,
+       "attack": 8,
+       "release": 160,
+       "knee": 6,
+       "makeup": 6
+      }
+     },
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 120,
+       "hp_slope": 2,
+       "b3_freq": 3000,
+       "b3_gain": 2
+      }
+     },
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -6,
+       "lookahead": 5,
+       "release": 100
+      }
+     },
+     {
+      "effect": "altaudio.breath_gate",
+      "params": {
+       "threshold": -30,
+       "attack": 2,
+       "hold": 50,
+       "release": 200,
+       "range": -30
+      }
+     }
+    ]
+   },
+   "trackOnly": true
+  },
+  {
+   "name": "Breath Gate",
+   "group": "Breath gates",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.breath_gate",
+      "params": {
+       "threshold": -40,
+       "attack": 2,
+       "hold": 50,
+       "release": 200,
+       "range": -30
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Breath Gate - Low",
+   "group": "Breath gates",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.breath_gate",
+      "params": {
+       "threshold": -14,
+       "attack": 2,
+       "hold": 50,
+       "release": 200,
+       "range": -30
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Breath Gate - Medium",
+   "group": "Breath gates",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.breath_gate",
+      "params": {
+       "threshold": -20,
+       "attack": 2,
+       "hold": 50,
+       "release": 200,
+       "range": -30
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Hard Limit to -0.1 dB",
+   "group": "Processing",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.limiter",
+      "params": {
+       "ceiling": -0.1,
+       "input_boost": 0,
+       "lookahead": 5,
+       "release": 100
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Voice-Over Compressor",
+   "group": "Processing",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.dynamics",
+      "params": {
+       "threshold": -24,
+       "ratio": 4,
+       "attack": 5,
+       "release": 120,
+       "knee": 6,
+       "makeup": 6
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "De-Ess Voice",
+   "group": "Processing",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.deesser",
+      "params": {
+       "freq": 6500,
+       "threshold": -30,
+       "reduction": 8
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Raise Pitch",
+   "group": "Processing",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.pitch_shift",
+      "params": {
+       "semitones": 2,
+       "cents": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Lower Pitch",
+   "group": "Processing",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.pitch_shift",
+      "params": {
+       "semitones": -2,
+       "cents": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Slapback Echo",
+   "group": "Delay",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.echo",
+      "params": {
+       "time": 110,
+       "feedback": 8,
+       "tone": 5000,
+       "wet": 28,
+       "pingpong": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Podcast Room Echo",
+   "group": "Delay",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.echo",
+      "params": {
+       "time": 240,
+       "feedback": 25,
+       "tone": 4500,
+       "wet": 18,
+       "pingpong": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Ping-Pong Echo",
+   "group": "Delay",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.echo",
+      "params": {
+       "time": 375,
+       "feedback": 40,
+       "tone": 6000,
+       "wet": 30,
+       "pingpong": 1
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Long Dark Echo",
+   "group": "Delay",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.echo",
+      "params": {
+       "time": 700,
+       "feedback": 55,
+       "tone": 2800,
+       "wet": 35,
+       "pingpong": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Remove Vocals",
+   "group": "Processing",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.center_remover",
+      "params": {
+       "amount": 100,
+       "keep_below": 150
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Remove Clicks",
+   "group": "Repair",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.click_repair",
+      "params": {
+       "sensitivity": 50,
+       "width": 1
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Repair Clipping",
+   "group": "Repair",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.clip_repair",
+      "params": {
+       "level": -0.5,
+       "longest": 3,
+       "output": -3
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Reduce Hiss",
+   "group": "Repair",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.hiss_reducer",
+      "params": {}
+     }
+    ]
+   }
+  },
+  {
+   "name": "Reduce Room Echo",
+   "group": "Repair",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.room_reducer",
+      "params": {}
+     }
+    ]
+   }
+  },
+  {
+   "name": "Fix DC Offset",
+   "group": "Repair",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.dc_offset",
+      "params": {}
+     }
+    ]
+   }
+  },
+  {
+   "name": "Hum Cut 60 Hz (US)",
+   "group": "EQ",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.hum_cut",
+      "params": {
+       "mains": 0,
+       "harmonics": 4,
+       "q": 25
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Hum Cut 50 Hz (Europe)",
+   "group": "EQ",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.hum_cut",
+      "params": {
+       "mains": 1,
+       "harmonics": 4,
+       "q": 25
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Rumble Cut",
+   "group": "EQ",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 60,
+       "hp_slope": 1
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Subsonic Cut",
+   "group": "EQ",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 25,
+       "hp_slope": 2
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Telephone - Receiver",
+   "group": "EQ",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 300,
+       "hp_slope": 2,
+       "lp_on": 1,
+       "lp_freq": 3400,
+       "lp_slope": 2,
+       "b2_freq": 1500,
+       "b2_gain": 3,
+       "b2_q": 0.8
+      }
+     }
+    ]
+   }
+  },
+  {
+   "name": "Telephone - Voice Mail",
+   "group": "EQ",
+   "chain": {
+    "enabled": true,
+    "input_gain_db": 0,
+    "output_gain_db": 0,
+    "mix": 1,
+    "slots": [
+     {
+      "effect": "altaudio.parametric_eq",
+      "params": {
+       "hp_on": 1,
+       "hp_freq": 400,
+       "hp_slope": 2,
+       "lp_on": 1,
+       "lp_freq": 3000,
+       "lp_slope": 2,
+       "b2_freq": 1800,
+       "b2_gain": 5,
+       "b2_q": 0.7
+      }
+     },
+     {
+      "effect": "altaudio.dynamics",
+      "params": {
+       "threshold": -24,
+       "ratio": 4,
+       "attack": 8,
+       "release": 160,
+       "knee": 6,
+       "makeup": 6
+      }
+     }
+    ]
+   }
+  }
+ ],
+ "info": {
+  "Podcast Voice": {
+   "category": "Podcast Voices",
+   "blurb": "All-round: noise, level, compress, EQ, de-ess, limit -6 dB"
+  },
+  "Podcast Voice - Host": {
+   "category": "Podcast Voices",
+   "blurb": "The host's chain: leveler, bright voice EQ, limit -6 dB, gate -14 dB"
+  },
+  "Podcast Voice - Co-Host": {
+   "category": "Podcast Voices",
+   "blurb": "The co-host's chain: same as Host, gate -20 dB"
+  },
+  "Podcast Voice - Guest": {
+   "category": "Podcast Voices",
+   "blurb": "Noisier rooms: heavier noise cut and squeeze, gate -45 dB"
+  },
+  "Podcast Voice - Rumble Cut": {
+   "category": "Podcast Voices",
+   "blurb": "Podcast Voice with a steep 100 Hz low cut first"
+  },
+  "Podcast Voice - Quick Level": {
+   "category": "Podcast Voices",
+   "blurb": "Leveler and limit -6 dB only, for clean audio"
+  },
+  "Podcast Voice 3": {
+   "category": "Podcast Voices",
+   "blurb": "Clean takes: light compress, EQ, limit -6 dB"
+  },
+  "Podcast Voice 3 -3 dB": {
+   "category": "Podcast Voices",
+   "blurb": "Same as Voice 3, limit -3 dB"
+  },
+  "Podcast Voice 4 -3 dB": {
+   "category": "Podcast Voices",
+   "blurb": "Uneven speakers: leveler, firmer squeeze, limit -3 dB"
+  },
+  "Godlike": {
+   "category": "Character Types",
+   "blurb": "Pitched down 3 st, big low end"
+  },
+  "Demonic": {
+   "category": "Character Types",
+   "blurb": "Pitched down 8 st, heavy"
+  },
+  "Evil Voice": {
+   "category": "Character Types",
+   "blurb": "Pitched down 5 st, dark"
+  },
+  "Ethereal": {
+   "category": "Character Types",
+   "blurb": "Pitched up 2 st, airy"
+  },
+  "Angelic": {
+   "category": "Character Types",
+   "blurb": "Pitched up 3 st, bright"
+  },
+  "Voice Leveler and Noise Gate": {
+   "category": "Cleanup",
+   "blurb": "Evens levels, gate -40 dB"
+  },
+  "Clean Up and Level Voice Over": {
+   "category": "Cleanup",
+   "blurb": "Noise cut, level, de-ess, limit -3 dB"
+  },
+  "Remote Guest Cleanup": {
+   "category": "Cleanup",
+   "blurb": "Calls and remote guests: strong noise and room cut"
+  },
+  "Radio Announcer Voice": {
+   "category": "Voice Over",
+   "blurb": "Hard compression, limit -1 dB, big and close"
+  },
+  "Voice Over": {
+   "category": "Voice Over",
+   "blurb": "Compress, de-ess, limit -3 dB"
+  },
+  "DeEss and Limit Male Voice Over": {
+   "category": "Voice Over",
+   "blurb": "De-ess at 5.5 kHz, limit -3 dB"
+  },
+  "DeEss and Limit Female Voice Over": {
+   "category": "Voice Over",
+   "blurb": "De-ess at 7.5 kHz, limit -3 dB"
+  },
+  "Breath Gate": {
+   "category": "Cleanup",
+   "blurb": "Gate -40 dB"
+  },
+  "Breath Gate - Low": {
+   "category": "Cleanup",
+   "blurb": "Gate -14 dB: close mic, strong voice"
+  },
+  "Breath Gate - Medium": {
+   "category": "Cleanup",
+   "blurb": "Gate -20 dB: normal mic distance"
+  }
+ },
+ "colors": {
+  "Filter and EQ": "#4f9fd8",
+  "Dynamics": "#d8964f",
+  "Amplitude": "#8bc06a",
+  "Restoration": "#b07ad8",
+  "Time and Pitch": "#d86f9b",
+  "Modulation": "#5fbfb0",
+  "Stereo Imagery": "#5f8fd8",
+  "Special": "#d8c14f",
+  "Delay and Reverb": "#9d7cf0",
+  "Vocal": "#ec6a92"
+ }
+}

@@ -610,6 +610,7 @@ export const MENUS: readonly Menu[] = [
       sep,
       item("help.update", "Check for Updates..."),
       item("help.github", "Altered Audio Editor Github"),
+      item("help.discussions", "Ask a Question or Share an Idea..."),
       item("help.report", "Report a Problem..."),
       item("help.bug-info", "Copy Bug Report Details"),
       sep,

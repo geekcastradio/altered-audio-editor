@@ -3,7 +3,7 @@
 // This file is part of Altered Audio Editor.
 
 import { describe, expect, it } from "vitest";
-import { plainNotes, updateDue, WEEK_MS } from "./update";
+import { highlights, plainNotes, updateDue, WEEK_MS } from "./update";
 
 describe("updateDue", () => {
   it("never runs while the setting is off", () => {
@@ -34,5 +34,23 @@ describe("plainNotes", () => {
   it("turns Markdown release notes into plain text", () => {
     const md = "# Altered Audio Editor 0.7.0\n\n## Added\n- **Duck Music.** Turns the music `down`.\n- See [the guide](https://x.y/z).\n\n\n\n## Fixed\n";
     expect(plainNotes(md)).toBe("Altered Audio Editor 0.7.0\n\nAdded\n\u2022 Duck Music. Turns the music down.\n\u2022 See the guide.\n\nFixed");
+  });
+});
+
+describe("highlights", () => {
+  it("takes bullets first, capped", () => {
+    const md = "## New\n\nIntro line\n- One\n- **Two** here\n- Three\n- Four\n- Five";
+    expect(highlights(md)).toEqual(["One", "Two here", "Three", "Four"]);
+  });
+  it("falls back to plain lines and cuts long ones at a word", () => {
+    expect(highlights("First\nSecond", 1)).toEqual(["First"]);
+    const long = `${"word ".repeat(30)}end`;
+    const out = highlights(`- ${long}`)[0]!;
+    expect(out.length).toBeLessThanOrEqual(90);
+    expect(out.endsWith("…")).toBe(true);
+  });
+  it("is empty without notes", () => {
+    expect(highlights(null)).toEqual([]);
+    expect(highlights("")).toEqual([]);
   });
 });

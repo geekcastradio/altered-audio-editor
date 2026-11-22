@@ -46,3 +46,23 @@ export function plainNotes(md: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
+
+/**
+ * The first few changes from the release notes, one line each, for the update card.
+ * Bullets win; with none, the first plain lines are used. Long lines are cut at a word.
+ */
+export function highlights(md: string | null, max = 4, width = 90): string[] {
+  if (!md) return [];
+  const lines = plainNotes(md)
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l !== "");
+  const bullets = lines.filter((l) => l.startsWith("•")).map((l) => l.replace(/^•\s*/, ""));
+  const pool = bullets.length > 0 ? bullets : lines;
+  return pool.slice(0, max).map((l) => {
+    if (l.length <= width) return l;
+    const cut = l.slice(0, width - 1);
+    const sp = cut.lastIndexOf(" ");
+    return `${(sp > width / 2 ? cut.slice(0, sp) : cut).trimEnd()}…`;
+  });
+}

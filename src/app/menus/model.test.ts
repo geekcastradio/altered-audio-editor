@@ -101,6 +101,7 @@ describe("menu model", () => {
       "help.discord",
       "help.update",
       "help.github",
+      "help.discussions",
       "help.report",
       "help.bug-info",
       "help.about",

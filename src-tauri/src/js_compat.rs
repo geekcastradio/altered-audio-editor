@@ -130,6 +130,21 @@ pub fn js_string_to_number(text: &str) -> Option<f64> {
     t.parse::<f64>().ok()
 }
 
+/// JavaScript's `text.slice(0, units)`: the first `units` UTF-16 units, but never
+/// cutting a character in two (a character that would not fit whole is left out).
+pub fn js_slice_units(text: &str, units: usize) -> String {
+    let mut used = 0;
+    let mut out = String::new();
+    for c in text.chars() {
+        used += c.len_utf16();
+        if used > units {
+            break;
+        }
+        out.push(c);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

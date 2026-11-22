@@ -52,7 +52,7 @@
   import WelcomeDialog from "./WelcomeDialog.svelte";
   import { WELCOME_REV, welcomePlan, type WelcomePlan } from "./welcome";
   import UpdateDialog from "./UpdateDialog.svelte";
-  import { updateCheck, updateDue, updateInstall, type UpdateInfo } from "./update";
+  import { highlights, updateCheck, updateDue, updateInstall, type UpdateInfo } from "./update";
   import HistoryPanel from "../panels/history/HistoryPanel.svelte";
   import VideoPanel from "../panels/video/VideoPanel.svelte";
   import TakesPanel from "../panels/takes/TakesPanel.svelte";
@@ -344,6 +344,8 @@
   let freeText = $state<string | null>(null);
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
   let centerNotice = $state<string | null>(null);
+  /** A file or folder the finished notice can show in the system file manager. */
+  let centerReveal = $state<string | null>(null);
   let centerTimer: ReturnType<typeof setTimeout> | undefined;
 
   let errorTimer: ReturnType<typeof setTimeout> | undefined;
@@ -382,10 +384,11 @@
    * (export finished or stopped, a session upgraded). It does not block work: click
    * it to close it, or it clears itself.
    */
-  function showCenterNotice(text: string) {
+  function showCenterNotice(text: string, reveal?: string) {
     centerNotice = text;
+    centerReveal = reveal && settings.current.revealAfterExport ? reveal : null;
     clearTimeout(centerTimer);
-    centerTimer = setTimeout(() => (centerNotice = null), 12000);
+    centerTimer = setTimeout(() => (centerNotice = null), centerReveal ? 20000 : 12000);
   }
 
   /** Replaces any zips with the audio extracted from them (into a folder beside each zip). */
@@ -1639,7 +1642,7 @@
           return;
         }
       }
-      showCenterNotice(`Exported ${items.length} ${items.length === 1 ? "file" : "files"} as ${describeFormat(format, { sampleRate: doc.sample_rate, channels: 2, bitDepth: doc.bit_depth })}.`);
+      showCenterNotice(`Exported ${items.length} ${items.length === 1 ? "file" : "files"} as ${describeFormat(format, { sampleRate: doc.sample_rate, channels: 2, bitDepth: doc.bit_depth })}.`, paths[paths.length - 1]);
     } finally {
       exporting = null;
     }
@@ -1949,7 +1952,7 @@
         await placeFiles([path], null, what.start);
         showCenterNotice(`Bounced to ${name} on a new track.${clipped}`);
       } else {
-        showCenterNotice(pack ? `Exported ${name}.${chapterNote}${levelNote}${checkNote}${packNote}${clipped}` : `Exported ${name}.${chapterNote}${levelNote}${checkNote}${clipped}`);
+        showCenterNotice(pack ? `Exported ${name}.${chapterNote}${levelNote}${checkNote}${packNote}${clipped}` : `Exported ${name}.${chapterNote}${levelNote}${checkNote}${clipped}`, path);
       }
     } catch (e) {
       showError(e);
@@ -1982,6 +1985,7 @@
     let off: (() => void) | null = null;
     let done = 0;
     try {
+      let lastStem: string | undefined;
       for (const [i, t] of tracks.entries()) {
         exporting = { title: `Exporting stem ${i + 1} of ${tracks.length}: ${t.name}`, progress: 0, floating: true };
         off?.();
@@ -1995,8 +1999,9 @@
           return;
         }
         done++;
+        lastStem = path;
       }
-      showCenterNotice(`Exported ${done} ${done === 1 ? "stem" : "stems"} to ${folder}.`);
+      showCenterNotice(`Exported ${done} ${done === 1 ? "stem" : "stems"} to ${folder}.`, lastStem);
     } catch (e) {
       showError(e);
     } finally {
@@ -4860,6 +4865,7 @@
       actions.register({ id: "help.discord", run: () => openLink(LINKS.discord) }),
       actions.register({ id: "help.update", run: () => void checkUpdate(true) }),
       actions.register({ id: "help.github", run: () => openLink(LINKS.github) }),
+      actions.register({ id: "help.discussions", run: () => openLink(LINKS.discussions) }),
       actions.register({ id: "help.report", run: () => openLink(reportUrl(info?.version ?? null, navigator.userAgent)) }),
       actions.register({
         id: "help.bug-info",
@@ -7024,10 +7030,15 @@
 
   {#if centerNotice}
     <div class="center-notice" role="status" aria-live="polite">
-      <button type="button" onclick={() => (centerNotice = null)}>
-        <span class="msg">{centerNotice}</span>
-        <span class="hint">Click to close</span>
-      </button>
+      <div class="card">
+        <button type="button" class="body-btn" onclick={() => (centerNotice = null)}>
+          <span class="msg">{centerNotice}</span>
+          <span class="hint">Click to close</span>
+        </button>
+        {#if centerReveal}
+          <button type="button" class="reveal" onclick={() => { const p = centerReveal; centerNotice = null; if (p) revealMedia(p).catch((e: unknown) => showError(e)); }}>{revealLabel()}</button>
+        {/if}
+      </div>
     </div>
   {/if}
   <footer class="status">
@@ -7437,9 +7448,24 @@
 
 {#if updateToast && updateInfo && !updateOpen}
   <div class="update-toast" role="status">
-    <span>Version {updateInfo.version} is available.</span>
-    <button type="button" onclick={() => { updateToast = false; updateOpen = true; }}>See what's new</button>
-    <button type="button" aria-label="Dismiss" onclick={() => (updateToast = false)}>Later</button>
+    <div class="ut-head">
+      <strong>Version {updateInfo.version} is available</strong>
+      <span class="ut-from">You have {updateInfo.current}</span>
+    </div>
+    {#if highlights(updateInfo.notes).length > 0}
+      <ul class="ut-list" aria-label="What's new">
+        {#each highlights(updateInfo.notes) as line, i (i)}<li>{line}</li>{/each}
+      </ul>
+    {/if}
+    <div class="ut-actions">
+      <button type="button" onclick={() => (updateToast = false)}>Later</button>
+      <button type="button" onclick={() => { updateToast = false; updateOpen = true; }}>All changes</button>
+      {#if updateInfo.canInstall}
+        <button type="button" class="ut-go" disabled={updateBusy} onclick={() => { updateToast = false; void installUpdate(); }}>Install and Restart</button>
+      {:else}
+        <button type="button" class="ut-go" onclick={() => { updateToast = false; openLink(LINKS.releases); }}>Download</button>
+      {/if}
+    </div>
   </div>
 {/if}
 
@@ -7481,24 +7507,72 @@
     left: 50%;
     transform: translate(-50%, -50%);
     z-index: 5500;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 16px 22px;
-    border: 1px solid var(--border-strong);
+    display: grid;
+    gap: 10px;
+    width: min(440px, calc(100vw - 32px));
+    padding: 16px 20px 14px;
+    border: 1px solid var(--accent);
+    border-left-width: 5px;
     border-radius: 4px;
     background: var(--surface-2);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    box-shadow:
+      0 0 0 1px rgba(0, 0, 0, 0.4),
+      0 12px 32px rgba(0, 0, 0, 0.6);
     color: var(--text);
     font-size: 14px;
+    animation: update-in 0.18s ease-out;
+  }
+  @keyframes update-in {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -46%);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .update-toast {
+      animation: none;
+    }
+  }
+  .ut-head {
+    display: grid;
+    gap: 2px;
+  }
+  .ut-head strong {
+    font-size: 16px;
+  }
+  .ut-from {
+    color: var(--text-dim);
+    font-size: var(--font-size-small);
+  }
+  .ut-list {
+    margin: 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 3px;
+    line-height: 1.4;
+  }
+  .ut-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
   }
   .update-toast button {
     border: 1px solid var(--border-strong);
     border-radius: 3px;
     background: var(--surface-3);
     color: var(--text);
-    padding: 3px 10px;
+    padding: 4px 12px;
     cursor: pointer;
+  }
+  .update-toast .ut-go {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--accent-text, #fff);
+    font-weight: 600;
+  }
+  .update-toast button:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
   .countdown {
     position: fixed;
@@ -7575,19 +7649,36 @@
     pointer-events: none;
     z-index: 900;
   }
-  .center-notice button {
+  .center-notice .card {
     pointer-events: auto;
+    display: grid;
+    gap: 8px;
     max-width: min(520px, 80vw);
     padding: 16px 22px;
+    background: var(--header-b);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+  }
+  .center-notice .body-btn {
+    padding: 0;
     text-align: left;
     font: inherit;
     font-size: 14px;
     line-height: 1.45;
     color: var(--text);
-    background: var(--header-b);
-    border: 1px solid var(--accent);
-    border-radius: 8px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+  .center-notice .reveal {
+    justify-self: start;
+    padding: 4px 12px;
+    font: inherit;
+    color: var(--text);
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
     cursor: pointer;
   }
   .center-notice .msg {

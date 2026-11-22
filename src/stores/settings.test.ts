@@ -94,3 +94,11 @@ describe("buffer size setting", () => {
     expect(sanitizeSettings({ bufferFrames: "256" }).bufferFrames).toBe(0);
   });
 });
+
+describe("reveal after export setting", () => {
+  it("is on by default and only takes true or false", () => {
+    expect(DEFAULT_SETTINGS.revealAfterExport).toBe(true);
+    expect(sanitizeSettings({ revealAfterExport: false }).revealAfterExport).toBe(false);
+    expect(sanitizeSettings({ revealAfterExport: "no" }).revealAfterExport).toBe(true);
+  });
+});
