@@ -14,6 +14,7 @@ pub mod backup;
 pub mod bleed_copy;
 pub mod bleed_notice;
 pub mod browse;
+pub mod bug_info;
 pub mod bug_report_link;
 pub mod chain;
 pub mod clip_gain;
@@ -43,6 +44,7 @@ pub mod otio_import;
 pub mod output_format;
 pub mod paths;
 pub mod peaks;
+pub mod pitch_edit;
 pub mod playlist;
 pub mod plugins;
 pub mod recording;
@@ -61,6 +63,7 @@ pub mod timeline;
 pub mod track_names;
 pub mod typeahead;
 pub mod visibility;
+pub mod welcome;
 
 /// Starts the desktop app.
 pub fn run() {

@@ -2062,3 +2062,7 @@ The pure parts of `src/app/loudness.ts` (the broadcast regions, the region a tim
 ## 2026-11-22: Output format rules in Rust (fourth batch)
 
 The pure parts of `src/app/output-format.ts` (which bit depths a format offers, the format a file name suggests, reading saved settings back, the lines that say what a file will be, the size estimate and the per-format memory) have a Rust copy in `src-tauri/src/output_format.rs`. Both read `shared-fixtures/output-format.json`. Menu labels, help text, the sample-type presets and the dither patch helpers stay in TypeScript. The TypeScript copy stays in use until the interface moves to Rust.
+
+## 2026-11-22: Pitch edit choices, welcome plan and bug report text in Rust (fifth batch)
+
+The pure parts of `src/app/pitch-edit.ts` (reading saved choices back, the edit they make, the no-change test and the report sentence), `welcomePlan` in `src/app/welcome.ts` (what to show on a fresh install or after an upgrade) and `src/app/bug-info.ts` (scrubbing user names from paths, keeping the last 20 errors and building the copyable text) have a Rust copy in `src-tauri/src/pitch_edit.rs`, `welcome.rs` and `bug_info.rs`. All read `shared-fixtures/app-rules.json`. The scrub is written by hand, with no regex crate, to match the case-blind Windows form and the Linux and macOS forms exactly. The welcome page text, the error capture hooks and the clock stay in TypeScript. The TypeScript copies stay in use until the interface moves to Rust.
