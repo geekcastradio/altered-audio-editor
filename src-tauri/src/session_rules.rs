@@ -262,3 +262,33 @@ pub const HOST_PROFILES: [HostProfile; 3] = [
 pub fn profile_by_id(id: Option<&str>) -> Option<&'static HostProfile> {
     HOST_PROFILES.iter().find(|p| Some(p.id) == id)
 }
+
+/// The name for a session inserted as one clip: the file name without its
+/// last extension, plus " Mix" (from `mixName` in `src/app/insert-session.ts`).
+pub fn mix_name(path: &str) -> String {
+    let file = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    let stem = match file.rfind('.') {
+        Some(at) if at + 1 < file.len() => &file[..at],
+        _ => file,
+    };
+    format!("{} Mix", if stem.is_empty() { "Session" } else { stem })
+}
+
+/// The notice after a session is inserted as one clip (`insertNotice`).
+pub fn insert_notice(name: &str, missing: f64, peak: f64) -> String {
+    use crate::js_compat::js_number_to_string;
+    let mut parts = vec![format!(
+        "Inserted \"{name}\" as one clip. It is a copy of the session as it was saved; insert it again to pick up later changes."
+    )];
+    if missing > 0.0 {
+        parts.push(format!(
+            "{} audio file{} it uses could not be found, so that sound is missing.",
+            js_number_to_string(missing),
+            if missing == 1.0 { "" } else { "s" }
+        ));
+    }
+    if peak > 1.0 {
+        parts.push("The mix goes above 0 dBFS; it is saved as float, so nothing is lost, but turn the clip down before export.".to_string());
+    }
+    parts.join(" ")
+}
