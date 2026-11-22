@@ -344,6 +344,8 @@
   let freeText = $state<string | null>(null);
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
   let centerNotice = $state<string | null>(null);
+  /** A file or folder the finished notice can show in the system file manager. */
+  let centerReveal = $state<string | null>(null);
   let centerTimer: ReturnType<typeof setTimeout> | undefined;
 
   let errorTimer: ReturnType<typeof setTimeout> | undefined;
@@ -382,10 +384,11 @@
    * (export finished or stopped, a session upgraded). It does not block work: click
    * it to close it, or it clears itself.
    */
-  function showCenterNotice(text: string) {
+  function showCenterNotice(text: string, reveal?: string) {
     centerNotice = text;
+    centerReveal = reveal && settings.current.revealAfterExport ? reveal : null;
     clearTimeout(centerTimer);
-    centerTimer = setTimeout(() => (centerNotice = null), 12000);
+    centerTimer = setTimeout(() => (centerNotice = null), centerReveal ? 20000 : 12000);
   }
 
   /** Replaces any zips with the audio extracted from them (into a folder beside each zip). */
@@ -1639,7 +1642,7 @@
           return;
         }
       }
-      showCenterNotice(`Exported ${items.length} ${items.length === 1 ? "file" : "files"} as ${describeFormat(format, { sampleRate: doc.sample_rate, channels: 2, bitDepth: doc.bit_depth })}.`);
+      showCenterNotice(`Exported ${items.length} ${items.length === 1 ? "file" : "files"} as ${describeFormat(format, { sampleRate: doc.sample_rate, channels: 2, bitDepth: doc.bit_depth })}.`, paths[paths.length - 1]);
     } finally {
       exporting = null;
     }
@@ -1949,7 +1952,7 @@
         await placeFiles([path], null, what.start);
         showCenterNotice(`Bounced to ${name} on a new track.${clipped}`);
       } else {
-        showCenterNotice(pack ? `Exported ${name}.${chapterNote}${levelNote}${checkNote}${packNote}${clipped}` : `Exported ${name}.${chapterNote}${levelNote}${checkNote}${clipped}`);
+        showCenterNotice(pack ? `Exported ${name}.${chapterNote}${levelNote}${checkNote}${packNote}${clipped}` : `Exported ${name}.${chapterNote}${levelNote}${checkNote}${clipped}`, path);
       }
     } catch (e) {
       showError(e);
@@ -1982,6 +1985,7 @@
     let off: (() => void) | null = null;
     let done = 0;
     try {
+      let lastStem: string | undefined;
       for (const [i, t] of tracks.entries()) {
         exporting = { title: `Exporting stem ${i + 1} of ${tracks.length}: ${t.name}`, progress: 0, floating: true };
         off?.();
@@ -1995,8 +1999,9 @@
           return;
         }
         done++;
+        lastStem = path;
       }
-      showCenterNotice(`Exported ${done} ${done === 1 ? "stem" : "stems"} to ${folder}.`);
+      showCenterNotice(`Exported ${done} ${done === 1 ? "stem" : "stems"} to ${folder}.`, lastStem);
     } catch (e) {
       showError(e);
     } finally {
@@ -7025,10 +7030,15 @@
 
   {#if centerNotice}
     <div class="center-notice" role="status" aria-live="polite">
-      <button type="button" onclick={() => (centerNotice = null)}>
-        <span class="msg">{centerNotice}</span>
-        <span class="hint">Click to close</span>
-      </button>
+      <div class="card">
+        <button type="button" class="body-btn" onclick={() => (centerNotice = null)}>
+          <span class="msg">{centerNotice}</span>
+          <span class="hint">Click to close</span>
+        </button>
+        {#if centerReveal}
+          <button type="button" class="reveal" onclick={() => { const p = centerReveal; centerNotice = null; if (p) revealMedia(p).catch((e: unknown) => showError(e)); }}>{revealLabel()}</button>
+        {/if}
+      </div>
     </div>
   {/if}
   <footer class="status">
@@ -7639,19 +7649,36 @@
     pointer-events: none;
     z-index: 900;
   }
-  .center-notice button {
+  .center-notice .card {
     pointer-events: auto;
+    display: grid;
+    gap: 8px;
     max-width: min(520px, 80vw);
     padding: 16px 22px;
+    background: var(--header-b);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+  }
+  .center-notice .body-btn {
+    padding: 0;
     text-align: left;
     font: inherit;
     font-size: 14px;
     line-height: 1.45;
     color: var(--text);
-    background: var(--header-b);
-    border: 1px solid var(--accent);
-    border-radius: 8px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+  .center-notice .reveal {
+    justify-self: start;
+    padding: 4px 12px;
+    font: inherit;
+    color: var(--text);
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
     cursor: pointer;
   }
   .center-notice .msg {

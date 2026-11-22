@@ -2163,3 +2163,7 @@ Two modules have a Rust copy, checked against `shared-fixtures/guide-media.json`
 ## 2026-11-22: Update notice is now a card with highlights
 
 The centre-of-window update notice was one plain line, easy to miss. It is now a card with an accent stripe, the new and current version, the first four changes from the release notes (`highlights` in `src/app/update.ts`), and Later, All changes and Install and Restart buttons. It stays non-modal, never shows during playback or recording, and still never installs without a click unless the off-by-default option is on. Builds that cannot self-update get a Download button instead. Ideas only from a public release page of another project (an in-app window that shows the notes); no code or layout taken.
+
+## 2026-11-22: Offer to show the file when an export finishes
+
+The finished notice for a mixdown, stem export or playlist export now has a button that shows the file in the system file manager (Show in Explorer, Reveal in Finder, Show in File Manager), using the existing `media_reveal` command. It is the backlog item 2 from the reference review, described by what it does. A setting in Settings > Effects ("Offer to show the file when an export finishes", on by default) turns it off. Stems and playlist exports show the last file written. The notice stays up eight seconds longer when the button is there. Backlog items 9 (check the Linux look) and 10 (known limitations list) were added.
