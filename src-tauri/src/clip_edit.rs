@@ -736,3 +736,336 @@ pub fn trim_to_range(doc: &Value, ids: &[String], a: f64, b: f64) -> Vec<Value> 
     }
     out
 }
+
+/// What `move_clips` finds: the applied shift in samples and rows, and the clip changes.
+pub struct MovePreview {
+    pub delta: f64,
+    pub rows: f64,
+    pub changes: Vec<Value>,
+}
+
+impl MovePreview {
+    pub fn to_json(&self) -> Value {
+        json!({ "delta": self.delta, "rows": self.rows, "changes": self.changes })
+    }
+}
+
+/// Moves clips together by `delta` samples and `rows` tracks. The group keeps
+/// its shape: it stops at the session start and at the first and last track.
+/// Either edge of the group snaps to `targets` within `tolerance`. Locked
+/// clips stay where they are.
+pub fn move_clips(
+    doc: &Value,
+    ids: &[String],
+    delta: f64,
+    rows: f64,
+    targets: &[f64],
+    tolerance: f64,
+) -> MovePreview {
+    let items: Vec<Located> = find_clips(doc, ids)
+        .into_iter()
+        .filter(|l| !truthy(&l.clip, "locked"))
+        .collect();
+    if items.is_empty() {
+        return MovePreview {
+            delta: 0.0,
+            rows: 0.0,
+            changes: vec![],
+        };
+    }
+    let first = items
+        .iter()
+        .map(|l| num(&l.clip, "start"))
+        .fold(f64::INFINITY, f64::min);
+    let last = items
+        .iter()
+        .map(|l| end_of(doc, &l.clip))
+        .fold(f64::NEG_INFINITY, f64::max);
+    let mut d = js_round(delta);
+    if tolerance > 0.0 {
+        let a = nearest(first + d, targets, tolerance);
+        let b = nearest(last + d, targets, tolerance);
+        let da = a.map_or(f64::INFINITY, |a| a - first - d);
+        let db = b.map_or(f64::INFINITY, |b| b - last - d);
+        if da.abs() <= db.abs() && da != f64::INFINITY {
+            d += da;
+        } else if db != f64::INFINITY {
+            d += db;
+        }
+    }
+    d = d.max(-first);
+    let top = items.iter().map(|l| l.track_index).min().unwrap_or(0) as f64;
+    let bottom = items.iter().map(|l| l.track_index).max().unwrap_or(0) as f64;
+    let count = arr(doc, "tracks").len() as f64;
+    let r = (-top).max((count - 1.0 - bottom).min(js_round(rows)));
+    let mut changes = vec![];
+    for l in &items {
+        let mut ch = Map::new();
+        ch.insert("id".into(), l.clip["id"].clone());
+        if d != 0.0 {
+            ch.insert("start".into(), json!(num(&l.clip, "start") + d));
+        }
+        if r != 0.0 {
+            let at = (l.track_index as f64 + r) as usize;
+            ch.insert("track_id".into(), arr(doc, "tracks")[at]["id"].clone());
+        }
+        if ch.len() > 1 {
+            changes.push(Value::Object(ch));
+        }
+    }
+    MovePreview {
+        delta: d,
+        rows: r,
+        changes,
+    }
+}
+
+fn span_len(doc: &Value, clip: &Value) -> f64 {
+    end_of(doc, clip) - num(clip, "start")
+}
+
+/// Removes the time from `a` to `b` on the given tracks and closes the gap:
+/// clips inside are deleted, clips crossing an edge are trimmed, a clip
+/// spanning the whole range is split around it, and everything after moves
+/// left. Locked clips that would change give a LockedError. With `only`,
+/// clips that are not in the set are never cut: one that touches the range is
+/// left as it is, and later clips still move left.
+pub fn ripple_delete_range(
+    doc: &Value,
+    track_ids: &[String],
+    a: f64,
+    b: f64,
+    new_id: &mut dyn FnMut() -> String,
+    only: Option<&HashSet<String>>,
+) -> Result<Option<Value>, LockedError> {
+    if b <= a {
+        return Ok(None);
+    }
+    let rate = num(doc, "sample_rate");
+    let span = b - a;
+    let which: HashSet<&str> = track_ids.iter().map(String::as_str).collect();
+    let mut changes = vec![];
+    let mut removed = vec![];
+    let mut added = vec![];
+    for t in arr(doc, "tracks") {
+        if !which.contains(text(t, "id")) {
+            continue;
+        }
+        for c in arr(t, "clips") {
+            let end = end_of(doc, c);
+            let start = num(c, "start");
+            if end <= a {
+                continue;
+            }
+            if only.is_some_and(|o| !o.contains(text(c, "id"))) && start < b {
+                continue;
+            }
+            if truthy(c, "locked") {
+                return Err(LockedError);
+            }
+            let m = media_by_id(doc, text(c, "media_id"));
+            let mut ch = Map::new();
+            ch.insert("id".into(), c["id"].clone());
+            if start >= b {
+                ch.insert("start".into(), json!(start - span));
+                changes.push(Value::Object(ch));
+            } else if start >= a && end <= b {
+                removed.push(c["id"].clone());
+            } else if start < a && end <= b {
+                ch.extend(cut_right(c, m, rate, a - start));
+                ch.insert(
+                    "fade_out".into(),
+                    with_fade(c, "fade_out", fade_len(c, "fade_out").min(a - start)),
+                );
+                changes.push(Value::Object(ch));
+            } else if start >= a {
+                ch.insert("start".into(), json!(a));
+                ch.extend(cut_left(c, m, rate, b - start));
+                ch.insert(
+                    "fade_in".into(),
+                    with_fade(c, "fade_in", fade_len(c, "fade_in").min(end - b)),
+                );
+                ch.extend(slice_of(c, b - start, end - start));
+                changes.push(Value::Object(ch));
+            } else {
+                ch.extend(cut_right(c, m, rate, a - start));
+                ch.insert("fade_out".into(), with_fade(c, "fade_out", 0.0));
+                changes.push(Value::Object(ch));
+                let mut extra = cut_left(c, m, rate, b - start);
+                extra.insert("id".into(), json!(new_id()));
+                extra.insert("start".into(), json!(a));
+                extra.insert("fade_in".into(), with_fade(c, "fade_in", 0.0));
+                extra.insert(
+                    "fade_out".into(),
+                    with_fade(c, "fade_out", fade_len(c, "fade_out").min(end - b)),
+                );
+                let piece = merged(c, extra);
+                added.push(json!([
+                    t["id"],
+                    with_slices(&piece, &slice_of(c, b - start, end - start))
+                ]));
+            }
+        }
+    }
+    let mut ops = vec![];
+    if !removed.is_empty() {
+        ops.push(json!({ "op": "remove_clips", "ids": removed }));
+    }
+    if !changes.is_empty() {
+        ops.push(json!({ "op": "set_clips", "changes": changes }));
+    }
+    if !added.is_empty() {
+        ops.push(json!({ "op": "restore_clips", "clips": added }));
+    }
+    Ok(if ops.is_empty() {
+        None
+    } else {
+        Some(json!({ "op": "batch", "ops": ops }))
+    })
+}
+
+/// Deletes clips and closes the space they took on their tracks: each later
+/// clip on the same track moves left by the length of the deleted clips
+/// before it.
+pub fn ripple_delete_clips(doc: &Value, ids: &[String]) -> Result<Option<Value>, LockedError> {
+    let mut removed: Vec<String> = vec![];
+    for id in ids {
+        if !removed.contains(id) {
+            removed.push(id.clone());
+        }
+    }
+    let gone: HashSet<&str> = removed.iter().map(String::as_str).collect();
+    let mut changes = vec![];
+    for t in arr(doc, "tracks") {
+        let cuts: Vec<(f64, f64)> = arr(t, "clips")
+            .iter()
+            .filter(|c| gone.contains(text(c, "id")))
+            .map(|c| (num(c, "start"), span_len(doc, c)))
+            .collect();
+        if cuts.is_empty() {
+            continue;
+        }
+        for c in arr(t, "clips") {
+            if gone.contains(text(c, "id")) {
+                continue;
+            }
+            let start = num(c, "start");
+            let shift = cuts
+                .iter()
+                .filter(|x| x.0 + x.1 <= start)
+                .fold(0.0, |n, x| n + x.1);
+            if shift == 0.0 {
+                continue;
+            }
+            if truthy(c, "locked") {
+                return Err(LockedError);
+            }
+            changes.push(json!({ "id": c["id"], "start": (start - shift).max(0.0) }));
+        }
+    }
+    if removed.is_empty() {
+        return Ok(None);
+    }
+    let mut ops = vec![json!({ "op": "remove_clips", "ids": removed })];
+    if !changes.is_empty() {
+        ops.push(json!({ "op": "set_clips", "changes": changes }));
+    }
+    Ok(Some(json!({ "op": "batch", "ops": ops })))
+}
+
+fn empty_span(doc: &Value, track_id: &str, at: f64) -> Option<(f64, f64)> {
+    let t = arr(doc, "tracks")
+        .iter()
+        .find(|x| text(x, "id") == track_id)?;
+    let mut start = 0.0_f64;
+    let mut end = f64::INFINITY;
+    for c in arr(t, "clips") {
+        let e = end_of(doc, c);
+        let cs = num(c, "start");
+        if at >= cs && at < e {
+            return None;
+        }
+        if e <= at {
+            start = start.max(e);
+        }
+        if cs > at {
+            end = end.min(cs);
+        }
+    }
+    Some((start, end))
+}
+
+/// The empty span around `at` on a track, between the clips on either side.
+/// None if `at` is inside a clip or past the last one.
+pub fn gap_at(doc: &Value, track_id: &str, at: f64) -> Option<(f64, f64)> {
+    let (start, end) = empty_span(doc, track_id, at)?;
+    if end == f64::INFINITY || end <= start {
+        None
+    } else {
+        Some((start, end))
+    }
+}
+
+/// The tracks a ripple edit on `track_id` moves: that track alone, or, when it
+/// has sync lock on, every track that has it on (so they stay in step).
+pub fn ripple_tracks(doc: &Value, track_id: &str) -> Vec<String> {
+    let tracks = arr(doc, "tracks");
+    match tracks.iter().find(|x| text(x, "id") == track_id) {
+        Some(t) if truthy(t, "sync_lock") => tracks
+            .iter()
+            .filter(|x| truthy(x, "sync_lock") || text(x, "id") == track_id)
+            .map(|x| text(x, "id").to_string())
+            .collect(),
+        _ => vec![track_id.to_string()],
+    }
+}
+
+/// What closing a gap does.
+#[derive(Debug, PartialEq)]
+pub enum GapClose {
+    Range {
+        start: f64,
+        end: f64,
+        tracks: Vec<String>,
+    },
+    Blocked,
+}
+
+impl GapClose {
+    pub fn to_json(&self) -> Value {
+        match self {
+            GapClose::Blocked => json!("blocked"),
+            GapClose::Range { start, end, tracks } => {
+                json!({ "start": start, "end": end, "tracks": tracks })
+            }
+        }
+    }
+}
+
+/// What closing the gap at `at` on `track_id` removes, and from which tracks.
+/// The range is the empty space the synced tracks share, so no track loses
+/// audio. Blocked when the track has a gap there but another synced track has
+/// a clip (or MIDI) in the way; None when there is no gap to close.
+pub fn gap_to_close(doc: &Value, track_id: &str, at: f64) -> Option<GapClose> {
+    let (mut start, mut end) = gap_at(doc, track_id, at)?;
+    let tracks = ripple_tracks(doc, track_id);
+    for id in &tracks {
+        let t = arr(doc, "tracks").iter().find(|x| text(x, "id") == id);
+        if t.is_some_and(|t| !arr(t, "midi_clips").is_empty()) {
+            return Some(GapClose::Blocked);
+        }
+        if id == track_id {
+            continue;
+        }
+        let Some((s, e)) = empty_span(doc, id, at) else {
+            return Some(GapClose::Blocked);
+        };
+        start = start.max(s);
+        end = end.min(e);
+    }
+    Some(if end > start {
+        GapClose::Range { start, end, tracks }
+    } else {
+        GapClose::Blocked
+    })
+}

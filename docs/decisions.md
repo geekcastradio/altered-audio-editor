@@ -2194,3 +2194,8 @@ Three modules have a Rust copy, checked against `shared-fixtures/band-phase-fit.
 ## 2026-11-23: Rust port, batch 25 (clip editing, first part)
 
 `src-tauri/src/clip_edit.rs` ports the first half of `clip-edit.ts` on JSON sessions: envelope ids, cutting a clip left or right, trim, fades, split, loop on and off, pieces, isolating a range, clips under a point, and trim to playhead or range. The default fade shape is passed in as a parameter instead of read from Settings. New ids come from a callback. The fixture (120 KB, `clip-edit.json`) runs seven clips (looped, stretched, locked, enveloped, with and without media rates) through every function with edge cases, and matched on the first run. Moving, ripple delete, gaps, copy and paste, crossfades, groups and the rest stay in TypeScript for the next batch.
+
+
+## 2026-11-23: Rust port, batch 26 (clip editing, moving and ripple)
+
+Adds moving clips (with snapping and track rows), ripple delete of a range or of clips, gap lookup and gap closing with sync lock to `clip_edit.rs`. The fixture (35 KB, `clip-edit-2.json`) covers five tracks (synced, unsynced, MIDI and locked clips) with ranges, tracks and `only` sets, and matched on the first run. Copy and paste, crossfades, groups, insert time and clear range follow in the next batch.
