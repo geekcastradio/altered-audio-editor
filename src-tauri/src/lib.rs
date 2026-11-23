@@ -29,6 +29,7 @@ pub mod bug_info;
 pub mod bug_report_link;
 pub mod chain;
 pub mod chain_actions;
+pub mod chain_run_notes;
 pub mod channel_rules;
 pub mod chord;
 pub mod clip_edit;
