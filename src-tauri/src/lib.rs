@@ -7,6 +7,9 @@
 //! The interface never touches audio. It sends commands to this core
 //! and renders the state it gets back.
 
+// The settings sanitizer builds one large JSON object literal.
+#![recursion_limit = "512"]
+
 pub mod align;
 pub mod analysis;
 pub mod app_core;
@@ -89,6 +92,7 @@ pub mod selection;
 pub mod session;
 pub mod session_rules;
 pub mod sesx;
+pub mod settings_clean;
 pub mod sound_types;
 pub mod space_ui;
 pub mod speaker_balance;

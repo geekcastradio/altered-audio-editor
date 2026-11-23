@@ -2242,3 +2242,8 @@ Both entries were disabled with "Not built yet". They now run through the same b
 ## 2026-11-23: Rust port, batch 32 (spectrum view)
 
 Adds `spectrum_view.rs`: the frequency axis, view range, zoom, scale marks, the color table and the rasterizing of Box, Lasso and Brush selections into a mask. It sits beside the axis maths already in `dsp/spectral.rs`. The fixture (`spectrum-view.json`) covers eight views, four Nyquist rates, zoom in and out at three pitches, scale marks at two gaps, and eleven selections (reversed, out of range, one point, empty), each rasterized at the full and a small grid. It matched on the first run.
+
+
+## 2026-11-23: Rust port batch 35 (settings sanitizer)
+
+`settings_clean.rs` mirrors `sanitizeSettings` in `src/stores/settings.ts` and `cleanBindings` in `src/app/controller/map.ts`: saved settings with defaults for anything missing, out of range or the wrong type, the metronome and phase wheel groups, theme colors, speaker outputs, the media folder name, the meter yellow and red ordering, and controller bindings (damaged ones dropped, a source bound twice keeps the last in the first place). The Rust defaults are checked against `DEFAULT_SETTINGS`. 160 odd inputs share `shared-fixtures/settings-clean.json` (179 KB, each case stores only the differences from defaults). The crate got `recursion_limit = "512"` for the large JSON literal. Text slices count characters, not UTF-16 units, which only differs for characters outside the basic plane. The TS copy stays in use.
