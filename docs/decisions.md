@@ -2247,3 +2247,8 @@ Two modules ported with one shared fixture (`shared-fixtures/video-open.json`, 1
 ## 2026-11-23: Rust port, batch 32 (spectrum view)
 
 Adds `spectrum_view.rs`: the frequency axis, view range, zoom, scale marks, the color table and the rasterizing of Box, Lasso and Brush selections into a mask. It sits beside the axis maths already in `dsp/spectral.rs`. The fixture (`spectrum-view.json`) covers eight views, four Nyquist rates, zoom in and out at three pitches, scale marks at two gaps, and eleven selections (reversed, out of range, one point, empty), each rasterized at the full and a small grid. It matched on the first run.
+
+
+## 2026-11-23: Rust port batch 36 (store rules)
+
+`store_rules.rs` mirrors small rules from the stores: library paths (absolute check, join with the folder's own separator, item path), tag parsing and retagging, folder-safe names, file names from either path style, the level meter fall and peak hold (speed is now a parameter, with the same three speeds), meter position on a dB floor, whether a session is blank, and reading saved editor settings against a base. Rust and Vitest read `shared-fixtures/store-rules.json` (47 KB), which steps each meter speed through 86 readings. Case folding uses Rust `to_lowercase`, which can differ from JS for a few non-ASCII letters. The TS copies stay in use.
