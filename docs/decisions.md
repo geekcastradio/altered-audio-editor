@@ -2278,6 +2278,18 @@ Adds `spectrum_view.rs`: the frequency axis, view range, zoom, scale marks, the 
 
 `controller_map.rs` mirrors `src/app/controller/map.ts` (source keys, names, matching, position and encoder turn, pan with a dead zone, target names and choices, the eight-strip preset) and `feedback.ts` (fader pitch bend values, pan ring bytes, and the frames a surface should show for a set of bindings and strips). Rust and Vitest read `shared-fixtures/controller-map.json` (52 KB). The controller class and its timers stay in TypeScript. The TS copies stay in use.
 
+## 2026-11-23: Rust port batch 42 (view helpers)
+
+`view_helpers.rs` mirrors `reveal.ts` (scroll to reveal a position), `session-tabs.ts`, `video-lane.ts` (the Video Reference bar and drag) and the pure functions of `wave-channels.ts` (active channels, edit and paste takes, labels). Rust and Vitest read `shared-fixtures/view-helpers.json`. The TS copies stay in use.
+
+## 2026-11-23: Rust port batch 43 (bars and beats ruler)
+
+`bar_ruler.rs` mirrors the bars part of `timeline.ts`: bar.beat.tick text and parsing, ruler ticks and grid lines through tempo and time signature changes, on top of `tempo_map.rs`. Rust and Vitest read `shared-fixtures/bar-ruler.json` (250 KB). The TS copies stay in use.
+
+## 2026-11-23: Rust port batch 44 (list selection, folders, solo rules)
+
+`panel_nav.rs` mirrors `files/selection.ts` (click and arrow selection), `parentFolder` from `drive-manager/paths.ts`, `mixer/solo.ts` (the exclusive solo edit and which tracks are silent) and `planDuration` and `formatSeconds` from `properties/remix.ts`. Rust and Vitest read `shared-fixtures/panel-nav.json`. The TS copies stay in use.
+
 ## 2026-11-23: Rust port batch 41 (clip edit helpers)
 
 `edit_ops.rs` mirrors `silence-span.ts` (silence a time range in selected clips), `clip-order.ts` (bring to front, send to back), `align.ts` (the Phase Align pair and edit), `clip-lookup.ts`, and `findMidiClips` and `snapTargets` from `clip-edit.ts`. Rust and Vitest read `shared-fixtures/edit-ops.json` (35 KB). The TS copies stay in use.
