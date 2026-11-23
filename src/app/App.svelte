@@ -321,6 +321,7 @@
   import { activeArea, currentArea, trackArea, type Area } from "./area";
   import { revealLabel } from "../lib/platform";
   import ToolStrip from "./ToolStrip.svelte";
+  import { effectiveTheme, systemIsLight, THEME_CHOICES, watchSystemTheme } from "./theme";
   import NewAudioFileDialog, { type NewAudioSettings } from "./NewAudioFileDialog.svelte";
   import NewSessionDialog, { type NewSessionSettings } from "./NewSessionDialog.svelte";
   import { closeWaveFile, discardParked, forgetParked, parkedFiles, waveParkedChanged, newEmptyWaveFile, parkedUnsaved, newWaveFromClips, newWaveFromMix, openWaveFile, saveWaveFile, savesInPlace, spectralSelection, wave, waveFile, waveHistory, waveTransport, waveZoom } from "../stores/wave";
@@ -3890,16 +3891,17 @@
   function applyAppSettings(s: AppSettings, autosave: boolean) {
     if (!s.playbackSpeed && speedNow !== 100) void chooseSpeed(100).catch(() => {});
     document.documentElement.dataset.surface = s.surface;
-    if (document.documentElement.dataset.theme !== s.theme) {
-      document.documentElement.dataset.theme = s.theme;
+    const shown = effectiveTheme(s.theme, systemIsLight());
+    if (document.documentElement.dataset.theme !== shown) {
+      document.documentElement.dataset.theme = shown;
       // Canvases read their colors when they draw; ask them to draw again.
       requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     }
     const root = document.documentElement.style;
     for (const k of ["--wave", "--playhead", "--accent", "--lane-selected"]) root.removeProperty(k);
     for (const [k, v] of Object.entries(colorVars(s.colors))) root.setProperty(k, v);
-    root.setProperty("--meter-yellow", `${meterPercent(s.meterYellowDb)}%`);
-    root.setProperty("--meter-red", `${meterPercent(s.meterRedDb)}%`);
+    root.setProperty("--meter-yellow", `${meterPercent(s.meterYellowDb, -s.meterRangeDb)}%`);
+    root.setProperty("--meter-red", `${meterPercent(s.meterRedDb, -s.meterRangeDb)}%`);
     setCustomTarget({ lufs: s.customLufs, peak: s.customPeak });
     setMeterSpeed(s.meterSpeed);
     transport.stopAtSelection = s.stopAtSelectionEnd;
@@ -5220,15 +5222,17 @@
         }),
       ),
       actions.register({ id: "multitrack.add.midi", run: () => addMidiTrack(), enabled: () => session.current !== null, visible: () => settings.current.musicMode }),
-      actions.register({
-        id: "view.theme",
-        run: () => {
-          settings.set({ ...settings.current, theme: settings.current.theme === "light" ? "dark" : "light" });
-          actions.invalidate();
-        },
-        label: () => (settings.current.theme === "light" ? "Dark Theme" : "Light Theme"),
-        checked: () => settings.current.theme === "light",
-      }),
+      ...THEME_CHOICES.map((t) =>
+        actions.register({
+          id: `view.theme.${t.id}`,
+          run: () => {
+            settings.set({ ...settings.current, theme: t.id });
+            applyAppSettings(settings.current, false);
+            actions.invalidate();
+          },
+          checked: () => settings.current.theme === t.id,
+        }),
+      ),
       actions.register({
         id: "view.mode.music",
         run: () => {
@@ -6943,6 +6947,8 @@
           }),
         );
         applyAppSettings(settings.current, false);
+        // With "Sync with System", follow the computer when its light or dark setting changes.
+        offs.push(watchSystemTheme(() => applyAppSettings(settings.current, false)));
         // A welcome on a fresh install, and the new pages only after a release that adds some. Nothing otherwise.
         welcomeOpen = welcomePlan(savedSettings);
         offs.push(startMetronome());
