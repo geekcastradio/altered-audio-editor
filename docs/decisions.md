@@ -2199,3 +2199,8 @@ Three modules have a Rust copy, checked against `shared-fixtures/band-phase-fit.
 ## 2026-11-23: Rust port, batch 26 (clip editing, moving and ripple)
 
 Adds moving clips (with snapping and track rows), ripple delete of a range or of clips, gap lookup and gap closing with sync lock to `clip_edit.rs`. The fixture (35 KB, `clip-edit-2.json`) covers five tracks (synced, unsynced, MIDI and locked clips) with ranges, tracks and `only` sets, and matched on the first run. Copy and paste, crossfades, groups, insert time and clear range follow in the next batch.
+
+
+## 2026-11-23: Rust port, batch 27 (clip editing, the rest)
+
+Finishes `clip_edit.rs`: copy and paste (files brought along, matched by path), track previews for a drag, stacking layers, automatic crossfades, fade shape changes, group expansion, insert time, clear range and copy-moved. Settings values the TypeScript read directly are now parameters: the default fade shape for crossfades, and whether groups are suspended. The fixture (170 KB, `clip-edit-3.json`) checks all of it, including a session whose old crossfades must be taken away, and matched on the first run. Path matching lower-cases with Rust rules, which can differ from the browser for a few rare letters; the fixture keeps to plain ones. With this done, QuickPass edits, takes, dead space and chain actions can be ported next.
