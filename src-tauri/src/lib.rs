@@ -18,6 +18,7 @@ pub mod auto_record;
 pub mod automation;
 pub mod backup;
 pub mod band_split;
+pub mod bar_ruler;
 pub mod batch_recipes;
 pub mod batch_rules;
 pub mod bleed_copy;
