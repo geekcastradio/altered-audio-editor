@@ -1069,3 +1069,693 @@ pub fn gap_to_close(doc: &Value, track_id: &str, at: f64) -> Option<GapClose> {
         GapClose::Blocked
     })
 }
+
+fn key_of(path: &str) -> String {
+    path.replace('\\', "/").to_lowercase()
+}
+
+fn opt_str<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
+    v.get(key).and_then(Value::as_str).filter(|s| !s.is_empty())
+}
+
+/// Clips copied with Edit > Copy, positioned relative to the earliest one:
+/// `{items: [{row, clip}], media}`. None when nothing was found.
+pub fn copy_clips(doc: &Value, ids: &[String]) -> Option<Value> {
+    let found = find_clips(doc, ids);
+    if found.is_empty() {
+        return None;
+    }
+    let top = found.iter().map(|f| f.track_index).min().unwrap_or(0);
+    let first = found
+        .iter()
+        .map(|f| num(&f.clip, "start"))
+        .fold(f64::INFINITY, f64::min);
+    let used: HashSet<&str> = found.iter().map(|f| text(&f.clip, "media_id")).collect();
+    let items: Vec<Value> = found
+        .iter()
+        .map(|f| {
+            let mut c = f.clip.as_object().cloned().unwrap_or_default();
+            c.insert("start".into(), json!(num(&f.clip, "start") - first));
+            c.insert("locked".into(), json!(false));
+            json!({ "row": f.track_index - top, "clip": c })
+        })
+        .collect();
+    let media: Vec<Value> = arr(doc, "media")
+        .iter()
+        .filter(|m| used.contains(text(m, "id")))
+        .cloned()
+        .collect();
+    Some(json!({ "items": items, "media": media }))
+}
+
+/// Pastes copied clips at `at` with the topmost one on track `row`. Rows past
+/// the last track land on the last track. Clips copied from another session
+/// bring their files along: a file this session already lists (by path) is
+/// reused, any other is added to the session. Paths compare ignoring case and
+/// slash direction (lower-casing follows Rust's rules, which can differ from
+/// the browser's for a few rare letters).
+pub fn paste_clips(
+    doc: &Value,
+    board: &Value,
+    at: f64,
+    row: f64,
+    new_id: &mut dyn FnMut() -> String,
+) -> Option<Value> {
+    let tracks = arr(doc, "tracks");
+    let items = arr(board, "items");
+    if tracks.is_empty() || items.is_empty() {
+        return None;
+    }
+    let mut own: std::collections::HashMap<String, &Value> = Default::default();
+    let mut by_path: std::collections::HashMap<String, String> = Default::default();
+    for m in arr(doc, "media") {
+        own.insert(text(m, "id").to_string(), m);
+        by_path.insert(key_of(text(m, "path")), text(m, "id").to_string());
+    }
+    let refs: std::collections::HashMap<String, &Value> = arr(board, "media")
+        .iter()
+        .map(|m| (text(m, "id").to_string(), m))
+        .collect();
+    let mut id_of: std::collections::HashMap<String, Option<String>> = Default::default();
+    let mut added: Vec<Value> = vec![];
+    let mut media_for = |id: &str, new_id: &mut dyn FnMut() -> String| -> Option<String> {
+        if let Some(v) = id_of.get(id) {
+            return v.clone();
+        }
+        let here = own.get(id);
+        let rf = refs.get(id);
+        let mut out: Option<String> = None;
+        if here
+            .is_some_and(|h| rf.is_none_or(|r| key_of(text(h, "path")) == key_of(text(r, "path"))))
+        {
+            out = Some(id.to_string());
+        } else if let Some(r) = rf {
+            if let Some(same) = by_path
+                .get(&key_of(text(r, "path")))
+                .filter(|s| !s.is_empty())
+            {
+                out = Some(same.clone());
+            } else {
+                let nid = if here.is_some() {
+                    new_id()
+                } else {
+                    text(r, "id").to_string()
+                };
+                added.push(set(&set(r, "id", json!(nid)), "relative_path", Value::Null));
+                by_path.insert(key_of(text(r, "path")), nid.clone());
+                out = Some(nid);
+            }
+        }
+        id_of.insert(id.to_string(), out.clone());
+        out
+    };
+    let mut clips = vec![];
+    let mut groups: std::collections::HashMap<String, String> = Default::default();
+    let mut ids = vec![];
+    for it in items {
+        let clip = &it["clip"];
+        let Some(media_id) = media_for(text(clip, "media_id"), new_id) else {
+            continue;
+        };
+        let idx = (row + num(it, "row"))
+            .max(0.0)
+            .min((tracks.len() - 1) as f64);
+        let t = &tracks[idx as usize];
+        let g = opt_str(clip, "group");
+        if let Some(g) = g {
+            if !groups.contains_key(g) {
+                groups.insert(g.to_string(), new_id());
+            }
+        }
+        let id = new_id();
+        let mut c = clip.as_object().cloned().unwrap_or_default();
+        c.insert("id".into(), json!(id));
+        c.insert("media_id".into(), json!(media_id));
+        c.insert(
+            "start".into(),
+            json!((js_round(at + num(clip, "start"))).max(0.0)),
+        );
+        c.insert("group".into(), g.map_or(Value::Null, |g| json!(groups[g])));
+        ids.push(id);
+        clips.push(json!([t["id"], c]));
+    }
+    if clips.is_empty() {
+        return None;
+    }
+    let restore = json!({ "op": "restore_clips", "clips": clips });
+    let op = if added.is_empty() {
+        restore
+    } else {
+        let mut ops: Vec<Value> = added
+            .into_iter()
+            .map(|m| json!({ "op": "add_media", "media": m }))
+            .collect();
+        ops.push(restore);
+        json!({ "op": "batch", "ops": ops })
+    };
+    Some(json!({ "op": op, "ids": ids }))
+}
+
+const CHANGE_ONLY: [&str; 8] = [
+    "id",
+    "track_id",
+    "volume",
+    "pan",
+    "unloop",
+    "unstretch",
+    "clear_audio_type",
+    "layer",
+];
+
+/// The session's tracks as they would look after `changes`, for drawing a
+/// drag in progress.
+pub fn preview_tracks(doc: &Value, changes: &[Value]) -> Vec<Value> {
+    let tracks = arr(doc, "tracks");
+    if changes.is_empty() {
+        return tracks.to_vec();
+    }
+    let mut by_id: std::collections::HashMap<&str, &Value> = Default::default();
+    for c in changes {
+        by_id.insert(text(c, "id"), c);
+    }
+    let mut moved: std::collections::HashMap<String, Vec<Value>> = Default::default();
+    let mut out: Vec<Value> = vec![];
+    for t in tracks {
+        let mut clips = vec![];
+        for c in arr(t, "clips") {
+            let Some(ch) = by_id.get(text(c, "id")) else {
+                clips.push(c.clone());
+                continue;
+            };
+            let mut next = c.as_object().cloned().unwrap_or_default();
+            for (k, v) in ch.as_object().into_iter().flatten() {
+                if !CHANGE_ONLY.contains(&k.as_str()) {
+                    next.insert(k.clone(), v.clone());
+                }
+            }
+            let mut next = Value::Object(next);
+            if truthy(ch, "unloop") {
+                next = set(&next, "looped", Value::Null);
+            }
+            if truthy(ch, "unstretch") {
+                next = set(&next, "stretch", Value::Null);
+            }
+            if truthy(ch, "clear_audio_type") {
+                next = set(&next, "audio_type", Value::Null);
+            }
+            for kind in ["volume", "pan"] {
+                if let Some(p) = ch.get(kind).filter(|p| !p.is_null()) {
+                    next = with_envelope(&next, kind, p.as_array().cloned().unwrap_or_default());
+                }
+            }
+            match opt_str(ch, "track_id") {
+                Some(to) if to != text(t, "id") => {
+                    moved.entry(to.to_string()).or_default().push(next)
+                }
+                _ => clips.push(next),
+            }
+        }
+        out.push(set(t, "clips", Value::Array(clips)));
+    }
+    let mut placed: Vec<Value> = out
+        .into_iter()
+        .map(|t| match moved.get(text(&t, "id")) {
+            Some(extra) => {
+                let mut clips = arr(&t, "clips").to_vec();
+                clips.extend(extra.iter().cloned());
+                set(&t, "clips", Value::Array(clips))
+            }
+            None => t,
+        })
+        .collect();
+    let layered: Vec<&Value> = changes
+        .iter()
+        .filter(|c| c.get("layer").is_some_and(|l| !l.is_null()))
+        .collect();
+    if layered.is_empty() {
+        return placed;
+    }
+    for t in placed.iter_mut() {
+        let mut clips = arr(t, "clips").to_vec();
+        let mut touched = false;
+        for ch in &layered {
+            let Some(i) = clips.iter().position(|c| text(c, "id") == text(ch, "id")) else {
+                continue;
+            };
+            let item = clips.remove(i);
+            let at = num(ch, "layer").min(clips.len() as f64).trunc();
+            let at = if at < 0.0 {
+                (clips.len() as f64 + at).max(0.0)
+            } else {
+                at
+            } as usize;
+            clips.insert(at, item);
+            touched = true;
+        }
+        if touched {
+            *t = set(t, "clips", Value::Array(clips));
+        }
+    }
+    placed
+}
+
+/// Top of a track's stacking order, for `layer`.
+pub const TOP_LAYER: f64 = 4_294_967_295.0;
+
+fn overlaps(doc: &Value, a: &Value, b: &Value) -> bool {
+    num(a, "start") < end_of(doc, b) && num(b, "start") < end_of(doc, a)
+}
+
+/// Stacking after a move: a dragged clip lands on top of the clips it now
+/// overlaps, unless it was already tucked under one of them on the same track
+/// (then it stays under). Raised clips keep their order among themselves.
+pub fn with_layers(doc: &Value, changes: &[Value]) -> Vec<Value> {
+    let tracks = arr(doc, "tracks");
+    let mut was: std::collections::HashMap<&str, (&str, usize)> = Default::default();
+    for t in tracks {
+        for (i, c) in arr(t, "clips").iter().enumerate() {
+            was.insert(text(c, "id"), (text(t, "id"), i));
+        }
+    }
+    let after = preview_tracks(doc, changes);
+    let mut raise: Vec<(Value, (usize, usize))> = vec![];
+    let mut keep: Vec<Value> = vec![];
+    for ch in changes {
+        let w = was.get(text(ch, "id"));
+        let moves = ch.get("start").is_some_and(|s| !s.is_null())
+            || opt_str(ch, "track_id").is_some_and(|t| Some(t) != w.map(|w| w.0));
+        let t = after
+            .iter()
+            .find(|x| arr(x, "clips").iter().any(|c| c["id"] == ch["id"]));
+        let clip = t.and_then(|t| arr(t, "clips").iter().find(|c| c["id"] == ch["id"]));
+        let (Some(&(was_track, was_idx)), Some(t), Some(clip), true) = (w, t, clip, moves) else {
+            keep.push(ch.clone());
+            continue;
+        };
+        let now: Vec<&Value> = arr(t, "clips")
+            .iter()
+            .filter(|c| c["id"] != ch["id"] && overlaps(doc, c, clip))
+            .collect();
+        if now.is_empty() {
+            keep.push(ch.clone());
+            continue;
+        }
+        let before = tracks.iter().find(|x| text(x, "id") == was_track).unwrap();
+        let old = &arr(before, "clips")[was_idx];
+        let over: HashSet<&str> = arr(before, "clips")
+            .iter()
+            .enumerate()
+            .filter(|(i, c)| *i > was_idx && overlaps(doc, c, old))
+            .map(|(_, c)| text(c, "id"))
+            .collect();
+        let tucked = text(t, "id") == was_track && now.iter().any(|c| over.contains(text(c, "id")));
+        if tucked {
+            keep.push(ch.clone());
+        } else {
+            let order = tracks
+                .iter()
+                .position(|x| text(x, "id") == was_track)
+                .unwrap_or(0);
+            raise.push((set(ch, "layer", json!(TOP_LAYER)), (order, was_idx)));
+        }
+    }
+    raise.sort_by_key(|a| a.1);
+    keep.extend(raise.into_iter().map(|r| r.0));
+    keep
+}
+
+/// Gives every fade the clips already have the chosen shape. Clips with no
+/// fades are left alone.
+pub fn fade_shape_changes(clips: &[Value], shape: &str) -> Vec<Value> {
+    let mut out = vec![];
+    for c in clips {
+        let mut ch = Map::new();
+        ch.insert("id".into(), c["id"].clone());
+        for key in ["fade_in", "fade_out"] {
+            if fade_len(c, key) > 0.0 && text(&c[key], "shape") != shape {
+                ch.insert(key.into(), set(&c[key], "shape", json!(shape)));
+            }
+        }
+        if ch.len() > 1 {
+            out.push(Value::Object(ch));
+        }
+    }
+    out
+}
+
+/// The ids plus every clip that shares a group with one of them. While groups
+/// are suspended only the ids themselves are returned.
+pub fn with_groups(doc: &Value, ids: &[String], suspended: bool) -> Vec<String> {
+    let mut want: Vec<String> = vec![];
+    for id in ids {
+        if !want.contains(id) {
+            want.push(id.clone());
+        }
+    }
+    if suspended {
+        return want;
+    }
+    let mut groups: HashSet<&str> = HashSet::new();
+    for t in arr(doc, "tracks") {
+        for c in arr(t, "clips") {
+            if want.iter().any(|w| w == text(c, "id")) {
+                if let Some(g) = opt_str(c, "group") {
+                    groups.insert(g);
+                }
+            }
+        }
+    }
+    if groups.is_empty() {
+        return want;
+    }
+    for t in arr(doc, "tracks") {
+        for c in arr(t, "clips") {
+            if opt_str(c, "group").is_some_and(|g| groups.contains(g))
+                && !want.iter().any(|w| w == text(c, "id"))
+            {
+                want.push(text(c, "id").to_string());
+            }
+        }
+    }
+    want
+}
+
+/// Automatic crossfades: after `changes`, wherever a changed clip overlaps
+/// another clip on the same track, the earlier clip fades out and the later
+/// one fades in across the overlap. A clip that ends up wholly inside another
+/// is layered on top, with no crossfade, and a crossfade made earlier for an
+/// overlap that is gone now (exactly as long as that overlap was) is taken
+/// away. Returns `changes` with the fades merged in. A fade that starts at
+/// zero length takes `default_shape`.
+pub fn with_crossfades(doc: &Value, changes: &[Value], default_shape: &str) -> Vec<Value> {
+    if changes.is_empty() {
+        return changes.to_vec();
+    }
+    let touched: HashSet<&str> = changes.iter().map(|c| text(c, "id")).collect();
+    let mut merged_changes: Vec<(String, Value)> = vec![];
+    for c in changes {
+        let id = text(c, "id").to_string();
+        match merged_changes.iter_mut().find(|m| m.0 == id) {
+            Some(m) => m.1 = c.clone(),
+            None => merged_changes.push((id, c.clone())),
+        }
+    }
+    let mut set_fade = |c: &Value, which: &str, length: f64| {
+        let id = text(c, "id").to_string();
+        let pos = merged_changes.iter().position(|m| m.0 == id);
+        let cur = pos.map_or_else(|| json!({ "id": id }), |p| merged_changes[p].1.clone());
+        let base = cur
+            .get(which)
+            .filter(|b| !b.is_null())
+            .cloned()
+            .unwrap_or_else(|| c[which].clone());
+        if num(&base, "length") == length {
+            return;
+        }
+        let shape = if num(&base, "length") == 0.0 {
+            default_shape.to_string()
+        } else {
+            text(&base, "shape").to_string()
+        };
+        let mut fade = base.as_object().cloned().unwrap_or_default();
+        fade.insert("length".into(), json!(length));
+        fade.insert("shape".into(), json!(shape));
+        let next = set(&cur, which, Value::Object(fade));
+        match pos {
+            Some(p) => merged_changes[p].1 = next,
+            None => merged_changes.push((id, next)),
+        }
+    };
+    let sorted = |t: &Value| -> Vec<Value> {
+        let mut clips = arr(t, "clips").to_vec();
+        clips.sort_by(|a, b| {
+            num(a, "start")
+                .partial_cmp(&num(b, "start"))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        clips
+    };
+    let mut old_in: Vec<String> = vec![];
+    let mut old_out: Vec<String> = vec![];
+    for t in arr(doc, "tracks") {
+        let clips = sorted(t);
+        for i in 0..clips.len() {
+            for j in i + 1..clips.len() {
+                let (a, b) = (&clips[i], &clips[j]);
+                let a_end = end_of(doc, a);
+                if num(b, "start") >= a_end {
+                    break;
+                }
+                if !touched.contains(text(a, "id")) && !touched.contains(text(b, "id")) {
+                    continue;
+                }
+                let overlap = a_end - num(b, "start");
+                if end_of(doc, b) > a_end
+                    && fade_len(a, "fade_out") == overlap
+                    && fade_len(b, "fade_in") == overlap
+                {
+                    old_out.push(text(a, "id").to_string());
+                    old_in.push(text(b, "id").to_string());
+                }
+            }
+        }
+    }
+    let mut new_in: HashSet<String> = HashSet::new();
+    let mut new_out: HashSet<String> = HashSet::new();
+    let after = preview_tracks(doc, changes);
+    for t in &after {
+        let clips = sorted(t);
+        for i in 0..clips.len() {
+            for j in i + 1..clips.len() {
+                let (a, b) = (&clips[i], &clips[j]);
+                if !touched.contains(text(a, "id")) && !touched.contains(text(b, "id")) {
+                    continue;
+                }
+                let a_end = end_of(doc, a);
+                if num(b, "start") >= a_end {
+                    break;
+                }
+                if end_of(doc, b) <= a_end {
+                    continue;
+                }
+                let overlap = a_end - num(b, "start");
+                set_fade(a, "fade_out", overlap);
+                set_fade(b, "fade_in", overlap);
+                new_out.insert(text(a, "id").to_string());
+                new_in.insert(text(b, "id").to_string());
+            }
+        }
+    }
+    let by_id = |id: &str| {
+        after
+            .iter()
+            .flat_map(|t| arr(t, "clips"))
+            .find(|c| text(c, "id") == id)
+    };
+    let mut seen: HashSet<&String> = HashSet::new();
+    for id in old_in.iter().filter(|i| seen.insert(i)) {
+        if !new_in.contains(id) {
+            if let Some(c) = by_id(id) {
+                set_fade(c, "fade_in", 0.0);
+            }
+        }
+    }
+    let mut seen: HashSet<&String> = HashSet::new();
+    for id in old_out.iter().filter(|i| seen.insert(i)) {
+        if !new_out.contains(id) {
+            if let Some(c) = by_id(id) {
+                set_fade(c, "fade_out", 0.0);
+            }
+        }
+    }
+    merged_changes.into_iter().map(|m| m.1).collect()
+}
+
+/// Inserts `len` session samples of silence at `at` on the given tracks:
+/// clips that start at or after `at` move right, and a clip spanning `at` is
+/// split there with its right part moved. Markers after `at` move too when
+/// every track is included, so they stay with their audio. Locked clips that
+/// would move give a LockedError.
+pub fn insert_time(
+    doc: &Value,
+    track_ids: &[String],
+    at: f64,
+    len: f64,
+    new_id: &mut dyn FnMut() -> String,
+) -> Result<Option<Value>, LockedError> {
+    if len <= 0.0 {
+        return Ok(None);
+    }
+    let which: HashSet<&str> = track_ids.iter().map(String::as_str).collect();
+    let mut ops: Vec<Value> = vec![];
+    let spanning: Vec<&Value> = arr(doc, "tracks")
+        .iter()
+        .filter(|t| which.contains(text(t, "id")))
+        .flat_map(|t| arr(t, "clips"))
+        .filter(|c| num(c, "start") < at && end_of(doc, c) > at)
+        .collect();
+    if spanning.iter().any(|c| truthy(c, "locked")) {
+        return Err(LockedError);
+    }
+    let mut cur = doc.clone();
+    if !spanning.is_empty() {
+        let ids: Vec<String> = spanning.iter().map(|c| text(c, "id").to_string()).collect();
+        if let Some(split) = split_clips(doc, &ids, at, new_id) {
+            let inner = arr(&split, "ops");
+            let added: Vec<&Value> = inner
+                .iter()
+                .filter(|o| o["op"] == "restore_clips")
+                .flat_map(|o| arr(o, "clips"))
+                .collect();
+            let split_changes: Vec<&Value> = inner
+                .iter()
+                .filter(|o| o["op"] == "set_clips")
+                .flat_map(|o| arr(o, "changes"))
+                .collect();
+            let tracks: Vec<Value> = arr(doc, "tracks")
+                .iter()
+                .map(|t| {
+                    let mut clips: Vec<Value> = arr(t, "clips")
+                        .iter()
+                        .map(
+                            |c| match split_changes.iter().find(|x| x["id"] == c["id"]) {
+                                Some(ch) => merged(c, ch.as_object().cloned().unwrap_or_default()),
+                                None => c.clone(),
+                            },
+                        )
+                        .collect();
+                    clips.extend(
+                        added
+                            .iter()
+                            .filter(|a| a[0] == t["id"])
+                            .map(|a| a[1].clone()),
+                    );
+                    set(t, "clips", Value::Array(clips))
+                })
+                .collect();
+            cur = set(doc, "tracks", Value::Array(tracks));
+            ops.push(split);
+        }
+    }
+    let mut changes = vec![];
+    for t in arr(&cur, "tracks") {
+        if !which.contains(text(t, "id")) {
+            continue;
+        }
+        for c in arr(t, "clips") {
+            if num(c, "start") < at {
+                continue;
+            }
+            if truthy(c, "locked") {
+                return Err(LockedError);
+            }
+            changes.push(json!({ "id": c["id"], "start": num(c, "start") + len }));
+        }
+    }
+    if !changes.is_empty() {
+        ops.push(json!({ "op": "set_clips", "changes": changes }));
+    }
+    if arr(doc, "tracks")
+        .iter()
+        .all(|t| which.contains(text(t, "id")))
+    {
+        let mk: Vec<Value> = arr(doc, "markers")
+            .iter()
+            .filter(|m| num(m, "position") >= at)
+            .map(|m| json!({ "id": m["id"], "position": num(m, "position") + len }))
+            .collect();
+        if !mk.is_empty() {
+            ops.push(json!({ "op": "set_markers", "changes": mk }));
+        }
+    }
+    Ok(if ops.is_empty() {
+        None
+    } else {
+        Some(json!({ "op": "batch", "ops": ops }))
+    })
+}
+
+/// Silences the time from `a` to `b` on the given tracks without moving
+/// anything: clips are split at both edges and the pieces inside are removed,
+/// leaving a gap of exactly that length. Locked clips that would change give a
+/// LockedError.
+pub fn clear_range(
+    doc: &Value,
+    track_ids: &[String],
+    a: f64,
+    b: f64,
+    new_id: &mut dyn FnMut() -> String,
+) -> Result<Option<Value>, LockedError> {
+    if b <= a {
+        return Ok(None);
+    }
+    let Isolated { mut ops, inside } = isolate(doc, track_ids, a, b, new_id)?;
+    if inside.is_empty() {
+        return Ok(None);
+    }
+    ops.push(json!({ "op": "remove_clips", "ids": inside }));
+    Ok(Some(json!({ "op": "batch", "ops": ops })))
+}
+
+/// Alt+drag copies: the edit that puts copies of the moved clips where the
+/// drag left them (new ids, on their new tracks), leaving the originals in
+/// place. Changes to other clips (crossfades made by the drop) still apply.
+/// Copies that shared a group share a new one of their own.
+pub fn copy_moved(
+    doc: &Value,
+    moving: &[String],
+    changes: &[Value],
+    new_id: &mut dyn FnMut() -> String,
+) -> (Value, Vec<String>) {
+    let moved: HashSet<&str> = moving.iter().map(String::as_str).collect();
+    let mut copies = vec![];
+    let mut others = vec![];
+    let mut groups: std::collections::HashMap<String, String> = Default::default();
+    let mut ids = vec![];
+    for ch in changes {
+        if !moved.contains(text(ch, "id")) {
+            others.push(ch.clone());
+            continue;
+        }
+        let found = arr(doc, "tracks").iter().find_map(|t| {
+            arr(t, "clips")
+                .iter()
+                .find(|c| c["id"] == ch["id"])
+                .map(|c| (t, c))
+        });
+        let Some((track, clip)) = found else {
+            continue;
+        };
+        let id = new_id();
+        let mut group = Value::Null;
+        if let Some(g) = opt_str(clip, "group") {
+            let ng = match groups.get(g) {
+                Some(x) => x.clone(),
+                None => new_id(),
+            };
+            groups.insert(g.to_string(), ng.clone());
+            group = json!(ng);
+        }
+        let mut c = clip.as_object().cloned().unwrap_or_default();
+        for (k, v) in ch.as_object().into_iter().flatten() {
+            if !["id", "track_id", "ungroup", "group", "layer"].contains(&k.as_str()) {
+                c.insert(k.clone(), v.clone());
+            }
+        }
+        c.insert("id".into(), json!(id));
+        c.insert("group".into(), group);
+        let to = opt_str(ch, "track_id").map_or_else(|| track["id"].clone(), |t| json!(t));
+        copies.push(json!([to, c]));
+        ids.push(id);
+    }
+    let mut ops = vec![json!({ "op": "restore_clips", "clips": copies })];
+    if !others.is_empty() {
+        ops.push(json!({ "op": "set_clips", "changes": others }));
+    }
+    let op = if ops.len() == 1 {
+        ops.remove(0)
+    } else {
+        json!({ "op": "batch", "ops": ops })
+    };
+    (op, ids)
+}
