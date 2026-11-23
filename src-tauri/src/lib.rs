@@ -75,6 +75,7 @@ pub mod phase_curve_ui;
 pub mod pitch_edit;
 pub mod playhead_keys;
 pub mod playlist;
+pub mod plugin_sync;
 pub mod plugins;
 pub mod preset_pack;
 pub mod publish;
