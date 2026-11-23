@@ -613,12 +613,12 @@
   {"kind":"mp3","platform":"linux","want":true},
   {"kind":"mp3","platform":"macos","want":true},
   {"kind":"m4a","platform":"windows","want":true},
-  {"kind":"m4a","platform":"linux","want":false},
-  {"kind":"m4a","platform":"macos","want":false},
+  {"kind":"m4a","platform":"linux","want":true},
+  {"kind":"m4a","platform":"macos","want":true},
   {"kind":"aac","platform":"windows","want":true},
-  {"kind":"aac","platform":"linux","want":false},
-  {"kind":"aac","platform":"macos","want":false}
- ],
+  {"kind":"aac","platform":"linux","want":true},
+  {"kind":"aac","platform":"macos","want":true}
+],
  "memory": [
   {"raw":null,"want":{}},
   {"raw":5,"want":{}},

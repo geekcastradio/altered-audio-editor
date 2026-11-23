@@ -143,9 +143,10 @@ pub struct Src {
     pub bit_depth: f64,
 }
 
-/// Whether this platform can write the format.
-pub fn format_available(kind: Kind, windows: bool) -> bool {
-    (kind != Kind::M4a && kind != Kind::Aac) || windows
+/// Whether this platform can write the format. Every format works everywhere: Windows
+/// uses its own AAC encoder, the other systems a built-in one.
+pub fn format_available(_kind: Kind, _windows: bool) -> bool {
+    true
 }
 
 /// The bit depths a format offers, with their menu labels.

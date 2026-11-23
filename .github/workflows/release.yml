@@ -222,7 +222,7 @@ jobs:
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
           NO_STRIP: true
-        run: npm run tauri build -- --bundles appimage,deb
+        run: npm run tauri build -- --bundles appimage,deb --features pure-aac
 
       - name: Package
         run: |
@@ -271,7 +271,7 @@ jobs:
       - name: Build
         env:
           APPLE_SIGNING_IDENTITY: "-"
-        run: bash scripts/build-mac.sh
+        run: bash scripts/build-mac.sh --features pure-aac
 
       - name: Package
         run: |
@@ -325,7 +325,7 @@ jobs:
       - name: Build
         env:
           APPLE_SIGNING_IDENTITY: "-"
-        run: bash scripts/build-mac.sh --target x86_64-apple-darwin
+        run: bash scripts/build-mac.sh --target x86_64-apple-darwin --features pure-aac
 
       - name: Package
         run: |

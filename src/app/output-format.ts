@@ -70,9 +70,9 @@ export const FORMAT_INFO: Record<FormatKind, string> = {
   aac: "A bare AAC stream with no wrapper (.aac). Few podcast tools want this: it has no tags or chapters. Pick M4A unless a system asks for .aac.",
 };
 
-/** AAC uses the encoder built into Windows; other systems get it later. */
-export function formatAvailable(kind: FormatKind, platform: string): boolean {
-  return (kind !== "m4a" && kind !== "aac") || platform === "windows";
+/** Every format is written on every system: Windows uses its own AAC encoder, the other systems a built-in one. */
+export function formatAvailable(_kind: FormatKind, _platform: string): boolean {
+  return true;
 }
 
 export const AAC_BITRATES = [96, 128, 160, 192] as const;

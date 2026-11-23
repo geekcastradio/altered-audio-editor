@@ -2305,3 +2305,7 @@ A new advisory (private cookie nonces can repeat in processes that fork) failed 
 ## 2026-11-23: Rust port batch 45 (automation lane choices and edits)
 
 `auto_lanes.rs` mirrors the owner and catalog parts of `automation.ts`: which settings a lane can move (including the 3D Space spot), a lane name, range and resting value, orphan lanes, the next free target, adding, replacing and dropping lanes (ids come from a closure), and the automation mode choices. Rust and Vitest read `shared-fixtures/auto-lanes.json` (27 KB). The TS copies stay in use.
+
+## 2026-11-23: AAC and M4A on every system (the project lead chose option 1)
+
+The Linux and macOS release builds now pass `--features pure-aac`, so they write AAC and M4A with the built-in encoder (`filmcraft-aac`, MIT or Apache-2.0, clean-room, no unsafe). Windows keeps its system encoder, so the Windows installers and their patent position are unchanged. Export, Batch Convert and the format pickers no longer grey out M4A and AAC off Windows (`formatAvailable` and `format_available` return true; the fixture's expected values changed). The risk is the one `docs/codecs.md` already named: AAC is covered by patents held by a licensing pool, and a software encoder shipped in the app is not the same position as the operating system's. The project lead decided to ship it anyway; a short legal opinion is still worth getting. The encoder has been checked against FFmpeg's decoder in tests and has not been listened to on Linux or macOS yet, so the limitations page says so.
