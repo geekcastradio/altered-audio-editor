@@ -2218,3 +2218,7 @@ Adds `quickpass_edit.rs` (apply local edits, remove, split, turn down, markers, 
 ## 2026-11-23: Rust port, batch 30 (chain actions)
 
 Adds `chain_actions.rs`: the pure parts of `chain-actions.ts` (loudness target step, mic options, Voice Chain preset step, QuickPass clip list, settings and step). The async handlers that talk to the interface stay in TypeScript. The region guess and custom loudness target are parameters in Rust, so the result does not depend on the time zone. The fixture (`chain-actions.json`, 346 KB, over the usual size because of the QuickPass cases) covers silent mixes, unknown effects and locked clips, and matched on the first run.
+
+## 2026-11-23: backlog items 11 and 12, Known limitations scope
+
+Added mono-aware recording and phone video and odd-format import to `docs/backlog.md` as ideas, with OpenTimelineIO import at low priority. The project lead confirmed that the Known limitations list is for anything not on Windows, since only Windows is tested and audited; the intro in `docs/known-limitations.md` now says so. The 0.63.0 notes stay as published.

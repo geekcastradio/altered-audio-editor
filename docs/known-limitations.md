@@ -1,6 +1,6 @@
 # Known limitations
 
-Altered Audio Editor is young. Windows is the platform we test. Please keep a backup copy of any session that matters.
+Altered Audio Editor is young. Windows is the only platform we test and audit. Anything on another system, or on hardware we do not own, is untested by us and may not work as described. Please keep a backup copy of any session that matters.
 
 - **Linux and macOS are experimental.** They are built from the same source but have had little testing. The macOS app is not notarized: the first time, right-click it and choose Open. Cmd is not yet used in place of Ctrl on macOS.
 - **ASIO has not been tested on real hardware.** If an ASIO driver cannot open, the system driver plays instead. Reports from people with ASIO interfaces are welcome.
