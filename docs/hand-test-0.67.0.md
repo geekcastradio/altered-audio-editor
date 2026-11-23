@@ -22,4 +22,4 @@ Things to try on Windows. Each line says what to do and what should happen.
 3. Change the Windows light or dark setting while Sync with System is on: the whole window, timeline included, follows.
 
 ## Shortcut import (no change you can see)
-1. Edit > Keyboard Shortcuts > Import still reads a shortcut export, lists commands it could not match, and does not give one key to two actions.
+1. The import button in Edit > Keyboard Shortcuts still reads a shortcut export, lists commands it could not match, and does not give one key to two actions.
