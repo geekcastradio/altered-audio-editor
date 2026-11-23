@@ -81,8 +81,10 @@
     font-size: var(--font-size-small);
   }
   h2 {
-    margin: 0 0 2px;
-    color: var(--text-dim);
+    margin: -10px -10px 2px;
+    padding: 5px 10px;
+    background: var(--title-bar);
+    color: var(--title-bar-text);
     font-size: var(--font-size-small);
     font-weight: 600;
   }

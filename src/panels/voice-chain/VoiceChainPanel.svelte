@@ -1461,10 +1461,10 @@
     align-items: center;
     gap: 6px;
     padding: 5px 6px 5px 10px;
-    border-bottom: 1px solid #8e919a;
-    /* A light bar, so the window's title and close button stand out from the dark panels. */
-    background: #dfe1e6;
-    color: #16171a;
+    border-bottom: 1px solid var(--border-strong);
+    /* The same bar as every dialog title (--title-bar in tokens.css). */
+    background: var(--title-bar);
+    color: var(--title-bar-text);
     cursor: move;
     user-select: none;
   }
@@ -1472,16 +1472,17 @@
     border-radius: 5px 5px 0 0;
   }
   .fxwin header .pow {
-    border-color: #9a9da6;
-    background: #f4f5f7;
-    color: #7a7d86;
+    border-color: var(--border-strong);
+    background: var(--surface-3);
+    color: var(--text-dim);
   }
   .fxwin header .pow:hover {
-    background: #ffffff;
+    background: var(--surface-2);
+    color: var(--text);
   }
   .fxwin header .pow.on {
     border-color: #2c9a5c;
-    color: #1f9d55;
+    color: #3fcf80;
   }
   .fxwin header .star {
     display: grid;
@@ -1491,7 +1492,7 @@
     padding: 0;
     border: 0;
     background: none;
-    color: #8a8d96;
+    color: var(--text-dim);
     cursor: pointer;
   }
   .fxwin header .star svg {
@@ -1514,21 +1515,21 @@
     fill: currentColor;
   }
   .fxwin header :global(.i) {
-    border-color: #6b6e76;
-    color: #3a3d44;
+    border-color: var(--border-strong);
+    color: var(--title-bar-text);
   }
   .fxwin header :global(.i:hover),
   .fxwin header :global(.i[aria-expanded="true"]) {
-    border-color: #2f6fd0;
-    color: #16171a;
+    border-color: var(--accent);
+    color: var(--title-bar-text);
   }
   .fxwin header .mini {
-    border-color: #9a9da6;
-    background: #f4f5f7;
-    color: #16171a;
+    border-color: var(--border-strong);
+    background: var(--surface-3);
+    color: var(--text);
   }
   .fxwin header .mini:hover {
-    background: #ffffff;
+    background: var(--surface-2);
   }
   .fxwin .wtitle {
     flex: 1;

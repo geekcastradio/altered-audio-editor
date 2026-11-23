@@ -169,7 +169,8 @@ body {
 */
 .dialog > header.titlebar,
 [role="dialog"] > header.titlebar {
-  padding: 7px 14px;
+  margin: calc(-1 * var(--dialog-pad-y, 0px)) calc(-1 * var(--dialog-pad-x, 0px)) 0;
+  padding: 7px var(--dialog-pad-x, 14px);
   background: var(--title-bar);
   color: var(--title-bar-text);
   border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;

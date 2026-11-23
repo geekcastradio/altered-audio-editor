@@ -502,8 +502,8 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={done}>
   <div class="dialog" style:--note={color} role="dialog" aria-modal="true" aria-labelledby="pr-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
-    <header>
-      <h1 id="pr-title">Edit Notes</h1>
+    <header class="titlebar"><h1 id="pr-title">Edit Notes</h1></header>
+    <div class="toolbar">
       <label>Name <input type="text" class="name" bind:value={clip.name} /></label>
       <label title="The clip's length in beats. Notes past the end are not played.">
         Length
@@ -545,7 +545,7 @@
       <button type="button" disabled={!picked.size} title="Copy the picked notes (Ctrl+C)" onclick={() => copyPicked()}>Copy</button>
       <button type="button" disabled={!hasCopy} title="Paste at the last spot clicked (Ctrl+V)" onclick={paste}>Paste</button>
       <button type="button" disabled={!picked.size} title="Delete the picked notes (Delete)" onclick={deletePicked}>Delete</button>
-    </header>
+    </div>
 
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
@@ -654,7 +654,7 @@
     --dialog-pad-x: 12px;
     --dialog-pad-y: 12px;
     display: grid;
-    grid-template-rows: auto 1fr auto auto;
+    grid-template-rows: auto auto 1fr auto auto;
     gap: 8px;
     width: min(1100px, 96vw);
     height: min(720px, 90vh);
@@ -663,7 +663,7 @@
     background: var(--surface-2);
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
   }
-  header,
+  .toolbar,
   footer {
     display: flex;
     flex-wrap: wrap;
@@ -672,11 +672,6 @@
   }
   footer {
     justify-content: flex-end;
-  }
-  h1 {
-    margin: 0 8px 0 0;
-    font-size: 14px;
-    font-weight: 600;
   }
   label {
     display: flex;

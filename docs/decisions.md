@@ -2335,3 +2335,5 @@ The Linux and macOS release builds now pass `--features pure-aac`, so they write
 - Light Mode did nothing because the View item only changed the setting and never applied it. Choosing a look now applies it at once and is saved with the other settings.
 - New header switcher beside the Workspace choice: Light Mode (sun), Sync with System (monitor), Dark Mode (moon), each with a hover description. Sync follows the operating system and changes when it changes. Icons are our own plain SVG shapes. Logic is in `src/app/theme.ts`.
 - Dialog title bars now share one look from `tokens.css` (the `--title-bar` colors, same size and padding). Settings and Keyboard Shortcuts use a `header.titlebar`; Controllers and Plug-in Manager pick it up from the shared h1 rule.
+
+Same day, follow-up: every window header now uses the one title bar. Effect settings windows (were a fixed off-white), Piano Roll (Edit Notes) and the color popover moved onto the `--title-bar` tokens; the Piano Roll controls sit in a toolbar row under its bar. Dialogs built on the shared h1 rule already matched.
