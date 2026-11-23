@@ -2251,3 +2251,8 @@ Two modules ported with one shared fixture (`shared-fixtures/video-open.json`, 1
 ## 2026-11-23: Rust port, batch 32 (spectrum view)
 
 Adds `spectrum_view.rs`: the frequency axis, view range, zoom, scale marks, the color table and the rasterizing of Box, Lasso and Brush selections into a mask. It sits beside the axis maths already in `dsp/spectral.rs`. The fixture (`spectrum-view.json`) covers eight views, four Nyquist rates, zoom in and out at three pitches, scale marks at two gaps, and eleven selections (reversed, out of range, one point, empty), each rasterized at the full and a small grid. It matched on the first run.
+
+
+## 2026-11-23: Rust port batch 37 (stretch edits, Auto Mic Mix)
+
+`stretch_mix.rs` mirrors `src/panels/editor/stretch.ts` (natural length, the change that fits a clip to a length with envelope points and fades following, removing a stretch, percent labels, reading a typed time) and `src/app/multitrack.ts` (mic tracks, duration and talk-time lines, the volume lanes an analysis writes as one batch edit, the result line). Lane ids for new lanes come from a closure the caller passes, so tests can use a fixed sequence. Rust and Vitest read `shared-fixtures/stretch-mix.json` (297 KB), 480 stretch cases across clips with envelopes, pitch, loops, short fades and three media rates. The TS copies stay in use.

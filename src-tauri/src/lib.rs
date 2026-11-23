@@ -97,6 +97,7 @@ pub mod speaker_balance;
 pub mod spectrum_view;
 pub mod split_channels;
 pub mod startup;
+pub mod stretch_mix;
 pub mod tags;
 pub mod takes;
 pub mod tempo_map;
