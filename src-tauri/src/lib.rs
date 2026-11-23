@@ -93,6 +93,7 @@ pub mod sesx;
 pub mod sound_types;
 pub mod space_ui;
 pub mod speaker_balance;
+pub mod spectrum_view;
 pub mod split_channels;
 pub mod startup;
 pub mod tags;
