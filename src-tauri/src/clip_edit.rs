@@ -81,7 +81,7 @@ pub fn with_envelope(clip: &Value, kind: &str, points: Vec<Value>) -> Value {
     set(clip, "envelopes", Value::Array(envs))
 }
 
-fn points_of(clip: &Value, kind: &str) -> Vec<Point> {
+pub(crate) fn points_of(clip: &Value, kind: &str) -> Vec<Point> {
     arr(clip, "envelopes")
         .iter()
         .find(|e| e["target"]["type"] == kind && truthy(e, "enabled"))
@@ -89,7 +89,7 @@ fn points_of(clip: &Value, kind: &str) -> Vec<Point> {
         .unwrap_or_default()
 }
 
-fn to_points(v: &[Value]) -> Vec<Point> {
+pub(crate) fn to_points(v: &[Value]) -> Vec<Point> {
     v.iter()
         .map(|p| Point {
             position: num(p, "position"),
@@ -99,7 +99,7 @@ fn to_points(v: &[Value]) -> Vec<Point> {
         .collect()
 }
 
-fn from_points(p: &[Point]) -> Vec<Value> {
+pub(crate) fn from_points(p: &[Point]) -> Vec<Value> {
     p.iter()
         .map(|p| json!({ "position": p.position, "value": p.value, "curve": p.curve }))
         .collect()
