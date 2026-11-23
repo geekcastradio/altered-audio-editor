@@ -2352,3 +2352,15 @@ Effect settings windows (they had a fixed off-white bar), Piano Roll (Edit Notes
 ## 2026-11-23: Side panels collapse to their title strip
 
 The divider between the Voice Chain group and Properties would not go all the way down because a tabbed group takes the largest minimum height of its panels (Properties 160, Takes 140, Loudness Match 160). Every side panel now has a 36 px minimum height, like the Voice Chain group already had, so any group can be dragged down to its tab strip. Its body scrolls when short. The Editor, Mixer, Levels, Time Info, Video and 3D Space keep their limits. Reason: the user asked for it.
+
+## 2026-11-23: Conversion target "75% by spring" and how it is counted
+
+Request (project lead): have the app 75% converted to Rust by spring 2027 (March to May).
+
+How it is counted, so progress is a number and not a feeling: Rust share of lines = Rust lines divided by (Rust lines + Svelte lines + TypeScript lines that are not tests). Ported TypeScript counts as remaining until it is deleted. Measured 2026-11-23: Rust 90,054; Svelte 43,975; TypeScript logic 25,116. That is 56.6% today.
+
+What 75% means in lines: about 29,000 more lines moved. The unported TypeScript logic is the small part (about a quarter of 25,000). The rest, roughly 23,000 lines, has to come from the interface, which is about half of the Svelte code. So 75% by spring is a native interface that is already carrying about half of the panels, not a faster pace of logic ports.
+
+What has to be true: the toolkit decision (the Phase 2 spike on the project lead's PC) happens in December or January, not Q1; the first native panels (transport, Time Info, Levels, then the Waveform editor) start in January; and more than one assistant works in parallel (Claude, Copilot, Gemini) on panels that have fixtures. Risks: text input and docking in Rust toolkits, two copies of the logic during the move, and review time from one person.
+
+Not decided: toolkit, hybrid or side by side, and whether 1.0 waits for the full interface. Re-measure at each release and report the number in the release notes.
