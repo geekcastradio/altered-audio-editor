@@ -359,6 +359,8 @@ describe("menu model", () => {
       "multitrack.mixdown.clips",
       "multitrack.bounce.selection",
       "multitrack.bounce.clips",
+      "multitrack.bounce.track",
+      "multitrack.bounce.clips-in-selection",
       "edit.cut",
       "edit.copy",
       "edit.paste",
