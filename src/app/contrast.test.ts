@@ -2,12 +2,14 @@
 // Copyright (c) The GeekCast Radio Network, LLC.
 // This file is part of Altered Audio Editor.
 
+/// <reference types="node" />
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import css from "../styles/tokens.css?raw";
+const css = readFileSync(new URL("../styles/tokens.css", import.meta.url), "utf8");
 
 /** The `--name: #hex` tokens in one rule, found by its selector. */
-function tokens(selector: string): Record<string, string> {
-  const start = css.indexOf(selector);
+function tokens(selector: RegExp): Record<string, string> {
+  const start = css.search(selector);
   if (start < 0) throw new Error(`no rule ${selector}`);
   const body = css.slice(css.indexOf("{", start) + 1, css.indexOf("}", start));
   const out: Record<string, string> = {};
@@ -25,8 +27,8 @@ export function ratio(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-const dark = tokens(":root {");
-const light = { ...dark, ...tokens(':root[data-theme="light"]') };
+const dark = tokens(/:root\s*\{/);
+const light = { ...dark, ...tokens(/:root\[data-theme="light"\]\s*\{/) };
 
 // [foreground, background, minimum ratio]. 4.5 for text, 3 for large marks and control edges.
 const PAIRS: [string, string, number][] = [
