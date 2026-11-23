@@ -4,11 +4,12 @@
 
 // Reads the same fixture as src-tauri/tests/key_dispatch_fixture.rs.
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import raw from "../../shared-fixtures/key-dispatch.json";
 import { decide } from "./dispatch";
 import { ownsArrowKeys } from "./owns-arrows";
 
-const fx = JSON.parse(readFileSync(new URL("../../shared-fixtures/key-dispatch.json", import.meta.url), "utf8"));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const fx = raw as any;
 
 describe("key dispatch fixture", () => {
   it("decides every key press the same as Rust", () => {
