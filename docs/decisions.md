@@ -2337,3 +2337,7 @@ The project lead reported that View > Light Theme only changed the menu item. Ca
 ## 2026-11-23: Meter range (issue 269)
 
 A recording with a noise floor below -60 dB showed nothing on the level meters. Settings > Playback and Recording has a new Meter range (0 to -24, -48, -60, -72, -96 or -120 dB; -60 stays the default), and right-clicking the Levels meter offers the same choices with the current one ticked. The Levels panel and the Voice Chain meters both follow it, with scale marks that suit each depth, and the yellow and red points are placed on the chosen scale. The setting is `meterRangeDb` in `settings.ts` and `settings_clean.rs`, and the shared settings fixture gained its default and five cases. Faders, automation and loudness ranges are unchanged: this is only how far down the meters look.
+
+## 2026-11-23: Rust port batch 49 (panel placement rules)
+
+`docking.rs` mirrors the helpers in `src/app/docking/registry.ts`: find a panel, pick where a turned-on panel goes given the panels that are open, find a built-in workspace, make a file-safe workspace id that does not clash, and the smallest size of a group of panels. The panel list, the Default layout, the built-in workspaces and the size limits are one data file, `src-tauri/data/docking.json`, written from the TypeScript lists. A Vitest check compares the file to the lists, so a change to either one fails until the file is written again. Rust and Vitest read `shared-fixtures/docking.json` (33 KB). The TypeScript copies stay in use.

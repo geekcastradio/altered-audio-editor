@@ -46,6 +46,7 @@ pub mod curve_presets;
 pub mod dead_space;
 pub mod delivery;
 pub mod dial_input;
+pub mod docking;
 pub mod dsp;
 pub mod dynamics_curve;
 pub mod edit_ops;
