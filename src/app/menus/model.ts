@@ -334,7 +334,9 @@ export const MENUS: readonly Menu[] = [
         item("multitrack.mixdown.clips", "Selected Clips"),
       ]),
       sub("Bounce to New Track", [
+        item("multitrack.bounce.track", "Selected Track"),
         item("multitrack.bounce.selection", "Time Selection"),
+        item("multitrack.bounce.clips-in-selection", "Selected Clips in Time Selection"),
         item("multitrack.bounce.clips", "Selected Clips"),
       ]),
       sep,

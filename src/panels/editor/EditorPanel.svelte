@@ -2025,9 +2025,9 @@
       ]),
       sub("Export Mixdown", [act("Entire Session...", "file.export.mixdown"), act("Time Selection...", "file.export.selection")]),
       sub("Bounce to New Track", [
-        off("Selected Track", "Not built yet."),
+        act("Selected Track", "multitrack.bounce.track"),
         act("Time Selection", "multitrack.bounce.selection"),
-        off("Selected Clips in Time Selection", "Not built yet."),
+        act("Selected Clips in Time Selection", "multitrack.bounce.clips-in-selection"),
         act("Selected Clips Only", "multitrack.bounce.clips"),
       ]),
       sep,

@@ -2222,3 +2222,7 @@ Adds `chain_actions.rs`: the pure parts of `chain-actions.ts` (loudness target s
 ## 2026-11-23: backlog items 11 and 12, Known limitations scope
 
 Added mono-aware recording and phone video and odd-format import to `docs/backlog.md` as ideas, with OpenTimelineIO import at low priority. The project lead confirmed that the Known limitations list is for anything not on Windows, since only Windows is tested and audited; the intro in `docs/known-limitations.md` now says so. The 0.63.0 notes stay as published.
+
+## 2026-11-23: Bounce to New Track, Selected Track and Selected Clips in Time Selection
+
+Both entries were disabled with "Not built yet". They now run through the same bounce path as the other two. Selected Track bounces every clip on the selected track, from its first clip start to its last clip end. Selected Clips in Time Selection bounces the selected clips that touch the time selection, limited to that range. Each is disabled with a reason when its input is missing (no track with clips, or no selected clips inside the range). The menu bar, the Multitrack menu and the lane right-click menu share the same two actions.
