@@ -4,7 +4,7 @@
   This file is part of Altered Audio Editor.
 
   Levels panel: the output level, left and right, on a dB scale from
-  -60 to 0. It follows whatever is playing: the multitrack session, the
+  -60 to 0 (or deeper: right-click for -24 to -120). It follows whatever is playing: the multitrack session, the
   Waveform editor's file, or a preview from Files, Drive Manager or
   Libraries. Click a red over light to clear it. Docked to the side of the
   window the bars stand up with the scale on the right; docked along the top
@@ -16,6 +16,9 @@
   import type { SessionStore, SpaceLayout } from "../../stores/session";
   import { channelNames } from "../space/space";
   import { levelsOrientation, type LevelsOrientation } from "./orientation";
+  import { METER_RANGES, settings } from "../../stores/settings";
+  import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
+  import { meterPos, meterTicks, rangeLabel } from "./scale";
 
   interface Props {
     transport: TransportStore;
@@ -85,8 +88,26 @@
     else transport.clearOver();
   }
 
-  const TICKS = [-60, -48, -36, -24, -18, -12, -9, -6, -3, 0];
-  const pos = (db: number) => ((db + 60) / 60) * 100;
+  // How far down the meters reach. Right-click a meter to change it; Settings has it too.
+  let range = $state(settings.current.meterRangeDb);
+  $effect(() => settings.subscribe((v) => (range = v.meterRangeDb)));
+  const TICKS = $derived(meterTicks(range));
+  const pos = (db: number) => meterPos(db, range);
+  const frac = (peak: number) => meterFraction(peak, -range);
+  let menu = $state<{ x: number; y: number; items: ContextItem[] } | null>(null);
+  function openMenu(e: MouseEvent) {
+    e.preventDefault();
+    menu = {
+      x: e.clientX,
+      y: e.clientY,
+      items: METER_RANGES.map((r): ContextItem => ({
+        kind: "item",
+        label: rangeLabel(r),
+        checked: r === range,
+        run: () => settings.set({ ...settings.current, meterRangeDb: r }),
+      })),
+    };
+  }
 
   function db(m: MeterLevel | undefined): string {
     if (!m || m.peak <= 0.00001) return "-inf";
@@ -101,6 +122,7 @@
   class:vertical
   style:--rows={rows.length}
   aria-label="Levels"
+  oncontextmenu={openMenu}
   bind:clientWidth={boxW}
   bind:clientHeight={boxH}
 >
@@ -121,12 +143,12 @@
         style:grid-column={k + 1}
         role="meter"
         aria-label={row.name}
-        aria-valuemin={-60}
+        aria-valuemin={-range}
         aria-valuemax={0}
-        aria-valuenow={m && m.peak > 0 ? Math.max(-60, Math.round(20 * Math.log10(m.peak))) : -60}
+        aria-valuenow={m && m.peak > 0 ? Math.max(-range, Math.round(20 * Math.log10(m.peak))) : -range}
       >
-        <div class="vcover" style:height="{(1 - meterFraction(m?.level ?? 0)) * 100}%"></div>
-        {#if m && m.peak > 0}<div class="vpeak" style:bottom="{meterFraction(m.peak) * 100}%"></div>{/if}
+        <div class="vcover" style:height="{(1 - frac(m?.level ?? 0)) * 100}%"></div>
+        {#if m && m.peak > 0}<div class="vpeak" style:bottom="{frac(m.peak) * 100}%"></div>{/if}
       </div>
       <span class="ch vch" style:grid-column={k + 1}>{row.label}</span>
       <span class="val vval" style:grid-column={k + 1}>{db(m)}</span>
@@ -145,12 +167,12 @@
         class="bar"
         role="meter"
         aria-label={row.name}
-        aria-valuemin={-60}
+        aria-valuemin={-range}
         aria-valuemax={0}
-        aria-valuenow={m && m.peak > 0 ? Math.max(-60, Math.round(20 * Math.log10(m.peak))) : -60}
+        aria-valuenow={m && m.peak > 0 ? Math.max(-range, Math.round(20 * Math.log10(m.peak))) : -range}
       >
-        <div class="cover" style:width="{(1 - meterFraction(m?.level ?? 0)) * 100}%"></div>
-        {#if m && m.peak > 0}<div class="peak" style:left="{meterFraction(m.peak) * 100}%"></div>{/if}
+        <div class="cover" style:width="{(1 - frac(m?.level ?? 0)) * 100}%"></div>
+        {#if m && m.peak > 0}<div class="peak" style:left="{frac(m.peak) * 100}%"></div>{/if}
       </div>
       <button
         type="button"
@@ -173,6 +195,9 @@
   </div>
   {/if}
 </section>
+{#if menu}
+  <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => (menu = null)} />
+{/if}
 
 <style>
   .levels {

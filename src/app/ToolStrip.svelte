@@ -11,6 +11,8 @@
 <script lang="ts">
   import type { ActionRegistry } from "./actions";
   import { editor, type EditorState, type EditorTool } from "../stores/editor";
+  import { settings } from "../stores/settings";
+  import { THEME_CHOICES, type ThemeChoice } from "./theme";
 
   interface Props {
     actions: ActionRegistry;
@@ -23,6 +25,13 @@
   $effect(() =>
     editor.subscribe((s) => {
       ed = s;
+    }),
+  );
+
+  let theme = $state<ThemeChoice>(settings.current.theme);
+  $effect(() =>
+    settings.subscribe((s) => {
+      theme = s.theme;
     }),
   );
 
@@ -165,6 +174,29 @@
       <span class="num">{ed.brushSize} px</span>
     </label>
   {/if}
+
+  <div class="themes" role="radiogroup" aria-label="Color theme">
+    {#each THEME_CHOICES as t (t.id)}
+      <button
+        type="button"
+        role="radio"
+        class="tool"
+        class:on={theme === t.id}
+        aria-checked={theme === t.id}
+        aria-label={t.label}
+        title={`${t.label}. ${t.help}`}
+        onclick={() => void actions.run(`view.theme.${t.id}`)}
+      >
+        {#if t.id === "light"}
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.3" /><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M12.6 3.4l-1.4 1.4M4.8 11.2l-1.4 1.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" /></svg>
+        {:else if t.id === "system"}
+          <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.8" y="2.8" width="12.4" height="8" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.3" /><path d="M5.5 13.5h5M8 10.8v2.7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" /></svg>
+        {:else}
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M12.6 10.2A5.6 5.6 0 0 1 5.8 3.4a5.6 5.6 0 1 0 6.8 6.8z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" /></svg>
+        {/if}
+      </button>
+    {/each}
+  </div>
 </div>
 
 <style>
@@ -220,6 +252,13 @@
   }
 
   .tools,
+  .themes {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+    margin-left: auto;
+  }
+
   .views {
     display: flex;
     gap: 2px;

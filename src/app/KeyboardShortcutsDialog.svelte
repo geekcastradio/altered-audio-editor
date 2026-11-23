@@ -243,7 +243,6 @@
     display: flex;
     gap: var(--space-4);
     align-items: center;
-    padding: 12px 14px;
     border-bottom: 1px solid var(--border);
   }
 

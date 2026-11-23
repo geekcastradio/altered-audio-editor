@@ -46,8 +46,8 @@ export interface AppSettings {
   colors: AppColors;
   /** How light the panels are: the standard charcoal, or the darker classic look (dark theme only). */
   surface: "standard" | "classic";
-  /** The color theme: dark for long sessions, or light. */
-  theme: "dark" | "light";
+  /** The color theme: dark for long sessions, light, or whichever the computer is set to. */
+  theme: "dark" | "light" | "system";
   /** System name of the output; null is the system default. */
   output: string | null;
   /** Device outputs (from 0) the stereo mix plays on: left, right. */
@@ -56,6 +56,8 @@ export interface AppSettings {
   speakerOutputs: Record<string, number>;
   /** How lively the level meters are. */
   meterSpeed: "fast" | "medium" | "slow";
+  /** How far down the level meters reach, in dB below full scale: one of METER_RANGES. */
+  meterRangeDb: number;
   /** The custom loudness target: integrated LUFS and true peak ceiling. */
   customLufs: number;
   customPeak: number;
@@ -216,6 +218,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   driver: "system",
   bufferFrames: 0,
   meterSpeed: "fast",
+  meterRangeDb: 60,
   customLufs: -18,
   customPeak: -1,
   autosave: true,
@@ -287,7 +290,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
         ? o.fadeShape
         : "cosine",
     surface: o.surface === "classic" ? "classic" : "standard",
-    theme: o.theme === "light" ? "light" : "dark",
+    theme: o.theme === "light" ? "light" : o.theme === "system" ? "system" : "dark",
     colors: {
       wave: color(c.wave),
       playhead: color(c.playhead),
@@ -315,6 +318,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       o.meterSpeed === "medium" || o.meterSpeed === "slow"
         ? o.meterSpeed
         : "fast",
+    meterRangeDb: METER_RANGES.includes(o.meterRangeDb as number) ? (o.meterRangeDb as number) : d.meterRangeDb,
     customLufs: Math.round(num(o.customLufs, -40, -5, d.customLufs) * 10) / 10,
     customPeak: Math.round(num(o.customPeak, -10, 0, d.customPeak) * 10) / 10,
     waveInput:
@@ -471,7 +475,10 @@ export function colorVars(c: AppColors): Record<string, string> {
   return v;
 }
 
-/** Where a level in dBFS sits on a -60 to 0 dB meter, as a percentage. */
+/** The depths the level meters can reach, in dB below full scale. */
+export const METER_RANGES: readonly number[] = [24, 48, 60, 72, 96, 120];
+
+/** Where a level in dBFS sits on a meter with this floor (default -60 to 0 dB), as a percentage. */
 export function meterPercent(db: number, floorDb = -60): number {
   return Math.max(0, Math.min(100, ((db - floorDb) / -floorDb) * 100));
 }

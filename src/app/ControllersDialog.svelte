@@ -175,6 +175,8 @@
   .dialog {
     width: min(640px, 94vw);
     max-height: 90vh;
+    --dialog-pad-x: 22px;
+    --dialog-pad-y: 18px;
     padding: 18px 22px 14px;
     overflow-y: auto;
     border: 1px solid var(--border-strong);
@@ -182,8 +184,10 @@
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
   }
   h1 {
-    margin: 0 0 6px;
-    font-size: 17px;
+    font-size: 14px;
+  }
+  h1 + .fine {
+    margin-top: 10px;
   }
   h2 {
     margin: 14px 0 6px;

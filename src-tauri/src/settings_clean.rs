@@ -23,7 +23,7 @@ pub fn default_settings() -> Value {
         },
         "surface": "standard", "theme": "dark", "output": null, "outputPair": [0, 1],
         "speakerOutputs": {}, "waveInput": null, "waveMonitor": false, "driver": "system",
-        "bufferFrames": 0, "meterSpeed": "fast", "customLufs": -18, "customPeak": -1,
+        "bufferFrames": 0, "meterSpeed": "fast", "meterRangeDb": 60, "customLufs": -18, "customPeak": -1,
         "autosave": true, "autosaveMinutes": 2, "openChainOnAdd": true,
         "fillClickTexture": "natural", "realtimePlugins": false, "soloExclusive": false,
         "autoThinPercent": 0.3, "meterYellowDb": -12, "meterRedDb": -3, "backups": false,
@@ -256,7 +256,11 @@ pub fn sanitize_settings(raw: &Value) -> Value {
         "dropMany": if g("dropMany").and_then(Value::as_str) == Some("sequence") { "sequence" } else { "tracks" },
         "fadeShape": pick(g("fadeShape"), &["linear", "logarithmic", "exponential", "equal_power"], "cosine"),
         "surface": if g("surface").and_then(Value::as_str) == Some("classic") { "classic" } else { "standard" },
-        "theme": if g("theme").and_then(Value::as_str) == Some("light") { "light" } else { "dark" },
+        "theme": match g("theme").and_then(Value::as_str) {
+            Some("light") => "light",
+            Some("system") => "system",
+            _ => "dark",
+        },
         "colors": {
             "wave": color(c.get("wave")),
             "playhead": color(c.get("playhead")),
@@ -274,6 +278,7 @@ pub fn sanitize_settings(raw: &Value) -> Value {
         "driver": if g("driver").and_then(Value::as_str) == Some("asio") { "asio" } else { "system" },
         "bufferFrames": int_in(g("bufferFrames"), 0.0, 8192.0).map_or(dv("bufferFrames"), |n| json!(n)),
         "meterSpeed": pick(g("meterSpeed"), &["medium", "slow"], "fast"),
+        "meterRangeDb": match g("meterRangeDb").and_then(Value::as_f64) { Some(x) if [24.0, 48.0, 60.0, 72.0, 96.0, 120.0].contains(&x) => json!(x), _ => dv("meterRangeDb") },
         "customLufs": round_to(num(g("customLufs"), -40.0, -5.0, -18.0), 10.0),
         "customPeak": round_to(num(g("customPeak"), -10.0, 0.0, -1.0), 10.0),
         "waveInput": match g("waveInput").and_then(Value::as_str) { Some(s) if s.starts_with("Mono: ") || s.starts_with("Stereo: ") => json!(s), _ => Value::Null },
@@ -316,4 +321,23 @@ pub fn sanitize_settings(raw: &Value) -> Value {
         "welcomeRev": welcome,
         "spaceSnap": boolean(g("spaceSnap"), true),
     })
+}
+
+#[cfg(test)]
+mod theme_tests {
+    use super::*;
+
+    #[test]
+    fn theme_accepts_light_system_and_dark() {
+        for (given, want) in [
+            ("light", "light"),
+            ("system", "system"),
+            ("dark", "dark"),
+            ("purple", "dark"),
+        ] {
+            let s = sanitize_settings(&json!({ "theme": given }));
+            assert_eq!(s["theme"], want, "given {given}");
+        }
+        assert_eq!(sanitize_settings(&json!({}))["theme"], "dark");
+    }
 }

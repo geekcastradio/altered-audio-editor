@@ -18,6 +18,7 @@ describe("app settings", () => {
     expect(s.musicMode).toBe(false);
     expect(s.theme).toBe("dark");
     expect(sanitizeSettings({ theme: "light" }).theme).toBe("light");
+    expect(sanitizeSettings({ theme: "system" }).theme).toBe("system");
     expect(sanitizeSettings({ theme: "purple" }).theme).toBe("dark");
     expect(s.returnOnStop).toBe(true);
     expect(sanitizeSettings({ returnOnStop: false }).returnOnStop).toBe(false);
