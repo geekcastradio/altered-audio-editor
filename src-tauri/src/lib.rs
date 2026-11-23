@@ -36,6 +36,7 @@ pub mod clip_select;
 pub mod codecs;
 pub mod colors;
 pub mod commands;
+pub mod controller_map;
 pub mod controllers;
 pub mod curve_presets;
 pub mod dead_space;
