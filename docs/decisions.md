@@ -2326,6 +2326,9 @@ The Linux and macOS release builds now pass `--features pure-aac`, so they write
 
 `chain_run_notes.rs` mirrors `preflight` and `chainSummary` in `src/app/chains.ts`: why a process chain cannot run (problems found in the file, or steps the app has no handler for, each named once) and the one notice after a run. Rust and Vitest read `shared-fixtures/chain-run-notes.json` (24 KB). The command that runs the steps and its undo stay in TypeScript. The TypeScript copies stay in use.
 
+## 2026-11-23: Rust port batch 50 (effect envelopes on a clip)
+
+`envelope_fx.rs` mirrors the effect parts of `src/panels/editor/envelope.ts`: the control behind an effect lane, the settings a clip's chain offers for an envelope (hidden and retiming controls left out), the lane shown (the picked one, else the first enabled), its range with a step that falls back to 0.01, its points, resting value, name and the clip change that sets it. The effect catalog is passed in; clips are plain JSON. Rust and Vitest read `shared-fixtures/envelope-fx.json` (220 KB, clips with missing, disabled, duplicate and unknown effects). The TypeScript copies stay in use.
 ## 2026-11-23: Theme switch, and one look for dialog title bars
 
 The project lead reported that View > Light Theme only changed the menu item. Cause: the action stored the new theme but never told the window to draw it (`applyAppSettings` set the `data-theme` attribute only when Settings was closed with OK). The action now applies it, and the theme is also re-applied when the computer's setting changes.
