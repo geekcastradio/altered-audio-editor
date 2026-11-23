@@ -2238,3 +2238,7 @@ The star button beside Presets was disabled. It now stars the preset picked last
 ## 2026-11-23: Bounce to New Track, Selected Track and Selected Clips in Time Selection
 
 Both entries were disabled with "Not built yet". They now run through the same bounce path as the other two. Selected Track bounces every clip on the selected track, from its first clip start to its last clip end. Selected Clips in Time Selection bounces the selected clips that touch the time selection, limited to that range. Each is disabled with a reason when its input is missing (no track with clips, or no selected clips inside the range). The menu bar, the Multitrack menu and the lane right-click menu share the same two actions.
+
+## 2026-11-23: Rust port, batch 32 (spectrum view)
+
+Adds `spectrum_view.rs`: the frequency axis, view range, zoom, scale marks, the color table and the rasterizing of Box, Lasso and Brush selections into a mask. It sits beside the axis maths already in `dsp/spectral.rs`. The fixture (`spectrum-view.json`) covers eight views, four Nyquist rates, zoom in and out at three pitches, scale marks at two gaps, and eleven selections (reversed, out of range, one point, empty), each rasterized at the full and a small grid. It matched on the first run.
