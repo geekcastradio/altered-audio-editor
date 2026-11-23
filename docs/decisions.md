@@ -2305,3 +2305,7 @@ A new advisory (private cookie nonces can repeat in processes that fork) failed 
 ## 2026-11-23: Known limitations: controllers
 
 The Known limitations page still said motor fader feedback was not built. It was built in 0.22.0 (`feedback.ts`, the "Send feedback to the devices" option) and has only ever been checked against the Mackie message layout, never a real surface. The line now says that. Scribble strips and jog wheels are still not built.
+
+## 2026-11-23: Rust port batch 45 (automation lane choices and edits)
+
+`auto_lanes.rs` mirrors the owner and catalog parts of `automation.ts`: which settings a lane can move (including the 3D Space spot), a lane name, range and resting value, orphan lanes, the next free target, adding, replacing and dropping lanes (ids come from a closure), and the automation mode choices. Rust and Vitest read `shared-fixtures/auto-lanes.json` (27 KB). The TS copies stay in use.
