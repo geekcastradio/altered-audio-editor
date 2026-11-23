@@ -55,6 +55,7 @@ pub mod effect_presets;
 pub mod effect_ui;
 pub mod engine;
 pub mod envelope;
+pub mod envelope_fx;
 pub mod events;
 pub mod export;
 pub mod fader;
