@@ -107,6 +107,7 @@ pub mod session_rules;
 pub mod sesx;
 pub mod settings_clean;
 pub mod settings_draft;
+pub mod shortcut_import;
 pub mod sound_types;
 pub mod space_ui;
 pub mod speaker_balance;
