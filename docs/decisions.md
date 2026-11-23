@@ -2243,3 +2243,7 @@ Both entries were disabled with "Not built yet". They now run through the same b
 ## 2026-11-23: Rust port batch 34 (plug-in slot sync and chain drag edits)
 
 `plugin_sync.rs` mirrors the pure parts of `src/app/plugin-sync.ts` (instrument slots, chain slots, plug-in slots, and the edits that bring plug-in events and fetched settings into the session, one `set_effects` per chain and one `set_track` per MIDI instrument) and `src/panels/voice-chain/slot-drag.ts` (owner keys, the chain a target names, the move or copy edit a drop makes, header row targets). It reuses the chain functions already in `voice_chain.rs`. Rust and Vitest read `shared-fixtures/plugin-sync.json` (127 KB). The timer class and the pointer drag stay in TypeScript. The TS copies stay in use.
+
+## 2026-11-23: Rust port, batch 32 (spectrum view)
+
+Adds `spectrum_view.rs`: the frequency axis, view range, zoom, scale marks, the color table and the rasterizing of Box, Lasso and Brush selections into a mask. It sits beside the axis maths already in `dsp/spectral.rs`. The fixture (`spectrum-view.json`) covers eight views, four Nyquist rates, zoom in and out at three pitches, scale marks at two gaps, and eleven selections (reversed, out of range, one point, empty), each rasterized at the full and a small grid. It matched on the first run.
