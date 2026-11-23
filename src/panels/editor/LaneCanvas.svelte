@@ -15,6 +15,7 @@
   import { defaultTrackColor, trackHeight, peakRange, pickLevel, xOf, type Viewport, TRACK_GAP } from "./timeline";
   import { chipBox, chipLabel, fxLaneOf, pointsOf, rangeOf, restValue, valueToY, type EnvKind, type FxLane } from "./envelope";
   import { exactSamples, SAMPLE_VIEW } from "../../stores/exact-samples";
+  import { themeTick } from "../../app/theme";
 
   interface Props {
     track: TrackDoc;
@@ -52,6 +53,8 @@
   const { track, media, sessionRate, view, width, playhead, selectedClips, trackSelected, index = 0, ampZoom = 1, liveTake = null, peaks, peakTick, showVolume = false, showPan = false, showFx = false, fxLanes = {}, stretchHandles = false, silent = false, envSelected = null }: Props = $props();
 
   let canvas = $state<HTMLCanvasElement | null>(null);
+  let themeKey = $state(0);
+  $effect(() => themeTick.subscribe((n) => (themeKey = n)));
 
   function css(name: string): string {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888";
@@ -109,7 +112,7 @@
   }
 
   /** Mixes a color toward white by `amount` (0 to 1). Unknown formats come back unchanged. */
-  function lighten(c: string, amount: number): string {
+  function lighten(c: string, amount: number, toward = 255): string {
     const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c.trim());
     let r: number, gr: number, b: number;
     if (m) {
@@ -120,9 +123,12 @@
       if (!n) return c;
       [r, gr, b] = [Number(n[1]), Number(n[2]), Number(n[3])];
     }
-    const mix = (v: number) => Math.round(v + (255 - v) * amount);
+    const mix = (v: number) => Math.round(v + (toward - v) * amount);
     return `rgb(${mix(r)}, ${mix(gr)}, ${mix(b)})`;
   }
+
+  /** Mix a color toward black. The light theme draws waveforms dark on a tinted clip. */
+  const darken = (c: string, amount: number) => lighten(c, amount, 0);
 
   /** Clips in one group share a color of their own, so a group stands out from the single clips. */
   function groupColor(group: string): string {
@@ -164,6 +170,7 @@
 
   $effect(() => {
     void peakKey;
+    void themeKey;
     void exactTick;
     void liveTake?.tick;
     const c = canvas;
@@ -180,6 +187,8 @@
     g.clearRect(0, 0, width, h);
     // The bottom TRACK_GAP pixels are the dark break between tracks.
     const lh = h - TRACK_GAP;
+    // The light theme draws clips with a stronger tint, dark waveforms and dark names.
+    const light = document.documentElement.dataset.theme === "light";
     g.fillStyle = trackSelected ? css("--lane-selected") : css(index % 2 ? "--lane-b" : "--lane-a");
     g.fillRect(0, 0, width, lh);
 
@@ -215,11 +224,11 @@
       // Body and title bar.
       g.globalAlpha = clip.muted || clip.take?.active === false ? 0.35 : 1;
       g.fillStyle = color;
-      g.globalAlpha *= 0.2;
+      g.globalAlpha *= light ? 0.42 : 0.2;
       g.fillRect(left, 1, right - left, lh - 2);
       // No solid title bar (as in Audition): the name floats over the clip, in light text.
       g.globalAlpha = clip.muted || clip.take?.active === false ? 0.35 : 1;
-      g.fillStyle = "#eef0f4";
+      g.fillStyle = light ? "#15151a" : "#eef0f4";
       g.font = `11px ${css("--font-ui")}`;
       g.textBaseline = "middle";
       g.save();
@@ -268,7 +277,7 @@
         // The waveform grows and shrinks with the clip's level.
         const clipLevel = Math.pow(10, (clip.gain_db ?? 0) / 20);
         if (exact) {
-          const tone = lighten(color, 0.55);
+          const tone = light ? darken(color, 0.55) : lighten(color, 0.55);
           g.strokeStyle = tone;
           g.fillStyle = tone;
           g.lineWidth = 1.25;
@@ -309,7 +318,7 @@
           g.globalAlpha = 1;
         } else if (level) {
           // Much lighter than the clip body so the waveform stands out.
-          g.fillStyle = lighten(color, 0.55);
+          g.fillStyle = light ? darken(color, 0.55) : lighten(color, 0.55);
           g.globalAlpha = clip.muted || clip.take?.active === false ? 0.35 : 1;
           const laneH = body.height / ch;
           // A looped clip wraps back to the start of its region.
@@ -543,12 +552,12 @@
       g.globalAlpha = 1;
       if (selected) {
         // Clear selection: a light wash over the whole clip, a dark halo and a thick white outline.
-        g.fillStyle = "rgba(255, 255, 255, 0.14)";
+        g.fillStyle = light ? "rgba(28, 120, 196, 0.16)" : "rgba(255, 255, 255, 0.14)";
         g.fillRect(left, 1, right - left, lh - 2);
-        g.strokeStyle = "rgba(0, 0, 0, 0.7)";
+        g.strokeStyle = light ? "rgba(255, 255, 255, 0.85)" : "rgba(0, 0, 0, 0.7)";
         g.lineWidth = 4;
         g.strokeRect(x0 + 0.5, 1.5, x1 - x0 - 1, lh - 3);
-        g.strokeStyle = "#ffffff";
+        g.strokeStyle = light ? "#0b3d6b" : "#ffffff";
         g.lineWidth = 2;
         g.strokeRect(x0 + 0.5, 1.5, x1 - x0 - 1, lh - 3);
       } else {

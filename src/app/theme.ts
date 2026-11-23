@@ -2,6 +2,16 @@
 // Copyright (c) The GeekCast Radio Network, LLC.
 // This file is part of Altered Audio Editor.
 
+import { writable } from "svelte/store";
+
+/** Counts theme changes. Canvases read it in their draw effects so they repaint in the same frame as a switch. */
+export const themeTick = writable(0);
+
+/** Tell every canvas the theme colors changed. Call after the theme attribute is set. */
+export function notifyThemeChanged(): void {
+  themeTick.update((n) => n + 1);
+}
+
 /** The theme choices, in the order the tool strip shows them, with their hover text. */
 export type ThemeChoice = "light" | "system" | "dark";
 

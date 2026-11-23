@@ -2364,3 +2364,10 @@ What 75% means in lines: about 29,000 more lines moved. The unported TypeScript 
 What has to be true: the toolkit decision (the Phase 2 spike on the project lead's PC) happens in December or January, not Q1; the first native panels (transport, Time Info, Levels, then the Waveform editor) start in January; and more than one assistant works in parallel (Claude, Copilot, Gemini) on panels that have fixtures. Risks: text input and docking in Rust toolkits, two copies of the logic during the move, and review time from one person.
 
 Not decided: toolkit, hybrid or side by side, and whether 1.0 waits for the full interface. Re-measure at each release and report the number in the release notes.
+
+## 2026-11-23: Tool strip, Light theme contrast, theme switch repaint
+
+- **Tool strip.** The theme switch added in 0.66.0 shared a rule with the tool buttons, and that rule pushed the tools to the right end of the strip. Only the theme switch sits at the right now; the tools are back on the left where 0.65.0 had them.
+- **Light theme.** Lanes and track headers are darker, so clips stand out and the page is no longer too bright. In the light theme a clip body has a stronger tint, its waveform and envelope lines are drawn dark, its name is dark text, and a selected clip gets a blue wash with a dark outline (white on dark lanes still). The blue value color and the accent are darker, so blue text reads on gray buttons.
+- **Contrast test.** `src/app/contrast.test.ts` reads `tokens.css` and checks text, value and accent colors against every surface in both themes (4.5:1 for text, 3:1 for the accent). A color change that drops a pair under the line fails the test.
+- **Theme switch repaint.** The canvases (lanes, overview, ruler, Waveform editor, Spectrum view) now watch a theme counter and redraw in the same frame as the switch, instead of waiting for a delayed resize event.

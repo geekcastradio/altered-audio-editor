@@ -36,6 +36,7 @@
   import { mediaFrames, waveZeroCrossings } from "../../app/core";
   import TransportBar from "./TransportBar.svelte";
   import SpectrumView from "./SpectrumView.svelte";
+  import { themeTick } from "../../app/theme";
 
   interface Props {
     wave: SessionStore;
@@ -294,8 +295,12 @@
   /** dB marks on the level scale. */
   const MARKS = [0, -3, -6, -9, -12, -18, -24];
 
+  let themeKey = $state(0);
+  $effect(() => themeTick.subscribe((n) => (themeKey = n)));
+
   // Waveform.
   $effect(() => {
+    void themeKey;
     void peakTick;
     void live?.tick;
     const c = canvas;
@@ -545,6 +550,7 @@
 
   // Ruler.
   $effect(() => {
+    void themeKey;
     void peakTick;
     const c = ruler;
     if (!c || !doc) return;

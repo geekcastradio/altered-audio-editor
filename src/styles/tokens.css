@@ -111,21 +111,21 @@
   --text-dim: #45454e;
   --text-faint: #75757f;
 
-  --accent: #1c78c4;
+  --accent: #1a6fb5;
   --accent-dim: #8bbbe3;
   --playhead: #b57b00;
-  --value: #0b62a8;
+  --value: #07508c;
   --gutter: #c9c9d1;
   --danger: #c8372f;
   --title-bar: #2d2f38;
   --title-bar-text: #f1f1f4;
 
-  --lane-a: #f6f6f8;
-  --lane-b: #ececf0;
-  --lane-selected: #d4e3f3;
-  --track-gap: #b9b9c3;
-  --header-a: #dedee3;
-  --header-b: #d6d6dc;
+  --lane-a: #d9d9e0;
+  --lane-b: #cfcfd7;
+  --lane-selected: #bcd1e8;
+  --track-gap: #9b9ba7;
+  --header-a: #cbcbd3;
+  --header-b: #c3c3cc;
 }
 
 *,

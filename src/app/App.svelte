@@ -321,7 +321,7 @@
   import { activeArea, currentArea, trackArea, type Area } from "./area";
   import { revealLabel } from "../lib/platform";
   import ToolStrip from "./ToolStrip.svelte";
-  import { effectiveTheme, systemIsLight, THEME_CHOICES, watchSystemTheme } from "./theme";
+  import { effectiveTheme, notifyThemeChanged, systemIsLight, THEME_CHOICES, watchSystemTheme } from "./theme";
   import NewAudioFileDialog, { type NewAudioSettings } from "./NewAudioFileDialog.svelte";
   import NewSessionDialog, { type NewSessionSettings } from "./NewSessionDialog.svelte";
   import { closeWaveFile, discardParked, forgetParked, parkedFiles, waveParkedChanged, newEmptyWaveFile, parkedUnsaved, newWaveFromClips, newWaveFromMix, openWaveFile, saveWaveFile, savesInPlace, spectralSelection, wave, waveFile, waveHistory, waveTransport, waveZoom } from "../stores/wave";
@@ -3894,8 +3894,9 @@
     const shown = effectiveTheme(s.theme, systemIsLight());
     if (document.documentElement.dataset.theme !== shown) {
       document.documentElement.dataset.theme = shown;
-      // Canvases read their colors when they draw; ask them to draw again.
-      requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+      // Canvases read their colors when they draw; tell them to draw again now, in this frame.
+      notifyThemeChanged();
+      window.dispatchEvent(new Event("resize"));
     }
     const root = document.documentElement.style;
     for (const k of ["--wave", "--playhead", "--accent", "--lane-selected"]) root.removeProperty(k);
