@@ -153,21 +153,22 @@ pub fn workspace_id(name: &str, taken: &BTreeSet<String>) -> String {
 /// The smallest a panel is allowed to get, in pixels, so its controls never squeeze together.
 pub fn min_size(id: &str) -> Option<(f64, f64)> {
     Some(match id {
-        "files" => (280.0, 150.0),
+        // Every side panel can be dragged down to its title strip; its body scrolls when short.
+        "files" => (280.0, 36.0),
         "voice-chain" | "batch-convert" | "quickpass" => (300.0, 36.0),
         "editor" => (520.0, 260.0),
         "mixer" => (360.0, 220.0),
         "levels" => (260.0, 70.0),
-        "audio-fx" | "sound-types" | "loudness-match" => (280.0, 160.0),
+        "audio-fx" | "sound-types" | "loudness-match" => (280.0, 36.0),
         "time-info" => (220.0, 110.0),
-        "history" => (220.0, 120.0),
+        "history" => (220.0, 36.0),
         "video" => (320.0, 220.0),
-        "takes" | "drive-manager" | "markers" | "review" | "playlist" => (260.0, 140.0),
-        "soundboard" => (240.0, 200.0),
-        "libraries" => (260.0, 200.0),
-        "metadata" => (280.0, 200.0),
-        "properties" => (260.0, 160.0),
-        "phase-wheel" => (200.0, 160.0),
+        "takes" | "drive-manager" | "markers" | "review" | "playlist" => (260.0, 36.0),
+        "soundboard" => (240.0, 36.0),
+        "libraries" => (260.0, 36.0),
+        "metadata" => (280.0, 36.0),
+        "properties" => (260.0, 36.0),
+        "phase-wheel" => (200.0, 36.0),
         "space" => (260.0, 220.0),
         _ => return None,
     })
