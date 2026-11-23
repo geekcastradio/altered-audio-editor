@@ -75,7 +75,7 @@
   import DynamicsPanel from "./DynamicsPanel.svelte";
   import { importAuditionRacks } from "./audition-presets";
   import { mergePack, packPresets, readPack } from "./preset-pack";
-  import { favoriteIds, KEY_FAVORITES, toggleFavorite } from "./favorites";
+  import { favoriteIds, favoritePresetNames, KEY_FAVORITES, KEY_PRESET_FAVORITES, toggleFavorite } from "./favorites";
   import InfoTip from "../../app/InfoTip.svelte";
   import { effectHelp } from "./effect-help";
   import { clampBox, effectWindowRequest, hideEffectWindows, portal, type WindowBox } from "./effect-window";
@@ -476,9 +476,20 @@
   }
 
   let favs = $state<string[]>(favoriteIds());
+  let presetFavs = $state<string[]>(favoritePresetNames());
+  /** The preset picked last; the star beside Presets stars or unstars it. */
+  let lastPreset = $state<string | null>(null);
   $effect(() => {
-    void prefs.load().then(() => (favs = favoriteIds()));
+    void prefs.load().then(() => {
+      favs = favoriteIds();
+      presetFavs = favoritePresetNames();
+    });
   });
+  function togglePresetFav() {
+    if (!lastPreset) return;
+    presetFavs = toggleFavorite(presetFavs, lastPreset);
+    prefs.set(KEY_PRESET_FAVORITES, $state.snapshot(presetFavs));
+  }
   function toggleFav(effect: string) {
     favs = toggleFavorite(favs, effect);
     prefs.set(KEY_FAVORITES, $state.snapshot(favs));
@@ -544,6 +555,7 @@
   function choosePreset(name: string) {
     const p = [...userPresets, ...BUILTIN_PRESETS].find((x) => x.name === name);
     if (!p) return;
+    lastPreset = p.name;
     const next = applyPreset(chain, p, known, () => crypto.randomUUID());
     selectedSlot = next?.slots[addsOne(p) ? next.slots.length - 1 : 0]?.id ?? null;
     commit(`Preset ${p.name}`, next);
@@ -771,7 +783,7 @@
           aria-haspopup="menu"
           onclick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
-            slotMenu = { x: r.left, y: r.bottom, items: presetMenu(userPresets, BUILTIN_PRESETS, choosePreset, () => auditionInput?.click(), { save: () => void exportPack(), load: () => packInput?.click() }) };
+            slotMenu = { x: r.left, y: r.bottom, items: presetMenu(userPresets, BUILTIN_PRESETS, choosePreset, () => auditionInput?.click(), { save: () => void exportPack(), load: () => packInput?.click() }, presetFavs) };
           }}
         >
           <span>(Choose a preset)</span><span aria-hidden="true">▾</span>
@@ -782,7 +794,16 @@
         <button type="button" class="ico" title={userPresets.length ? "Delete a saved preset" : "You have no saved presets to delete"} aria-label="Delete a saved preset" aria-haspopup="menu" disabled={userPresets.length === 0} onclick={openDeleteMenu}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" fill="none" stroke="currentColor" stroke-width="1.4" /></svg>
         </button>
-        <button type="button" class="ico" disabled title="Favorites presets are not built yet" aria-label="Favorites preset">
+        <button
+          type="button"
+          class="ico star"
+          class:on={!!lastPreset && presetFavs.includes(lastPreset)}
+          disabled={!lastPreset}
+          aria-pressed={!!lastPreset && presetFavs.includes(lastPreset)}
+          title={!lastPreset ? "Pick a preset, then star it to keep it under Favorites" : presetFavs.includes(lastPreset) ? `Remove ${lastPreset} from Favorites` : `Add ${lastPreset} to Favorites`}
+          aria-label="Favorite preset"
+          onclick={togglePresetFav}
+        >
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m8 2 1.8 3.8 4.2.5-3.1 2.9.8 4.1L8 11.2 4.3 13.3l.8-4.1L2 6.3l4.2-.5Z" fill="none" stroke="currentColor" stroke-width="1.3" /></svg>
         </button>
       </div>
@@ -1479,6 +1500,12 @@
     fill: none;
     stroke: currentColor;
     stroke-width: 1.3;
+  }
+  .presets .ico.star.on {
+    color: #d99a1a;
+  }
+  .presets .ico.star.on svg path {
+    fill: currentColor;
   }
   .fxwin header .star.on {
     color: #d99a1a;
