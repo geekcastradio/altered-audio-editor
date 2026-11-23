@@ -2281,3 +2281,7 @@ Adds `spectrum_view.rs`: the frequency axis, view range, zoom, scale marks, the 
 ## 2026-11-23: Rust port batch 43 (bars and beats ruler)
 
 `bar_ruler.rs` mirrors the bars part of `timeline.ts`: bar.beat.tick text and parsing, ruler ticks and grid lines through tempo and time signature changes, on top of `tempo_map.rs`. Rust and Vitest read `shared-fixtures/bar-ruler.json` (250 KB). The TS copies stay in use.
+
+## 2026-11-23: Linux CI frees disk first
+
+The Linux job linked 80 separate test binaries in a debug build and the linker died with a bus error on three runs (the runner ran short of disk). The job now removes the .NET, Android, Haskell, CodeQL and Boost folders first, which it never uses. Re-running the failed job also cleared it, so this only removes the cause.
