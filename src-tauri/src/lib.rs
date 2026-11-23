@@ -44,6 +44,7 @@ pub mod delivery;
 pub mod dial_input;
 pub mod dsp;
 pub mod dynamics_curve;
+pub mod edit_ops;
 pub mod editor_rules;
 pub mod effect_presets;
 pub mod effect_ui;
