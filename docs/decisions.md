@@ -2317,3 +2317,7 @@ The Linux and macOS release builds now pass `--features pure-aac`, so they write
 ## 2026-11-23: Rust port batch 46 (key dispatch)
 
 `key_dispatch.rs` mirrors `decide` in `src/keymap/dispatch.ts` (what a key press does: the keymap action, repeat rules, browser keys blocked in release builds, text fields and dialogs) and `ownsArrowKeys` in `owns-arrows.ts`. The checks that read the page (is the target a text field, should a click take focus) stay in the interface; the Rust side takes what they found. Rust and Vitest read `shared-fixtures/key-dispatch.json` (about 210 KB, key and modifier combinations across every context). The TypeScript copies stay in use.
+
+## 2026-11-23: Rust port batch 48 (settings draft and sizes)
+
+`settings_draft.rs` mirrors `cleanDraft` and `sizeText` in `src/app/settings/pages.ts`: the Settings draft checked before it is saved (the app settings through the existing `sanitize_settings`, the editor flags and time format, the recording offset rounded and clamped, the pre-roll clamped, the loudness choice copied) and sizes as short text. Rust and Vitest read `shared-fixtures/settings-draft.json` (145 KB, odd values for every field). The dialog stays in TypeScript. The TypeScript copies stay in use.
