@@ -23,4 +23,18 @@ describe("presetMenu", () => {
     const menu = presetMenu([BUILTIN_PRESETS[0]!], BUILTIN_PRESETS, () => {});
     expect(menu[0]).toMatchObject({ kind: "sub", label: "Yours" });
   });
+  it("lists starred presets first, in star order, and skips names that are gone", () => {
+    const [a, b] = [BUILTIN_PRESETS[0]!, BUILTIN_PRESETS[1]!];
+    const menu = presetMenu([], BUILTIN_PRESETS, () => {}, undefined, undefined, [b.name, "No Such Preset", a.name]);
+    const first = menu[0]!;
+    expect(first.kind).toBe("sub");
+    if (first.kind === "sub") {
+      expect(first.label).toBe("Favorites");
+      expect(first.items.map((i) => (i.kind === "item" ? i.label : ""))).toEqual([b.name, a.name]);
+    }
+  });
+  it("has no Favorites entry when nothing is starred", () => {
+    const menu = presetMenu([], BUILTIN_PRESETS, () => {});
+    expect(menu.some((m) => m.kind === "sub" && m.label === "Favorites")).toBe(false);
+  });
 });

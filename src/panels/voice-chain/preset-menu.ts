@@ -13,9 +13,13 @@ const ADD_GROUPS = ["Breath gates", "Processing", "Delay", "Repair", "EQ"] as co
  * Cleanup, Voice Over) replace the chain; the single-effect groups add
  * one effect. Each row carries a short description on the right.
  */
-export function presetMenu(user: readonly ChainPreset[], builtin: readonly ChainPreset[], pick: (name: string) => void, onImport?: () => void, pack?: { save: () => void; load: () => void }): ContextItem[] {
+export function presetMenu(user: readonly ChainPreset[], builtin: readonly ChainPreset[], pick: (name: string) => void, onImport?: () => void, pack?: { save: () => void; load: () => void }, favorites: readonly string[] = []): ContextItem[] {
   const row = (p: ChainPreset, hint?: string): ContextItem => ({ kind: "item", label: p.name, run: () => pick(p.name), shortcut: hint });
   const out: ContextItem[] = [];
+  // Starred presets first, in the order they were starred. A name that no longer exists is skipped.
+  const all = [...user, ...builtin];
+  const starred = favorites.map((n) => all.find((p) => p.name === n)).filter((p): p is ChainPreset => !!p);
+  if (starred.length) out.push({ kind: "sub", label: "Favorites", items: starred.map((p) => row(p)) });
   if (user.length) out.push({ kind: "sub", label: "Yours", items: user.map((p) => row(p)) });
   const voice = builtin.filter((p) => p.group === "Voice chains");
   out.push({
