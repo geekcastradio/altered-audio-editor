@@ -2329,3 +2329,9 @@ The Linux and macOS release builds now pass `--features pure-aac`, so they write
 ## 2026-11-23: Rust port batch 49 (panel placement rules)
 
 `docking.rs` mirrors the helpers in `src/app/docking/registry.ts`: find a panel, pick where a turned-on panel goes given the panels that are open, find a built-in workspace, make a file-safe workspace id that does not clash, and the smallest size of a group of panels. The panel list, the Default layout, the built-in workspaces and the size limits are one data file, `src-tauri/data/docking.json`, written from the TypeScript lists. A Vitest check compares the file to the lists, so a change to either one fails until the file is written again. Rust and Vitest read `shared-fixtures/docking.json` (33 KB). The TypeScript copies stay in use.
+
+## 2026-11-23: Light Mode fix, theme switcher, matching dialog title bars
+
+- Light Mode did nothing because the View item only changed the setting and never applied it. Choosing a look now applies it at once and is saved with the other settings.
+- New header switcher beside the Workspace choice: Light Mode (sun), Sync with System (monitor), Dark Mode (moon), each with a hover description. Sync follows the operating system and changes when it changes. Icons are our own plain SVG shapes. Logic is in `src/app/theme.ts`.
+- Dialog title bars now share one look from `tokens.css` (the `--title-bar` colors, same size and padding). Settings and Keyboard Shortcuts use a `header.titlebar`; Controllers and Plug-in Manager pick it up from the shared h1 rule.

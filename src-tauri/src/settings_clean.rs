@@ -256,7 +256,7 @@ pub fn sanitize_settings(raw: &Value) -> Value {
         "dropMany": if g("dropMany").and_then(Value::as_str) == Some("sequence") { "sequence" } else { "tracks" },
         "fadeShape": pick(g("fadeShape"), &["linear", "logarithmic", "exponential", "equal_power"], "cosine"),
         "surface": if g("surface").and_then(Value::as_str) == Some("classic") { "classic" } else { "standard" },
-        "theme": if g("theme").and_then(Value::as_str) == Some("light") { "light" } else { "dark" },
+        "theme": match g("theme").and_then(Value::as_str) { Some("light") => "light", Some("system") => "system", _ => "dark" },
         "colors": {
             "wave": color(c.get("wave")),
             "playhead": color(c.get("playhead")),

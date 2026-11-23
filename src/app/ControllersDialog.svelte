@@ -173,6 +173,8 @@
     background: rgba(0, 0, 0, 0.5);
   }
   .dialog {
+    --dialog-pad-x: 22px;
+    --dialog-pad-y: 18px;
     width: min(640px, 94vw);
     max-height: 90vh;
     padding: 18px 22px 14px;
@@ -180,10 +182,6 @@
     border: 1px solid var(--border-strong);
     background: var(--surface-2);
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
-  }
-  h1 {
-    margin: 0 0 6px;
-    font-size: 17px;
   }
   h2 {
     margin: 14px 0 6px;

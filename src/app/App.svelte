@@ -111,6 +111,8 @@
   import { DUCK_DEPTHS, duckPlan, hasDuck, withDuck, withoutDuck } from "./duck";
   import { HOST_PROFILES, profileById, profileOp } from "./host-profiles";
   import type { SettingsDraft } from "./settings/pages";
+  import ThemeSwitcher from "./ThemeSwitcher.svelte";
+  import { resolveTheme, type ThemeChoice } from "./theme";
   import { colorVars, meterPercent, sanitizeSettings, settings, type AppSettings } from "../stores/settings";
   import { setMeterSpeed, type TransportStore } from "../stores/transport";
   import GenerateDialog, { type GenerateMode, type GenerateValues } from "./GenerateDialog.svelte";
@@ -3494,6 +3496,8 @@
     ports: () => settings.current.controllerPorts,
   });
   let controllersOpen = $state(false);
+  let themeChoice = $state<string>("dark");
+  $effect(() => settings.subscribe((s) => (themeChoice = s.theme)));
   $effect(() => {
     let last = "";
     const stop = settings.subscribe((s) => {
@@ -3887,11 +3891,22 @@
     }
   }
 
+  const systemDarkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  systemDarkQuery.addEventListener("change", () => {
+    if (settings.current.theme === "system") applyAppSettings(settings.current, false);
+  });
+  function chooseTheme(theme: ThemeChoice) {
+    settings.set({ ...settings.current, theme });
+    applyAppSettings(settings.current, false);
+    actions.invalidate();
+  }
+
   function applyAppSettings(s: AppSettings, autosave: boolean) {
     if (!s.playbackSpeed && speedNow !== 100) void chooseSpeed(100).catch(() => {});
     document.documentElement.dataset.surface = s.surface;
-    if (document.documentElement.dataset.theme !== s.theme) {
-      document.documentElement.dataset.theme = s.theme;
+    const look = resolveTheme(s.theme, systemDarkQuery.matches);
+    if (document.documentElement.dataset.theme !== look) {
+      document.documentElement.dataset.theme = look;
       // Canvases read their colors when they draw; ask them to draw again.
       requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     }
@@ -5222,12 +5237,9 @@
       actions.register({ id: "multitrack.add.midi", run: () => addMidiTrack(), enabled: () => session.current !== null, visible: () => settings.current.musicMode }),
       actions.register({
         id: "view.theme",
-        run: () => {
-          settings.set({ ...settings.current, theme: settings.current.theme === "light" ? "dark" : "light" });
-          actions.invalidate();
-        },
-        label: () => (settings.current.theme === "light" ? "Dark Theme" : "Light Theme"),
-        checked: () => settings.current.theme === "light",
+        run: () => chooseTheme(resolveTheme(settings.current.theme, systemDarkQuery.matches) === "light" ? "dark" : "light"),
+        label: () => "Light Theme",
+        checked: () => resolveTheme(settings.current.theme, systemDarkQuery.matches) === "light",
       }),
       actions.register({
         id: "view.mode.music",
@@ -7042,6 +7054,7 @@
 <div class="shell">
   <header class="top">
     <MenuBar menus={MENUS} {actions} {shortcutFor} onError={showError} onBlocked={showNotice} popups={{ "fx.vst3": vst3Popup }} searches={{ Effects: effectsMenuSearch }} />
+    <ThemeSwitcher value={themeChoice} onChoose={chooseTheme} />
     <label class="wsswitch" title="Switch workspace">
       <span>Workspace</span>
       <select value={wsView.current} onchange={(e) => void dock.switchTo(e.currentTarget.value)}>
@@ -7643,7 +7656,6 @@
     display: inline-flex;
     gap: 6px;
     align-items: center;
-    margin-left: auto;
     padding: 0 8px;
     color: var(--text-dim);
   }

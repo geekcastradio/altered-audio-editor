@@ -157,7 +157,29 @@ body {
   padding: 7px var(--dialog-pad-x, 14px);
   background: var(--title-bar);
   color: var(--title-bar-text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
   user-select: none;
+}
+
+/*
+  The same bar for dialogs that lay themselves out in a grid and have no padding of
+  their own (Settings, Keyboard Shortcuts): a header with the title in it.
+*/
+.dialog > header.titlebar,
+[role="dialog"] > header.titlebar {
+  padding: 7px 14px;
+  background: var(--title-bar);
+  color: var(--title-bar-text);
+  border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
+  user-select: none;
+}
+header.titlebar > h1 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
 /* Dropdown lists: readable on the dark surfaces, including a disabled "(No saved presets yet)" row. */

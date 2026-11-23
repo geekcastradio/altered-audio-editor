@@ -152,7 +152,7 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={onClose}>
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="st-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
-    <header><h1 id="st-title">Settings</h1></header>
+    <header class="titlebar"><h1 id="st-title">Settings</h1></header>
     <div class="body">
       <nav aria-label="Settings pages">
         {#each PAGES as p (p)}
@@ -507,14 +507,6 @@
     background: var(--surface-2);
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
     font-size: 12px;
-  }
-  header {
-    padding: 10px 14px 6px;
-  }
-  h1 {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 600;
   }
   .body {
     display: grid;

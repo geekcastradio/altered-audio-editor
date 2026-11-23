@@ -156,8 +156,8 @@
     aria-labelledby="ks-title"
     onclick={(e) => e.stopPropagation()}
   >
-    <header>
-      <h1 id="ks-title">Keyboard Shortcuts</h1>
+    <header class="titlebar"><h1 id="ks-title">Keyboard Shortcuts</h1></header>
+    <div class="toolbar">
       <input
         type="search"
         placeholder="Search commands or keys"
@@ -165,7 +165,7 @@
         bind:this={search}
         aria-label="Search commands or keys"
       />
-    </header>
+    </div>
 
     {#if pending}
       <div class="banner warn">
@@ -231,7 +231,7 @@
 
   .dialog {
     display: grid;
-    grid-template-rows: auto auto 1fr auto;
+    grid-template-rows: auto auto auto 1fr auto;
     width: min(760px, 92vw);
     height: min(600px, 86vh);
     border: 1px solid var(--border-strong);
@@ -239,18 +239,12 @@
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
   }
 
-  header {
+  .toolbar {
     display: flex;
     gap: var(--space-4);
     align-items: center;
-    padding: 12px 14px;
+    padding: 10px 14px;
     border-bottom: 1px solid var(--border);
-  }
-
-  h1 {
-    margin: 0;
-    font-size: 14px;
-    font-weight: 600;
   }
 
   input[type="search"] {

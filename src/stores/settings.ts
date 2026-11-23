@@ -46,8 +46,8 @@ export interface AppSettings {
   colors: AppColors;
   /** How light the panels are: the standard charcoal, or the darker classic look (dark theme only). */
   surface: "standard" | "classic";
-  /** The color theme: dark for long sessions, or light. */
-  theme: "dark" | "light";
+  /** The color theme: dark for long sessions, light, or follow the system. */
+  theme: "dark" | "light" | "system";
   /** System name of the output; null is the system default. */
   output: string | null;
   /** Device outputs (from 0) the stereo mix plays on: left, right. */
@@ -287,7 +287,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
         ? o.fadeShape
         : "cosine",
     surface: o.surface === "classic" ? "classic" : "standard",
-    theme: o.theme === "light" ? "light" : "dark",
+    theme: o.theme === "light" || o.theme === "system" ? o.theme : "dark",
     colors: {
       wave: color(c.wave),
       playhead: color(c.playhead),
