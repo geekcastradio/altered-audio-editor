@@ -2209,3 +2209,8 @@ Finishes `clip_edit.rs`: copy and paste (files brought along, matched by path), 
 ## 2026-11-23: Rust port, batch 28 (takes and editor rows)
 
 Adds `takes.rs` (take sets, next take number, make takes, comping a range, flatten, delete take, silent gaps) and `rows.rs` (editor rows with buses placed among tracks, and the edits that move a row). Comping reuses `clip_edit::isolate`. Ties between clips that start together order by id with the natural compare, close to the browser compare for plain ids. The fixture (185 KB, `takes-rows.json`) has two take sets with off takes, locked and overlapping clips, 19 comping cases, and 804 row moves over four bus layouts and three listed-track sets. It matched on the first run.
+
+
+## 2026-11-23: Rust port, batch 29 (QuickPass edits, dead space, split channels)
+
+Adds `quickpass_edit.rs` (apply local edits, remove, split, turn down, markers, finding shifts, cut range), `dead_space.rs` (Close Dead Space) and `split_channels.rs` (Split Channels to Tracks, using the channel rules already in Rust). Both fixtures (`quickpass-edit.json` 103 KB, `dead-split.json` 37 KB) matched on the first run, including locked clips, MIDI-blocked tracks and clips that must stay muted. `chain-actions.ts` stays in TypeScript: it leans on the multitrack, loudness and Voice Chain modules, which need their own ports first. The marker name check (`Silence 12` style) is hand-written, since there is no regex crate.
