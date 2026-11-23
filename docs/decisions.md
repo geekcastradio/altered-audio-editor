@@ -2301,3 +2301,7 @@ The Linux job linked 80 separate test binaries in a debug build and the linker d
 ## 2026-11-23: cookie 0.18.3 (RUSTSEC-2026-0594)
 
 A new advisory (private cookie nonces can repeat in processes that fork) failed `cargo audit` on every branch. `cookie` is only reached through Tauri and the app never forks or uses private cookies, but the fix is a lockfile-only patch bump to 0.18.3, so it is taken.
+
+## 2026-11-23: Known limitations: controllers
+
+The Known limitations page still said motor fader feedback was not built. It was built in 0.22.0 (`feedback.ts`, the "Send feedback to the devices" option) and has only ever been checked against the Mackie message layout, never a real surface. The line now says that. Scribble strips and jog wheels are still not built.
