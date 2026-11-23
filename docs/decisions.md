@@ -2240,6 +2240,10 @@ The star button beside Presets was disabled. It now stars the preset picked last
 Both entries were disabled with "Not built yet". They now run through the same bounce path as the other two. Selected Track bounces every clip on the selected track, from its first clip start to its last clip end. Selected Clips in Time Selection bounces the selected clips that touch the time selection, limited to that range. Each is disabled with a reason when its input is missing (no track with clips, or no selected clips inside the range). The menu bar, the Multitrack menu and the lane right-click menu share the same two actions.
 
 
+## 2026-11-23: Rust port batch 34 (plug-in slot sync and chain drag edits)
+
+`plugin_sync.rs` mirrors the pure parts of `src/app/plugin-sync.ts` (instrument slots, chain slots, plug-in slots, and the edits that bring plug-in events and fetched settings into the session, one `set_effects` per chain and one `set_track` per MIDI instrument) and `src/panels/voice-chain/slot-drag.ts` (owner keys, the chain a target names, the move or copy edit a drop makes, header row targets). It reuses the chain functions already in `voice_chain.rs`. Rust and Vitest read `shared-fixtures/plugin-sync.json` (127 KB). The timer class and the pointer drag stay in TypeScript. The TS copies stay in use.
+
 ## 2026-11-23: Rust port batch 33 (video helpers, open rules, screen rules)
 
 Two modules ported with one shared fixture (`shared-fixtures/video-open.json`, 13 KB). `video_view.rs` mirrors `src/app/video.ts`: the Video panel line, reading the frame bytes (16-byte header then RGBA), video time mapping, timecode, when to fetch a new picture, the width to ask for, and error text of any shape. `open_rules.rs` mirrors parts of `session-files.ts`, `filedrop.ts` and `stores/settings.ts`: what File > Open does with each file, the import summaries for .sesx, .rpp and .otio, the session display name, drop scale, wheel zoom anchor and ratios, theme color variables and meter position. Settings reads became parameters. The TypeScript copies stay in use. Rust and Vitest read the same fixture.
