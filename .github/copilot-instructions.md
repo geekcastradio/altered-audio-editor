@@ -1,0 +1,1 @@
+Follow `AGENTS.md` in the repository root. It holds the rules for this project (original names, privacy, licences, no new shortcuts, how to run the checks, and how to port TypeScript logic to Rust with shared fixtures). Read `docs/next-work.md` for the task you were given.

@@ -16,3 +16,12 @@ The guide uses drawn diagrams so it works offline and stays small. Real screensh
 12. **Settings > Multitrack and the Keyboard Shortcuts dialog.**
 
 Crop to the panel or dialog, hide anything private (file paths with your name, guest names), and keep each image under about 300 KB.
+
+## How to take them
+
+1. Set the window to a normal size (not full 4K) and the Default workspace, dark theme. Make sure Windows display scaling is 100% for the capture if you can; if not, say what it was.
+2. Open the thing from the list above and get it into the state described.
+3. Press Windows key + Shift + S, drag around just the panel or dialog, and release. The image goes to the clipboard.
+4. Paste into Paint (Ctrl+V), then File > Save as > PNG. Name it with the list number, for example `01-multitrack-overview.png`.
+5. Check the picture for private paths, names or file names before saving.
+6. Put the PNGs in `C:\Users\scp21\GCRN\screenshots` and tell me. The guide needs a small change to show PNG images; I will build that when the first ones arrive.
