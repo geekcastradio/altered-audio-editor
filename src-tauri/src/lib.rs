@@ -75,6 +75,7 @@ pub mod open_rules;
 pub mod otio_import;
 pub mod output_format;
 pub mod pads_bins;
+pub mod panel_misc;
 pub mod paths;
 pub mod peaks;
 pub mod phase_curve_ui;
