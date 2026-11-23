@@ -55,7 +55,7 @@ pub struct Made {
     pub params: Map<String, Value>,
 }
 
-fn lerp(a: f64, b: f64, t: f64) -> f64 {
+pub(crate) fn lerp(a: f64, b: f64, t: f64) -> f64 {
     a + (b - a) * t
 }
 
@@ -65,14 +65,14 @@ fn round(n: f64, d: i32) -> f64 {
     js_round(n * m) / m
 }
 
-fn made(effect: &str, params: Value) -> Made {
+pub(crate) fn made(effect: &str, params: Value) -> Made {
     Made {
         effect: format!("altaudio.{effect}"),
         params: params.as_object().cloned().unwrap_or_default(),
     }
 }
 
-fn voice_eq(b3_gain: Option<f64>) -> Made {
+pub(crate) fn voice_eq(b3_gain: Option<f64>) -> Made {
     made(
         "parametric_eq",
         json!({
@@ -83,28 +83,28 @@ fn voice_eq(b3_gain: Option<f64>) -> Made {
     )
 }
 
-fn leveler() -> Made {
+pub(crate) fn leveler() -> Made {
     made(
         "speech_leveler",
         json!({ "target": -20, "max_gain": 8, "max_cut": 8, "speed": 2000, "floor": -50 }),
     )
 }
 
-fn comp(threshold: f64, ratio: f64, makeup: f64) -> Made {
+pub(crate) fn comp(threshold: f64, ratio: f64, makeup: f64) -> Made {
     made(
         "dynamics",
         json!({ "threshold": threshold, "ratio": ratio, "attack": 8, "release": 160, "knee": 6, "makeup": makeup }),
     )
 }
 
-fn limit(ceiling: f64) -> Made {
+pub(crate) fn limit(ceiling: f64) -> Made {
     made(
         "limiter",
         json!({ "ceiling": ceiling, "lookahead": 5, "release": 100 }),
     )
 }
 
-fn clean_noise(reduction: f64) -> Made {
+pub(crate) fn clean_noise(reduction: f64) -> Made {
     made(
         "noise_reducer",
         json!({ "reduction": reduction, "strength": 2, "learn": 2, "smoothing": 50 }),
