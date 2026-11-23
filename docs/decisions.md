@@ -2282,6 +2282,10 @@ Adds `spectrum_view.rs`: the frequency axis, view range, zoom, scale marks, the 
 
 `view_helpers.rs` mirrors `reveal.ts` (scroll to reveal a position), `session-tabs.ts`, `video-lane.ts` (the Video Reference bar and drag) and the pure functions of `wave-channels.ts` (active channels, edit and paste takes, labels). Rust and Vitest read `shared-fixtures/view-helpers.json`. The TS copies stay in use.
 
+## 2026-11-23: Rust port batch 41 (clip edit helpers)
+
+`edit_ops.rs` mirrors `silence-span.ts` (silence a time range in selected clips), `clip-order.ts` (bring to front, send to back), `align.ts` (the Phase Align pair and edit), `clip-lookup.ts`, and `findMidiClips` and `snapTargets` from `clip-edit.ts`. Rust and Vitest read `shared-fixtures/edit-ops.json` (35 KB). The TS copies stay in use.
+
 ## 2026-11-23: Linux CI frees disk first
 
 The Linux job linked 80 separate test binaries in a debug build and the linker died with a bus error on three runs (the runner ran short of disk). The job now removes the .NET, Android, Haskell, CodeQL and Boost folders first, which it never uses. Re-running the failed job also cleared it, so this only removes the cause.
