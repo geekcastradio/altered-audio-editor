@@ -40,6 +40,7 @@ Decision: three podcast and Audition-parity features that finish the multichanne
 - **Split Channels to Tracks** (Clip menu). A clip of a file with two or more channels becomes one stereo track per channel, right under its track, each playing only that channel the way the original clip played it (its Source Channels, or the default fold-down). With every new track on, the mix sounds as the original did, so the LFE track starts muted, because the default fold-down leaves it out. The original clips are muted, not removed, and the whole thing is one undoable step. Reason: editing or processing one channel of a multichannel recording meant working inside the Source Channels grid. Choice: stereo tracks with a channel mix instead of mono tracks with a pan, so the sound stays exactly the same and nothing depends on the pan law. Effects and automation on the original clip are not copied.
 - **Capture Noise Print** (Effects menu, Shift+P). Learns the noise in the time selection and puts it on a Noise Print Reducer in the Voice Chain of the selected clip or track (the one already there is updated), as one undoable step. It uses the same learning the Voice Chain's Learn button uses; the menu item was marked "Not built yet" and the command already existed. Reason: Audition's workflow is select the noise, capture, then reduce.
 - **Export at a loudness** (File > Export > Mixdown > Loudness). The export can bring the file to a Check Loudness target (podcast -16 or -19 LUFS, louder platforms, broadcast, custom). The mix is measured first with the same render, then written with one fixed gain that never takes true peaks past the target's limit, so a mix with high peaks can end up a little quieter than the target. The session is not changed. A 3D Space speaker bed is written as mixed. Reason: Loudness Match changes the session's gains, and a podcaster just wants the file at -16. Choice: a fixed gain, not a limiter, so the sound is untouched; limiting the voice first is still the way to a louder file.
+
 ## 2026-10-26: Second Audiform batch (0.3.5)
 
 Decision: three more of nwh212's feature commits are taken by cherry-pick (`32a69ed`, `6f1b01c`, `2aaaf8f`) and one more (`8731249`, phase-locked time stretch). Four commits were weighed and not taken as they stood.
@@ -1519,10 +1520,12 @@ Several requests compared behavior to another editor; per the guardrails they ar
 
 - 0.7.0 ships duck music, the Audio FX v1, the Multiband Compressor, the Amp Model setting, WebVTT and midroll files in the package, and the Record-with-nothing-open fix.
 - The metadata panel and a click, clip and hum report, first planned for 0.7.0, move to 0.8.0 with the effect families so this release is not held up. Modulation effects, determinism tests and the "Under the hood" README section also wait for 0.8.0.
+
 ## 2026-10-28: Modulation family (0.8.0 pre-build)
 
 - Added Chorus, Flanger and Phaser under a new Modulation family, written from textbook methods (swept delay lines, swept all-pass chain). Each passes the sound untouched at zero mix.
 - Audiform leftovers move to 0.9.0 unless they touch 0.8.0 files. 0.8.0 order: modulation, Channel Mixer and Stereo Expander, distortion, algorithmic reverb, expander mode, analysis panels, editing items.
+
 ## 2026-10-28: Determinism tests and "under the hood" wording
 
 - Added tests that a session renders to identical bits on repeat and at different block sizes, and that every built-in effect is deterministic. They run with the normal cargo tests.
@@ -1996,6 +1999,7 @@ Left in TypeScript on purpose: `matchChanges` and `matchItems`, which read the s
 ## 2026-11-21: QuickPass lists only tracks with audio
 
 The Tracks menu offered every track, including empty ones. It now lists tracks that hold at least one clip, and the button only appears when two or more do. The count text uses the same set. Scan behavior is unchanged (empty tracks never had clips to scan).
+
 ## 2026-11-21: Batch Convert one-job starter chains
 
 A user asked for a quick list of single-job batch presets (de-ess, reduce noise, fades, peak level, hum, pitch, vocal removal, DC offset, telephone). Reframed as a function: the Chain picker in Batch Convert should offer one pick per common single job. Added 16 starter chains built from presets and steps we already had, plus a De-Ess Voice preset. A test checks that every preset a starter names exists. Not tested by ear.
@@ -2226,3 +2230,7 @@ Added mono-aware recording and phone video and odd-format import to `docs/backlo
 ## 2026-11-23: Voice Chain preset favorites
 
 The star button beside Presets was disabled. It now stars the preset picked last, and starred presets are listed under Favorites at the top of the Presets menu, in the order they were starred. The list is kept in app settings (`voicechain.favoritePresets`), starts empty and holds at most 40 names. A name that no longer exists (a deleted user preset) is skipped in the menu and stays in the list. The star is disabled until a preset has been picked in this session, since the panel does not track which preset a chain came from after edits.
+
+## 2026-11-23: Bounce to New Track, Selected Track and Selected Clips in Time Selection
+
+Both entries were disabled with "Not built yet". They now run through the same bounce path as the other two. Selected Track bounces every clip on the selected track, from its first clip start to its last clip end. Selected Clips in Time Selection bounces the selected clips that touch the time selection, limited to that range. Each is disabled with a reason when its input is missing (no track with clips, or no selected clips inside the range). The menu bar, the Multitrack menu and the lane right-click menu share the same two actions.

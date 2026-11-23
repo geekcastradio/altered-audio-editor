@@ -1385,7 +1385,9 @@
   // Mixdown. One export at a time, with a progress dialog.
   let exporting = $state<{ title: string; progress: number; floating?: boolean } | null>(null);
 
-  type MixSource = "all" | "selection" | "clips";
+  type ScopeSource = "all" | "selection" | "clips";
+  // Bounce to New Track also offers a whole track and selected clips inside the time selection.
+  type MixSource = ScopeSource | "track" | "clips-in-selection";
   type MixTarget = "file" | "files-panel" | "track";
 
   function mixRange(source: MixSource): { range?: [number, number]; clips?: string[]; start: number } | null {
@@ -1394,6 +1396,25 @@
     if (source === "selection") {
       const r = timeSel();
       return r ? { range: [r.start, r.end], start: r.start } : null;
+    }
+    if (source === "track") {
+      const t = doc.tracks.find((x) => x.id === editor.current().selectedTrack);
+      const own = t ? t.clips : [];
+      if (own.length === 0) return null;
+      const spans = own.map((c): [number, number] => [c.start, c.start + clipLength(c, doc.media.find((m) => m.id === c.media_id), doc.sample_rate)]);
+      const start = Math.min(...spans.map((x) => x[0]));
+      return { range: [start, Math.max(...spans.map((x) => x[1]))], clips: own.map((c) => c.id), start };
+    }
+    if (source === "clips-in-selection") {
+      const r = timeSel();
+      if (!r) return null;
+      const found = findClips(doc, editor.current().selectedClips);
+      const inside = found.filter((f) => {
+        const end = f.clip.start + clipLength(f.clip, doc.media.find((m) => m.id === f.clip.media_id), doc.sample_rate);
+        return f.clip.start < r.end && end > r.start;
+      });
+      if (inside.length === 0) return null;
+      return { range: [r.start, r.end], clips: inside.map((f) => f.clip.id), start: r.start };
     }
     if (source === "clips") {
       const chosen = editor.current().selectedClips;
@@ -1682,7 +1703,7 @@
   }
 
   /** File > Export: opens the Export Mixdown dialog, remembering the last format and folder. */
-  function openExportDialog(source: MixSource) {
+  function openExportDialog(source: ScopeSource) {
     const doc = session.current;
     if (!doc) return;
     const saved = prefs.raw(KEY_EXPORT) as { format?: unknown; folder?: unknown; addToFiles?: unknown } | null;
@@ -1742,14 +1763,14 @@
     const doc = session.current;
     if (!doc || !mixRange(source) || exporting) return;
     if (target === "file") {
-      openExportDialog(source);
+      if (source !== "track" && source !== "clips-in-selection") openExportDialog(source);
       return;
     }
     if (target === "files-panel") {
       await mixToNewFile(source);
       return;
     }
-    const suffix = source === "all" ? "Mixdown" : source === "selection" ? "Selection" : "Clips";
+    const suffix = source === "all" ? "Mixdown" : source === "selection" ? "Selection" : source === "track" ? "Track" : "Clips";
     const path = await exportPickPath(`${doc.name} ${suffix}`, sessionFolder());
     if (!path) return;
     await runMixdown(source, target, path, null);
@@ -1763,7 +1784,7 @@
     const doc = session.current;
     const what = mixRange(source);
     if (!doc || !what || exporting) return;
-    const suffix = source === "all" ? "Mixdown" : source === "selection" ? "Selection" : "Clips";
+    const suffix = source === "all" ? "Mixdown" : source === "selection" ? "Selection" : source === "track" ? "Track" : "Clips";
     exporting = { title: "Mixing down to a new file", progress: 0, floating: true };
     let off: (() => void) | null = null;
     try {
@@ -5553,6 +5574,8 @@
           ["multitrack.mixdown.clips", "clips", "files-panel"],
           ["multitrack.bounce.selection", "selection", "track"],
           ["multitrack.bounce.clips", "clips", "track"],
+          ["multitrack.bounce.track", "track", "track"],
+          ["multitrack.bounce.clips-in-selection", "clips-in-selection", "track"],
         ] as const
       ).map(([id, source, target]) =>
         actions.register({
@@ -5564,7 +5587,11 @@
               ? "The session has no clips yet."
               : source === "selection"
                 ? "Drag across empty space or the ruler to select a time range."
-                : "Select clips first.",
+                : source === "track"
+                  ? "Select a track that has clips."
+                  : source === "clips-in-selection"
+                    ? "Select clips and drag across them to select a time range."
+                    : "Select clips first.",
         }),
       ),
       ...Array.from({ length: WORKSPACE_SLOTS }, (_, i) =>
