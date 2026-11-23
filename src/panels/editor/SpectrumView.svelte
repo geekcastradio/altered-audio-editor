@@ -24,6 +24,7 @@
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import { settings } from "../../stores/settings";
   import { SPECTRUM_HIGH, SPECTRUM_LOW, spectrumLut } from "../../app/colors";
+  import { themeTick } from "../../app/theme";
 
   interface Props {
     doc: SessionDoc;
@@ -265,7 +266,11 @@
     g.restore();
   }
 
+  let themeKey = $state(0);
+  $effect(() => themeTick.subscribe((n) => (themeKey = n)));
+
   $effect(() => {
+    void themeKey;
     const c = canvas;
     if (!c) return;
     const w = width + scaleWidth;

@@ -10,6 +10,7 @@
 <script lang="ts">
   import { settings, wheelAnchorX, zoomRatios } from "../../stores/settings";
   import { silentTracks, trackOp } from "../mixer/solo";
+  import { themeTick } from "../../app/theme";
   import { busChoices, busOp, MASTER_ID, NONE_ID, newSend, outputOf, outputValue } from "../mixer/routing";
   import SendList from "../mixer/SendList.svelte";
   import { onDestroy, tick as nextFrame } from "svelte";
@@ -633,8 +634,11 @@
   }
 
   // Ruler.
+  let themeKey = $state(0);
+  $effect(() => themeTick.subscribe((n) => (themeKey = n)));
   $effect(() => {
     void tick;
+    void themeKey;
     const c = ruler;
     if (!c) return;
     const dpr = window.devicePixelRatio || 1;

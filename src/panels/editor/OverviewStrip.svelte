@@ -13,6 +13,7 @@
 <script lang="ts">
   import { clipLength, type MediaRefDoc, type SessionDoc } from "../../stores/session";
   import { defaultTrackColor, dragOverviewEdge, overviewWindow, zoomAround, type Viewport } from "./timeline";
+  import { themeTick } from "../../app/theme";
 
   interface Props {
     doc: SessionDoc | null;
@@ -41,7 +42,11 @@
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888";
   }
 
+  let themeKey = $state(0);
+  $effect(() => themeTick.subscribe((n) => (themeKey = n)));
+
   $effect(() => {
+    void themeKey;
     const c = canvas;
     if (!c || width <= 0) return;
     const dpr = window.devicePixelRatio || 1;

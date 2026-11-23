@@ -252,17 +252,16 @@
   }
 
   .tools,
+  .views,
   .themes {
     display: flex;
     gap: 2px;
     align-items: center;
-    margin-left: auto;
   }
 
-  .views {
-    display: flex;
-    gap: 2px;
-    align-items: center;
+  /* Only the theme switch sits at the right end. The tools stay on the left. */
+  .themes {
+    margin-left: auto;
   }
 
   .sep.thin {
