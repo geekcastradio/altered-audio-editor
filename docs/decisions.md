@@ -2321,3 +2321,7 @@ The Linux and macOS release builds now pass `--features pure-aac`, so they write
 ## 2026-11-23: Rust port batch 47 (chain run notices)
 
 `chain_run_notes.rs` mirrors `preflight` and `chainSummary` in `src/app/chains.ts`: why a process chain cannot run (problems found in the file, or steps the app has no handler for, each named once) and the one notice after a run. Rust and Vitest read `shared-fixtures/chain-run-notes.json` (24 KB). The command that runs the steps and its undo stay in TypeScript. The TypeScript copies stay in use.
+
+## 2026-11-23: Rust port batch 49 (panel placement rules)
+
+`docking.rs` mirrors the helpers in `src/app/docking/registry.ts`: find a panel, pick where a turned-on panel goes given the panels that are open, find a built-in workspace, make a file-safe workspace id that does not clash, and the smallest size of a group of panels. The panel list, the Default layout, the built-in workspaces and the size limits are one data file, `src-tauri/data/docking.json`, written from the TypeScript lists. A Vitest check compares the file to the lists, so a change to either one fails until the file is written again. Rust and Vitest read `shared-fixtures/docking.json` (33 KB). The TypeScript copies stay in use.
