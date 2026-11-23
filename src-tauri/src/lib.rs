@@ -24,6 +24,7 @@ pub mod bug_report_link;
 pub mod chain;
 pub mod channel_rules;
 pub mod chord;
+pub mod clip_edit;
 pub mod clip_gain;
 pub mod clip_math;
 pub mod clip_props;
