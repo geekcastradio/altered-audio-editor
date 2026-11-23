@@ -18,6 +18,9 @@ Altered Audio Editor is a free, open-source audio editor for podcasters and voic
 8. **Every source file starts with the GPLv3 header** naming The GeekCast Radio Network, LLC. Copy it from a neighbouring file. `npm run check` verifies it.
 9. **Writing style** for UI text, docs and comments: plain, short sentences, no em dashes.
 10. **Do not publish or tag releases**, and do not edit release notes of published releases.
+11. **Private files stay private.** If `CLAUDE.local.md` or a `private/` folder exists on your machine, never copy anything from them into tracked files, commits, pull requests or issues.
+12. **Branch names start with your tool:** `claude/`, `gemini/` or `copilot/`. Do not push to another tool's branch.
+13. **Keep the history clean.** When a good run or commit replaces a failed one on your branch, say so; the project lead has asked that failed runs are deleted once a green run replaces them.
 
 ## How to work
 
@@ -43,3 +46,4 @@ The pattern is in every `src-tauri/tests/*_fixture.rs` file:
 - Interface: `src/app`, `src/panels`, `src/stores`; menus are data in `src/app/menus/model.ts`.
 - Docs: `docs/`. Hand-test lists: `docs/hand-test-<version>.md`.
 - Work queue and specs for the next features: `docs/next-work.md`.
+- How the assistants split the work and avoid collisions: `docs/ai-workflow.md`.
