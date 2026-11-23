@@ -2227,6 +2227,10 @@ Adds `chain_actions.rs`: the pure parts of `chain-actions.ts` (loudness target s
 
 Added mono-aware recording and phone video and odd-format import to `docs/backlog.md` as ideas, with OpenTimelineIO import at low priority. The project lead confirmed that the Known limitations list is for anything not on Windows, since only Windows is tested and audited; the intro in `docs/known-limitations.md` now says so. The 0.63.0 notes stay as published.
 
+## 2026-11-23: Rust port, batch 31 (Waveform editor edits)
+
+Adds `wave_edit.rs`: clamp, delete, crop, silence, amplify, fade in and out, copy, paste, mix paste, crossfading joins, replace, stretch and insert for the Waveform editor, with the marker moves that go with them. It builds on the clip editing already in Rust (`isolate`, ripple delete, `with_crossfades`). The fade shape for crossfades is a parameter, not a read of the settings. The length of the file counts audio clips only, since a Waveform editor file has no MIDI. `wave-edit.ts` stays in use. The fixture (`wave-edit.json`, 317 KB) covers three files (one track, two tracks, and a locked one), a stretched clip, a looped clip, a file with no sample rate, and boards copied at another rate. It matched on the first run once the looped clip used the real `{length}` shape.
+
 ## 2026-11-23: Voice Chain preset favorites
 
 The star button beside Presets was disabled. It now stars the preset picked last, and starred presets are listed under Favorites at the top of the Presets menu, in the order they were starred. The list is kept in app settings (`voicechain.favoritePresets`), starts empty and holds at most 40 names. A name that no longer exists (a deleted user preset) is skipped in the menu and stays in the list. The star is disabled until a preset has been picked in this session, since the panel does not track which preset a chain came from after edits.
