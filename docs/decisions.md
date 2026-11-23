@@ -2269,3 +2269,7 @@ Adds `spectrum_view.rs`: the frequency axis, view range, zoom, scale marks, the 
 ## 2026-11-23: Rust port batch 39 (Audio FX looks)
 
 `audio_looks.rs` mirrors `src/panels/audio-fx/audiofx.ts`: the four looks, the plain Voice Chain effects each makes at Light, Medium and Strong, reading looks back from tagged slots, writing looks at the front of a chain (Sound Types slots replaced, other effects kept, nothing written when the chain would overflow), removing them, and the History name. It reuses the effect blocks in `sound_types.rs`, which are now crate-visible. Rust and Vitest read `shared-fixtures/audio-looks.json` (50 KB). The TS copy stays in use.
+
+## 2026-11-23: Rust port batch 38 (controller map and feedback)
+
+`controller_map.rs` mirrors `src/app/controller/map.ts` (source keys, names, matching, position and encoder turn, pan with a dead zone, target names and choices, the eight-strip preset) and `feedback.ts` (fader pitch bend values, pan ring bytes, and the frames a surface should show for a set of bindings and strips). Rust and Vitest read `shared-fixtures/controller-map.json` (52 KB). The controller class and its timers stay in TypeScript. The TS copies stay in use.
