@@ -2266,6 +2266,10 @@ Adds `spectrum_view.rs`: the frequency axis, view range, zoom, scale marks, the 
 `settings_clean.rs` mirrors `sanitizeSettings` in `src/stores/settings.ts` and `cleanBindings` in `src/app/controller/map.ts`: saved settings with defaults for anything missing, out of range or the wrong type, the metronome and phase wheel groups, theme colors, speaker outputs, the media folder name, the meter yellow and red ordering, and controller bindings (damaged ones dropped, a source bound twice keeps the last in the first place). The Rust defaults are checked against `DEFAULT_SETTINGS`. 160 odd inputs share `shared-fixtures/settings-clean.json` (179 KB, each case stores only the differences from defaults). The crate got `recursion_limit = "512"` for the large JSON literal. Text slices count characters, not UTF-16 units, which only differs for characters outside the basic plane. The TS copy stays in use.
 
 
+## 2026-11-23: Rust port batch 40 (panel rules)
+
+`panel_misc.rs` mirrors three small pieces: the Parametric EQ graph nodes and on-switches (`eq-graph.ts`), the edits that delete selected clips, audio and MIDI alike, and the MIDI clip id list (`midi.ts`), and file-safe workspace ids and the smallest size of a panel group (`docking/registry.ts`). The panel and workspace tables themselves are not ported yet, only their sizes. Rust and Vitest read `shared-fixtures/panel-misc.json` (12 KB). The TS copies stay in use.
+
 ## 2026-11-23: Rust port batch 38 (controller map and feedback)
 
 `controller_map.rs` mirrors `src/app/controller/map.ts` (source keys, names, matching, position and encoder turn, pan with a dead zone, target names and choices, the eight-strip preset) and `feedback.ts` (fader pitch bend values, pan ring bytes, and the frames a surface should show for a set of bindings and strips). Rust and Vitest read `shared-fixtures/controller-map.json` (52 KB). The controller class and its timers stay in TypeScript. The TS copies stay in use.
