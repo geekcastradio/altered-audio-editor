@@ -2214,3 +2214,7 @@ Adds `takes.rs` (take sets, next take number, make takes, comping a range, flatt
 ## 2026-11-23: Rust port, batch 29 (QuickPass edits, dead space, split channels)
 
 Adds `quickpass_edit.rs` (apply local edits, remove, split, turn down, markers, finding shifts, cut range), `dead_space.rs` (Close Dead Space) and `split_channels.rs` (Split Channels to Tracks, using the channel rules already in Rust). Both fixtures (`quickpass-edit.json` 103 KB, `dead-split.json` 37 KB) matched on the first run, including locked clips, MIDI-blocked tracks and clips that must stay muted. `chain-actions.ts` stays in TypeScript: it leans on the multitrack, loudness and Voice Chain modules, which need their own ports first. The marker name check (`Silence 12` style) is hand-written, since there is no regex crate.
+
+## 2026-11-23: Rust port, batch 30 (chain actions)
+
+Adds `chain_actions.rs`: the pure parts of `chain-actions.ts` (loudness target step, mic options, Voice Chain preset step, QuickPass clip list, settings and step). The async handlers that talk to the interface stay in TypeScript. The region guess and custom loudness target are parameters in Rust, so the result does not depend on the time zone. The fixture (`chain-actions.json`, 346 KB, over the usual size because of the QuickPass cases) covers silent mixes, unknown effects and locked clips, and matched on the first run.
