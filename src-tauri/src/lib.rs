@@ -75,6 +75,7 @@ pub mod playlist;
 pub mod plugins;
 pub mod preset_pack;
 pub mod publish;
+pub mod quickpass_scan;
 pub mod recording;
 pub mod review;
 pub mod rpp;
