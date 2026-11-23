@@ -202,7 +202,7 @@
   {:else if format.kind === "wav" && format.bitDepth === 8}
     <p class="note">8-bit has audible hiss on quiet passages. Use it only when a system asks for it.</p>
   {:else if lossy && parts === "all"}
-    <p class="note">{format.kind === "mp3" ? "MP3" : "AAC"} is lossy: fine for publishing, but keep a WAV or FLAC master for editing.{format.kind !== "mp3" ? " AAC is written at 44.1 or 48 kHz, mono or stereo, using the encoder built into Windows." : ""}</p>
+    <p class="note">{format.kind === "mp3" ? "MP3" : "AAC"} is lossy: fine for publishing, but keep a WAV or FLAC master for editing.{format.kind !== "mp3" ? " AAC is written at 44.1 or 48 kHz, mono or stereo, using the encoder built into Windows or, on other systems, one built into this app." : ""}</p>
   {/if}
 {/if}
 

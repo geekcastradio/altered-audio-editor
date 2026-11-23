@@ -249,7 +249,7 @@
     {:else if sub === "settings"}
       <OutputFormatFields bind:format={s.format} sourceLabel="Same as the session" parts="settings" />
       {#if s.format.kind === "m4a" || s.format.kind === "aac"}
-        <p class="note">AAC is written at 44.1 or 48 kHz, mono or stereo, using the encoder built into Windows.</p>
+        <p class="note">AAC is written at 44.1 or 48 kHz, mono or stereo, using the encoder built into Windows or, on other systems, one built into this app.</p>
       {/if}
     {:else}
       <div class="scopes" role="radiogroup" aria-label="What to mix">

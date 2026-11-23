@@ -33,8 +33,8 @@ Last checked against 0.41.0 plus the 0.42.0 work. If you add, remove or switch a
 | WAV, 4-bit IMA ADPCM | Our own writer (`export/adpcm.rs`), from the public IMA recommendation | GPL-3.0-or-later | |
 | FLAC | `flacenc` | Apache-2.0 | Pure Rust. |
 | MP3 | LAME 3.100 through `mp3lame-sys` and `mp3lame-encoder`, built from source and linked in | LAME: LGPL-2.0-or-later. The two Rust crates declare LGPL-3.0. | Linking LGPL code into a GPL-3.0-or-later program is allowed; the source for the whole program is public, which satisfies the relinking terms. |
-| AAC in M4A, raw AAC (ADTS `.aac`) | **Default build:** the Windows system encoder (Media Foundation), through `src-tauri/os-aac`. Windows only. | Nothing bundled | On other systems the Export dialog says AAC is unavailable and offers MP3 or FLAC. |
-| AAC in M4A, raw AAC (ADTS `.aac`) | **`pure-aac` build:** `filmcraft-aac` (a clean-room encoder from ISO/IEC 14496-3, no `unsafe`), through `src-tauri/src/export/aac_pure.rs`. The M4A container is written by our own code. | `filmcraft-aac`: MIT OR Apache-2.0 | Off by default. Works on every system. See below. |
+| AAC in M4A, raw AAC (ADTS `.aac`) | **Windows:** the system encoder (Media Foundation), through `src-tauri/os-aac`. Plain `cargo build` on any system without `pure-aac` also uses it, so AAC fails with a clear message off Windows. | Nothing bundled | The Linux and macOS release builds turn on `pure-aac` (below). |
+| AAC in M4A, raw AAC (ADTS `.aac`) | **`pure-aac` build:** `filmcraft-aac` (a clean-room encoder from ISO/IEC 14496-3, no `unsafe`), through `src-tauri/src/export/aac_pure.rs`. The M4A container is written by our own code. | `filmcraft-aac`: MIT OR Apache-2.0 | Off in a plain build; on in the Linux and macOS release builds. Works on every system. See below. |
 | Chapter and marker data (WAV cue and labl, FLAC cue sheet and tags, ID3 CHAP, MP4 `chpl`) | Our own writers | GPL-3.0-or-later | |
 
 ### The `pure-aac` feature
@@ -45,7 +45,7 @@ Build with `cargo build --features pure-aac` (or `tauri build -- --features pure
 - Writes M4A with an edit list that trims the encoder's start delay, so a file plays the length that went in.
 - Mono and stereo only for M4A today.
 - Verified against the program's own post-export check (opens, every sample decodes, length matches) and decoded by an independent decoder (FFmpeg) in the tests.
-- **Patents.** AAC is covered by patents held by a licensing pool. A software encoder shipped inside the program is a different position from the operating system's encoder, whose maker already carries the license. Get a short legal opinion before turning this on in a public release. Until then it stays an opt-in build flag, and the installers on the Releases page are built without it.
+- **Patents.** AAC is covered by patents held by a licensing pool. A software encoder shipped inside the program is a different position from the operating system's encoder, whose maker already carries the license. Get a short legal opinion before turning this on in a public release. The project lead chose on 2026-11-23 to turn it on in the Linux and macOS release builds. The Windows installers stay on the system encoder.
 
 ## Video (pictures only)
 
