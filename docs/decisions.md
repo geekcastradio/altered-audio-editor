@@ -2277,3 +2277,7 @@ Adds `spectrum_view.rs`: the frequency axis, view range, zoom, scale marks, the 
 ## 2026-11-23: Rust port batch 38 (controller map and feedback)
 
 `controller_map.rs` mirrors `src/app/controller/map.ts` (source keys, names, matching, position and encoder turn, pan with a dead zone, target names and choices, the eight-strip preset) and `feedback.ts` (fader pitch bend values, pan ring bytes, and the frames a surface should show for a set of bindings and strips). Rust and Vitest read `shared-fixtures/controller-map.json` (52 KB). The controller class and its timers stay in TypeScript. The TS copies stay in use.
+
+## 2026-11-23: Rust port batch 44 (list selection, folders, solo rules)
+
+`panel_nav.rs` mirrors `files/selection.ts` (click and arrow selection), `parentFolder` from `drive-manager/paths.ts`, `mixer/solo.ts` (the exclusive solo edit and which tracks are silent) and `planDuration` and `formatSeconds` from `properties/remix.ts`. Rust and Vitest read `shared-fixtures/panel-nav.json`. The TS copies stay in use.
