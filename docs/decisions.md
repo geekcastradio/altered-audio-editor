@@ -2278,6 +2278,10 @@ Adds `spectrum_view.rs`: the frequency axis, view range, zoom, scale marks, the 
 
 `controller_map.rs` mirrors `src/app/controller/map.ts` (source keys, names, matching, position and encoder turn, pan with a dead zone, target names and choices, the eight-strip preset) and `feedback.ts` (fader pitch bend values, pan ring bytes, and the frames a surface should show for a set of bindings and strips). Rust and Vitest read `shared-fixtures/controller-map.json` (52 KB). The controller class and its timers stay in TypeScript. The TS copies stay in use.
 
+## 2026-11-23: Rust port batch 41 (clip edit helpers)
+
+`edit_ops.rs` mirrors `silence-span.ts` (silence a time range in selected clips), `clip-order.ts` (bring to front, send to back), `align.ts` (the Phase Align pair and edit), `clip-lookup.ts`, and `findMidiClips` and `snapTargets` from `clip-edit.ts`. Rust and Vitest read `shared-fixtures/edit-ops.json` (35 KB). The TS copies stay in use.
+
 ## 2026-11-23: Linux CI frees disk first
 
 The Linux job linked 80 separate test binaries in a debug build and the linker died with a bus error on three runs (the runner ran short of disk). The job now removes the .NET, Android, Haskell, CodeQL and Boost folders first, which it never uses. Re-running the failed job also cleared it, so this only removes the cause.
