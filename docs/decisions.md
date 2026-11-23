@@ -2281,3 +2281,7 @@ Adds `spectrum_view.rs`: the frequency axis, view range, zoom, scale marks, the 
 ## 2026-11-23: Rust port batch 44 (list selection, folders, solo rules)
 
 `panel_nav.rs` mirrors `files/selection.ts` (click and arrow selection), `parentFolder` from `drive-manager/paths.ts`, `mixer/solo.ts` (the exclusive solo edit and which tracks are silent) and `planDuration` and `formatSeconds` from `properties/remix.ts`. Rust and Vitest read `shared-fixtures/panel-nav.json`. The TS copies stay in use.
+
+## 2026-11-23: Linux CI frees disk first
+
+The Linux job linked 80 separate test binaries in a debug build and the linker died with a bus error on three runs (the runner ran short of disk). The job now removes the .NET, Android, Haskell, CodeQL and Boost folders first, which it never uses. Re-running the failed job also cleared it, so this only removes the cause.
