@@ -2281,3 +2281,7 @@ Adds `spectrum_view.rs`: the frequency axis, view range, zoom, scale marks, the 
 ## 2026-11-23: Linux CI frees disk first
 
 The Linux job linked 80 separate test binaries in a debug build and the linker died with a bus error on three runs (the runner ran short of disk). The job now removes the .NET, Android, Haskell, CodeQL and Boost folders first, which it never uses. Re-running the failed job also cleared it, so this only removes the cause.
+
+## 2026-11-23: cookie 0.18.3 (RUSTSEC-2026-0594)
+
+A new advisory (private cookie nonces can repeat in processes that fork) failed `cargo audit` on every branch. `cookie` is only reached through Tauri and the app never forks or uses private cookies, but the fix is a lockfile-only patch bump to 0.18.3, so it is taken.
