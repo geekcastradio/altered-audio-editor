@@ -207,7 +207,7 @@ fn span_of(clip: &Value) -> ClipSpan {
 }
 
 /// The media entry with this id.
-fn media_by_id<'a>(doc: &'a Value, id: &str) -> Option<&'a Value> {
+pub(crate) fn media_by_id<'a>(doc: &'a Value, id: &str) -> Option<&'a Value> {
     arr(doc, "media").iter().find(|m| text(m, "id") == id)
 }
 

@@ -2222,3 +2222,7 @@ Adds `chain_actions.rs`: the pure parts of `chain-actions.ts` (loudness target s
 ## 2026-11-23: backlog items 11 and 12, Known limitations scope
 
 Added mono-aware recording and phone video and odd-format import to `docs/backlog.md` as ideas, with OpenTimelineIO import at low priority. The project lead confirmed that the Known limitations list is for anything not on Windows, since only Windows is tested and audited; the intro in `docs/known-limitations.md` now says so. The 0.63.0 notes stay as published.
+
+## 2026-11-23: Rust port, batch 31 (Waveform editor edits)
+
+Adds `wave_edit.rs`: clamp, delete, crop, silence, amplify, fade in and out, copy, paste, mix paste, crossfading joins, replace, stretch and insert for the Waveform editor, with the marker moves that go with them. It builds on the clip editing already in Rust (`isolate`, ripple delete, `with_crossfades`). The fade shape for crossfades is a parameter, not a read of the settings. The length of the file counts audio clips only, since a Waveform editor file has no MIDI. `wave-edit.ts` stays in use. The fixture (`wave-edit.json`, 317 KB) covers three files (one track, two tracks, and a locked one), a stretched clip, a looped clip, a file with no sample rate, and boards copied at another rate. It matched on the first run once the looped clip used the real `{length}` shape.
