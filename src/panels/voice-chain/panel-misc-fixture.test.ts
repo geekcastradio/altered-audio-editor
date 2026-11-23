@@ -3,9 +3,9 @@
 // This file is part of Altered Audio Editor.
 
 // Checks the panel rules in TypeScript against the fixture the Rust test
-// reads too (shared-fixtures/panel-rules.json).
+// reads too (shared-fixtures/panel-misc.json).
 import { describe, expect, it } from "vitest";
-import fx from "../../../shared-fixtures/panel-rules.json";
+import fx from "../../../shared-fixtures/panel-misc.json";
 import { groupMin, MIN_SIZE, workspaceId } from "../../app/docking/registry";
 import { allMidiClipIds, deleteClipsOps } from "../editor/midi";
 import * as E from "./eq-graph";

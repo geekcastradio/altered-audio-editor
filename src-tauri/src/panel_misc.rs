@@ -7,7 +7,7 @@
 //! file-safe workspace ids, and the smallest a group of panels may get.
 //! Mirrors parts of `src/panels/voice-chain/eq-graph.ts`,
 //! `src/panels/editor/midi.ts` and `src/app/docking/registry.ts`, tested
-//! against `shared-fixtures/panel-rules.json`.
+//! against `shared-fixtures/panel-misc.json`.
 
 use crate::voice_chain::{param_value, ParamInfo};
 use serde_json::{json, Value};

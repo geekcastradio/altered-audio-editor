@@ -2268,4 +2268,4 @@ Adds `spectrum_view.rs`: the frequency axis, view range, zoom, scale marks, the 
 
 ## 2026-11-23: Rust port batch 40 (panel rules)
 
-`panel_rules.rs` mirrors three small pieces: the Parametric EQ graph nodes and on-switches (`eq-graph.ts`), the edits that delete selected clips, audio and MIDI alike, and the MIDI clip id list (`midi.ts`), and file-safe workspace ids and the smallest size of a panel group (`docking/registry.ts`). The panel and workspace tables themselves are not ported yet, only their sizes. Rust and Vitest read `shared-fixtures/panel-rules.json` (12 KB). The TS copies stay in use.
+`panel_misc.rs` mirrors three small pieces: the Parametric EQ graph nodes and on-switches (`eq-graph.ts`), the edits that delete selected clips, audio and MIDI alike, and the MIDI clip id list (`midi.ts`), and file-safe workspace ids and the smallest size of a panel group (`docking/registry.ts`). The panel and workspace tables themselves are not ported yet, only their sizes. Rust and Vitest read `shared-fixtures/panel-misc.json` (12 KB). The TS copies stay in use.
