@@ -13,6 +13,7 @@
 pub mod align;
 pub mod analysis;
 pub mod app_core;
+pub mod audio_looks;
 pub mod auto_record;
 pub mod automation;
 pub mod backup;
