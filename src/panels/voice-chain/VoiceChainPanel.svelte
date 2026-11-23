@@ -171,9 +171,12 @@
   const categories = $derived([...new Set(catalog.map((e) => e.category))]);
   // Music tools are offered in the Add effect menus only with Music Mode on; a slot that already holds one keeps working.
   let music = $state(settings.current.musicMode || settings.current.ampModelAlways);
+  /** How far down the level meters reach (Settings, or right-click the Levels meter). */
+  let meterRange = $state(settings.current.meterRangeDb);
   $effect(() =>
     settings.subscribe((v) => {
       music = v.musicMode || v.ampModelAlways;
+      meterRange = v.meterRangeDb;
     }),
   );
   const menuCatalog = $derived(music ? catalog : catalog.filter((e) => e.id !== "altaudio.amp_model"));
@@ -1041,9 +1044,9 @@
         <div class="mbars" aria-label="{name} level" title={meterNote()}>
           {#each [k, k + 1] as ch (ch)}
             {@const m = chainMeter?.[ch]}
-            <div class="mbar" role="meter" aria-label="{name} {ch % 2 === 0 ? 'left' : 'right'}" aria-valuemin={-60} aria-valuemax={0} aria-valuenow={m && m.peak > 0 ? Math.max(-60, Math.round(20 * Math.log10(m.peak))) : -60}>
-              <div class="mcover" style:width="{(1 - meterFraction(m?.level ?? 0)) * 100}%"></div>
-              {#if m && m.peak > 0}<div class="mpeak" style:left="{meterFraction(m.peak) * 100}%"></div>{/if}
+            <div class="mbar" role="meter" aria-label="{name} {ch % 2 === 0 ? 'left' : 'right'}" aria-valuemin={-meterRange} aria-valuemax={0} aria-valuenow={m && m.peak > 0 ? Math.max(-meterRange, Math.round(20 * Math.log10(m.peak))) : -meterRange}>
+              <div class="mcover" style:width="{(1 - meterFraction(m?.level ?? 0, -meterRange)) * 100}%"></div>
+              {#if m && m.peak > 0}<div class="mpeak" style:left="{meterFraction(m.peak, -meterRange) * 100}%"></div>{/if}
             </div>
           {/each}
         </div>
@@ -1080,7 +1083,7 @@
         <div class="io scale" aria-hidden="true">
           <span></span><span></span><span class="val">dB</span>
           <div class="ticks">
-            {#each [-48, -36, -24, -12, 0] as d (d)}<span style:left="{meterFraction(10 ** (d / 20)) * 100}%">{d}</span>{/each}
+            {#each (meterRange >= 96 ? [-96, -72, -48, -24, 0] : meterRange <= 24 ? [-24, -18, -12, -6, 0] : [-48, -36, -24, -12, 0]).filter((t) => t >= -meterRange) as d (d)}<span style:left="{meterFraction(10 ** (d / 20), -meterRange) * 100}%">{d}</span>{/each}
           </div>
         </div>
         <div class="io mixrow">

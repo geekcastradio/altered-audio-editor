@@ -570,7 +570,11 @@ export const MENUS: readonly Menu[] = [
       item("view.mode.podcast", "Podcast Mode"),
       item("view.mode.voiceover", "Voiceover Mode"),
       sep,
-      item("view.theme", "Light Theme"),
+      sub("Theme", [
+        item("view.theme.light", "Light Mode"),
+        item("view.theme.system", "Sync with System"),
+        item("view.theme.dark", "Dark Mode"),
+      ]),
     ],
   },
   {

@@ -2325,3 +2325,15 @@ The Linux and macOS release builds now pass `--features pure-aac`, so they write
 ## 2026-11-23: Rust port batch 47 (chain run notices)
 
 `chain_run_notes.rs` mirrors `preflight` and `chainSummary` in `src/app/chains.ts`: why a process chain cannot run (problems found in the file, or steps the app has no handler for, each named once) and the one notice after a run. Rust and Vitest read `shared-fixtures/chain-run-notes.json` (24 KB). The command that runs the steps and its undo stay in TypeScript. The TypeScript copies stay in use.
+
+## 2026-11-23: Theme switch, and one look for dialog title bars
+
+The project lead reported that View > Light Theme only changed the menu item. Cause: the action stored the new theme but never told the window to draw it (`applyAppSettings` set the `data-theme` attribute only when Settings was closed with OK). The action now applies it, and the theme is also re-applied when the computer's setting changes.
+
+- **Three choices.** `theme` is now `dark`, `light` or `system` (older files read the same). View > Theme lists Light Mode, Sync with System and Dark Mode, and the tool strip carries three icons at its right end (sun, monitor, moon) with a hover description each. The icons are plain shapes drawn for this app. Settings > Appearance has the same three. With Sync, the window follows the computer's light or dark setting (read locally, nothing is sent) and changes when it does. The old View > Light Theme item (`view.theme`) is gone.
+- **Dialog title bars.** The shared rule in `tokens.css` gave a title bar to a dialog whose first child is the title. Plug-in Manager and Controllers got it (Controllers with the wrong padding, so it sat off its edges); Settings and Keyboard Shortcuts put the title in a header with other controls and got none. The rule now covers a header too, Controllers sets its padding for the bar and uses the same title size. All four show the same bar. Its color is still the `--title-bar` token (off white in the dark theme, dark in the light theme), as decided earlier; if the project lead prefers the darker bar everywhere, it is one token.
+- **Light palette.** The existing light values are unchanged. A screenshot of another product's light interface was supplied as a color example; nothing was taken from it (see the clean-room rules). Specific colors the project lead likes can be named and set in the tokens.
+
+## 2026-11-23: Meter range (issue 269)
+
+A recording with a noise floor below -60 dB showed nothing on the level meters. Settings > Playback and Recording has a new Meter range (0 to -24, -48, -60, -72, -96 or -120 dB; -60 stays the default), and right-clicking the Levels meter offers the same choices with the current one ticked. The Levels panel and the Voice Chain meters both follow it, with scale marks that suit each depth, and the yellow and red points are placed on the chosen scale. The setting is `meterRangeDb` in `settings.ts` and `settings_clean.rs`, and the shared settings fixture gained its default and five cases. Faders, automation and loudness ranges are unchanged: this is only how far down the meters look.

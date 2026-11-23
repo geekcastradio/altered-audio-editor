@@ -15,7 +15,7 @@
   import BackupPage from "./BackupPage.svelte";
   import InfoTip from "../InfoTip.svelte";
   import { BROADCAST_REGIONS, targetsFor } from "../loudness";
-  import { DEFAULT_SETTINGS, NO_COLORS, TIMECODE_RATES, type AppColors } from "../../stores/settings";
+  import { DEFAULT_SETTINGS, METER_RANGES, NO_COLORS, TIMECODE_RATES, type AppColors } from "../../stores/settings";
   import { cleanDraft, LATER_PAGES, PAGES, sizeText, type Page, type SettingsDraft } from "./pages";
 
   interface Props {
@@ -138,7 +138,7 @@
     else if (page === "Appearance") Object.assign(d.app, { colors: { ...NO_COLORS }, surface: def.surface, theme: def.theme });
     else if (page === "Autosave") Object.assign(d.app, { autosave: def.autosave, autosaveMinutes: def.autosaveMinutes, backups: def.backups, backupCount: def.backupCount });
     else if (page === "Session Media") Object.assign(d.app, { copyMedia: def.copyMedia, mediaFolder: def.mediaFolder, collectOnSave: def.collectOnSave, leaveLibraryFiles: def.leaveLibraryFiles });
-    else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb, meterSpeed: def.meterSpeed, autoThinPercent: def.autoThinPercent, playbackSpeed: def.playbackSpeed, stopAtSelectionEnd: def.stopAtSelectionEnd });
+    else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb, meterSpeed: def.meterSpeed, meterRangeDb: def.meterRangeDb, autoThinPercent: def.autoThinPercent, playbackSpeed: def.playbackSpeed, stopAtSelectionEnd: def.stopAtSelectionEnd });
   }
   const resettable = $derived(["General", "Appearance", "Autosave", "Session Media", "Playback and Recording"].includes(page));
 </script>
@@ -201,7 +201,7 @@
               <button type="button" disabled={!d.app.colors[r.key]} onclick={() => (d.app.colors[r.key] = "")}>Theme</button>
             {/each}
           </div>
-          <label><select bind:value={d.app.theme}><option value="dark">Dark</option><option value="light">Light</option></select> Theme <span class="why">Dark is tuned for long sessions. Light is for bright rooms. You can also switch from View > Light Theme.</span></label>
+          <label><select bind:value={d.app.theme}><option value="light">Light</option><option value="system">Sync with System</option><option value="dark">Dark</option></select> Theme <span class="why">Dark is tuned for long sessions. Light is for bright rooms. Sync with System follows your computer's light or dark setting. You can also switch from View > Theme or the icons at the right of the tool strip.</span></label>
           <label><select bind:value={d.app.surface}><option value="standard">Standard</option><option value="classic">Classic (darker)</option></select> Panel brightness <span class="why">Standard is a mid charcoal. Classic is the darker look of earlier versions. Used by the dark theme only.</span></label>
         {:else if page === "Audio Devices"}
           <label class="row">
@@ -402,6 +402,14 @@
             <label class="row">Yellow from <input type="number" min="-40" max="-1" step="1" bind:value={d.app.meterYellowDb} /> dBFS</label>
             <label class="row">Red from <input type="number" min="-39" max="0" step="1" bind:value={d.app.meterRedDb} /> dBFS</label>
           </fieldset>
+          <label class="row" title="How far down the level meters reach. Choose a deeper scale to see where a quiet noise floor sits. You can also right-click the Levels meter.">
+            Meter range
+            <select bind:value={d.app.meterRangeDb}>
+              {#each METER_RANGES as r (r)}
+                <option value={r}>0 to -{r} dB{r === 60 ? " (default)" : ""}</option>
+              {/each}
+            </select>
+          </label>
           <label class="row">
             Meter response
             <select bind:value={d.app.meterSpeed}>
@@ -507,9 +515,6 @@
     background: var(--surface-2);
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
     font-size: 12px;
-  }
-  header {
-    padding: 10px 14px 6px;
   }
   h1 {
     margin: 0;
