@@ -2301,3 +2301,7 @@ The Linux job linked 80 separate test binaries in a debug build and the linker d
 ## 2026-11-23: cookie 0.18.3 (RUSTSEC-2026-0594)
 
 A new advisory (private cookie nonces can repeat in processes that fork) failed `cargo audit` on every branch. `cookie` is only reached through Tauri and the app never forks or uses private cookies, but the fix is a lockfile-only patch bump to 0.18.3, so it is taken.
+
+## 2026-11-23: Rust port batch 45 (automation lane choices and edits)
+
+`auto_lanes.rs` mirrors the owner and catalog parts of `automation.ts`: which settings a lane can move (including the 3D Space spot), a lane name, range and resting value, orphan lanes, the next free target, adding, replacing and dropping lanes (ids come from a closure), and the automation mode choices. Rust and Vitest read `shared-fixtures/auto-lanes.json` (27 KB). The TS copies stay in use.
