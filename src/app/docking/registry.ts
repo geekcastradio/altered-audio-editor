@@ -514,7 +514,8 @@ export function workspaceId(name: string, taken: ReadonlySet<string>): string {
  * squeeze together. A group holding several panels takes the largest of them.
  */
 export const MIN_SIZE: Record<PanelId, { w: number; h: number }> = {
-  files: { w: 280, h: 150 },
+  // Every side panel can be dragged down to its title strip, like the Voice Chain group; its body scrolls when short.
+  files: { w: 280, h: 36 },
   // The Voice Chain group at the bottom left can be dragged down to its tab strip when it is not in use; its panels scroll when short.
   "voice-chain": { w: 300, h: 36 },
   "batch-convert": { w: 300, h: 36 },
@@ -522,22 +523,22 @@ export const MIN_SIZE: Record<PanelId, { w: number; h: number }> = {
   editor: { w: 520, h: 260 },
   mixer: { w: 360, h: 220 },
   levels: { w: 260, h: 70 },
-  "audio-fx": { w: 280, h: 160 },
-  "sound-types": { w: 280, h: 160 },
+  "audio-fx": { w: 280, h: 36 },
+  "sound-types": { w: 280, h: 36 },
   "time-info": { w: 220, h: 110 },
-  history: { w: 220, h: 120 },
+  history: { w: 220, h: 36 },
   video: { w: 320, h: 220 },
-  takes: { w: 260, h: 140 },
-  soundboard: { w: 240, h: 200 },
-  "drive-manager": { w: 260, h: 140 },
-  libraries: { w: 260, h: 200 },
-  markers: { w: 260, h: 140 },
-  review: { w: 260, h: 140 },
-  metadata: { w: 280, h: 200 },
-  playlist: { w: 260, h: 140 },
-  "loudness-match": { w: 280, h: 160 },
-  properties: { w: 260, h: 160 },
-  "phase-wheel": { w: 200, h: 160 },
+  takes: { w: 260, h: 36 },
+  soundboard: { w: 240, h: 36 },
+  "drive-manager": { w: 260, h: 36 },
+  libraries: { w: 260, h: 36 },
+  markers: { w: 260, h: 36 },
+  review: { w: 260, h: 36 },
+  metadata: { w: 280, h: 36 },
+  playlist: { w: 260, h: 36 },
+  "loudness-match": { w: 280, h: 36 },
+  properties: { w: 260, h: 36 },
+  "phase-wheel": { w: 200, h: 36 },
   space: { w: 260, h: 220 },
 };
 

@@ -2345,3 +2345,7 @@ A recording with a noise floor below -60 dB showed nothing on the level meters. 
 ## 2026-11-23: Every window header on the one title bar
 
 Effect settings windows (they had a fixed off-white bar), Piano Roll (Edit Notes) and the color popover now use the `--title-bar` tokens like the dialogs. The Piano Roll controls moved into a toolbar row under its bar. The shared header rule now also offsets the bar for dialogs that have padding.
+
+## 2026-11-23: Side panels collapse to their title strip
+
+The divider between the Voice Chain group and Properties would not go all the way down because a tabbed group takes the largest minimum height of its panels (Properties 160, Takes 140, Loudness Match 160). Every side panel now has a 36 px minimum height, like the Voice Chain group already had, so any group can be dragged down to its tab strip. Its body scrolls when short. The Editor, Mixer, Levels, Time Info, Video and 3D Space keep their limits. Reason: the user asked for it.
