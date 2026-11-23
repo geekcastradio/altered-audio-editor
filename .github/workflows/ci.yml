@@ -106,6 +106,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
+      # Every fixture test links its own binary, so a debug build is big and the linker
+      # has died with a bus error when the runner's disk filled. Clear tools this job
+      # never uses first.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
+          df -h /
+
       - uses: actions/checkout@v5
 
       - uses: actions/setup-node@v5
