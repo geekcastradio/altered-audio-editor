@@ -116,6 +116,7 @@ pub mod track_names;
 pub mod typeahead;
 pub mod update_notes;
 pub mod video_view;
+pub mod view_helpers;
 pub mod visibility;
 pub mod voice_chain;
 pub mod voice_chain_math;
