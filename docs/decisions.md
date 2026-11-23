@@ -2329,3 +2329,7 @@ The Linux and macOS release builds now pass `--features pure-aac`, so they write
 ## 2026-11-23: Rust port batch 50 (effect envelopes on a clip)
 
 `envelope_fx.rs` mirrors the effect parts of `src/panels/editor/envelope.ts`: the control behind an effect lane, the settings a clip's chain offers for an envelope (hidden and retiming controls left out), the lane shown (the picked one, else the first enabled), its range with a step that falls back to 0.01, its points, resting value, name and the clip change that sets it. The effect catalog is passed in; clips are plain JSON. Rust and Vitest read `shared-fixtures/envelope-fx.json` (220 KB, clips with missing, disabled, duplicate and unknown effects). The TypeScript copies stay in use.
+
+## 2026-11-23: Rust port batch 49 (panel placement rules)
+
+`docking.rs` mirrors the helpers in `src/app/docking/registry.ts`: find a panel, pick where a turned-on panel goes given the panels that are open, find a built-in workspace, make a file-safe workspace id that does not clash, and the smallest size of a group of panels. The panel list, the Default layout, the built-in workspaces and the size limits are one data file, `src-tauri/data/docking.json`, written from the TypeScript lists. A Vitest check compares the file to the lists, so a change to either one fails until the file is written again. Rust and Vitest read `shared-fixtures/docking.json` (33 KB). The TypeScript copies stay in use.
