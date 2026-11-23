@@ -43,3 +43,8 @@ export const favoriteIds = (): string[] => {
   const raw = prefs.raw(KEY_FAVORITES);
   return raw === undefined || raw === null ? [...STARTER_FAVORITES] : sanitizeFavorites(raw);
 };
+
+export const KEY_PRESET_FAVORITES = "voicechain.favoritePresets";
+
+/** The favorite preset names saved right now. Starts empty: nothing is starred for you. */
+export const favoritePresetNames = (): string[] => sanitizeFavorites(prefs.raw(KEY_PRESET_FAVORITES));

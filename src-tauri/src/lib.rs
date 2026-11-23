@@ -108,6 +108,7 @@ pub mod video_view;
 pub mod visibility;
 pub mod voice_chain;
 pub mod voice_chain_math;
+pub mod wave_edit;
 pub mod wave_rows;
 pub mod welcome;
 
