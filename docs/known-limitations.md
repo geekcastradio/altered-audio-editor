@@ -6,7 +6,7 @@ Altered Audio Editor is young. Windows is the only platform we test and audit. A
 - **ASIO has not been tested on real hardware.** If an ASIO driver cannot open, the system driver plays instead. Reports from people with ASIO interfaces are welcome.
 - **VST3 plug-ins, MIDI tracks, buses and 3D Space have had little hardware testing.** A plug-in that crashes is kept in its own process, so the editor should carry on, but tell us which plug-in it was. A session that uses a VST3 plug-in may need the plug-in picked again on another operating system.
 - **AAC and M4A export off Windows uses a built-in encoder** that has been tested against other decoders but not by ear on Linux or macOS. Windows uses its own system encoder. Monkey's Audio and Windows Media formats are not planned.
-- **Hardware controllers** map faders and knobs. Motor fader feedback, scribble strips and jog wheels are not built.
+- **Hardware controllers** map faders, knobs, buttons and the transport, and motor faders, button lights and pan rings follow the screen. The feedback follows the Mackie Control layout and has not been tried on a real surface. Scribble strips (the little name displays) and jog wheels are not built.
 - **Opening other programs' sessions** brings in tracks, clips and markers. Effects and some edits are left out, and the import says what was skipped.
 - **Transcription, filler word removal, text-based editing, Music Remover and publishing from inside the app** are planned for after 1.0. Nothing in the app uses the network without you turning it on.
 - **Some tests are by hand only.** Recording behavior, live meters and the look of the window are checked by a person, not by the automatic tests.
