@@ -62,6 +62,7 @@ pub mod guide;
 pub mod host_profiles;
 pub mod in_out;
 pub mod js_compat;
+pub mod key_dispatch;
 pub mod knob;
 pub mod library;
 pub mod library_list;
