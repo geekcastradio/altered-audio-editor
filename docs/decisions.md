@@ -2222,3 +2222,7 @@ Adds `chain_actions.rs`: the pure parts of `chain-actions.ts` (loudness target s
 ## 2026-11-23: backlog items 11 and 12, Known limitations scope
 
 Added mono-aware recording and phone video and odd-format import to `docs/backlog.md` as ideas, with OpenTimelineIO import at low priority. The project lead confirmed that the Known limitations list is for anything not on Windows, since only Windows is tested and audited; the intro in `docs/known-limitations.md` now says so. The 0.63.0 notes stay as published.
+
+## 2026-11-23: Voice Chain preset favorites
+
+The star button beside Presets was disabled. It now stars the preset picked last, and starred presets are listed under Favorites at the top of the Presets menu, in the order they were starred. The list is kept in app settings (`voicechain.favoritePresets`), starts empty and holds at most 40 names. A name that no longer exists (a deleted user preset) is skipped in the menu and stays in the list. The star is disabled until a preset has been picked in this session, since the panel does not track which preset a chain came from after edits.
