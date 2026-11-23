@@ -163,7 +163,8 @@ body {
 /* A dialog whose title sits in a header with other controls (Settings, Keyboard Shortcuts) gets the same bar. */
 .dialog > header:first-child,
 [role="dialog"] > header:first-child {
-  padding: 7px 14px;
+  margin: calc(-1 * var(--dialog-pad-y, 0px)) calc(-1 * var(--dialog-pad-x, 0px)) 0;
+  padding: 7px var(--dialog-pad-x, 14px);
   background: var(--title-bar);
   color: var(--title-bar-text);
   user-select: none;
