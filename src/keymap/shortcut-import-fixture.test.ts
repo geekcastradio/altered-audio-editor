@@ -27,9 +27,11 @@ describe("shortcut import fixture", () => {
   it("applies every import the same as Rust", () => {
     for (const c of fx.apply) {
       const r = applyAudition(c.imported, c.current, fx.defaults);
-      const key = (t: { action: string; chord: string }) => `${t.action}\u0000${t.chord}`;
+      type Taken = { action: string; chord: string };
+      const key = (t: Taken) => `${t.action}\u0000${t.chord}`;
+      const sorted = (list: Taken[]) => [...list].sort((a, b) => key(a).localeCompare(key(b)));
       expect(r.overrides).toEqual(c.out.overrides);
-      expect([...r.takenFrom].sort((a, b) => key(a).localeCompare(key(b)))).toEqual([...c.out.takenFrom].sort((a: never, b: never) => key(a).localeCompare(key(b))));
+      expect(sorted(r.takenFrom)).toEqual(sorted(c.out.takenFrom));
     }
   });
 });
