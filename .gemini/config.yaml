@@ -1,0 +1,21 @@
+# Gemini Code Assist settings for this repository.
+# Review rules live in .gemini/styleguide.md and AGENTS.md.
+have_fun: false
+memory_config:
+  disabled: false
+code_review:
+  disable: false
+  # Only comment on real problems. Raise to CRITICAL if reviews get noisy.
+  comment_severity_threshold: HIGH
+  max_review_comments: -1
+  pull_request_opened:
+    help: false
+    summary: true
+    code_review: true
+    include_drafts: false
+ignore_patterns:
+  - "package-lock.json"
+  - "Cargo.lock"
+  - "shared-fixtures/**"
+  - "schemas/**"
+  - "docs/hand-test-*.md"
