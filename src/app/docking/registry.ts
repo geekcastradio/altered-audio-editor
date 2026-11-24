@@ -490,6 +490,136 @@ export const WORKSPACE_PRESETS: readonly WorkspacePreset[] = [
       },
     ],
   },
+  {
+    id: "production-desk",
+    name: "Production Desk",
+    description:
+      "The Default plus Markers and Loudness Match beside the voice chain, and a Soundboard, Video and Takes group under it.",
+    version: 1,
+    steps: [
+      ...DEFAULT_LAYOUT,
+      {
+        id: "markers",
+        placement: { reference: "voice-chain", direction: "within" },
+        inactive: true,
+      },
+      {
+        id: "loudness-match",
+        placement: { reference: "voice-chain", direction: "within" },
+        inactive: true,
+      },
+      {
+        id: "soundboard",
+        placement: { reference: "voice-chain", direction: "below" },
+        height: 270,
+      },
+      {
+        id: "video",
+        placement: { reference: "soundboard", direction: "within" },
+        inactive: true,
+      },
+      {
+        id: "takes",
+        placement: { reference: "soundboard", direction: "within" },
+        inactive: true,
+      },
+    ],
+  },
+  {
+    id: "loudness",
+    name: "Loudness",
+    description:
+      "Loudness Match across the top, the editor below, properties and files on the left.",
+    version: 1,
+    steps: [
+      { id: "editor", placement: null },
+      {
+        id: "mixer",
+        placement: { reference: "editor", direction: "within" },
+        inactive: true,
+      },
+      {
+        id: "loudness-match",
+        placement: { reference: "editor", direction: "above" },
+        height: 260,
+      },
+      { id: "levels", placement: { edge: "below" }, height: 150 },
+      {
+        id: "time-info",
+        placement: { reference: "levels", direction: "right" },
+        width: S.timeInfoWidth,
+      },
+      { id: "files", placement: { edge: "left" }, width: 340 },
+      { id: "properties", placement: { reference: "files", direction: "below" } },
+    ],
+  },
+  {
+    id: "video-edit",
+    name: "Video Edit",
+    description:
+      "The video reference on the left above files, the editor in the middle, audio types on the right.",
+    version: 1,
+    steps: [
+      { id: "editor", placement: null },
+      {
+        id: "mixer",
+        placement: { reference: "editor", direction: "within" },
+        inactive: true,
+      },
+      {
+        id: "audio-fx",
+        placement: { reference: "editor", direction: "right" },
+        width: S.rightWidth,
+      },
+      { id: "levels", placement: { edge: "below" }, height: S.levelsHeight },
+      {
+        id: "time-info",
+        placement: { reference: "levels", direction: "right" },
+        width: S.timeInfoWidth,
+      },
+      { id: "video", placement: { edge: "left" }, width: 340 },
+      { id: "files", placement: { reference: "video", direction: "below" } },
+      {
+        id: "voice-chain",
+        placement: { reference: "files", direction: "within" },
+        inactive: true,
+      },
+      {
+        id: "properties",
+        placement: { reference: "files", direction: "within" },
+        inactive: true,
+      },
+    ],
+  },
+  {
+    id: "broadcast",
+    name: "Broadcast",
+    description:
+      "For radio and spot work: voice chain and history on the left, file metadata on the right.",
+    version: 1,
+    steps: [
+      { id: "editor", placement: null },
+      {
+        id: "mixer",
+        placement: { reference: "editor", direction: "within" },
+        inactive: true,
+      },
+      {
+        id: "metadata",
+        placement: { reference: "editor", direction: "right" },
+        width: 340,
+      },
+      { id: "levels", placement: { edge: "below" }, height: S.levelsHeight },
+      {
+        id: "time-info",
+        placement: { reference: "levels", direction: "right" },
+        width: 340,
+      },
+      { id: "files", placement: { edge: "left" }, width: S.leftWidth },
+      { id: "voice-chain", placement: { reference: "files", direction: "below" } },
+      { id: "history", placement: { reference: "voice-chain", direction: "below" } },
+    ],
+  },
 ];
 
 export function presetById(id: string): WorkspacePreset | undefined {
