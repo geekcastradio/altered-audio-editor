@@ -53,7 +53,7 @@
 
   const { doc, view, width, scaleWidth, total, playhead, selection, tool, brushSize, showSpectrum, showPitch, onSeek, onSelectTime, run, tip, onTimeWheel = () => {}, onColors = () => {} }: Props = $props();
 
-  let sv = $state<SpectrumViewState>({ ...FULL_VIEW, notes: false, fft: 2048 });
+  let sv = $state<SpectrumViewState>({ ...FULL_VIEW, notes: false, fft: 0 });
   $effect(() => spectrumView.subscribe((v) => (sv = v)));
   const setSv = (patch: Partial<SpectrumViewState>) => spectrumView.update((v) => ({ ...v, ...patch }));
 
@@ -185,7 +185,9 @@
     e.stopPropagation();
     const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const hz = viewFreq(1 - (e.clientY - box.top) / height, sv, nyquist);
-    const fi = FFT_SIZES.indexOf(sv.fft as (typeof FFT_SIZES)[number]);
+    // 0 is automatic: the frame length follows the zoom. Stepping from it starts at the middle choice.
+    const auto = sv.fft === 0;
+    const fi = FFT_SIZES.indexOf((auto ? 2048 : sv.fft) as (typeof FFT_SIZES)[number]);
     const logSteps = [0, 0.25, 0.5, 0.75, 1];
     const li = logSteps.findIndex((k) => Math.abs(k - sv.log) < 0.01);
     const at = (k: number) => {
@@ -211,6 +213,7 @@
         { kind: "item", label: "Full Logarithmic", checked: sv.log === 1, run: () => at(1) },
         { kind: "item", label: "Full Linear", checked: sv.log === 0, run: () => at(0) },
         { kind: "sep" },
+        { kind: "item", label: "Automatic Resolution (sharp in time when zoomed in)", checked: auto, run: () => setSv({ fft: 0 }) },
         { kind: "item", label: `Increase Spectral Resolution (${FFT_SIZES[Math.min(FFT_SIZES.length - 1, fi + 1)]})`, disabled: fi === FFT_SIZES.length - 1, reason: "At the finest resolution.", run: () => setSv({ fft: FFT_SIZES[Math.min(FFT_SIZES.length - 1, fi + 1)]! }) },
         { kind: "item", label: `Decrease Spectral Resolution (${FFT_SIZES[Math.max(0, fi - 1)]})`, disabled: fi === 0, reason: "At the coarsest resolution.", run: () => setSv({ fft: FFT_SIZES[Math.max(0, fi - 1)]! }) },
         { kind: "sep" },

@@ -20,4 +20,4 @@ export interface SpectrumViewState extends FreqView {
 
 export const FFT_SIZES = [512, 1024, 2048, 4096, 8192, 16384] as const;
 
-export const spectrumView = writable<SpectrumViewState>({ ...FULL_VIEW, notes: false, fft: 2048 });
+export const spectrumView = writable<SpectrumViewState>({ ...FULL_VIEW, notes: false, fft: 0 });
