@@ -80,8 +80,11 @@
     pressedOnBackdrop = false;
   }}
 >
-  <div class="dialog dlg" role="dialog" aria-modal="true" aria-labelledby={titleId} tabindex="-1" style:width="min({width}px, 94vw)" style:--dlg-label="{labelWidth}px" bind:this={panel}>
-    <h1 id={titleId}>{title}</h1>
+  <div class="dialog dlg" role="dialog" aria-modal="true" aria-labelledby={titleId} tabindex="-1" style:width="min({width}px, 94vw)" style:--dlg-label="{labelWidth}px" style:--dialog-pad-x="14px" style:--dialog-pad-y="14px" bind:this={panel}>
+    <header>
+      <h1 id={titleId}>{title}</h1>
+      <button type="button" class="dlg-x" aria-label="Close" title="Close" disabled={!canClose} onclick={onClose}>×</button>
+    </header>
     {@render children()}
     {#if footer}<footer>{@render footer()}</footer>{/if}
   </div>
