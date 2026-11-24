@@ -244,9 +244,11 @@ pub async fn wave_spectrogram(
     }
     let columns = columns.clamp(1, 4096) as usize;
     let rows = rows.clamp(1, 1024) as usize;
-    let n = fft.map_or(FFT_SIZE, |f| {
-        (f as usize).clamp(256, 32_768).next_power_of_two()
-    });
+    // 0 or none: pick the frame length from the zoom, so a close-up is not smeared across time.
+    let n = match fft {
+        Some(f) if f > 0 => (f as usize).clamp(256, 32_768).next_power_of_two(),
+        _ => spectral::auto_frame((end - start) as f64 / columns as f64),
+    };
     // The view's own axis (a zoomed range, a linear or log scale), or the edits' log axis.
     let nyquist = rate as f32 / 2.0;
     let hz: Vec<f32> = match hz {

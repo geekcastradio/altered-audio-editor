@@ -2390,3 +2390,9 @@ Three labels named another editor: the shortcut import button, the Voice Chain p
 ## 2026-11-24: effect chain import reader ported to Rust
 
 `src-tauri/src/rack_import.rs` reads the racks in another editor's effect presets file and builds Voice Chain presets, with the same results as `src/panels/voice-chain/audition-presets.ts`. The shared cases are in `shared-fixtures/rack-import.json` (23 cases: entities, nested lists, odd numbers, duplicate keys, broken input). Both sides test against it. The TypeScript stays until the Rust command replaces it. Part of the move to Rust for 1.0.
+
+## 2026-11-24: spectrum view, blocky low rows and automatic resolution (from a tester's report)
+
+- **Blocky lower half in the logarithmic scale.** At 96 kHz a 2048-sample frame has 47 Hz bins, wider than the rows below about 200 Hz, so neighbouring rows read the same bins and showed as flat blocks. A row narrower than one bin now blends the two bins either side of its center. Wider rows still show their loudest bin. A Rust test checks a 100 Hz tone lands on the right row and the low rows differ.
+- **Stretched look when zoomed in, and "the resolution control works backwards".** It does not work backwards: a longer frame resolves pitch finer and time coarser, and at a close zoom (about 9 samples a pixel) a 2048 frame is about 220 pixels wide. The default is now Automatic: the frame is about six columns wide, never under 256 or over 4096, so a zoomed-in view is sharp in time and a zoomed-out one keeps pitch detail. Increase and Decrease Spectral Resolution still pick a fixed frame; Automatic Resolution in the right-click menu returns to it.
+- **Not done:** the waveform's step in detail at some zoom levels (a peak-level change, to be looked at separately) and a new spectrogram palette; the suggested colormap set is MIT-licensed, but its data was not fetched here.
