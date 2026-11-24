@@ -168,8 +168,10 @@ impl<'a> Reader<'a> {
 
 fn utf16(bytes: &[u8]) -> String {
     let units: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
         .collect();
     String::from_utf16_lossy(&units)
 }
@@ -293,13 +295,13 @@ fn decode_block(blob: &[u8], fmt: SampleFormat, count: usize) -> Vec<f32> {
     let mut out = Vec::with_capacity(count);
     match fmt {
         SampleFormat::Float32 => {
-            for c in blob.chunks_exact(4).take(count) {
-                out.push(f32::from_le_bytes([c[0], c[1], c[2], c[3]]));
+            for c in blob.as_chunks::<4>().0.iter().take(count) {
+                out.push(f32::from_le_bytes(*c));
             }
         }
         SampleFormat::Int16 => {
-            for c in blob.chunks_exact(2).take(count) {
-                out.push(f32::from(i16::from_le_bytes([c[0], c[1]])) / 32768.0);
+            for c in blob.as_chunks::<2>().0.iter().take(count) {
+                out.push(f32::from(i16::from_le_bytes(*c)) / 32768.0);
             }
         }
     }
