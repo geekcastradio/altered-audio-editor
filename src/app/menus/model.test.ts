@@ -173,6 +173,7 @@ describe("menu model", () => {
       "edit.repeat-last-dialog",
       "file.import-sesx",
       "file.import-rpp",
+      "file.import-aup",
       "file.import-otio",
       "multitrack.play-pause",
       "multitrack.stop",

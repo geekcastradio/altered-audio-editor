@@ -14,7 +14,7 @@
  *   normally; the user chooses to recover or discard it.
  */
 
-import type { NewSessionOptions, OtioReport, Recoverable, RppReport, SesxReport, SessionResult } from "./core";
+import type { AupReport, NewSessionOptions, OtioReport, Recoverable, RppReport, SesxReport, SessionResult } from "./core";
 import type { UndoStack } from "../commands";
 import type { StashedHistory } from "../commands/undo-stack";
 import { sessionEnd } from "../stores/session";
@@ -39,6 +39,8 @@ export interface SessionFileBackend {
   importSesx(path: string): Promise<SessionResult<SessionDoc> & { report: SesxReport }>;
   pickRpp?(): Promise<string | null>;
   importRpp?(path: string): Promise<SessionResult<SessionDoc> & { report: RppReport }>;
+  pickAup?(): Promise<string | null>;
+  importAup?(path: string): Promise<SessionResult<SessionDoc> & { report: AupReport }>;
   pickOtio?(): Promise<string | null>;
   importOtio?(path: string): Promise<SessionResult<SessionDoc> & { report: OtioReport }>;
   /** Sets a copy of the session in front aside, so another can take its place. Without these, one session at a time. */
@@ -118,6 +120,16 @@ export function sesxSummary(r: SesxReport): string {
     const n = r.missingFiles.length;
     parts.push(`${n} media ${n === 1 ? "file was" : "files were"} not found.`);
   }
+  return parts.join(" ");
+}
+
+export function aupSummary(r: AupReport): string {
+  const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const parts = [`Imported ${count(r.tracks, "track", "tracks")} and ${count(r.clips, "clip", "clips")}.`];
+  if (r.markers) parts.push(`${count(r.markers, "marker", "markers")} came across.`);
+  parts.push("The audio was written as WAV files in a folder beside the project.");
+  if (r.leftOut.length) parts.push(`Left out: ${r.leftOut.join(", ")}.`);
+  if (r.missingBlocks > 0) parts.push(`${count(r.missingBlocks, "block of audio was", "blocks of audio were")} missing from the file and is silent.`);
   return parts.join(" ");
 }
 
@@ -265,6 +277,7 @@ export class SessionFiles {
     // A .sesx in Open Recent is imported again, as a new unsaved session.
     if (/\.sesx$/i.test(target)) return this.importSesx(target);
     if (/\.rpp$/i.test(target)) return this.importRpp(target);
+    if (/\.aup[34]$/i.test(target)) return this.importAup(target);
     if (/\.otio$/i.test(target)) return this.importOtio(target);
     // Already open: bring it to the front.
     const key = (p: string | null) => (p ?? "").replace(/\\/g, "/").toLowerCase();
@@ -320,6 +333,26 @@ export class SessionFiles {
     await this.replace({ ...r, missing: [] }, "Import Session", true);
     this.addRecent(target);
     this.d.notice(rppSummary(r.report));
+    return true;
+  }
+
+  /** Brings in an .aup3 or .aup4 project as a new, unsaved session. */
+  async importAup(path?: string): Promise<boolean> {
+    const b = this.d.backend;
+    if (!b.pickAup || !b.importAup) return false;
+    if (!(await this.makeRoom())) return false;
+    const target = path ?? (await b.pickAup());
+    if (!target) return false;
+    let r: SessionResult<SessionDoc> & { report: AupReport };
+    try {
+      r = await b.importAup(target);
+    } catch (e) {
+      this.dropRecent(target);
+      throw e;
+    }
+    await this.replace({ ...r, missing: [] }, "Import Session", true);
+    this.addRecent(target);
+    this.d.notice(aupSummary(r.report));
     return true;
   }
 

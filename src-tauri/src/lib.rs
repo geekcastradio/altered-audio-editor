@@ -14,6 +14,7 @@ pub mod align;
 pub mod analysis;
 pub mod app_core;
 pub mod audio_looks;
+pub mod aup_import;
 pub mod auto_lanes;
 pub mod auto_record;
 pub mod automation;
@@ -436,6 +437,8 @@ pub fn run() {
             commands::chain::chain_load,
             commands::session::session_pick_rpp,
             commands::session::session_import_rpp,
+            commands::session::session_pick_aup,
+            commands::session::session_import_aup,
             commands::session::session_pick_otio,
             commands::session::session_import_otio,
             commands::session::session_export_sesx,
