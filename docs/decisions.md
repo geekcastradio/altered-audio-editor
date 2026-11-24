@@ -2424,3 +2424,7 @@ Steve asked for every settings and pop-up dialog to share the title bar look. Th
 ## 2026-11-24: Waveform selection fixes (issue 294)
 
 Three reports from a tester. Double-click in the Waveform editor now selects what is in view, not the whole file (Select All still selects everything). Zoom to Selection fills the view from edge to edge: it left a five percent gap on each side before. While a selection that fills the view plays, the view no longer scrolls to follow the playhead, which had shifted the view near the end of the selection. Not changed: the wheel zoom centre is a setting (Edit > Settings > General) and its default stays; Save Selection As and codec options on Save are not built yet and stay on the list.
+
+## 2026-11-24: Track menu: swap stereo channels, split stereo to center mono
+
+Two track actions, in the Track right-click menu and the Multitrack menu, no shortcuts. Each sets Source Channels on every unlocked stereo clip of the selected track, as one undoable step: swap sends left to right and right to left; center mono sends both sides to both speakers at half level. Nothing is rendered and the files are untouched. Clips added to the track later play as recorded. Not built: per-track Resample and per-track sample format. The multitrack is non-destructive and a track has no rate or format of its own, so both would mean writing new files. Waiting on Steve's call on whether that belongs in a track menu or only in the Waveform editor and Batch Convert.
