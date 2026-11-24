@@ -3606,6 +3606,22 @@
     }
   }
 
+  /** Clips of the selected track whose file has two channels. */
+  function stereoClipsOfSelected() {
+    const d = session.current;
+    const t = selectedTrack();
+    if (!d || !t) return [];
+    return t.clips.filter((c) => d.media.find((m) => m.id === c.media_id)?.channels === 2 && !c.locked);
+  }
+  /** Sets the Source Channels of every stereo clip on the selected track: swapped, or both sides to center. */
+  async function setTrackChannels(label: string, how: "swap" | "mono") {
+    const sends =
+      how === "swap"
+        ? [{ left: 0, right: 1 }, { left: 1, right: 0 }]
+        : [{ left: 0.5, right: 0.5 }, { left: 0.5, right: 0.5 }];
+    await editClips(label, stereoClipsOfSelected().map((c) => ({ id: c.id, channel_mix: { sends } })));
+  }
+
   /** Selected clips moved one track up (-1) or down (1), or null when they can't all move. */
   function clipsTrackMove(dir: -1 | 1): ClipChange[] | null {
     const d = session.current;
@@ -5271,6 +5287,18 @@
         },
         enabled: () => selectedTrack() !== null,
         reason: () => "Select a track first.",
+      }),
+      actions.register({
+        id: "multitrack.swap-stereo",
+        run: () => setTrackChannels("Swap Stereo Channels", "swap"),
+        enabled: () => stereoClipsOfSelected().length > 0,
+        reason: () => "Select a track that has stereo clips.",
+      }),
+      actions.register({
+        id: "multitrack.stereo-to-mono",
+        run: () => setTrackChannels("Split Stereo to Center Mono", "mono"),
+        enabled: () => stereoClipsOfSelected().length > 0,
+        reason: () => "Select a track that has stereo clips.",
       }),
       actions.register({
         id: "multitrack.delete-empty",

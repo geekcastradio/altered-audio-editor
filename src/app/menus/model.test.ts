@@ -120,6 +120,8 @@ describe("menu model", () => {
       "multitrack.add.bus-mono",
       "fx.plugin-manager",
       "multitrack.duplicate-track",
+      "multitrack.swap-stereo",
+      "multitrack.stereo-to-mono",
       "multitrack.delete-track",
       "multitrack.delete-empty",
       "edit.marker.subclip",
