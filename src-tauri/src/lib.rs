@@ -439,6 +439,7 @@ pub fn run() {
             commands::session::session_pick_rpp,
             commands::session::session_import_rpp,
             commands::session::session_pick_aup,
+            commands::session::session_pick_import,
             commands::session::session_import_aup,
             commands::session::session_pick_otio,
             commands::session::session_import_otio,

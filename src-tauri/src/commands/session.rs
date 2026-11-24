@@ -625,13 +625,41 @@ pub async fn session_pick_open(app: AppHandle, sesx: bool) -> Result<Option<Path
     .map_err(|e| e.to_string())
 }
 
+/// File > Import Session: one dialog for every session and project format
+/// we read. The file type list in the dialog picks the format.
+#[tauri::command]
+pub async fn session_pick_import(app: AppHandle) -> Result<Option<PathBuf>, String> {
+    let parent = app.get_webview_window("main");
+    spawn_blocking(move || {
+        let mut d = app
+            .dialog()
+            .file()
+            .set_title("Import Session")
+            .add_filter(
+                "All session and project files",
+                &["sesx", "rpp", "aup3", "aup4", "otio"],
+            )
+            .add_filter("Multitrack session (.sesx)", &["sesx"])
+            .add_filter("Project (.rpp)", &["rpp"])
+            .add_filter("Project (.aup3, .aup4)", &["aup3", "aup4"])
+            .add_filter("OpenTimelineIO (.otio)", &["otio"]);
+        if let Some(w) = parent.as_ref() {
+            d = d.set_parent(w);
+        }
+        d.blocking_pick_file()
+            .and_then(|f| f.as_path().map(|p| p.to_path_buf()))
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 /// File > Open: sessions, .sesx sessions and audio files in one
 /// dialog. Several files can be picked. Returns an empty list on cancel.
 #[tauri::command]
 pub async fn file_pick_open(app: AppHandle) -> Result<Vec<PathBuf>, String> {
     let parent = app.get_webview_window("main");
     spawn_blocking(move || {
-        let mut all: Vec<&str> = vec![EXTENSION, "sesx"];
+        let mut all: Vec<&str> = vec![EXTENSION, "sesx", "rpp", "aup3", "aup4", "otio"];
         all.extend_from_slice(crate::codecs::SUPPORTED_EXTENSIONS);
         // Video files open as a reference picture (and their sound, when there is some).
         let video = ["mp4", "m4v", "mov", "wmv", "avi", "mkv"];
@@ -647,6 +675,9 @@ pub async fn file_pick_open(app: AppHandle) -> Result<Vec<PathBuf>, String> {
             .add_filter("Sessions, audio and video files", &all)
             .add_filter("Altered Audio session", &[EXTENSION])
             .add_filter("Multitrack session (.sesx)", &["sesx"])
+            .add_filter("Project (.rpp)", &["rpp"])
+            .add_filter("Project (.aup3, .aup4)", &["aup3", "aup4"])
+            .add_filter("OpenTimelineIO (.otio)", &["otio"])
             .add_filter("Audio files", crate::codecs::SUPPORTED_EXTENSIONS)
             .add_filter("Video files", &video);
         if let Some(w) = parent.as_ref() {

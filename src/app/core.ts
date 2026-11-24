@@ -504,6 +504,11 @@ export function sessionPickOpen(sesx = false): Promise<string | null> {
   return invoke<string | null>("session_pick_open", { sesx });
 }
 
+/** File > Import Session picker: every session and project format, chosen by the dialog's file type list. */
+export function sessionPickImport(): Promise<string | null> {
+  return invoke<string | null>("session_pick_import");
+}
+
 /** File > Open picker: sessions, .sesx sessions and audio files. Empty on cancel. */
 export function filePickOpen(): Promise<string[]> {
   return invoke<string[]>("file_pick_open");

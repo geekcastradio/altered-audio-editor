@@ -37,6 +37,8 @@ export interface SessionFileBackend {
   pickOpen(): Promise<string | null>;
   pickSesx(): Promise<string | null>;
   importSesx(path: string): Promise<SessionResult<SessionDoc> & { report: SesxReport }>;
+  /** One picker for every import format. */
+  pickImport?(): Promise<string | null>;
   pickRpp?(): Promise<string | null>;
   importRpp?(path: string): Promise<SessionResult<SessionDoc> & { report: RppReport }>;
   pickAup?(): Promise<string | null>;
@@ -297,6 +299,15 @@ export class SessionFiles {
     return true;
   }
 
+  /** File > Import Session: one picker for every format, then the matching importer. */
+  async importSession(): Promise<boolean> {
+    const pick = this.d.backend.pickImport;
+    if (!pick) return false;
+    const target = await pick.call(this.d.backend);
+    if (!target) return false;
+    return this.open(target);
+  }
+
   /** Brings in a .sesx session as a new, unsaved session. */
   async importSesx(path?: string): Promise<boolean> {
     if (!(await this.makeRoom())) return false;
@@ -503,6 +514,9 @@ const AUDIO_EXTENSIONS = new Set(["wav", "wave", "aif", "aiff", "aifc", "mp3", "
 const VIDEO_EXTENSIONS = new Set(["mp4", "m4v", "mov", "wmv", "avi", "mkv"]);
 
 const extOf = (p: string) => p.slice(p.lastIndexOf(".") + 1).toLowerCase();
+
+/** Whether this is a session or project from another editor (.sesx, .rpp, .aup3, .aup4, .otio). */
+export const isProjectFile = (p: string): boolean => /\.(sesx|rpp|aup[34]|otio)$/i.test(p);
 
 /** Whether the importer reads this file as audio. */
 export const isAudioFile = (p: string): boolean => AUDIO_EXTENSIONS.has(extOf(p));
