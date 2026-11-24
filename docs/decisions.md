@@ -2391,6 +2391,10 @@ Three labels named another editor: the shortcut import button, the Voice Chain p
 
 `src-tauri/src/rack_import.rs` reads the racks in another editor's effect presets file and builds Voice Chain presets, with the same results as `src/panels/voice-chain/audition-presets.ts`. The shared cases are in `shared-fixtures/rack-import.json` (23 cases: entities, nested lists, odd numbers, duplicate keys, broken input). Both sides test against it. The TypeScript stays until the Rust command replaces it. Part of the move to Rust for 1.0.
 
+## 2026-11-24: Roseus spectrogram palette
+
+Steve chose to use the Roseus colormap (MIT, Myungchul Keum, dofuuz/roseus), suggested by a tester, as a spectrogram scheme. Only the 256-entry color table is used, rounded to bytes, in `src/panels/editor/roseus-lut.ts`; it is credited in `ATTRIBUTION.md`. It is the default spectrogram look (scheme empty); the earlier orange look stays as Classic and AAE and the single-color schemes stay as options, to be refined from tester reports. The settings sanitizer in TypeScript and Rust accepts it.
+
 ## 2026-11-24: spectrum view, blocky low rows and automatic resolution (from a tester's report)
 
 - **Blocky lower half in the logarithmic scale.** At 96 kHz a 2048-sample frame has 47 Hz bins, wider than the rows below about 200 Hz, so neighbouring rows read the same bins and showed as flat blocks. A row narrower than one bin now blends the two bins either side of its center. Wider rows still show their loudest bin. A Rust test checks a 100 Hz tone lands on the right row and the low rows differ.
