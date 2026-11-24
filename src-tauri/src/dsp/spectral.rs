@@ -71,6 +71,24 @@ pub fn spectrogram(
     spectrogram_rows(mono, origin, rate, start, end, columns, &hz, FFT_SIZE)
 }
 
+/// What one row of the picture reads from the spectrum.
+#[derive(Clone, Copy)]
+enum Row {
+    /// The loudest bin from the first up to, not including, the second.
+    Span(usize, usize),
+    /// A blend of two neighbouring bins (the weight is how far toward the second).
+    Between(usize, usize, f32),
+}
+
+/// A frame length (a power of two) for a view where one column covers `samples_per_column`
+/// samples: about six columns wide, so a zoomed-in view stays sharp in time, and never longer
+/// than 4096 so a zoomed-out view keeps fine pitch detail.
+pub fn auto_frame(samples_per_column: f64) -> usize {
+    ((samples_per_column * 6.0).ceil().max(1.0) as usize)
+        .next_power_of_two()
+        .clamp(256, 4096)
+}
+
 /// The same with the frequency axis given row by row: `hz` holds each
 /// row's edges from the top down (one more than the rows), so the view
 /// can show any range on any scale. `n` is the frame length (a power of
@@ -98,14 +116,21 @@ pub fn spectrogram_rows(
     let mut spec = vec![Complex32::new(0.0, 0.0); n / 2 + 1];
     let mut mags = vec![0f32; n / 2 + 1];
     let bin_hz = rate as f32 / n as f32;
-    // Bin ranges per row, top row first.
-    let edges: Vec<(usize, usize)> = hz
+    // Per row, top row first: the bins it covers, or, for a row narrower than one bin
+    // (the low rows of a log axis), the two bins either side of its center to blend between.
+    let edges: Vec<Row> = hz
         .windows(2)
         .map(|w| {
             let (hi, lo) = (w[0].max(w[1]), w[0].min(w[1]));
-            let b0 = (lo / bin_hz).floor().max(0.0) as usize;
-            let b1 = ((hi / bin_hz).ceil() as usize).max(b0 + 1);
-            (b0.min(n / 2), b1.min(n / 2 + 1))
+            if hi - lo < bin_hz {
+                let p = ((lo + hi) * 0.5 / bin_hz).max(0.0);
+                let i0 = (p.floor() as usize).min(n / 2);
+                Row::Between(i0, (i0 + 1).min(n / 2), p - p.floor())
+            } else {
+                let b0 = (lo / bin_hz).floor().max(0.0) as usize;
+                let b1 = ((hi / bin_hz).ceil() as usize).max(b0 + 1);
+                Row::Span(b0.min(n / 2), b1.min(n / 2 + 1))
+            }
         })
         .collect();
     // Hann's coherent gain is 0.5, so a full-scale sine peaks at n / 4.
@@ -129,10 +154,13 @@ pub fn spectrogram_rows(
         for (m, s) in mags.iter_mut().zip(&spec) {
             *m = s.norm();
         }
-        for (r, &(b0, b1)) in edges.iter().enumerate() {
-            let m = mags[b0..b1.max(b0 + 1).min(mags.len())]
-                .iter()
-                .fold(0f32, |a, &v| a.max(v));
+        for (r, row) in edges.iter().enumerate() {
+            let m = match *row {
+                Row::Span(b0, b1) => mags[b0..b1.max(b0 + 1).min(mags.len())]
+                    .iter()
+                    .fold(0f32, |a, &v| a.max(v)),
+                Row::Between(i0, i1, t) => mags[i0] * (1.0 - t) + mags[i1] * t,
+            };
             let db = 20.0 * (m / full).max(1e-9).log10();
             let v = ((db + RANGE_DB) / RANGE_DB).clamp(0.0, 1.0);
             out[r * columns + c] = (v * 255.0).round() as u8;
@@ -502,6 +530,43 @@ pub fn keep_inside(samples: &[f32], rate: u32, origin: f64, mask: &Mask) -> Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn low_rows_of_a_log_axis_follow_a_tone_instead_of_blocking() {
+        // At 96 kHz a 2048 frame has 47 Hz bins, wider than the low rows of a log axis.
+        let rate = 96_000u32;
+        let tone: Vec<f32> = (0..16_384)
+            .map(|i| 0.5 * (std::f32::consts::TAU * 100.0 * i as f32 / rate as f32).sin())
+            .collect();
+        let rows = 64;
+        let hz: Vec<f32> = (0..=rows)
+            .map(|r| freq_at(1.0 - r as f32 / rows as f32, 48_000.0))
+            .collect();
+        let out = spectrogram_rows(&tone, 0, rate, 8_000, 8_001, 1, &hz, 2048);
+        let (top, peak) = out
+            .iter()
+            .enumerate()
+            .max_by_key(|&(r, &v)| (v, std::cmp::Reverse(r)))
+            .unwrap();
+        let centre = (hz[top] + hz[top + 1]) * 0.5;
+        assert!(*peak > 150, "the tone is loud: {peak}");
+        assert!((85.0..=125.0).contains(&centre), "peak row at {centre} Hz");
+        // Neighbouring low rows differ; a block of equal rows is what this fixes.
+        let low: Vec<u8> = (0..rows)
+            .filter(|&r| hz[r] < 200.0)
+            .map(|r| out[r])
+            .collect();
+        let distinct = low.iter().collect::<std::collections::HashSet<_>>().len();
+        assert!(low.len() >= 6 && distinct * 2 > low.len(), "{low:?}");
+    }
+
+    #[test]
+    fn automatic_frame_follows_the_zoom() {
+        assert_eq!(auto_frame(9.0), 256);
+        assert_eq!(auto_frame(100.0), 1024);
+        assert_eq!(auto_frame(10_000.0), 4096);
+        assert_eq!(auto_frame(0.0), 256);
+    }
 
     fn sine(freq: f32, rate: u32, len: usize, amp: f32) -> Vec<f32> {
         (0..len)
