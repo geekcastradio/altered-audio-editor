@@ -99,6 +99,19 @@ describe("SessionFiles", () => {
     );
   });
 
+  it("says kept effects are written back on a .sesx export", () => {
+    const text = sesxSummary({
+      tracks: 1,
+      clips: 1,
+      skippedEffects: 2,
+      skippedNames: ["DeNoise"],
+      keptEffects: 2,
+      missingFiles: [],
+    } as never);
+    expect(text).toContain("left out (DeNoise); rebuild them in Voice Chain.");
+    expect(text).toContain("kept in the session and written back if you export it as .sesx");
+  });
+
   it("lists an imported .sesx in Open Recent and imports it again from there", async () => {
     const { files, calls, recent } = setup();
     await files.importSesx();

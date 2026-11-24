@@ -12,7 +12,9 @@ use std::fmt::Debug;
 use altered_audio_editor_lib::library::{Library, Template};
 use altered_audio_editor_lib::session::document::{self, from_json, load, save, to_json};
 use altered_audio_editor_lib::session::validate::validate;
-use altered_audio_editor_lib::session::{Document, DocumentError, Session, Workspace};
+use altered_audio_editor_lib::session::{
+    Document, DocumentError, EffectChain, ForeignEffect, Session, Workspace,
+};
 use pretty_assertions::assert_eq;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -219,4 +221,23 @@ fn template_checks_its_nested_session() {
 fn missing_file_reports_path() {
     let err = load::<Workspace>(std::path::Path::new("does/not/exist.alworkspace")).unwrap_err();
     assert!(err.to_string().contains("exist.alworkspace"), "{err}");
+}
+
+#[test]
+fn kept_foreign_effects_round_trip_and_old_chains_still_open() {
+    // A chain saved before `foreign` existed has no such key.
+    let old = r#"{"enabled":true,"input_gain_db":0.0,"output_gain_db":0.0,"mix":1.0,"slots":[]}"#;
+    let chain: EffectChain = serde_json::from_str(old).unwrap();
+    assert!(chain.foreign.is_empty());
+    // With none kept, nothing new is written, so old readers see the same file.
+    assert!(!serde_json::to_string(&chain).unwrap().contains("foreign"));
+    let mut kept = chain;
+    kept.foreign.push(ForeignEffect {
+        name: "DeNoise".into(),
+        enabled: false,
+        position: 3,
+        xml: r#"<component componentID="x" name="DeNoise"/>"#.into(),
+    });
+    let back: EffectChain = serde_json::from_str(&serde_json::to_string(&kept).unwrap()).unwrap();
+    assert_eq!(back, kept);
 }

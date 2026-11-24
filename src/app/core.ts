@@ -526,6 +526,8 @@ export interface SesxReport {
   skippedEffects: number;
   /** Names of the effects left out, each once. */
   skippedNames?: string[];
+  /** Skipped effects whose original data is kept for a .sesx export. */
+  keptEffects?: number;
   buses?: number;
   /** Markers brought in. */
   markers?: number;

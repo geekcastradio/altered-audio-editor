@@ -477,6 +477,13 @@
           "description": "Chain power. Off bypasses every slot.",
           "type": "boolean"
         },
+        "foreign": {
+          "description": "Effects from an imported `.sesx` that have no equivalent here. They\nnever play. Their original data is kept unread so exporting the\nsession as `.sesx` writes them back as they were.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ForeignEffect"
+          }
+        },
         "input_gain_db": {
           "type": "number",
           "format": "double"
@@ -824,6 +831,35 @@
           "type": "string",
           "const": "equal_power"
         }
+      ]
+    },
+    "ForeignEffect": {
+      "description": "An effect from another editor's session file that this app does not\nrun, kept as it came so it survives a round trip through `.altaudio`.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "name": {
+          "description": "The name the other editor showed.",
+          "type": "string"
+        },
+        "position": {
+          "description": "The numbered slot it sat in (0 is the first).",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "xml": {
+          "description": "The effect's own element, exactly as read, for writing back.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "enabled",
+        "position",
+        "xml"
       ]
     },
     "Marker": {

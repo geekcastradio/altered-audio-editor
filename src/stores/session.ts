@@ -63,6 +63,8 @@ export interface EffectChainDoc {
   /** 0 dry to 1 wet. */
   mix: number;
   slots: EffectSlotDoc[];
+  /** Effects from an imported .sesx with no equivalent here. They never play; an export writes them back. */
+  foreign?: { name: string; enabled: boolean; position: number; xml: string }[];
 }
 
 export type EffectTarget =

@@ -1,6 +1,6 @@
 # Next work (queue and specs)
 
-Written 2026-11-23 after 0.66.0. A1, A3 and A5 turned out to be built already (checked against the code the same day); what is left to build is A4, A2, A6 and section B. Order is by what the project lead asked for. Each item is written as behavior, so any assistant (Claude, Copilot, Gemini) can pick one up. Read `AGENTS.md` first. A person hand-tests anything that touches audio, plug-ins or devices.
+Written 2026-11-23 after 0.66.0. A1, A3 and A5 turned out to be built already (checked against the code the same day); what is left to build is A4, A6 and section B (A2 is built except the binary effect settings). Order is by what the project lead asked for. Each item is written as behavior, so any assistant (Claude, Copilot, Gemini) can pick one up. Read `AGENTS.md` first. A person hand-tests anything that touches audio, plug-ins or devices.
 
 Status words: **ready** means it can be built now with no samples. **needs samples** means see `docs/samples-needed.md`.
 
@@ -14,10 +14,11 @@ Original spec, kept for reference:
 - Done when: a test signal with inter-sample peaks measures at or below the ceiling with the `ebur128` true-peak reading; the switch is off for old sessions and presets so they sound the same; the Rust DSP has unit tests; settings window shows the switch; decisions.md has an entry.
 - Size: medium. Pure Rust DSP, so it carries into the native interface.
 
-### A2. Better `.sesx` import (needs samples: item 5)
-- Behavior: opening a session from Audition also brings in drawn clip volume lines (as clip envelopes), fades, and the effects we have an equivalent for (EQ, dynamics, limiter, noise reduction). Effects we do not have are listed in the import notice as skipped. The original effect data is kept unread and unedited so a later export can write it back (agreed 2026-11-23).
-- Done when: the real sample sessions import at the right level (within 1 dB of the original mix); skipped items are listed; round trip through `.altaudio` loses nothing; tests use small hand-made `.sesx` fixtures.
-- Size: medium to large. One feature at a time: envelopes first, then effects.
+### A2. Better `.sesx` import (mostly built; checked 2026-11-23 against the real sessions)
+- Already built: drawn clip volume lines (as envelopes), fades, levels, pan, mute, buses, VST3 plug-ins with their settings, stretch and pitch, markers, Parametric EQ, Limiter (settings estimated), Phase Shifter (as Phase Curve) and the vocal strip.
+- Built 2026-11-23 (option B): effects with no equivalent (DeNoise, Speech Volume Leveler, Dynamics, Automatic Click Remover, Pitch Shifter, Studio Reverb in the sample sessions) are still listed as skipped, and their original element is kept unread in the chain's `foreign` list. A `.sesx` export writes them back in their slots. Hand test: open a sample session, save it as `.altaudio`, reopen it, export as `.sesx`, and check that the skipped effects are in the exported file's racks.
+- Not built, by decision: converting those effects at default settings. Their settings sit in unreadable binary data, so a conversion would only guess. Revisit if a sample shows the settings are readable.
+- Media paths in the samples point at external drives that are not on every computer. Offline clips are expected and are not a bug.
 
 ### A3. Single instance (already built; checked 2026-11-23)
 `tauri-plugin-single-instance` is in `Cargo.toml` and wired in `src-tauri/src/lib.rs` (since 0.42.0). Nothing to build. Hand test: open an audio file from File Explorer while the app is running; it should open in the running window. Check that the plugin is credited in `ATTRIBUTION.md`.
