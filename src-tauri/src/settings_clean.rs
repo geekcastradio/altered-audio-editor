@@ -268,7 +268,7 @@ pub fn sanitize_settings(raw: &Value) -> Value {
             "laneSelected": color(c.get("laneSelected")),
             "spectrumLow": color(c.get("spectrumLow")),
             "spectrumHigh": color(c.get("spectrumHigh")),
-            "spectrumScheme": pick(c.get("spectrumScheme"), &["aae", "roseus"], ""),
+            "spectrumScheme": pick(c.get("spectrumScheme"), &["aae", "classic"], ""),
             "phaseLow": color(c.get("phaseLow")),
             "phaseHigh": color(c.get("phaseHigh")),
         },
@@ -349,7 +349,7 @@ mod scheme_tests {
 
     #[test]
     fn keeps_the_two_named_spectrogram_schemes() {
-        for scheme in ["aae", "roseus"] {
+        for scheme in ["aae", "classic"] {
             let out = sanitize_settings(&json!({ "colors": { "spectrumScheme": scheme } }));
             assert_eq!(out["colors"]["spectrumScheme"], scheme);
         }

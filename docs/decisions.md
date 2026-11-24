@@ -2393,4 +2393,4 @@ Three labels named another editor: the shortcut import button, the Voice Chain p
 
 ## 2026-11-24: Roseus spectrogram palette
 
-Steve chose to use the Roseus colormap (MIT, Myungchul Keum, dofuuz/roseus), suggested by a tester, as a spectrogram scheme. Only the 256-entry color table is used, rounded to bytes, in `src/panels/editor/roseus-lut.ts`; it is credited in `ATTRIBUTION.md`. It is a choice in the Spectrogram colors menu (scheme `roseus`) and the default stays as it was until Steve says otherwise. The settings sanitizer in TypeScript and Rust accepts it.
+Steve chose to use the Roseus colormap (MIT, Myungchul Keum, dofuuz/roseus), suggested by a tester, as a spectrogram scheme. Only the 256-entry color table is used, rounded to bytes, in `src/panels/editor/roseus-lut.ts`; it is credited in `ATTRIBUTION.md`. It is the default spectrogram look (scheme empty); the earlier orange look stays as Classic and AAE and the single-color schemes stay as options, to be refined from tester reports. The settings sanitizer in TypeScript and Rust accepts it.

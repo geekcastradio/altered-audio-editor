@@ -7,7 +7,7 @@ import { colorVars, DEFAULT_SETTINGS, meterPercent, sanitizeSettings, settings, 
 
 describe("app settings", () => {
   it("keeps the two named spectrogram schemes and drops anything else", () => {
-    for (const scheme of ["aae", "roseus"]) expect(sanitizeSettings({ colors: { spectrumScheme: scheme } }).colors.spectrumScheme).toBe(scheme);
+    for (const scheme of ["aae", "classic"]) expect(sanitizeSettings({ colors: { spectrumScheme: scheme } }).colors.spectrumScheme).toBe(scheme);
     expect(sanitizeSettings({ colors: { spectrumScheme: "neon" } }).colors.spectrumScheme).toBe("");
   });
 

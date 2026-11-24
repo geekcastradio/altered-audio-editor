@@ -477,8 +477,8 @@
   $effect(() =>
     settings.subscribe((v) => {
       const c = v.colors;
-      // Custom quiet and loud colors win; then the AAE scheme; otherwise Default.
-      lut = c.spectrumLow || c.spectrumHigh ? spectrumLut(c.spectrumLow || SPECTRUM_LOW, c.spectrumHigh || SPECTRUM_HIGH) : c.spectrumScheme === "aae" ? SPECTRUM_LUT : c.spectrumScheme === "roseus" ? ROSEUS_LUT : spectrumLut(SPECTRUM_LOW, SPECTRUM_HIGH);
+      // Custom quiet and loud colors win; then the named schemes; otherwise Roseus.
+      lut = c.spectrumLow || c.spectrumHigh ? spectrumLut(c.spectrumLow || SPECTRUM_LOW, c.spectrumHigh || SPECTRUM_HIGH) : c.spectrumScheme === "aae" ? SPECTRUM_LUT : c.spectrumScheme === "classic" ? spectrumLut(SPECTRUM_LOW, SPECTRUM_HIGH) : ROSEUS_LUT;
     }),
   );
 </script>

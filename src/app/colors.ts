@@ -83,9 +83,9 @@ export interface SpectrumPreset {
   swatch?: string;
 }
 export const SPECTRUM_PRESETS: readonly SpectrumPreset[] = [
-  { name: "Default", low: "", high: "", scheme: "", swatch: "linear-gradient(to right, #08080d, #4a1470, #c0204a, #f07a20, #ffd23f)" },
+  { name: "Classic", low: "", high: "", scheme: "classic", swatch: "linear-gradient(to right, #08080d, #4a1470, #c0204a, #f07a20, #ffd23f)" },
   { name: "AAE", low: "", high: "", scheme: "aae", swatch: "linear-gradient(to right, #08080d, #2a1a5e, #26808c, #deb246, #fffae4)" },
-  { name: "Roseus", low: "", high: "", scheme: "roseus", swatch: "linear-gradient(to right, #010101, #0a2a52, #7a1ea0, #e8507a, #ff8a3c, #f5e9c8)" },
+  { name: "Roseus (default)", low: "", high: "", scheme: "", swatch: "linear-gradient(to right, #010101, #0a2a52, #7a1ea0, #e8507a, #ff8a3c, #f5e9c8)" },
   { name: "Ember", low: "#6b1020", high: "#ffd23f" },
   { name: "Ocean", low: "#0a3a6b", high: "#7fffd4" },
   { name: "Violet", low: "#3a1a6b", high: "#ff7ad9" },
