@@ -32,7 +32,7 @@
   import { timeDisplayItems } from "./time-menu";
   import { levelAt, pointsOf } from "./envelope";
   import { snapToMarkers } from "./clip-edit";
-  import { fit, formatIn, peakRange, pickLevel, rulerTicks, ticksFor, sampleAt, SAMPLE_SPP, xOf, zoomAround, type Viewport } from "./timeline";
+  import { exactSampleLimit, fit, formatIn, peakRange, pickLevel, rulerTicks, ticksFor, sampleAt, SAMPLE_SPP, xOf, zoomAround, type Viewport } from "./timeline";
   import { mediaFrames, waveZeroCrossings } from "../../app/core";
   import TransportBar from "./TransportBar.svelte";
   import SpectrumView from "./SpectrumView.svelte";
@@ -381,7 +381,7 @@
       const srcRate = m.sample_rate || entry.summary.sampleRate;
       const framesPerPx = (view.spp * srcRate) / rate;
       const plain = !clip.looped && (clip.stretch == null || stretchOf(clip) === 1);
-      if (framesPerPx <= SAMPLE_VIEW && plain) {
+      if (framesPerPx <= Math.max(SAMPLE_VIEW, exactSampleLimit(entry.levels)) && plain) {
         // Exact samples: map every frame in view to its spot, through the piece's level.
         const relA = Math.max(0, view.scroll + x0 * view.spp - clip.start);
         const relB = Math.min(len, view.scroll + x1 * view.spp - clip.start);

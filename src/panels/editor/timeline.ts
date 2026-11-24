@@ -337,6 +337,18 @@ export function pickLevel(
   return best;
 }
 
+/**
+ * How many source frames a pixel may cover before the Waveform editor stops drawing the
+ * exact samples and draws peaks. Peaks look right once a pixel covers at least one block of
+ * the finest level; below that the blocks are wider than the pixel and show as steps, so the
+ * exact samples take over there. Never under 8 (always exact that close) or over 64 (a file
+ * with only coarse levels keeps its peaks rather than loading huge sample ranges).
+ */
+export function exactSampleLimit(levels: readonly PeakLevel[]): number {
+  const finest = levels.reduce((m, l) => Math.min(m, l.block), Infinity);
+  return Math.min(64, Math.max(8, Number.isFinite(finest) ? finest : 8));
+}
+
 /** Min and max (as -1..1) of channel `ch` over source frames [from, to). */
 export function peakRange(
   level: PeakLevel,
