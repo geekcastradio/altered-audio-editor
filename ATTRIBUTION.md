@@ -45,4 +45,4 @@ Most dependencies are MIT or Apache-2.0 and are listed in `Cargo.lock` and `pack
 | `filmcraft-aac` and `filmcraft-bitstream` (optional, `pure-aac` feature only) | MIT OR Apache-2.0 | A pure-Rust AAC-LC encoder (clean-room, from ISO/IEC 14496-3; no `unsafe`) used instead of the Windows system encoder when the program is built with `--features pure-aac`. Off in release builds. See `docs/codecs.md`, including the patent note. |
 | Other MPL-2.0 crates (`cssparser`, `selectors` and their helpers, pulled in through Tauri's `tauri-utils`) | MPL-2.0 | Used unmodified. MPL-2.0 applies to those files only and is compatible with GPL-3.0-or-later. |
 | `webpki-root-certs` | CDLA-Permissive-2.0 | Root certificate data pulled in through Tauri's HTTP client (`reqwest`), which the Check for Updates feature uses. Data license; permissive. The program's own code makes no other network calls (see `PRIVACY.md`). |
-
+| `rusqlite` (bundles SQLite) | MIT; SQLite is public domain | Reading `.aup3` and `.aup4` project files, which are SQLite databases, read-only. The project document decoder is our own, written from the structure of sample files. |

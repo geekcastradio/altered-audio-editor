@@ -568,6 +568,28 @@ export function sessionImportRpp<T>(path: string): Promise<SessionResult<T> & { 
   return invoke<SessionResult<T> & { report: RppReport }>("session_import_rpp", { path });
 }
 
+export interface AupReport {
+  tracks: number;
+  clips: number;
+  markers: number;
+  /** What the project had that is not brought in. */
+  leftOut: string[];
+  /** Audio blocks the file did not hold; their audio is silence. */
+  missingBlocks: number;
+  /** Where the audio was written. */
+  audioFolder: string;
+}
+
+/** Opens the picker for .aup3 and .aup4 projects. */
+export function sessionPickAup(): Promise<string | null> {
+  return invoke<string | null>("session_pick_aup");
+}
+
+/** Imports a .aup3 or .aup4 project as the new, unsaved session. */
+export function sessionImportAup<T>(path: string): Promise<SessionResult<T> & { report: AupReport }> {
+  return invoke<SessionResult<T> & { report: AupReport }>("session_import_aup", { path });
+}
+
 export interface OtioReport {
   tracks: number;
   clips: number;

@@ -751,6 +751,62 @@ pub async fn session_import_rpp(
     })
 }
 
+/// Opens the picker for `.aup3` and `.aup4` projects.
+#[tauri::command]
+pub async fn session_pick_aup(app: AppHandle) -> Result<Option<PathBuf>, String> {
+    let parent = app.get_webview_window("main");
+    spawn_blocking(move || {
+        let mut d = app
+            .dialog()
+            .file()
+            .set_title("Import Project")
+            .add_filter("Project (.aup3, .aup4)", &["aup3", "aup4"]);
+        if let Some(w) = parent.as_ref() {
+            d = d.set_parent(w);
+        }
+        d.blocking_pick_file()
+            .and_then(|f| f.as_path().map(|p| p.to_path_buf()))
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Serialize)]
+pub struct AupImportedResult {
+    #[serde(flatten)]
+    pub result: SessionWithPath,
+    pub report: crate::aup_import::AupReport,
+}
+
+/// Imports an `.aup3` or `.aup4` project as a new, unsaved session. The audio is written as WAV
+/// files in a folder beside the project.
+#[tauri::command]
+pub async fn session_import_aup(
+    app: AppHandle,
+    path: PathBuf,
+) -> Result<AupImportedResult, String> {
+    let imported = spawn_blocking(move || crate::aup_import::import(&path))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    app.state::<crate::engine::Transport>().stop();
+    let open = app.state::<OpenSession>();
+    let mut s = open.0.lock().map_err(|e| e.to_string())?;
+    if let Ok(dir) = autosave_dir(&app) {
+        file::clear_autosave(&dir, s.session.id);
+    }
+    s.session = imported.session.clone();
+    s.path = None;
+    Ok(AupImportedResult {
+        result: SessionWithPath {
+            session: imported.session,
+            path: None,
+            missing: imported.missing,
+        },
+        report: imported.report,
+    })
+}
+
 /// Opens the picker for OpenTimelineIO (`.otio`) files.
 #[tauri::command]
 pub async fn session_pick_otio(app: AppHandle) -> Result<Option<PathBuf>, String> {
