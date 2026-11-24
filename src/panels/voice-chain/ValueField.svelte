@@ -135,8 +135,8 @@
     padding: 0 3px;
     border: 1px solid var(--border-strong);
     border-radius: 2px;
-    background: var(--surface-0);
-    color: var(--text);
+    background: rgba(0, 0, 0, 0.35);
+    color: var(--accent);
     font: inherit;
     font-size: 11px;
     font-variant-numeric: tabular-nums;
@@ -152,6 +152,11 @@
   }
   .vf:focus-visible {
     outline: 1px solid var(--accent);
+  }
+  /* Light theme: white numbers on a darker box. The dark theme keeps its blue. */
+  :global(:root[data-theme="light"]) .vf {
+    background: rgba(0, 0, 0, 0.62);
+    color: #fff;
   }
   .vf.edit {
     border-color: var(--accent);

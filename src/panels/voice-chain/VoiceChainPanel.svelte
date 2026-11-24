@@ -1196,7 +1196,12 @@
   }
   .tabs button.on {
     background: var(--surface-3);
-    color: var(--text);
+    color: var(--accent);
+  }
+  /* Light theme: the picked tab is white, bold, on a darker fill. The dark theme is unchanged. */
+  :global(:root[data-theme="light"]) .tabs button.on {
+    background: #55555f;
+    color: #fff;
     font-weight: 600;
   }
   .top {
