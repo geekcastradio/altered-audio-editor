@@ -605,3 +605,14 @@ Stated as behavior, not as another product's names. Check each against what is b
 - **Dialog title bar.** Title at the left and a close button at the right (built 2026-11-24 on the shared dialog; nine older dialogs build their own and still lack the button).
 - **Linux arm64 AppImage (issue 306, tagged 2026-11-24).** Release builds are x86-64 only for Linux. An arm64 build needs an ARM Linux runner in `release.yml`, the ALSA headers for that architecture, an `aarch64` platform entry in `latest.json`, and a tester with ARM hardware. Planned for a later release; none of it is built.
 - **Per-track Resample and per-track sample format (decided 2026-11-24, not built).** A track has no rate or format of its own, so both would render new files for every clip on the track and repoint the clips. Left out of the track menu for now. Convert Sample Type and Batch Convert already cover it. Build it only if enough users ask, and not if the reference editor's multitrack view has no such command either (checked 2026-11-24: its sample type conversion is a Waveform editor command, so there is no reason to add one).
+
+- **Old `.ses` import (Cool Edit, Cool Edit Pro, early Audition; issue 311, decided 2026-11-24).** Steve is fine adding it, but only once a user sends sample `.ses` files to analyze, because there is no way to test without them. Until then nothing is built. The earlier answer (convert to `.sesx` outside the app) stays as the workaround. Reporter asked for samples on the issue.
+
+- **Quick Actions bar and Favorites menu (diego_au's request, design agreed 2026-11-24, not built).** Waiting on Diego's answer about which commands he would pin first.
+  - The bar is a toggle (View menu). Off means it is not drawn at all. Default is off.
+  - Placement: after a divider in the empty part of the tool strip, icon plus short label when wide, icon only when narrow, `»` overflow when full. A second row below the strip is only worth building if people pin more than about eight or ten items.
+  - It starts empty. People pin any menu command or saved effect chain from a right-click. We ship no fixed set.
+  - Commands that only work in one editor grey out in the other, the way tool buttons do. Pinning needs no new shortcut.
+  - A Favorites menu in the menu bar lists the same pinned items, so the bar and the menu share one list. This adds a top-level menu, so `CLAUDE.md` (Menu bar) needs the new order when it is built.
+  - Own names, own icons, own default list (empty). Do not ship another product's starter favorites or copy its menu layout.
+  - Recording a command sequence ("Start Recording Favorite") is a macro feature, not part of this. It belongs with Batch Convert chains and the later scripting work.
