@@ -211,7 +211,7 @@
 
     <footer>
       <button type="button" onclick={resetAll}>Reset All to Defaults</button>
-      <button type="button" onclick={() => auditionFile?.click()}>Import from Audition...</button>
+      <button type="button" onclick={() => auditionFile?.click()}>Import shortcuts...</button>
       <input bind:this={auditionFile} type="file" accept=".xml,text/xml" hidden onchange={importAudition} />
       <span class="spacer"></span>
       <button type="button" class="primary" onclick={onClose}>Close</button>
