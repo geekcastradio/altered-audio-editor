@@ -20,6 +20,7 @@
   import type { TransportStore } from "../../stores/transport";
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
   import { formatIn } from "../editor/timeline";
+  import { showTime } from "../editor/show-time";
   import { markerMenuItems } from "./marker-menu";
   import { filterMarkers, KIND_LABELS, kindChange, markerCss, markerEnd, markersBetween } from "./markers";
   import { chapterUrl, isChapterUrl, titleTips } from "./chapters";
@@ -113,7 +114,14 @@
     }
     anchor = m.id;
     editor.selectMarkers([m.id]);
-    void tp.seek(m.position);
+    void goTo(m);
+  }
+  /** Jumps to a marker, brings it into view, and selects a range marker's whole span. */
+  async function goTo(m: MarkerDoc) {
+    await tp.seek(m.position);
+    const d = store.current;
+    if (d && m.duration > 0) store.setView({ ...d.view, selection: { start: m.position, end: markerEnd(m) } });
+    showTime(store, m.position);
   }
   /** The columns after the color swatch: name, start, end, duration, type and description. */
   const COLS = [
@@ -184,7 +192,7 @@
       rate,
       selection: doc.view.selection,
       playlist: doc.playlist,
-      goTo: (x) => void tp.seek(x.position),
+      goTo: (x) => void goTo(x),
       rename: (x) => (renaming = x.id),
       change: (label, x, change) => edit(label, x, change),
       setPlaylist: (ids) => void store.edit("Edit Playlist", { op: "set_playlist", ids }, run).catch(onError),

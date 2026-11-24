@@ -16,10 +16,12 @@
   import { quickpassCancel, quickpassLevels, quickpassSpots, type ClipLevels, type SpotsRequest } from "../../app/core";
   import { editor } from "../../stores/editor";
   import type { CommandRunner } from "../../stores/media-pool";
+  import type { HistorySnapshot } from "../../commands/types";
   import type { Preferences } from "../../stores/preferences";
   import type { SessionDoc, SessionStore } from "../../stores/session";
   import type { TransportStore } from "../../stores/transport";
   import { formatIn } from "../editor/timeline";
+  import { showTime } from "../editor/show-time";
   import {
     BUILTIN_PRESETS,
     clipsOn,
@@ -119,6 +121,7 @@
     else s = sanitizeSettings({ ...s, scan });
     found = [];
     done = {};
+    steps = [];
     scanned = false;
     // A scan still running belongs to the old type: stop it.
     scanToken++;
@@ -155,6 +158,30 @@
   const store = () => (inWave && wave ? wave : session);
   const run = () => (inWave && waveRunner ? waveRunner : runner);
   const tport = () => (inWave && waveTransport ? waveTransport : transport);
+
+  /** What the list looked like before each fix, so an Undo puts the findings back as they were. */
+  interface Step {
+    position: number;
+    found: Finding[];
+    done: Record<string, Done>;
+  }
+  let steps: Step[] = [];
+  const history = () => run() as CommandRunner & { current?: HistorySnapshot; subscribe?: (fn: (h: HistorySnapshot) => void) => () => void };
+  $effect(() => {
+    const h = history();
+    steps = [];
+    if (!h.subscribe) return;
+    return h.subscribe((snap) => {
+      if (steps.length === 0 || snap.position >= steps[steps.length - 1]!.position) return;
+      let last: Step | undefined;
+      while (steps.length > 0 && steps[steps.length - 1]!.position > snap.position) last = steps.pop();
+      if (last) {
+        found = last.found;
+        done = last.done;
+        picked = new Set();
+      }
+    });
+  });
 
   type Done = "repaired" | "removed" | "ducked" | "split" | "marked";
   let view = $state<"scan" | "settings">("scan");
@@ -281,6 +308,7 @@
       if (mine !== scanToken) return;
       found = list;
       done = {};
+      steps = [];
       picked = new Set();
       scanned = true;
       view = "scan";
@@ -308,6 +336,7 @@
 
   async function fix(list: Finding[], action: QuickPassSettings["action"] = s.action) {
     if (!doc || list.length === 0) return;
+    const before = { found, done, position: history().current?.position ?? 0 };
     try {
       if (action === "repair" && inWave) {
         return onNotice("Repair in QuickPass works in the Multitrack view. In the Waveform editor, use Effects > Noise and Repair > Click Repair or Clip Repair.");
@@ -345,6 +374,8 @@
         await store().edit(`Mark ${cap(list.length === 1 ? one : many)}`, { op: "add_markers", markers: markersFor(doc, list, uuid, cap(one)) }, run());
         done = { ...done, ...Object.fromEntries(list.map((f) => [f.id, "marked" as const])) };
       }
+      const after = history().current?.position ?? 0;
+      if (after > before.position) steps.push({ position: after, found: before.found, done: before.done });
       picked = new Set();
     } catch (e) {
       onError(e);
@@ -354,6 +385,7 @@
   function clearFixed() {
     found = found.filter((f) => !done[f.id]);
     done = {};
+    steps = [];
   }
 
   function pick(f: Finding, e: MouseEvent) {
@@ -363,7 +395,7 @@
       else next.add(f.id);
     } else next.add(f.id);
     picked = next;
-    void tport().seek(f.start);
+    void tport().seek(f.start).then(() => showTime(store(), f.start));
   }
 
   /** Delete on the list: strip the picked findings, whatever Fix by is set to. */

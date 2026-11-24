@@ -2432,3 +2432,7 @@ File > Import Project (.aup3, .aup4) brings a project in as a new, unsaved sessi
 ## 2026-11-24: Track menu: swap stereo channels, split stereo to center mono
 
 Two track actions, in the Track right-click menu and the Multitrack menu, no shortcuts. Each sets Source Channels on every unlocked stereo clip of the selected track, as one undoable step: swap sends left to right and right to left; center mono sends both sides to both speakers at half level. Nothing is rendered and the files are untouched. Clips added to the track later play as recorded. Not built: per-track Resample and per-track sample format. The multitrack is non-destructive and a track has no rate or format of its own, so both would mean writing new files. Waiting on Steve's call on whether that belongs in a track menu or only in the Waveform editor and Batch Convert.
+
+## 2026-11-24: Markers and QuickPass lists follow and undo (issue 294)
+
+Three reports. Clicking a marker now scrolls the Editor to it when it was out of view (it only moved the playhead, and the view follows the playhead only while playing); the same for a QuickPass finding. Clicking a range marker selects its whole span, so it can be played and looped. The Go To item in the marker menu does the same. In QuickPass, each fix remembers the list as it was before; Undo puts the findings back, active again, with their old positions. A rescan or Clear Fixed forgets the remembered steps. Shared helper: `src/panels/editor/show-time.ts`.
