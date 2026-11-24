@@ -502,7 +502,7 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={done}>
   <div class="dialog" style:--note={color} role="dialog" aria-modal="true" aria-labelledby="pr-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
-    <header><h1 id="pr-title">Edit Notes</h1></header>
+    <header><h1 id="pr-title">Edit Notes</h1><button type="button" class="dlg-x" aria-label="Close" title="Close" onclick={onClose}>×</button></header>
     <div class="toolbar">
       <label>Name <input type="text" class="name" bind:value={clip.name} /></label>
       <label title="The clip's length in beats. Notes past the end are not played.">

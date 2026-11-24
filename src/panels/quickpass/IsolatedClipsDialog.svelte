@@ -64,7 +64,10 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={() => !busy && onClose()}>
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="iso-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
-    <h1 id="iso-title">Find Isolated Short Clips</h1>
+    <header>
+      <h1 id="iso-title">Find Isolated Short Clips</h1>
+      <button type="button" class="dlg-x" aria-label="Close" title="Close" disabled={busy} onclick={onClose}>×</button>
+    </header>
     <p class="note">Finds very short clips with nothing else near them on their own track, the stray bumps and breaths QuickPass can leave behind. Play each one, check the ones to remove, then remove them. Nothing is checked for you.</p>
     <label class="row">
       <span>Shorter than (s)</span>
