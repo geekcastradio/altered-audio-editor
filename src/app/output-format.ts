@@ -28,6 +28,8 @@ export interface OutputFormat {
   mp3Quality: number;
   /** AAC kbps: 96, 128, 160 or 192. */
   aacBitrate: number;
+  /** FLAC compression, 0 (fastest, largest) to 8 (slowest, smallest). Always lossless. */
+  flacLevel: number;
   /** Dither when writing fewer bits. On by default. */
   dither: boolean;
   /** The shape of the dither noise. Triangular is the standard. */
@@ -94,6 +96,7 @@ export const DEFAULT_FORMAT: OutputFormat = {
   mp3Bitrate: 192,
   mp3Quality: 2,
   aacBitrate: 128,
+  flacLevel: 5,
   dither: true,
   ditherKind: "triangular",
   ditherAmount: 1,
@@ -276,6 +279,10 @@ export function sanitizeFormat(raw: unknown): OutputFormat {
       typeof v.mp3Quality === "number"
         ? Math.min(9, Math.max(0, Math.round(v.mp3Quality)))
         : 2,
+    flacLevel:
+      typeof v.flacLevel === "number" && Number.isFinite(v.flacLevel)
+        ? Math.min(8, Math.max(0, Math.round(v.flacLevel)))
+        : 5,
     aacBitrate:
       typeof v.aacBitrate === "number" &&
       (AAC_BITRATES as readonly number[]).includes(v.aacBitrate)

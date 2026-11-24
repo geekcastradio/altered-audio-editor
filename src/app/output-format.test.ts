@@ -73,6 +73,15 @@ describe("output format", () => {
     ).toMatchObject({ mp3Mode: "vbr", mp3Bitrate: 320, sampleRate: 44_100 });
   });
 
+  it("keeps the FLAC level between 0 and 8 and defaults to 5", () => {
+    expect(DEFAULT_FORMAT.flacLevel).toBe(5);
+    expect(sanitizeFormat({ kind: "flac" }).flacLevel).toBe(5);
+    expect(sanitizeFormat({ kind: "flac", flacLevel: 99 }).flacLevel).toBe(8);
+    expect(sanitizeFormat({ kind: "flac", flacLevel: -3 }).flacLevel).toBe(0);
+    expect(sanitizeFormat({ kind: "flac", flacLevel: 2.6 }).flacLevel).toBe(3);
+    expect(sanitizeFormat({ kind: "flac", flacLevel: "x" }).flacLevel).toBe(5);
+  });
+
   it("offers the depths each format writes", () => {
     expect(depthsFor("wav").map((d) => d.value)).toEqual([4, 8, 16, 24, 32]);
     expect(describeFormat({ ...DEFAULT_FORMAT, bitDepth: 4 }, src)).toBe(

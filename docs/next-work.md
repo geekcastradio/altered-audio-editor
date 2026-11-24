@@ -28,10 +28,11 @@ Original spec, kept for reference:
 - Notes: the Tauri single-instance plugin is MIT or Apache licensed; check it and credit it in `ATTRIBUTION.md` before adding. It must not use the network. Windows only needs to be tested; keep Linux and macOS working.
 - Size: small.
 
-### A4. FLAC compression levels (ready)
+### A4. FLAC compression levels (built 2026-11-23, needs a hand test)
 - Behavior: the FLAC choice in the export dialog and Batch Convert gets a compression level from 0 to 8 (default 5). All levels are lossless; higher is smaller and slower.
 - Check first: the notes on the earlier 24-bit FLAC encoder bug (`docs/codecs.md`) so a level never writes a frame larger than the raw samples.
 - Done when: files at every level decode to identical samples; settings are remembered with the other export settings.
+- Built: levels 0 to 8 in the export dialog and Batch Convert (default 5, the encoder's own default, so old exports are unchanged). Levels 0 and 1 use fixed predictors only; 2 to 8 raise the predictor order from 4 to 24. Hand test: export one voice file at 0, 5 and 8, check that sizes go down and times go up, and that all three play identically.
 - Size: small.
 
 ### A5. Settings backup and restore (already built; checked 2026-11-23)
