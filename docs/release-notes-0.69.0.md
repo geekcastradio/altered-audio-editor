@@ -8,6 +8,7 @@ Audacity projects open, four new workspaces, a new default spectrogram palette, 
 - **Four more workspaces.** Production Desk, Loudness, Video Edit and Broadcast join the built-in list in Window > Workspace. Default is unchanged, and each can be reset like the others.
 - **Roseus is the default spectrogram palette.** It is easier to read in the Spectrum view than the old one. The old palette is still there as "Classic" in the Spectrogram colors menu.
 - **Swap Stereo Channels and Split Stereo to Center Mono** are in the Track right-click menu and the Multitrack menu. They set the Source Channels of the stereo clips on the selected track in one undo step. No audio is rewritten.
+- **Save Selection As in the Waveform editor.** File > Save Selection As (Ctrl+Alt+S) saves just the selected part of the open file as a new file, and leaves the open file as it is. The dialog has the same format choices as Export: WAV, FLAC, MP3 and AAC, the sample type, and the encoder settings (MP3 mode and bit rate, AAC bit rate, FLAC compression level, dither). A WAV can carry the markers inside the part as cue points. It will not overwrite the open file. Mono and stereo files only for now.
 - **Follow button in the Waveform editor.** The Follow Playhead setting now also governs the Waveform editor, with a toggle in its toolbar.
 - **Close button on every dialog.** Nine older dialogs (Analysis, Keyboard Shortcuts, Controllers, Plug-in Manager, Edit Notes, Isolated Clips, Output Settings, Sample Settings and Settings) now have the same title bar as the rest, with a close X at the right.
 - **Side panels can be narrowed to a strip.** Drag Files, Voice Chain, Audio FX, Libraries and the others down to a thin strip to push a column out of the way.
@@ -28,7 +29,7 @@ Audacity projects open, four new workspaces, a new default spectrogram palette, 
 Altered Audio Editor is young. Windows is the platform we test. Please keep a backup copy of any session that matters.
 
 - **Audacity projects:** effects, envelopes with points and time stretch are not brought in. Project history in `.aup4` files is not read.
-- **Save Selection As and codec options on Save** in the Waveform editor are not built yet.
+- **Codec options on plain Save As** in the Waveform editor are not built yet: it picks the format from the file name's ending. Use Save Selection As, or Batch Convert, when you need the full set of options.
 - **Linux and macOS are experimental.** They are built from the same source but have had little testing. The macOS app is not notarized: the first time, right-click it and choose Open. A Linux arm64 build is planned for a later release.
 - **ASIO has not been tested on real hardware.** If an ASIO driver cannot open, the system driver plays instead.
 - **VST3 plug-ins, MIDI tracks, buses and 3D Space have had little hardware testing.** A plug-in that crashes is kept in its own process, so the editor should carry on, but tell us which plug-in it was.
