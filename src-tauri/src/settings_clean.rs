@@ -268,7 +268,7 @@ pub fn sanitize_settings(raw: &Value) -> Value {
             "laneSelected": color(c.get("laneSelected")),
             "spectrumLow": color(c.get("spectrumLow")),
             "spectrumHigh": color(c.get("spectrumHigh")),
-            "spectrumScheme": if c.get("spectrumScheme").and_then(Value::as_str) == Some("aae") { "aae" } else { "" },
+            "spectrumScheme": pick(c.get("spectrumScheme"), &["aae", "roseus"], ""),
             "phaseLow": color(c.get("phaseLow")),
             "phaseHigh": color(c.get("phaseHigh")),
         },
@@ -339,5 +339,21 @@ mod theme_tests {
             assert_eq!(s["theme"], want, "given {given}");
         }
         assert_eq!(sanitize_settings(&json!({}))["theme"], "dark");
+    }
+}
+
+#[cfg(test)]
+mod scheme_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn keeps_the_two_named_spectrogram_schemes() {
+        for scheme in ["aae", "roseus"] {
+            let out = sanitize_settings(&json!({ "colors": { "spectrumScheme": scheme } }));
+            assert_eq!(out["colors"]["spectrumScheme"], scheme);
+        }
+        let out = sanitize_settings(&json!({ "colors": { "spectrumScheme": "neon" } }));
+        assert_eq!(out["colors"]["spectrumScheme"], "");
     }
 }

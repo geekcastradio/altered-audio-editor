@@ -19,6 +19,7 @@
   import { spectralSelection } from "../../stores/wave";
   import { sampleAt, xOf, type Viewport } from "./timeline";
   import { freqAt, fracOf, freqTicks, FULL_VIEW, rowEdges, SPECTRUM_LUT, viewFrac, viewFreq, viewRange, zoomFreq, type SpectralShape } from "./spectrum";
+  import { ROSEUS_LUT } from "./roseus-lut";
   import { FFT_SIZES, spectrumView, type SpectrumViewState } from "../../stores/spectrum-view";
   import { noteName } from "./midi";
   import ContextMenu, { type ContextItem } from "../../app/ContextMenu.svelte";
@@ -477,7 +478,7 @@
     settings.subscribe((v) => {
       const c = v.colors;
       // Custom quiet and loud colors win; then the AAE scheme; otherwise Default.
-      lut = c.spectrumLow || c.spectrumHigh ? spectrumLut(c.spectrumLow || SPECTRUM_LOW, c.spectrumHigh || SPECTRUM_HIGH) : c.spectrumScheme === "aae" ? SPECTRUM_LUT : spectrumLut(SPECTRUM_LOW, SPECTRUM_HIGH);
+      lut = c.spectrumLow || c.spectrumHigh ? spectrumLut(c.spectrumLow || SPECTRUM_LOW, c.spectrumHigh || SPECTRUM_HIGH) : c.spectrumScheme === "aae" ? SPECTRUM_LUT : c.spectrumScheme === "roseus" ? ROSEUS_LUT : spectrumLut(SPECTRUM_LOW, SPECTRUM_HIGH);
     }),
   );
 </script>

@@ -25,7 +25,7 @@ export interface AppColors {
   /** Spectrogram: quiet and loud. Both empty uses the scheme below. */
   spectrumLow: string;
   spectrumHigh: string;
-  /** Spectrogram scheme used while quiet and loud are both empty: "" is Default, "aae" is the teal and gold look. */
+  /** Spectrogram scheme used while quiet and loud are both empty: "" is Default, "aae" is the teal and gold look, "roseus" is the Roseus map. */
   spectrumScheme: string;
   /** Phase Wheel: lowest and highest frequencies. Empty keeps red to magenta. */
   phaseLow: string;
@@ -298,7 +298,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       laneSelected: color(c.laneSelected),
       spectrumLow: color(c.spectrumLow),
       spectrumHigh: color(c.spectrumHigh),
-      spectrumScheme: c.spectrumScheme === "aae" ? "aae" : "",
+      spectrumScheme: c.spectrumScheme === "aae" || c.spectrumScheme === "roseus" ? c.spectrumScheme : "",
       phaseLow: color(c.phaseLow),
       phaseHigh: color(c.phaseHigh),
     },

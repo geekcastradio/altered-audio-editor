@@ -6,6 +6,11 @@ import { describe, expect, it } from "vitest";
 import { colorVars, DEFAULT_SETTINGS, meterPercent, sanitizeSettings, settings, zoomRatios } from "./settings";
 
 describe("app settings", () => {
+  it("keeps the two named spectrogram schemes and drops anything else", () => {
+    for (const scheme of ["aae", "roseus"]) expect(sanitizeSettings({ colors: { spectrumScheme: scheme } }).colors.spectrumScheme).toBe(scheme);
+    expect(sanitizeSettings({ colors: { spectrumScheme: "neon" } }).colors.spectrumScheme).toBe("");
+  });
+
   it("keeps defaults for anything missing or wrong", () => {
     expect(sanitizeSettings(null)).toEqual(DEFAULT_SETTINGS);
     const s = sanitizeSettings({ zoomStep: 500, fadeShape: "wobbly", colors: { wave: "#ABCDEF", accent: "red" }, output: "  ", autosaveMinutes: 0, meterYellowDb: -10, meterRedDb: -20 });
