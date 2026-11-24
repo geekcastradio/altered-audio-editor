@@ -246,6 +246,8 @@ export const MENUS: readonly Menu[] = [
       item("multitrack.duplicate-track", "Duplicate Track"),
       item("multitrack.delete-track", "Delete Track"),
       item("multitrack.delete-empty", "Delete Empty Tracks"),
+      item("multitrack.swap-stereo", "Swap Stereo Channels"),
+      item("multitrack.stereo-to-mono", "Split Stereo to Center Mono"),
       sub("Track Visibility", [
         item("multitrack.vis.hide-selected", "Hide Selected Track"),
         item("multitrack.vis.show-all", "Show All Tracks"),
