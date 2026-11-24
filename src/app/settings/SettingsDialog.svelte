@@ -152,7 +152,7 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={onClose}>
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="st-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
-    <header><h1 id="st-title">Settings</h1></header>
+    <header><h1 id="st-title">Settings</h1><button type="button" class="dlg-x" aria-label="Close" title="Close" onclick={onClose}>×</button></header>
     <div class="body">
       <nav aria-label="Settings pages">
         {#each PAGES as p (p)}
