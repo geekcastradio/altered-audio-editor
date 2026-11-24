@@ -189,7 +189,7 @@
   h1 {
     font-size: 14px;
   }
-  h1 + .fine {
+  header + .fine {
     margin-top: 10px;
   }
   h2 {
