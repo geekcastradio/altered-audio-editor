@@ -2390,3 +2390,7 @@ Three labels named another editor: the shortcut import button, the Voice Chain p
 ## 2026-11-24: effect chain import reader ported to Rust
 
 `src-tauri/src/rack_import.rs` reads the racks in another editor's effect presets file and builds Voice Chain presets, with the same results as `src/panels/voice-chain/audition-presets.ts`. The shared cases are in `shared-fixtures/rack-import.json` (23 cases: entities, nested lists, odd numbers, duplicate keys, broken input). Both sides test against it. The TypeScript stays until the Rust command replaces it. Part of the move to Rust for 1.0.
+
+## 2026-11-24: Waveform editor, no step in detail while zooming in (from a tester's report)
+
+The Waveform editor drew exact samples only at 8 or fewer source frames per pixel and peaks above that. Peaks come from blocks of at least 32 frames, so between about 9 and 32 frames a pixel the blocks were wider than a pixel and the waveform looked choppy, then jumped to the sample line. The exact samples now take over wherever a pixel covers fewer frames than the finest peak block (`exactSampleLimit`, between 8 and 64). At that point peaks and samples draw the same picture, so there is no step. A file whose finest level is 256 frames keeps a step between 65 and 256 frames a pixel: closing that needs a finer peak level for long files, which costs cache size, so it is left for a later look. The Multitrack view is unchanged.
