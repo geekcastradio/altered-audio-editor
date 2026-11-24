@@ -7,7 +7,7 @@ import { UndoStack } from "../commands";
 import { MediaPool } from "../stores/media-pool";
 import { SessionStore, type SessionDoc } from "../stores/session";
 import type { Recoverable, SessionResult } from "./core";
-import { displayName, isAudioFile, isBlank, otioSummary, planOpen, SessionFiles, sesxSummary, type Choice, type SessionFileBackend } from "./session-files";
+import { displayName, isAudioFile, isBlank, isProjectFile, otioSummary, planOpen, SessionFiles, sesxSummary, type Choice, type SessionFileBackend } from "./session-files";
 
 function doc(name = "Untitled Session", media: SessionDoc["media"] = []): SessionDoc {
   return {
@@ -58,6 +58,7 @@ function setup(opts: { choice?: Choice; pickSave?: string | null; recoverable?: 
     pickSave: async () => (opts.pickSave === undefined ? "C:\\Shows\\New.altaudio" : opts.pickSave),
     pickOpen: async () => "C:\\Shows\\Picked.altaudio",
     pickSesx: async () => "C:\\Shows\\EP440.sesx",
+    pickImport: async () => "C:\\Shows\\EP440.sesx",
     importSesx: async (p) => (
       calls.push(`sesx:${p}`),
       { ...result(doc("EP440"), null), report: { tracks: 6, clips: 6, skippedEffects: 19, missingFiles: ["M:\\x.wav"] } }
@@ -227,6 +228,20 @@ describe("SessionFiles", () => {
     const no = setup({ recoverable: [rec], recover: false });
     await no.files.checkRecovery();
     expect(no.calls).toEqual(["discard:x"]);
+  });
+});
+
+describe("Import Session", () => {
+  it("uses one picker and the importer that matches the file", async () => {
+    const { files, calls, session } = setup();
+    expect(await files.importSession()).toBe(true);
+    expect(calls).toEqual(["sesx:C:\\Shows\\EP440.sesx"]);
+    expect(session.path).toBeNull();
+  });
+
+  it("knows which files are sessions or projects from other editors", () => {
+    for (const f of ["a.sesx", "B.RPP", "c.aup3", "d.AUP4", "e.otio"]) expect(isProjectFile(f)).toBe(true);
+    for (const f of ["a.altaudio", "b.wav", "c.aup", "d.otio.txt"]) expect(isProjectFile(f)).toBe(false);
   });
 });
 

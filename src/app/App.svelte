@@ -230,6 +230,7 @@
     sessionImportAup,
     sessionPickAup,
     sessionPickOtio,
+    sessionPickImport,
     sessionPickRpp,
     sessionRecover,
     sessionRecoverable,
@@ -771,7 +772,16 @@
   /** Opens picked or dropped files: a session (ours or .sesx), plus any audio files. */
   async function openPaths(picked: string[]): Promise<void> {
     if (picked.length === 0) return;
-    const plan = planOpen(picked);
+    // Projects from other editors (.rpp, .aup3, .aup4, .otio) open like a .sesx: one at a time.
+    const others = picked.filter((p) => /\.(rpp|aup[34]|otio)$/i.test(p));
+    const plan = planOpen(picked.filter((p) => !others.includes(p)));
+    if (others.length > 0) {
+      if (plan.session || plan.sesx) plan.skipped.push(...others);
+      else {
+        plan.skipped.push(...others.slice(1));
+        if (!(await files.open(others[0]))) return;
+      }
+    }
     if (plan.session && !(await files.open(plan.session))) return;
     if (plan.sesx && !(await files.importSesx(plan.sesx))) return;
     for (const p of plan.video) {
@@ -2578,6 +2588,7 @@
       pickAup: () => sessionPickAup(),
       importAup: (p) => sessionImportAup<SessionDoc>(p),
       pickOtio: () => sessionPickOtio(),
+      pickImport: () => sessionPickImport(),
       importOtio: (p) => sessionImportOtio<SessionDoc>(p),
       park: () => sessionPark(),
       resume: (id) => sessionResume<SessionDoc>(id),
@@ -6899,10 +6910,7 @@
       }),
       actions.register({ id: "file.save-all", run: () => files.save().then(() => undefined) }),
       actions.register({ id: "file.close", run: () => files.close().then(() => undefined) }),
-      actions.register({ id: "file.import-sesx", run: () => files.importSesx().then(() => undefined) }),
-      actions.register({ id: "file.import-rpp", run: () => files.importRpp().then(() => undefined) }),
-      actions.register({ id: "file.import-aup", run: () => files.importAup().then(() => undefined) }),
-      actions.register({ id: "file.import-otio", run: () => files.importOtio().then(() => undefined) }),
+      actions.register({ id: "file.import-session", run: () => files.importSession().then(() => undefined) }),
       actions.register({ id: "file.close-all", run: () => closeEverything() }),
       actions.register({
         id: "file.close-session-media",

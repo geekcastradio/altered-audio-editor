@@ -2444,3 +2444,7 @@ File > Save Selection As (Ctrl+Alt+S, approved earlier; in the Waveform editor t
 ## 2026-11-24: Old .ses import waits for sample files
 
 Decision: direct import of old `.ses` sessions (Cool Edit, Cool Edit Pro, early Audition) is approved in principle, but is built only after a user supplies real sample files. Reason: the project lead has no way to test the format, and a reader written blind would be guesswork. This replaces the 2026-11-03 "convert to `.sesx` first" answer as the long-term plan; that stays as the workaround. Tracked in `docs/backlog.md` and issue 311.
+
+## 2026-11-24: One Import Session item, Import submenu, more formats in Open
+
+Decision: File > Import is a submenu (Files, Folder, Session). Session opens one dialog whose file type list picks the format: all session and project files, .sesx, .rpp, .aup3/.aup4, .otio. The four separate import items are gone (`file.import-session` replaces them). File > Open also lists and opens .rpp, .aup3, .aup4 and .otio, one project at a time, like .sesx. Reason: the flat list had grown to four near-identical items, and the file dialog already has a type dropdown for this. Open Recent still re-imports foreign projects through the same routing. Requested by the project lead.
