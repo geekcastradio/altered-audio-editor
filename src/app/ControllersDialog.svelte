@@ -98,7 +98,10 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={close}>
   <div class="dialog" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="ctl-title" onclick={(e) => e.stopPropagation()}>
-    <h1 id="ctl-title">Controllers</h1>
+    <header>
+      <h1 id="ctl-title">Controllers</h1>
+      <button type="button" class="dlg-x" aria-label="Close" title="Close" onclick={close}>×</button>
+    </header>
     <p class="fine">Use a MIDI fader box or control surface (a Behringer BCF2000, a Mackie Control and the like) to run the faders, pans, mute, solo, arm and transport. With feedback on, motorized faders follow the screen and the buttons and pan rings light up.</p>
 
     <h2>Devices</h2>
@@ -186,7 +189,7 @@
   h1 {
     font-size: 14px;
   }
-  h1 + .fine {
+  header + .fine {
     margin-top: 10px;
   }
   h2 {

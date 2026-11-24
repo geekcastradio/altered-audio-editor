@@ -170,6 +170,30 @@ body {
   user-select: none;
   border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
 }
+.dialog > header:first-child:has(> .dlg-x),
+[role="dialog"] > header:first-child:has(> .dlg-x) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dialog > header:first-child > .dlg-x,
+[role="dialog"] > header:first-child > .dlg-x {
+  margin-left: auto;
+  min-width: 0;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  opacity: 0.75;
+}
+.dialog > header:first-child > .dlg-x:hover:not(:disabled),
+[role="dialog"] > header:first-child > .dlg-x:hover:not(:disabled) {
+  background: rgba(127, 127, 127, 0.3);
+  opacity: 1;
+}
 .dialog > header:first-child > h1,
 [role="dialog"] > header:first-child > h1 {
   margin: 0;
