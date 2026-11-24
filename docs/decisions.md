@@ -2394,3 +2394,7 @@ Three labels named another editor: the shortcut import button, the Voice Chain p
 ## 2026-11-24: side panels can be squished to a narrow strip
 
 Every side panel (Files, Voice Chain group, Audio FX, Libraries, Markers, Video and the rest) now has a 48 px minimum width instead of 260 to 320, so a column can be dragged to the window's edge and out of the way. The Editor, Mixer, Levels, Time Info and 3D Space keep their limits. The panel body is clipped, not reflowed, when narrow. Default sizes are unchanged (270). Reason: the user asked for it; a saved workspace (a copy of Default) had come back with wide side columns and the only fix was to resize by hand within the old limits. `data/docking.json` and the group cases in `shared-fixtures/docking.json` were written again from `registry.ts`.
+
+## 2026-11-24: Follow Playhead in the Waveform editor
+
+The Follow Playhead setting (View menu, A key) only drove the Multitrack view; the Waveform editor always scrolled with playback. It now honors the setting too, and its toolbar has a Follow button (tooltip "Toggle Playback Auto-Scroll") next to Spectrum. Steve's call: waveform only, no ruler-corner button. No new shortcut: the button runs the existing action. Consequence: turning Follow off in either editor turns it off in both, since it is one setting.
