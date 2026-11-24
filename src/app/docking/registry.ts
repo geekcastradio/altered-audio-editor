@@ -509,36 +509,39 @@ export function workspaceId(name: string, taken: ReadonlySet<string>): string {
   return id;
 }
 
+/** How narrow a side panel can be dragged, so a column can be pushed to the window's edge and out of the way. */
+const SIDE_MIN_W = 48;
+
 /**
  * The smallest a panel is allowed to get, in pixels, so its controls never
  * squeeze together. A group holding several panels takes the largest of them.
  */
 export const MIN_SIZE: Record<PanelId, { w: number; h: number }> = {
   // Every side panel can be dragged down to its title strip, like the Voice Chain group; its body scrolls when short.
-  files: { w: 280, h: 36 },
+  files: { w: SIDE_MIN_W, h: 36 },
   // The Voice Chain group at the bottom left can be dragged down to its tab strip when it is not in use; its panels scroll when short.
-  "voice-chain": { w: 300, h: 36 },
-  "batch-convert": { w: 300, h: 36 },
-  quickpass: { w: 300, h: 36 },
+  "voice-chain": { w: SIDE_MIN_W, h: 36 },
+  "batch-convert": { w: SIDE_MIN_W, h: 36 },
+  quickpass: { w: SIDE_MIN_W, h: 36 },
   editor: { w: 520, h: 260 },
   mixer: { w: 360, h: 220 },
   levels: { w: 260, h: 70 },
-  "audio-fx": { w: 280, h: 36 },
-  "sound-types": { w: 280, h: 36 },
+  "audio-fx": { w: SIDE_MIN_W, h: 36 },
+  "sound-types": { w: SIDE_MIN_W, h: 36 },
   "time-info": { w: 220, h: 110 },
-  history: { w: 220, h: 36 },
-  video: { w: 320, h: 220 },
-  takes: { w: 260, h: 36 },
-  soundboard: { w: 240, h: 36 },
-  "drive-manager": { w: 260, h: 36 },
-  libraries: { w: 260, h: 36 },
-  markers: { w: 260, h: 36 },
-  review: { w: 260, h: 36 },
-  metadata: { w: 280, h: 36 },
-  playlist: { w: 260, h: 36 },
-  "loudness-match": { w: 280, h: 36 },
-  properties: { w: 260, h: 36 },
-  "phase-wheel": { w: 200, h: 36 },
+  history: { w: SIDE_MIN_W, h: 36 },
+  video: { w: SIDE_MIN_W, h: 220 },
+  takes: { w: SIDE_MIN_W, h: 36 },
+  soundboard: { w: SIDE_MIN_W, h: 36 },
+  "drive-manager": { w: SIDE_MIN_W, h: 36 },
+  libraries: { w: SIDE_MIN_W, h: 36 },
+  markers: { w: SIDE_MIN_W, h: 36 },
+  review: { w: SIDE_MIN_W, h: 36 },
+  metadata: { w: SIDE_MIN_W, h: 36 },
+  playlist: { w: SIDE_MIN_W, h: 36 },
+  "loudness-match": { w: SIDE_MIN_W, h: 36 },
+  properties: { w: SIDE_MIN_W, h: 36 },
+  "phase-wheel": { w: SIDE_MIN_W, h: 36 },
   space: { w: 260, h: 220 },
 };
 

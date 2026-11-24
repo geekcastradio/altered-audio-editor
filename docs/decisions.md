@@ -2394,3 +2394,7 @@ Three labels named another editor: the shortcut import button, the Voice Chain p
 ## 2026-11-24: Roseus spectrogram palette
 
 Steve chose to use the Roseus colormap (MIT, Myungchul Keum, dofuuz/roseus), suggested by a tester, as a spectrogram scheme. Only the 256-entry color table is used, rounded to bytes, in `src/panels/editor/roseus-lut.ts`; it is credited in `ATTRIBUTION.md`. It is the default spectrogram look (scheme empty); the earlier orange look stays as Classic and AAE and the single-color schemes stay as options, to be refined from tester reports. The settings sanitizer in TypeScript and Rust accepts it.
+
+## 2026-11-24: side panels can be squished to a narrow strip
+
+Every side panel (Files, Voice Chain group, Audio FX, Libraries, Markers, Video and the rest) now has a 48 px minimum width instead of 260 to 320, so a column can be dragged to the window's edge and out of the way. The Editor, Mixer, Levels, Time Info and 3D Space keep their limits. The panel body is clipped, not reflowed, when narrow. Default sizes are unchanged (270). Reason: the user asked for it; a saved workspace (a copy of Default) had come back with wide side columns and the only fix was to resize by hand within the old limits. `data/docking.json` and the group cases in `shared-fixtures/docking.json` were written again from `registry.ts`.
