@@ -418,6 +418,7 @@ pub fn run() {
             commands::wave::wave_set_view,
             commands::wave::wave_play,
             commands::wave::wave_save,
+            commands::wave::wave_save_selection,
             commands::wave::wave_peak,
             commands::wave::wave_zero_crossings,
             commands::wave::wave_new_from_clips,

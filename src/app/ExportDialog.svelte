@@ -68,10 +68,14 @@
     markerCount?: number;
     /** 3D Space sessions: the session's speaker layout, to offer every layout and binaural. */
     spaceLayout?: SpaceLayout | null;
+    /** A copy of a part of one file (Save Selection As): no Files panel, chapter or loudness choices. */
+    simple?: boolean;
+    /** The button's label. */
+    doneLabel?: string;
     onDone: (value: ExportSettings | null) => void;
   }
 
-  const { initial, scopes, source, onBrowse, onScan, chapterCount = 0, markerCount = 0, spaceLayout = null, onDone }: Props = $props();
+  const { initial, scopes, source, onBrowse, onScan, chapterCount = 0, markerCount = 0, spaceLayout = null, simple = false, doneLabel = "Export", onDone }: Props = $props();
 
   // svelte-ignore state_referenced_locally
   let s = $state<ExportSettings>({ ...initial, format: { ...initial.format }, formats: { ...(initial.formats ?? {}) } });
@@ -199,8 +203,10 @@
     </p>
 
     <section class="options">
-      <label class="check"><input type="checkbox" bind:checked={s.addToFiles} /> Add the file to the Files panel</label>
-      {#if chapterCount > 0}
+      {#if !simple}<label class="check"><input type="checkbox" bind:checked={s.addToFiles} /> Add the file to the Files panel</label>{/if}
+      {#if simple}
+        <!-- Chapters do not apply to a copy of one part. -->
+      {:else if chapterCount > 0}
         <label class="check" class:off={!canChapter} title={canChapter ? "" : "Chapters go into WAV, FLAC, MP3 and M4A files. For other formats, use File > Export > Markers and Chapters."}>
           <input type="checkbox" bind:checked={s.chapters} disabled={!canChapter} /> Add the {chapterCount} chapter {chapterCount === 1 ? "marker" : "markers"} to the file
         </label>
@@ -221,6 +227,7 @@
         </label>
       {/if}
       <label class="check" title="Reads the finished file back from start to end: it opens, every sample decodes, it is the right length and the chapters are in it."><input type="checkbox" bind:checked={s.verify} /> Check the file after saving</label>
+      {#if !simple}
       <label class="check" class:off={multi} title="Measures the mix first, then raises or lowers the whole file by one fixed amount to reach the target. Peaks stay under the target's limit, so a mix with high peaks can end up a little quieter than the target. The session itself is not changed. Mono targets are measured when the session mixes to mono.">
         <input type="checkbox" checked={loudOn} disabled={multi} onchange={(e) => toggleLoudness(e.currentTarget.checked)} /> Bring the file to a loudness target
       </label>
@@ -234,10 +241,11 @@
           {/if}
         </div>
       {/if}
+      {/if}
     </section>
   {#snippet footer()}
     <button type="button" onclick={() => onDone(null)}>Cancel</button>
-    <button type="button" class="primary" disabled={!ok} onclick={done}>Export</button>
+    <button type="button" class="primary" disabled={!ok} onclick={done}>{doneLabel}</button>
   {/snippet}
 </Dialog>
 

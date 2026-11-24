@@ -174,6 +174,7 @@ describe("menu model", () => {
       "file.import-sesx",
       "file.import-rpp",
       "file.import-aup",
+      "file.save-selection-as",
       "file.import-otio",
       "multitrack.play-pause",
       "multitrack.stop",

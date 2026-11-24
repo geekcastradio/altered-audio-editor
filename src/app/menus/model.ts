@@ -95,6 +95,7 @@ export const MENUS: readonly Menu[] = [
       sep,
       item("file.save", "Save"),
       item("file.save-as", "Save As..."),
+      item("file.save-selection-as", "Save Selection As..."),
       item("file.save-template", "Save as Session Template..."),
       item("file.save-all", "Save All"),
       sep,
