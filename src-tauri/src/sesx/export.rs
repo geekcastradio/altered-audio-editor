@@ -191,36 +191,65 @@ fn rack_xml(out: &mut String, indent: &str, chain: &EffectChain, report: &mut Se
         .iter()
         .filter_map(|s| Some((s, vst3_component(&s.effect)?)))
         .collect();
-    if plugins.is_empty() {
+    if plugins.is_empty() && chain.foreign.is_empty() {
         return;
     }
-    let _ = writeln!(out, r#"{indent}<effectsRack preFader="true">"#);
+    // Plug-ins and kept effects share the numbered slots, in slot order.
+    enum Entry<'a> {
+        Plugin(&'a crate::session::model::EffectSlot, String),
+        Foreign(&'a crate::session::model::ForeignEffect),
+    }
+    let mut entries: Vec<(u32, Entry<'_>)> = Vec::new();
     let mut next = 0u32;
-    for (s, id) in &plugins {
+    for (s, id) in plugins {
         // Keep the numbered slot it shows in.
         let i = s.position.unwrap_or(next).max(next);
         next = i + 1;
-        let name =
-            crate::plugins::find(&s.effect).map_or_else(|| "Plug-in".to_string(), |f| f.info.name);
-        let _ = writeln!(
-            out,
-            r#"{indent}  <slot powered="{}" slotIndex="{i}">"#,
-            s.enabled && chain.enabled
-        );
-        let _ = writeln!(
-            out,
-            r#"{indent}    <component componentGuid="{}" componentID="{id}" name="{}" presetName="(Custom)">"#,
-            guid(),
-            esc(&name)
-        );
-        if let Some(chunk) = s.plugin_state.as_deref().and_then(state_to_chunk) {
-            let _ = writeln!(
-                out,
-                "{indent}      <presetChunkData><![CDATA[{chunk}]]></presetChunkData>"
-            );
+        entries.push((i, Entry::Plugin(s, id)));
+    }
+    for f in &chain.foreign {
+        entries.push((f.position, Entry::Foreign(f)));
+    }
+    entries.sort_by_key(|(i, _)| *i);
+    let _ = writeln!(out, r#"{indent}<effectsRack preFader="true">"#);
+    let mut floor = 0u32;
+    for (i, entry) in entries {
+        let i = i.max(floor);
+        floor = i + 1;
+        match entry {
+            Entry::Foreign(f) => {
+                let _ = writeln!(
+                    out,
+                    r#"{indent}  <slot powered="{}" slotIndex="{i}">"#,
+                    f.enabled && chain.enabled
+                );
+                let _ = writeln!(out, "{indent}    {}", f.xml.trim());
+                let _ = writeln!(out, "{indent}  </slot>");
+            }
+            Entry::Plugin(s, id) => {
+                let name = crate::plugins::find(&s.effect)
+                    .map_or_else(|| "Plug-in".to_string(), |f| f.info.name);
+                let _ = writeln!(
+                    out,
+                    r#"{indent}  <slot powered="{}" slotIndex="{i}">"#,
+                    s.enabled && chain.enabled
+                );
+                let _ = writeln!(
+                    out,
+                    r#"{indent}    <component componentGuid="{}" componentID="{id}" name="{}" presetName="(Custom)">"#,
+                    guid(),
+                    esc(&name)
+                );
+                if let Some(chunk) = s.plugin_state.as_deref().and_then(state_to_chunk) {
+                    let _ = writeln!(
+                        out,
+                        "{indent}      <presetChunkData><![CDATA[{chunk}]]></presetChunkData>"
+                    );
+                }
+                let _ = writeln!(out, "{indent}    </component>");
+                let _ = writeln!(out, "{indent}  </slot>");
+            }
         }
-        let _ = writeln!(out, "{indent}    </component>");
-        let _ = writeln!(out, "{indent}  </slot>");
     }
     let _ = writeln!(out, "{indent}</effectsRack>");
 }
@@ -623,6 +652,38 @@ mod tests {
             (b.start, b.source_in, b.source_out),
             (a.start, a.source_in, a.source_out)
         );
+    }
+
+    #[test]
+    fn kept_effects_are_written_back_unread() {
+        use crate::session::model::ForeignEffect;
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = session(dir.path());
+        let xml = r#"<component componentID="9b1f" name="DeNoise"><presetChunkData><![CDATA[AAEC/w==]]></presetChunkData></component>"#;
+        s.tracks[0].effects.foreign.push(ForeignEffect {
+            name: "DeNoise".into(),
+            enabled: false,
+            position: 1,
+            xml: xml.into(),
+        });
+        let path = dir.path().join("kept.sesx");
+        let report = export(&s, &path).unwrap();
+        // Kept effects are not "left out": nothing built in is switched on.
+        assert_eq!(report.chains_left_out, 0);
+        let back = crate::sesx::import(&path).unwrap();
+        let f = &back.session.tracks[0].effects.foreign;
+        assert_eq!(f.len(), 1);
+        assert_eq!(
+            (f[0].name.as_str(), f[0].enabled, f[0].position),
+            ("DeNoise", false, 1)
+        );
+        assert_eq!(f[0].xml, xml);
+        assert_eq!(back.report.kept_effects, 1);
+        // A second trip changes nothing.
+        let again = dir.path().join("kept2.sesx");
+        export(&back.session, &again).unwrap();
+        let twice = crate::sesx::import(&again).unwrap();
+        assert_eq!(twice.session.tracks[0].effects.foreign, *f);
     }
 
     #[test]

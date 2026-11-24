@@ -28,9 +28,9 @@ use thiserror::Error;
 use crate::codecs::probe;
 use crate::session::model::{
     new_id, Bus, ChannelLayout, ChannelMix, ChannelSend, Clip, ClipStretch, EffectChain,
-    EffectSlot, Envelope, EnvelopeCurve, EnvelopePoint, EnvelopeTarget, Fade, FadeShape, Id,
-    Marker, MarkerKind, MediaRef, Output, Session, StretchAdvanced, Track, DEFAULT_TRACK_HEIGHT,
-    STRETCH_MAX, STRETCH_MIN,
+    EffectSlot, Envelope, EnvelopeCurve, EnvelopePoint, EnvelopeTarget, Fade, FadeShape,
+    ForeignEffect, Id, Marker, MarkerKind, MediaRef, Output, Session, StretchAdvanced, Track,
+    DEFAULT_TRACK_HEIGHT, STRETCH_MAX, STRETCH_MIN,
 };
 
 #[derive(Debug, Error)]
@@ -53,6 +53,9 @@ pub struct ImportReport {
     pub skipped_effects: usize,
     /// Their names, each once.
     pub skipped_names: Vec<String>,
+    /// Of those, how many were kept unread on the Voice Chain so a `.sesx`
+    /// export writes them back.
+    pub kept_effects: usize,
     pub buses: usize,
     /// VST3 plug-ins brought in with their settings.
     pub plugins: usize,
@@ -230,8 +233,17 @@ fn read_rack(rack: roxmltree::Node<'_, '_>, report: &mut ImportReport) -> Effect
         let Some(effect) = plugin else {
             report.skipped_effects += 1;
             if !report.skipped_names.contains(&name) {
-                report.skipped_names.push(name);
+                report.skipped_names.push(name.clone());
             }
+            // Keep the effect's own data, unread, so an export writes it back.
+            let xml = &c.document().input_text()[c.range()];
+            chain.foreign.push(ForeignEffect {
+                name,
+                enabled: slot.attribute("powered") != Some("false"),
+                position: u32::try_from(index).unwrap_or(u32::MAX),
+                xml: xml.to_string(),
+            });
+            report.kept_effects += 1;
             continue;
         };
         let state = child(c, "presetChunkData")
@@ -563,7 +575,9 @@ fn racks(n: roxmltree::Node<'_, '_>, report: &mut ImportReport) -> EffectChain {
     let mut chain = EffectChain::default();
     let mut levels_read = false;
     for r in n.children().filter(|c| c.has_tag_name("effectsRack")) {
-        chain.slots.extend(read_rack(r, report).slots);
+        let rack = read_rack(r, report);
+        chain.slots.extend(rack.slots);
+        chain.foreign.extend(rack.foreign);
         if !levels_read {
             levels_read = true;
             rack_levels(r, &mut chain);

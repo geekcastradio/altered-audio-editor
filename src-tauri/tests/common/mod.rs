@@ -45,6 +45,7 @@ pub fn effect_chain() -> EffectChain {
             data: None,
             position: None,
         }],
+        foreign: Vec::new(),
     }
 }
 

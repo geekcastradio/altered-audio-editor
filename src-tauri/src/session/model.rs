@@ -1329,6 +1329,24 @@ pub struct EffectChain {
     /// Dry/wet mix from 0.0 (dry) to 1.0 (wet).
     pub mix: f64,
     pub slots: Vec<EffectSlot>,
+    /// Effects from an imported `.sesx` that have no equivalent here. They
+    /// never play. Their original data is kept unread so exporting the
+    /// session as `.sesx` writes them back as they were.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub foreign: Vec<ForeignEffect>,
+}
+
+/// An effect from another editor's session file that this app does not
+/// run, kept as it came so it survives a round trip through `.altaudio`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ForeignEffect {
+    /// The name the other editor showed.
+    pub name: String,
+    pub enabled: bool,
+    /// The numbered slot it sat in (0 is the first).
+    pub position: u32,
+    /// The effect's own element, exactly as read, for writing back.
+    pub xml: String,
 }
 
 impl Default for EffectChain {
@@ -1339,6 +1357,7 @@ impl Default for EffectChain {
             output_gain_db: 0.0,
             mix: 1.0,
             slots: Vec::new(),
+            foreign: Vec::new(),
         }
     }
 }
