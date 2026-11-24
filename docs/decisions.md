@@ -2402,3 +2402,7 @@ Every side panel (Files, Voice Chain group, Audio FX, Libraries, Markers, Video 
 ## 2026-11-24: Close button on the older dialogs
 
 Steve asked for every settings and pop-up dialog to share the title bar look. The nine dialogs that had their own markup (Analysis, Keyboard Shortcuts, Controllers, Plug-in Manager, Edit Notes, Isolated Clips, Output Settings, Sample Settings, Settings) now have a title bar with a close X at the right, styled once in `tokens.css`. The X does what Escape does and is disabled while work that must not be interrupted runs. Progress and choice dialogs have no X on purpose.
+
+## 2026-11-24: Waveform selection fixes (issue 294)
+
+Three reports from a tester. Double-click in the Waveform editor now selects what is in view, not the whole file (Select All still selects everything). Zoom to Selection fills the view from edge to edge: it left a five percent gap on each side before. While a selection that fills the view plays, the view no longer scrolls to follow the playhead, which had shifted the view near the end of the selection. Not changed: the wheel zoom centre is a setting (Edit > Settings > General) and its default stays; Save Selection As and codec options on Save are not built yet and stay on the list.
