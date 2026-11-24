@@ -165,6 +165,7 @@
         bind:this={search}
         aria-label="Search commands or keys"
       />
+      <button type="button" class="dlg-x" aria-label="Close" title="Close" onclick={onClose}>×</button>
     </header>
 
     {#if pending}

@@ -62,7 +62,10 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={() => progress === null && onClose()}>
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="an-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
-    <h1 id="an-title">Analysis</h1>
+    <header>
+      <h1 id="an-title">Analysis</h1>
+      <button type="button" class="dlg-x" aria-label="Close" title="Close" disabled={progress !== null} onclick={onClose}>×</button>
+    </header>
     <div class="tabs" role="tablist">
       {#each tabs as t (t.id)}
         <button type="button" role="tab" aria-selected={tab === t.id} class:on={tab === t.id} onclick={() => onTab(t.id)}>{t.label}</button>

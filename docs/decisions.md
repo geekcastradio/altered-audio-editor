@@ -2394,3 +2394,7 @@ Three labels named another editor: the shortcut import button, the Voice Chain p
 ## 2026-11-24: side panels can be squished to a narrow strip
 
 Every side panel (Files, Voice Chain group, Audio FX, Libraries, Markers, Video and the rest) now has a 48 px minimum width instead of 260 to 320, so a column can be dragged to the window's edge and out of the way. The Editor, Mixer, Levels, Time Info and 3D Space keep their limits. The panel body is clipped, not reflowed, when narrow. Default sizes are unchanged (270). Reason: the user asked for it; a saved workspace (a copy of Default) had come back with wide side columns and the only fix was to resize by hand within the old limits. `data/docking.json` and the group cases in `shared-fixtures/docking.json` were written again from `registry.ts`.
+
+## 2026-11-24: Close button on the older dialogs
+
+Steve asked for every settings and pop-up dialog to share the title bar look. The nine dialogs that had their own markup (Analysis, Keyboard Shortcuts, Controllers, Plug-in Manager, Edit Notes, Isolated Clips, Output Settings, Sample Settings, Settings) now have a title bar with a close X at the right, styled once in `tokens.css`. The X does what Escape does and is disabled while work that must not be interrupted runs. Progress and choice dialogs have no X on purpose.
