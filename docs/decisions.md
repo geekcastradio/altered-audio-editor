@@ -2391,6 +2391,12 @@ Three labels named another editor: the shortcut import button, the Voice Chain p
 
 `src-tauri/src/rack_import.rs` reads the racks in another editor's effect presets file and builds Voice Chain presets, with the same results as `src/panels/voice-chain/audition-presets.ts`. The shared cases are in `shared-fixtures/rack-import.json` (23 cases: entities, nested lists, odd numbers, duplicate keys, broken input). Both sides test against it. The TypeScript stays until the Rust command replaces it. Part of the move to Rust for 1.0.
 
+## 2026-11-24: spectrum view, blocky low rows and automatic resolution (from a tester's report)
+
+- **Blocky lower half in the logarithmic scale.** At 96 kHz a 2048-sample frame has 47 Hz bins, wider than the rows below about 200 Hz, so neighbouring rows read the same bins and showed as flat blocks. A row narrower than one bin now blends the two bins either side of its center. Wider rows still show their loudest bin. A Rust test checks a 100 Hz tone lands on the right row and the low rows differ.
+- **Stretched look when zoomed in, and "the resolution control works backwards".** It does not work backwards: a longer frame resolves pitch finer and time coarser, and at a close zoom (about 9 samples a pixel) a 2048 frame is about 220 pixels wide. The default is now Automatic: the frame is about six columns wide, never under 256 or over 4096, so a zoomed-in view is sharp in time and a zoomed-out one keeps pitch detail. Increase and Decrease Spectral Resolution still pick a fixed frame; Automatic Resolution in the right-click menu returns to it.
+- **Not done:** the waveform's step in detail at some zoom levels (a peak-level change, to be looked at separately) and a new spectrogram palette; the suggested colormap set is MIT-licensed, but its data was not fetched here.
+
 ## 2026-11-24: Waveform editor, no step in detail while zooming in (from a tester's report)
 
 The Waveform editor drew exact samples only at 8 or fewer source frames per pixel and peaks above that. Peaks come from blocks of at least 32 frames, so between about 9 and 32 frames a pixel the blocks were wider than a pixel and the waveform looked choppy, then jumped to the sample line. The exact samples now take over wherever a pixel covers fewer frames than the finest peak block (`exactSampleLimit`, between 8 and 64). At that point peaks and samples draw the same picture, so there is no step. A file whose finest level is 256 frames keeps a step between 65 and 256 frames a pixel: closing that needs a finer peak level for long files, which costs cache size, so it is left for a later look. The Multitrack view is unchanged.
@@ -2403,6 +2409,14 @@ Every side panel (Files, Voice Chain group, Audio FX, Libraries, Markers, Video 
 
 Steve sent screenshots of workspace arrangements from another editor and of his own saved layout, and asked to capture some. We take the idea of the jobs (panels grouped by task), not the other product's names, positions or look: the new workspaces use our own names, our own panels and our own sizes. Added: **Production Desk** (the Default plus Markers and Loudness Match beside the voice chain and a Soundboard, Video and Takes group under it, which is his saved arrangement), **Loudness** (Loudness Match above the editor, properties and files left), **Video Edit** (video reference above files on the left, audio types on the right) and **Broadcast** (voice chain and history left, file metadata right). The Default is unchanged: it still leaves out Markers, History and the rest. Not added: an analysis workspace, because frequency, amplitude and phase views are not docked panels here yet. Reference notes from the Metadata screenshots (tabbed BWF, ID3, iXML, RIFF, cart and XMP editing, a radio view of the RIFF fields with category lists) are for a later look at the Metadata panel and are not scheduled.
 
+## 2026-11-24: Follow Playhead in the Waveform editor
+
+The Follow Playhead setting (View menu, A key) only drove the Multitrack view; the Waveform editor always scrolled with playback. It now honors the setting too, and its toolbar has a Follow button (tooltip "Toggle Playback Auto-Scroll") next to Spectrum. Steve's call: waveform only, no ruler-corner button. No new shortcut: the button runs the existing action. Consequence: turning Follow off in either editor turns it off in both, since it is one setting.
+
 ## 2026-11-24: Close button on the older dialogs
 
 Steve asked for every settings and pop-up dialog to share the title bar look. The nine dialogs that had their own markup (Analysis, Keyboard Shortcuts, Controllers, Plug-in Manager, Edit Notes, Isolated Clips, Output Settings, Sample Settings, Settings) now have a title bar with a close X at the right, styled once in `tokens.css`. The X does what Escape does and is disabled while work that must not be interrupted runs. Progress and choice dialogs have no X on purpose.
+
+## 2026-11-24: Waveform selection fixes (issue 294)
+
+Three reports from a tester. Double-click in the Waveform editor now selects what is in view, not the whole file (Select All still selects everything). Zoom to Selection fills the view from edge to edge: it left a five percent gap on each side before. While a selection that fills the view plays, the view no longer scrolls to follow the playhead, which had shifted the view near the end of the selection. Not changed: the wheel zoom centre is a setting (Edit > Settings > General) and its default stays; Save Selection As and codec options on Save are not built yet and stay on the list.
