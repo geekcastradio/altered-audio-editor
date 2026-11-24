@@ -163,3 +163,25 @@ fn memory_matches() {
         assert!(same_format(&format, &c["want"]["format"]), "{c}");
     }
 }
+
+#[test]
+fn flac_level_stays_between_0_and_8_and_defaults_to_5() {
+    let level = |v: serde_json::Value| sanitize_format(&v).flac_level;
+    assert_eq!(level(serde_json::json!({"kind": "flac"})), 5);
+    assert_eq!(
+        level(serde_json::json!({"kind": "flac", "flacLevel": 99})),
+        8
+    );
+    assert_eq!(
+        level(serde_json::json!({"kind": "flac", "flacLevel": -3})),
+        0
+    );
+    assert_eq!(
+        level(serde_json::json!({"kind": "flac", "flacLevel": 2.6})),
+        3
+    );
+    assert_eq!(
+        level(serde_json::json!({"kind": "flac", "flacLevel": "x"})),
+        5
+    );
+}

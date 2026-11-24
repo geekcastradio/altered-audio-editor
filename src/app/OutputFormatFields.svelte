@@ -163,6 +163,15 @@
           {/each}
         </select>
       </label>
+    {:else if format.kind === "flac"}
+      <label>
+        <span>Compression</span>
+        <select bind:value={format.flacLevel}>
+          {#each [0, 1, 2, 3, 4, 5, 6, 7, 8] as q (q)}
+            <option value={q}>{q}{q === 0 ? " (fastest, largest)" : q === 5 ? " (default)" : q === 8 ? " (slowest, smallest)" : ""}</option>
+          {/each}
+        </select>
+      </label>
     {:else if format.kind === "mp3"}
       <label>
         <span>Bit rate</span>
@@ -199,6 +208,8 @@
   {/if}
   {#if format.kind === "wav" && format.bitDepth === 4}
     <p class="note">4-bit ADPCM is lossy and about a quarter the size of 16-bit. Good for phone systems and voice prompts, not for masters.</p>
+  {:else if format.kind === "flac" && parts !== "type"}
+    <p class="note">Every compression level is lossless: the samples are identical. Higher levels make the file a little smaller and take longer to write.</p>
   {:else if format.kind === "wav" && format.bitDepth === 8}
     <p class="note">8-bit has audible hiss on quiet passages. Use it only when a system asks for it.</p>
   {:else if lossy && parts === "all"}

@@ -130,6 +130,9 @@ pub struct OutputFormat {
     pub mp3_quality: u8,
     /// AAC bit rate in kbps: 96, 128, 160 or 192.
     pub aac_bitrate: u16,
+    /// FLAC compression level, 0 (fastest, largest) to 8 (slowest, smallest).
+    /// Every level is lossless.
+    pub flac_level: u8,
     /// Dither when writing fewer bits than the audio has. On unless turned off.
     pub dither: bool,
     pub dither_kind: DitherKind,
@@ -154,6 +157,7 @@ impl Default for OutputFormat {
             mp3_bitrate: 192,
             mp3_quality: 2,
             aac_bitrate: 128,
+            flac_level: DEFAULT_FLAC_LEVEL,
             dither: true,
             dither_kind: DitherKind::Triangular,
             dither_amount: 1.0,
@@ -163,6 +167,40 @@ impl Default for OutputFormat {
             mix_right: 0.5,
         }
     }
+}
+
+/// Highest FLAC compression level.
+pub const MAX_FLAC_LEVEL: u8 = 8;
+/// The level exports used before the setting existed.
+pub const DEFAULT_FLAC_LEVEL: u8 = 5;
+
+/// The encoder settings for a FLAC compression level. Every level writes
+/// lossless files; higher levels search more predictor orders, so files get a
+/// little smaller and the export takes longer. Level 5 is the encoder's own
+/// default, which is what exports used before levels existed.
+fn flac_encoder_config(level: u8, block: usize) -> flacenc::config::Encoder {
+    let mut cfg = flacenc::config::Encoder::default();
+    cfg.block_size = block;
+    match level.min(MAX_FLAC_LEVEL) {
+        // Fixed predictors only, and no stereo decorrelation search.
+        0 => {
+            cfg.subframe_coding.use_lpc = false;
+            cfg.stereo_coding.use_leftside = false;
+            cfg.stereo_coding.use_rightside = false;
+            cfg.stereo_coding.use_midside = false;
+        }
+        // Fixed predictors only.
+        1 => cfg.subframe_coding.use_lpc = false,
+        2 => cfg.subframe_coding.qlpc.lpc_order = 4,
+        3 => cfg.subframe_coding.qlpc.lpc_order = 6,
+        4 => cfg.subframe_coding.qlpc.lpc_order = 8,
+        // The encoder's default.
+        5 => {}
+        6 => cfg.subframe_coding.qlpc.lpc_order = 12,
+        7 => cfg.subframe_coding.qlpc.lpc_order = 16,
+        _ => cfg.subframe_coding.qlpc.lpc_order = 24,
+    }
+    cfg
 }
 
 /// Constant bit rates LAME accepts, in kbps.
@@ -185,6 +223,7 @@ pub struct Resolved {
     pub mp3_bitrate: u16,
     pub mp3_quality: u8,
     pub aac_bitrate: u16,
+    pub flac_level: u8,
     pub dither: bool,
     pub dither_kind: DitherKind,
     pub dither_amount: f32,
@@ -290,6 +329,7 @@ impl OutputFormat {
             mp3_bitrate: self.mp3_bitrate,
             mp3_quality: self.mp3_quality.min(9),
             aac_bitrate: super::aac::nearest_bitrate(self.aac_bitrate),
+            flac_level: self.flac_level.min(MAX_FLAC_LEVEL),
             dither: self.dither,
             dither_kind: self.dither_kind,
             dither_amount: if self.dither_amount.is_finite() {
@@ -665,8 +705,7 @@ impl Writer {
             }
             FormatKind::Flac => {
                 use flacenc::error::Verify;
-                let mut cfg = flacenc::config::Encoder::default();
-                cfg.block_size = FLAC_BLOCK;
+                let cfg = flac_encoder_config(fmt.flac_level, FLAC_BLOCK);
                 let cfg = cfg
                     .into_verified()
                     .map_err(|e| EncodeError::Settings(format!("{e:?}")))?;
@@ -1055,6 +1094,72 @@ mod tests {
             .map(|(a, b)| (a - b).abs())
             .fold(0f32, f32::max);
         assert!(err < 1e-5, "max error {err}");
+    }
+
+    /// Every level is lossless: the samples read back identical at all of them, no
+    /// file outgrows its raw samples, and the top level is no larger than the bottom.
+    #[test]
+    fn every_flac_level_decodes_to_the_same_samples() {
+        let dir = tempfile::tempdir().unwrap();
+        let rate = 44_100u32;
+        let n = rate as usize * 2;
+        let mut loud = Vec::with_capacity(n * 2);
+        for i in 0..n {
+            let t = i as f64 / f64::from(rate);
+            let mut z = (i as u64).wrapping_add(0x9E37_79B9_7F4A_7C15);
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^= z >> 31;
+            let noise = (z >> 11) as f64 / (1u64 << 53) as f64 - 0.5;
+            let tone = (t * 220.0 * std::f64::consts::TAU).sin() * 0.5;
+            let v = tone + noise * 0.3;
+            loud.push(v as f32);
+            loud.push((v * 0.9) as f32);
+        }
+        let tone = sine(rate, 1, 2.0);
+        for (name, data, ch, bits) in [("loud", &loud, 2u16, 24u16), ("tone", &tone, 1, 16)] {
+            let mut sizes = Vec::new();
+            let mut first: Option<Vec<f32>> = None;
+            for level in 0..=MAX_FLAC_LEVEL {
+                let p = dir.path().join(format!("{name}{level}.flac"));
+                let fmt = OutputFormat {
+                    kind: FormatKind::Flac,
+                    bit_depth: Some(bits),
+                    flac_level: level,
+                    ..Default::default()
+                };
+                write(&p, fmt, rate, ch, data);
+                let size = std::fs::metadata(&p).unwrap().len();
+                let raw = data.len() as u64 * u64::from(bits / 8);
+                assert!(
+                    size < raw + raw / 100 + 4_096,
+                    "{name} level {level}: {size} > {raw}"
+                );
+                let (_, _, back) = read_all(&p);
+                match &first {
+                    None => first = Some(back),
+                    Some(f) => assert!(*f == back, "{name} level {level} decodes differently"),
+                }
+                sizes.push(size);
+            }
+            assert!(
+                sizes[usize::from(MAX_FLAC_LEVEL)] <= sizes[0],
+                "{name}: level 8 is larger than level 0: {sizes:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn flac_level_defaults_to_five_and_is_clamped() {
+        assert_eq!(OutputFormat::default().flac_level, 5);
+        let old: OutputFormat = serde_json::from_str(r#"{"kind":"flac"}"#).unwrap();
+        assert_eq!(old.flac_level, 5);
+        let high = OutputFormat {
+            kind: FormatKind::Flac,
+            flac_level: 99,
+            ..Default::default()
+        };
+        assert_eq!(high.resolve(48_000, 2, 24).unwrap().flac_level, 8);
     }
 
     #[test]

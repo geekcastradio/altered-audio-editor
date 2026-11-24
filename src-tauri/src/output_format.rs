@@ -107,6 +107,7 @@ pub struct OutputFormat {
     pub mp3_vbr: bool,
     pub mp3_bitrate: u32,
     pub mp3_quality: u32,
+    pub flac_level: u32,
     pub aac_bitrate: u32,
     pub dither: bool,
     pub dither_kind: DitherKind,
@@ -125,6 +126,7 @@ pub const DEFAULT_FORMAT: OutputFormat = OutputFormat {
     mp3_vbr: false,
     mp3_bitrate: 192,
     mp3_quality: 2,
+    flac_level: 5,
     aac_bitrate: 128,
     dither: true,
     dither_kind: DitherKind::Triangular,
@@ -221,6 +223,10 @@ pub fn sanitize_format(raw: &Value) -> OutputFormat {
         mp3_quality: match raw.get("mp3Quality").and_then(Value::as_f64) {
             Some(q) => 9.0_f64.min(0.0_f64.max(js_round(q))) as u32,
             None => 2,
+        },
+        flac_level: match raw.get("flacLevel").and_then(Value::as_f64) {
+            Some(q) if q.is_finite() => 8.0_f64.min(0.0_f64.max(js_round(q))) as u32,
+            _ => 5,
         },
         aac_bitrate: listed(raw.get("aacBitrate"), &AAC_BITRATES).unwrap_or(128),
         dither: raw.get("dither") != Some(&Value::Bool(false)),

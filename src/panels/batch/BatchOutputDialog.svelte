@@ -174,6 +174,10 @@
                 </select>
               {/if}
             </div>
+          {:else if s.format.kind === "flac"}
+            <select bind:value={s.format.flacLevel} aria-label="Compression">
+              {#each [0, 1, 2, 3, 4, 5, 6, 7, 8] as q (q)}<option value={q}>Compression {q}{q === 0 ? " (fastest)" : q === 5 ? " (default)" : q === 8 ? " (smallest)" : ""}</option>{/each}
+            </select>
           {:else if s.format.kind === "m4a" || s.format.kind === "aac"}
             <select bind:value={s.format.aacBitrate} aria-label="Kbps">
               {#each AAC_BITRATES as b (b)}<option value={b}>{b} kbps{b === 128 ? " (spoken word)" : b === 192 ? " (music)" : ""}</option>{/each}
