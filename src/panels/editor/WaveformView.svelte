@@ -194,6 +194,9 @@
     if (!playingNow || !tp || width <= 0 || !ed.followPlayhead) return;
     const x = xOf(tp.position, view);
     if (followHeld) return;
+    // A selection that fills the view stays put while it plays, so zooming to it is not undone.
+    const sel = selection;
+    if (sel && tp.position >= sel.start && tp.position <= sel.end && xOf(sel.start, view) >= -1 && xOf(sel.end, view) <= width + 1) return;
     if (x > width - 20 || x < 0) setView({ scroll: tp.position - 20 * view.spp }, true);
   });
 
@@ -222,6 +225,14 @@
   /** Farthest zoom out: the whole file fills the view, with no empty time after it. */
   const outermost = () => fit(total, width, 1).spp;
 
+  /** Double-click: select what is in view, not the whole file. */
+  function selectVisible() {
+    if (!doc || width <= 0) return;
+    const start = Math.max(0, Math.round(view.scroll));
+    const end = Math.min(total, Math.round(view.scroll + width * view.spp));
+    if (end > start) setView({ selection: { start, end } });
+  }
+
   /** The view's zoom commands, used by the Zoom actions while this editor shows. */
   export function zoom(kind: "in" | "out" | "full" | "selection" | "amp-in" | "amp-out"): void {
     if (!doc) return;
@@ -231,8 +242,9 @@
       const f = fit(total, width, 1);
       setView({ spp: f.spp, scroll: 0 });
     } else if (kind === "selection" && selection) {
-      const f = fit(selection.end - selection.start, width);
-      setView({ spp: f.spp, scroll: Math.max(0, selection.start - (selection.end - selection.start) * 0.05) });
+      // The selection fills the view from edge to edge, with no gap on either side.
+      const f = fit(selection.end - selection.start, width, 1);
+      setView({ spp: f.spp, scroll: Math.max(0, selection.start) });
     } else if (kind === "in" || kind === "out") {
       const anchor = Math.max(0, Math.min(width, xOf(playhead, view)));
       const z = zoomAround(view, kind === "in" ? 0.5 : 2, anchor, outermost(), SAMPLE_SPP);
@@ -916,7 +928,7 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="area" bind:this={area} bind:clientHeight={height} onwheel={onWheel} oncontextmenu={onMenu}>
       <div class="measure" bind:clientWidth={width} style:right="{SCALE_W}px"></div>
-      <canvas bind:this={canvas} onpointerdown={onPointer} onpointermove={onHover} ondblclick={() => run("edit.select-all")}></canvas>
+      <canvas bind:this={canvas} onpointerdown={onPointer} onpointermove={onHover} ondblclick={selectVisible}></canvas>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       {#if ed.showHud}
         <div class="hud" class:active={levelDrag} onpointerdown={onLevelPointer} title="Drag right or up to turn the selection (or the whole file) up, left or down to turn it down. Release to apply. Shift for fine steps.">
