@@ -37,6 +37,6 @@ export function presetMenu(user: readonly ChainPreset[], builtin: readonly Chain
   }
   if (pack || onImport) out.push({ kind: "sep" });
   if (pack) out.push({ kind: "item", label: "Export My Presets...", run: pack.save }, { kind: "item", label: "Import Presets...", run: pack.load });
-  if (onImport) out.push({ kind: "item", label: "Import Chains from Audition...", run: onImport });
+  if (onImport) out.push({ kind: "item", label: "Import chains from a .xml file...", run: onImport });
   return out;
 }

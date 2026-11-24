@@ -505,7 +505,7 @@
     try {
       const r = importAuditionRacks(await file.text());
       if (r.chains === 0) {
-        onNotice("No effect chains were found in that file. Pick Audition's EffectPresets.xml.");
+        onNotice("No effect chains were found in that file. Pick the effect presets .xml file you exported from your other editor.");
         return;
       }
       const names = new Set(r.presets.map((p) => p.name));
