@@ -191,7 +191,7 @@
     const playingNow = !!tp?.playing;
     if (playingNow && !wasPlaying) followHeld = false;
     wasPlaying = playingNow;
-    if (!playingNow || !tp || width <= 0) return;
+    if (!playingNow || !tp || width <= 0 || !ed.followPlayhead) return;
     const x = xOf(tp.position, view);
     if (followHeld) return;
     if (x > width - 20 || x < 0) setView({ scroll: tp.position - 20 * view.spp }, true);
@@ -881,6 +881,14 @@
       <span class="info">{info}</span>
       {#if file.untitled}<span class="unsaved">Not saved yet</span>{/if}
       <span class="spacer"></span>
+      <button
+        type="button"
+        class="tool text"
+        class:on={ed.followPlayhead}
+        aria-pressed={ed.followPlayhead}
+        title={tip("Toggle Playback Auto-Scroll: keep the playhead in view while playing", "view.follow-playhead")}
+        onclick={() => run("view.follow-playhead")}>Follow</button
+      >
       <button
         type="button"
         class="tool text"
