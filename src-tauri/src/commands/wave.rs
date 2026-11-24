@@ -752,6 +752,94 @@ pub async fn wave_save(
     Ok(doc_of(w.as_ref().expect("just set")))
 }
 
+/// Saves the selected part of the open file as a new file. The open file, its edits and its
+/// selection stay as they are: this is a copy of one part, not a Save As. Edits count (they are
+/// part of the audio), a previewed Voice Chain does not. Written to a temporary file first, so a
+/// failed save never leaves half a file. `markers` also writes the markers inside the part, moved
+/// so they sit on the same audio in the new file (WAV cue points).
+#[tauri::command]
+pub async fn wave_save_selection(
+    app: State<'_, AppCore>,
+    wave: State<'_, OpenWave>,
+    path: PathBuf,
+    start: u64,
+    end: u64,
+    format: OutputFormat,
+    markers: bool,
+) -> Result<(), String> {
+    let app = app.inner().clone();
+    let session = {
+        let w = wave.0.lock().map_err(|e| e.to_string())?;
+        let state = w
+            .as_ref()
+            .ok_or("No file is open in the Waveform editor.")?;
+        without_effects(state.session.clone())
+    };
+    if end <= start {
+        return Err("Select a part of the file first.".into());
+    }
+    let all_channels = super::spectral::file_channels(&session);
+    if all_channels > 2 {
+        return Err(format!(
+            "Save Selection As works on mono and stereo files for now. This file has {all_channels} channels."
+        ));
+    }
+    let kind = format.kind;
+    let request = MixdownRequest {
+        range: Some((start, end)),
+        clip_only: true,
+        channels: Some(all_channels.max(1) as u16),
+        format: Some(format),
+        ..Default::default()
+    };
+    let part: Vec<Marker> = session
+        .markers
+        .iter()
+        .filter(|m| m.position >= start && m.position < end)
+        .map(|m| {
+            let mut m = m.clone();
+            m.position -= start;
+            m
+        })
+        .collect();
+    let rate = session.sample_rate;
+    spawn_blocking(move || -> Result<(), String> {
+        let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "audio".into());
+        let tmp = dir.join(format!(".{stem}.saving.{}", kind.extension()));
+        let mut last = 0u64;
+        let progress = |done: u64, total: u64| {
+            if done == total || done - last >= total / 100 {
+                last = done;
+                let _ = app.emit("export-progress", Progress { done, total });
+            }
+        };
+        if let Err(e) =
+            mixdown::mixdown(&session, &request, &tmp, &AtomicBool::new(false), progress)
+        {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e.to_string());
+        }
+        if markers && kind == FormatKind::Wav && !part.is_empty() {
+            let file_rate = codecs::probe(&tmp).map(|i| i.sample_rate).unwrap_or(rate);
+            let cues = cues_from_markers(&part, rate, file_rate);
+            if let Err(e) = codecs::cue::write_cues(&tmp, &cues) {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(format!("Could not save the markers: {e}"));
+            }
+        }
+        std::fs::rename(&tmp, &path).map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            format!("Could not write {}: {e}", path.display())
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Renders a file open (or set aside) in the Waveform editor, edits
 /// included, to a new WAV in the app's cache folder and returns its path.
 /// Used when such a file is dragged into a multitrack session: the file on

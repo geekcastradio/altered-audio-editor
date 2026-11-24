@@ -404,6 +404,11 @@ export function waveSave<S>(path: string | null, bitDepth: number | null): Promi
   return invoke<WaveDocRaw<S>>("wave_save", { path, bitDepth });
 }
 
+/** Saves the selected part of the open file as a new file. The open file is left as it is. */
+export function waveSaveSelection(path: string, start: number, end: number, format: OutputFormat, markers: boolean): Promise<void> {
+  return invoke<void>("wave_save_selection", { path, start, end, format, markers });
+}
+
 /** Highest absolute sample of the edited file in `range` (whole file when null). */
 export function wavePeak(range: [number, number] | null): Promise<number> {
   return invoke<number>("wave_peak", { range });

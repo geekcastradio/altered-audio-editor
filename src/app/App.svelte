@@ -214,6 +214,7 @@
     wavePeak,
     exportCancel,
     exportPickFolder,
+    waveSaveSelection,
     pathsExist,
     pickTrackFiles,
     unzipMedia,
@@ -3378,6 +3379,74 @@
   }
 
   /** Saves the Waveform editor's file. Returns false if cancelled or failed. */
+  /** The Waveform editor's selection as a new file: opens the format dialog, then writes only that part. */
+  let waveSelReq = $state<{ initial: ExportSettings; scopes: ExportScopeInfo[]; source: { sampleRate: number; channels: number; bitDepth: number }; range: [number, number]; markerCount: number } | null>(null);
+  function openSaveSelection() {
+    const f = waveFile.current();
+    const doc = wave.current;
+    const sel = doc?.view.selection;
+    if (!f || !doc || !sel || sel.end <= sel.start || exporting) return;
+    const saved = prefs.raw(KEY_EXPORT) as { format?: unknown; folder?: unknown } | null;
+    const cut = Math.max(f.path.lastIndexOf("/"), f.path.lastIndexOf("\\"));
+    const own = cut > 0 ? f.path.slice(0, cut) : "";
+    const inRange = doc.markers.filter((m) => m.position >= sel.start && m.position < sel.end).length;
+    waveSelReq = {
+      initial: {
+        scope: "selection",
+        name: `${fileSafe(waveName().replace(/\.[^.]+$/, ""))} Selection`,
+        folder: own || (typeof saved?.folder === "string" ? saved.folder : ""),
+        format: sanitizeFormat(saved?.format),
+        formats: sanitizeMemory((saved as { formats?: unknown } | null)?.formats),
+        addToFiles: false,
+        chapters: false,
+        markers: false,
+        verify: false,
+        normalize: "",
+      },
+      scopes: [{ scope: "selection", label: "Selection", seconds: (sel.end - sel.start) / doc.sample_rate, reason: "Select a part of the file first." }],
+      source: { sampleRate: doc.sample_rate, channels: 2, bitDepth: doc.bit_depth },
+      range: [sel.start, sel.end],
+      markerCount: inRange,
+    };
+  }
+  async function finishSaveSelection(v: ExportSettings | null) {
+    const req = waveSelReq;
+    waveSelReq = null;
+    if (!v || !req) return;
+    const was = prefs.raw(KEY_EXPORT) as Record<string, unknown> | null;
+    prefs.set(KEY_EXPORT, { ...(was ?? {}), format: v.format, formats: v.formats, folder: v.folder });
+    const sep = v.folder.includes("\\") ? "\\" : "/";
+    const path = `${v.folder.replace(/[\\/]+$/, "")}${sep}${fileSafe(v.name)}.${extensionOf(v.format.kind)}`;
+    const open = waveFile.current()?.path ?? "";
+    if (path.toLowerCase() === open.toLowerCase()) {
+      showError("That is the open file. Pick another name so the original is not replaced.");
+      return;
+    }
+    const [exists] = await pathsExist([path]);
+    if (exists) {
+      const ok = await ask("Replace the file?", `${path.split(/[\\/]/).pop()} already exists in that folder.`, [
+        { label: "Replace", value: "yes", primary: true },
+        { label: "Cancel", value: "no" },
+      ]);
+      if (ok !== "yes") return;
+    }
+    exporting = { title: "Saving the selection", progress: 0 };
+    let off: (() => void) | null = null;
+    try {
+      off = await listen<{ done: number; total: number }>("export-progress", (e) => {
+        if (exporting) exporting = { ...exporting, progress: e.payload.total > 0 ? e.payload.done / e.payload.total : 0 };
+      });
+      await waveSaveSelection(path, req.range[0], req.range[1], v.format, v.markers === true);
+      showNotice(`Saved ${path.split(/[\\/]/).pop()}. The open file is unchanged.`);
+    } catch (e) {
+      showError(e);
+    } finally {
+      off?.();
+      exporting = null;
+      actions.invalidate();
+    }
+  }
+
   async function saveWave(as: boolean): Promise<boolean> {
     const f = waveFile.current();
     if (!f || exporting) return false;
@@ -4748,6 +4817,20 @@
       }),
       ov(waveIsOpen, { id: "file.save", run: () => saveWave(false).then(() => undefined), label: () => "Save Audio" }),
       ov(waveIsOpen, { id: "file.save-as", run: () => saveWave(true).then(() => undefined), label: () => "Save Audio As..." }),
+      // The same chord and the Export submenu entry save the selection while the Waveform editor is in front.
+      ov(waveIsOpen, {
+        id: "file.export.selection",
+        run: () => openSaveSelection(),
+        label: () => "Save Selection As...",
+        enabled: () => exporting === null && (wave.current?.view.selection?.end ?? 0) > (wave.current?.view.selection?.start ?? 0),
+        reason: () => "Select a part of the file first.",
+      }),
+      actions.register({
+        id: "file.save-selection-as",
+        run: () => openSaveSelection(),
+        enabled: () => waveIsOpen() && exporting === null && (wave.current?.view.selection?.end ?? 0) > (wave.current?.view.selection?.start ?? 0),
+        reason: () => (waveIsOpen() ? "Select a part of the file first." : NOT_WAVE),
+      }),
       ov(waveIsOpen, {
         id: "file.close",
         run: async () => {
@@ -7460,6 +7543,19 @@
     onBrowse={(from) => exportPickFolder(from || null, "Export To")}
     onScan={(scope) => scanForExport(scope)}
     onDone={(v) => void finishExportDialog(v)}
+  />
+{/if}
+
+{#if waveSelReq}
+  <ExportDialog
+    simple
+    doneLabel="Save"
+    initial={waveSelReq.initial}
+    scopes={waveSelReq.scopes}
+    source={waveSelReq.source}
+    markerCount={waveSelReq.markerCount}
+    onBrowse={(from) => exportPickFolder(from || null, "Save To")}
+    onDone={(v) => void finishSaveSelection(v)}
   />
 {/if}
 
