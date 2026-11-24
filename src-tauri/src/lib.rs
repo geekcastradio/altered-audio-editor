@@ -96,6 +96,7 @@ pub mod preset_pack;
 pub mod publish;
 pub mod quickpass_edit;
 pub mod quickpass_scan;
+pub mod rack_import;
 pub mod recording;
 pub mod review;
 pub mod rows;
