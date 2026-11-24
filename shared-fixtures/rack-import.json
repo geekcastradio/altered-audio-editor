@@ -1,0 +1,1807 @@
+{
+ "cases": [
+  {
+   "name": "main",
+   "xml": "<?xml version='1.0'?><prop.map version='4'><prop.list>\n<prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Presets</key><prop.list>\n<prop.pair><key>(Default)</key><prop.list><prop.pair><key>CustomData</key><prop.list></prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>(Last Applied Rack)</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Limiter A</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>57c2006b-d675-40bc-a1aa-f7764ef79959</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ParamList</key><array><array.type><float/></array.type><float>0.94</float></array></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>My Voice</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_2</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Limiter A</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>57c2006b-d675-40bc-a1aa-f7764ef79959</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ParamList</key><array><array.type><float/></array.type><float>0.97</float><float>0.7</float><float>0.13</float><float>0.375</float><float>1</float><float>1</float><float>0</float></array></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Noise A</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>c6762838-e451-4d22-9c90-b0eaa734605a</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_3</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Comp A</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f76dad9c-77da-477a-9939-eefefc5c23bd</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><false/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ParamList</key><array><array.type><float/></array.type><float>0.5</float></array></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_4</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Room A</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>7ea99d31-ca8f-454f-acd7-81a258efb336</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>Only Reverb</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Room A</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>7ea99d31-ca8f-454f-acd7-81a258efb336</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.map>",
+   "racks": [
+    {
+     "name": "My Voice",
+     "slots": [
+      {
+       "name": "Noise A",
+       "id": "c6762838-e451-4d22-9c90-b0eaa734605a",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Limiter A",
+       "id": "57c2006b-d675-40bc-a1aa-f7764ef79959",
+       "on": true,
+       "values": [
+        0.97,
+        0.7,
+        0.13,
+        0.375,
+        1,
+        1,
+        0
+       ]
+      },
+      {
+       "name": "Comp A",
+       "id": "f76dad9c-77da-477a-9939-eefefc5c23bd",
+       "on": false,
+       "values": [
+        0.5
+       ]
+      },
+      {
+       "name": "Room A",
+       "id": "7ea99d31-ca8f-454f-acd7-81a258efb336",
+       "on": true,
+       "values": null
+      }
+     ]
+    },
+    {
+     "name": "Only Reverb",
+     "slots": [
+      {
+       "name": "Room A",
+       "id": "7ea99d31-ca8f-454f-acd7-81a258efb336",
+       "on": true,
+       "values": null
+      }
+     ]
+    }
+   ],
+   "imported": {
+    "presets": [
+     {
+      "name": "My Voice (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.noise_reducer",
+         "params": {
+          "reduction": 10,
+          "strength": 2,
+          "learn": 2,
+          "smoothing": 50
+         }
+        },
+        {
+         "effect": "altaudio.limiter",
+         "params": {
+          "ceiling": -3,
+          "lookahead": 5,
+          "release": 100
+         }
+        }
+       ]
+      }
+     }
+    ],
+    "missing": [
+     {
+      "name": "Room A",
+      "count": 2
+     }
+    ],
+    "chains": 1
+   }
+  },
+  {
+   "name": "every mapped id",
+   "xml": "<?xml version='1.0'?><prop.map version='4'><prop.list>\n<prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Presets</key><prop.list>\n<prop.pair><key>All</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 0</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>57c2006b-d675-40bc-a1aa-f7764ef79959</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_2</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 1</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>e0b23f05-f1a7-4ef7-9b50-7ec3e3002058</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_3</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 2</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>3034b5c2-23a7-43b6-a1ef-9c4047f4368d</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_4</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 3</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>c6762838-e451-4d22-9c90-b0eaa734605a</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_5</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 4</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f76dad9c-77da-477a-9939-eefefc5c23bd</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_6</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 5</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>3981e750-c8ae-40a2-889f-41a01c7efa03</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_7</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 6</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>8edcd326-33de-4a4d-985b-f1bf48ed1427</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_8</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 7</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>4f327230-f04c-4c34-9ea5-a998b4459221</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_9</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 8</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>ee38cdc5-5914-4a75-b7dd-73a265e55c31</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_10</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 9</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>ffbe710f-cd69-4139-ad26-65603616d9d4</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_11</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 10</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f14fee7d-fe5f-4202-b790-f53209e56411</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_12</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 11</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f205d7b7-5e0b-421b-bc6d-5f27096ba192</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_13</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 12</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>5e85f068-b39d-4c63-9912-2030f6f0041e</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_14</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 13</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>c4ad21d8-9748-4d79-b4a3-d88ab7e4be34</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_15</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 14</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>31d33f85-3288-489e-8390-d03c60d9ce6c</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_16</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 15</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>d30b6731-3e00-4a11-9650-e816f58a9d12</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_17</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 16</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>9b66ab13-4d1b-469a-88c6-b807fcf1df16</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_18</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 17</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>164b4e8a-7105-406b-b23b-1ef2cc4d8957</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_19</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 18</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>433322b0-d25a-4cfa-a4f1-4a1ab2d7615b</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_20</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 19</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>0a1016a3-74e6-4c93-8b6c-e058a1419bf1</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_21</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 20</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>7354704a-d87c-11e0-b05b-763c4824019b</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.map>",
+   "racks": [
+    {
+     "name": "All",
+     "slots": [
+      {
+       "name": "Fx 0",
+       "id": "57c2006b-d675-40bc-a1aa-f7764ef79959",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 1",
+       "id": "e0b23f05-f1a7-4ef7-9b50-7ec3e3002058",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 2",
+       "id": "3034b5c2-23a7-43b6-a1ef-9c4047f4368d",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 3",
+       "id": "c6762838-e451-4d22-9c90-b0eaa734605a",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 4",
+       "id": "f76dad9c-77da-477a-9939-eefefc5c23bd",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 5",
+       "id": "3981e750-c8ae-40a2-889f-41a01c7efa03",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 6",
+       "id": "8edcd326-33de-4a4d-985b-f1bf48ed1427",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 7",
+       "id": "4f327230-f04c-4c34-9ea5-a998b4459221",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 8",
+       "id": "ee38cdc5-5914-4a75-b7dd-73a265e55c31",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 9",
+       "id": "ffbe710f-cd69-4139-ad26-65603616d9d4",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 10",
+       "id": "f14fee7d-fe5f-4202-b790-f53209e56411",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 11",
+       "id": "f205d7b7-5e0b-421b-bc6d-5f27096ba192",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 12",
+       "id": "5e85f068-b39d-4c63-9912-2030f6f0041e",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 13",
+       "id": "c4ad21d8-9748-4d79-b4a3-d88ab7e4be34",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 14",
+       "id": "31d33f85-3288-489e-8390-d03c60d9ce6c",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 15",
+       "id": "d30b6731-3e00-4a11-9650-e816f58a9d12",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 16",
+       "id": "9b66ab13-4d1b-469a-88c6-b807fcf1df16",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 17",
+       "id": "164b4e8a-7105-406b-b23b-1ef2cc4d8957",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 18",
+       "id": "433322b0-d25a-4cfa-a4f1-4a1ab2d7615b",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 19",
+       "id": "0a1016a3-74e6-4c93-8b6c-e058a1419bf1",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 20",
+       "id": "7354704a-d87c-11e0-b05b-763c4824019b",
+       "on": true,
+       "values": null
+      }
+     ]
+    }
+   ],
+   "imported": {
+    "presets": [
+     {
+      "name": "All (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.limiter",
+         "params": {
+          "ceiling": -0.1,
+          "lookahead": 5,
+          "release": 100
+         }
+        },
+        {
+         "effect": "altaudio.limiter",
+         "params": {
+          "ceiling": -0.1,
+          "lookahead": 5,
+          "release": 100
+         }
+        },
+        {
+         "effect": "altaudio.speech_leveler",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.noise_reducer",
+         "params": {
+          "reduction": 10,
+          "strength": 2,
+          "learn": 2,
+          "smoothing": 50
+         }
+        },
+        {
+         "effect": "altaudio.dynamics",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.multiband",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.parametric_eq",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.curve_eq",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.notch",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.deesser",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.gain",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.echo",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.echo",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.echo",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.chorus",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.flanger",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.distortion",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.pitch_shift",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.click_repair",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.center_remover",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.phase_curve",
+         "params": {}
+        }
+       ]
+      }
+     }
+    ],
+    "missing": [],
+    "chains": 1
+   }
+  },
+  {
+   "name": "mapped ids upper case",
+   "xml": "<?xml version='1.0'?><prop.map version='4'><prop.list>\n<prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Presets</key><prop.list>\n<prop.pair><key>Upper</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 0</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>57C2006B-D675-40BC-A1AA-F7764EF79959</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_2</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 1</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>E0B23F05-F1A7-4EF7-9B50-7EC3E3002058</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_3</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 2</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>3034B5C2-23A7-43B6-A1EF-9C4047F4368D</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_4</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 3</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>C6762838-E451-4D22-9C90-B0EAA734605A</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_5</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 4</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>F76DAD9C-77DA-477A-9939-EEFEFC5C23BD</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_6</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 5</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>3981E750-C8AE-40A2-889F-41A01C7EFA03</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_7</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 6</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>8EDCD326-33DE-4A4D-985B-F1BF48ED1427</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_8</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 7</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>4F327230-F04C-4C34-9EA5-A998B4459221</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_9</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 8</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>EE38CDC5-5914-4A75-B7DD-73A265E55C31</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_10</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 9</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>FFBE710F-CD69-4139-AD26-65603616D9D4</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_11</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 10</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>F14FEE7D-FE5F-4202-B790-F53209E56411</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_12</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 11</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>F205D7B7-5E0B-421B-BC6D-5F27096BA192</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_13</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 12</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>5E85F068-B39D-4C63-9912-2030F6F0041E</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_14</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 13</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>C4AD21D8-9748-4D79-B4A3-D88AB7E4BE34</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_15</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 14</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>31D33F85-3288-489E-8390-D03C60D9CE6C</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_16</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 15</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>D30B6731-3E00-4A11-9650-E816F58A9D12</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_17</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 16</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>9B66AB13-4D1B-469A-88C6-B807FCF1DF16</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_18</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 17</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>164B4E8A-7105-406B-B23B-1EF2CC4D8957</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_19</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 18</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>433322B0-D25A-4CFA-A4F1-4A1AB2D7615B</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_20</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 19</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>0A1016A3-74E6-4C93-8B6C-E058A1419BF1</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_21</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Fx 20</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>7354704A-D87C-11E0-B05B-763C4824019B</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.map>",
+   "racks": [
+    {
+     "name": "Upper",
+     "slots": [
+      {
+       "name": "Fx 0",
+       "id": "57c2006b-d675-40bc-a1aa-f7764ef79959",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 1",
+       "id": "e0b23f05-f1a7-4ef7-9b50-7ec3e3002058",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 2",
+       "id": "3034b5c2-23a7-43b6-a1ef-9c4047f4368d",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 3",
+       "id": "c6762838-e451-4d22-9c90-b0eaa734605a",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 4",
+       "id": "f76dad9c-77da-477a-9939-eefefc5c23bd",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 5",
+       "id": "3981e750-c8ae-40a2-889f-41a01c7efa03",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 6",
+       "id": "8edcd326-33de-4a4d-985b-f1bf48ed1427",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 7",
+       "id": "4f327230-f04c-4c34-9ea5-a998b4459221",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 8",
+       "id": "ee38cdc5-5914-4a75-b7dd-73a265e55c31",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 9",
+       "id": "ffbe710f-cd69-4139-ad26-65603616d9d4",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 10",
+       "id": "f14fee7d-fe5f-4202-b790-f53209e56411",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 11",
+       "id": "f205d7b7-5e0b-421b-bc6d-5f27096ba192",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 12",
+       "id": "5e85f068-b39d-4c63-9912-2030f6f0041e",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 13",
+       "id": "c4ad21d8-9748-4d79-b4a3-d88ab7e4be34",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 14",
+       "id": "31d33f85-3288-489e-8390-d03c60d9ce6c",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 15",
+       "id": "d30b6731-3e00-4a11-9650-e816f58a9d12",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 16",
+       "id": "9b66ab13-4d1b-469a-88c6-b807fcf1df16",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 17",
+       "id": "164b4e8a-7105-406b-b23b-1ef2cc4d8957",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 18",
+       "id": "433322b0-d25a-4cfa-a4f1-4a1ab2d7615b",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 19",
+       "id": "0a1016a3-74e6-4c93-8b6c-e058a1419bf1",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Fx 20",
+       "id": "7354704a-d87c-11e0-b05b-763c4824019b",
+       "on": true,
+       "values": null
+      }
+     ]
+    }
+   ],
+   "imported": {
+    "presets": [
+     {
+      "name": "Upper (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.limiter",
+         "params": {
+          "ceiling": -0.1,
+          "lookahead": 5,
+          "release": 100
+         }
+        },
+        {
+         "effect": "altaudio.limiter",
+         "params": {
+          "ceiling": -0.1,
+          "lookahead": 5,
+          "release": 100
+         }
+        },
+        {
+         "effect": "altaudio.speech_leveler",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.noise_reducer",
+         "params": {
+          "reduction": 10,
+          "strength": 2,
+          "learn": 2,
+          "smoothing": 50
+         }
+        },
+        {
+         "effect": "altaudio.dynamics",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.multiband",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.parametric_eq",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.curve_eq",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.notch",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.deesser",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.gain",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.echo",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.echo",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.echo",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.chorus",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.flanger",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.distortion",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.pitch_shift",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.click_repair",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.center_remover",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.phase_curve",
+         "params": {}
+        }
+       ]
+      }
+     }
+    ],
+    "missing": [],
+    "chains": 1
+   }
+  },
+  {
+   "name": "limiter values",
+   "xml": "<?xml version='1.0'?><prop.map version='4'><prop.list>\n<prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Presets</key><prop.list>\n<prop.pair><key>Old id</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>L</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>e0b23f05-f1a7-4ef7-9b50-7ec3e3002058</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ParamList</key><array><array.type><float/></array.type><float>0.999</float></array></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>Empty list</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>L</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>57c2006b-d675-40bc-a1aa-f7764ef79959</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ParamList</key><array><array.type><float/></array.type></array></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>Very low</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>L</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>57c2006b-d675-40bc-a1aa-f7764ef79959</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ParamList</key><array><array.type><float/></array.type><float>0.5</float></array></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>Above zero</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>L</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>57c2006b-d675-40bc-a1aa-f7764ef79959</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ParamList</key><array><array.type><float/></array.type><float>1.2</float></array></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>Not a number</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>L</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>57c2006b-d675-40bc-a1aa-f7764ef79959</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ParamList</key><array><array.type><float/></array.type><float>abc</float></array></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>Rounding</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>L</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>57c2006b-d675-40bc-a1aa-f7764ef79959</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ParamList</key><array><array.type><float/></array.type><float>0.9437</float></array></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>Double tag</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>L</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>57c2006b-d675-40bc-a1aa-f7764ef79959</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ParamList</key><array><array.type><double/></array.type><double>0.955</double></array></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>Padded</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>L</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>57c2006b-d675-40bc-a1aa-f7764ef79959</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ParamList</key><array><array.type><float/></array.type><float> 0.97 </float></array></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>Blank value</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>L</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>57c2006b-d675-40bc-a1aa-f7764ef79959</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ParamList</key><array><array.type><float/></array.type><float></float></array></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>Exponent</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>L</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>57c2006b-d675-40bc-a1aa-f7764ef79959</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ParamList</key><array><array.type><float/></array.type><float>9.7e-1</float></array></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>Infinity</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>L</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>57c2006b-d675-40bc-a1aa-f7764ef79959</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ParamList</key><array><array.type><float/></array.type><float>Infinity</float></array></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>Hex</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>L</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>57c2006b-d675-40bc-a1aa-f7764ef79959</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ParamList</key><array><array.type><float/></array.type><float>0x1</float></array></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.map>",
+   "racks": [
+    {
+     "name": "Old id",
+     "slots": [
+      {
+       "name": "L",
+       "id": "e0b23f05-f1a7-4ef7-9b50-7ec3e3002058",
+       "on": true,
+       "values": [
+        0.999
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Empty list",
+     "slots": [
+      {
+       "name": "L",
+       "id": "57c2006b-d675-40bc-a1aa-f7764ef79959",
+       "on": true,
+       "values": []
+      }
+     ]
+    },
+    {
+     "name": "Very low",
+     "slots": [
+      {
+       "name": "L",
+       "id": "57c2006b-d675-40bc-a1aa-f7764ef79959",
+       "on": true,
+       "values": [
+        0.5
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Above zero",
+     "slots": [
+      {
+       "name": "L",
+       "id": "57c2006b-d675-40bc-a1aa-f7764ef79959",
+       "on": true,
+       "values": [
+        1.2
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Not a number",
+     "slots": [
+      {
+       "name": "L",
+       "id": "57c2006b-d675-40bc-a1aa-f7764ef79959",
+       "on": true,
+       "values": null
+      }
+     ]
+    },
+    {
+     "name": "Rounding",
+     "slots": [
+      {
+       "name": "L",
+       "id": "57c2006b-d675-40bc-a1aa-f7764ef79959",
+       "on": true,
+       "values": [
+        0.9437
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Double tag",
+     "slots": [
+      {
+       "name": "L",
+       "id": "57c2006b-d675-40bc-a1aa-f7764ef79959",
+       "on": true,
+       "values": [
+        0.955
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Padded",
+     "slots": [
+      {
+       "name": "L",
+       "id": "57c2006b-d675-40bc-a1aa-f7764ef79959",
+       "on": true,
+       "values": [
+        0.97
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Blank value",
+     "slots": [
+      {
+       "name": "L",
+       "id": "57c2006b-d675-40bc-a1aa-f7764ef79959",
+       "on": true,
+       "values": [
+        0
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Exponent",
+     "slots": [
+      {
+       "name": "L",
+       "id": "57c2006b-d675-40bc-a1aa-f7764ef79959",
+       "on": true,
+       "values": [
+        0.97
+       ]
+      }
+     ]
+    },
+    {
+     "name": "Infinity",
+     "slots": [
+      {
+       "name": "L",
+       "id": "57c2006b-d675-40bc-a1aa-f7764ef79959",
+       "on": true,
+       "values": null
+      }
+     ]
+    },
+    {
+     "name": "Hex",
+     "slots": [
+      {
+       "name": "L",
+       "id": "57c2006b-d675-40bc-a1aa-f7764ef79959",
+       "on": true,
+       "values": [
+        1
+       ]
+      }
+     ]
+    }
+   ],
+   "imported": {
+    "presets": [
+     {
+      "name": "Old id (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.limiter",
+         "params": {
+          "ceiling": -0.1,
+          "lookahead": 5,
+          "release": 100
+         }
+        }
+       ]
+      }
+     },
+     {
+      "name": "Empty list (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.limiter",
+         "params": {
+          "ceiling": -0.1,
+          "lookahead": 5,
+          "release": 100
+         }
+        }
+       ]
+      }
+     },
+     {
+      "name": "Very low (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.limiter",
+         "params": {
+          "ceiling": -24,
+          "lookahead": 5,
+          "release": 100
+         }
+        }
+       ]
+      }
+     },
+     {
+      "name": "Above zero (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.limiter",
+         "params": {
+          "ceiling": 0,
+          "lookahead": 5,
+          "release": 100
+         }
+        }
+       ]
+      }
+     },
+     {
+      "name": "Not a number (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.limiter",
+         "params": {
+          "ceiling": -0.1,
+          "lookahead": 5,
+          "release": 100
+         }
+        }
+       ]
+      }
+     },
+     {
+      "name": "Rounding (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.limiter",
+         "params": {
+          "ceiling": -5.6,
+          "lookahead": 5,
+          "release": 100
+         }
+        }
+       ]
+      }
+     },
+     {
+      "name": "Double tag (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.limiter",
+         "params": {
+          "ceiling": -4.5,
+          "lookahead": 5,
+          "release": 100
+         }
+        }
+       ]
+      }
+     },
+     {
+      "name": "Padded (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.limiter",
+         "params": {
+          "ceiling": -3,
+          "lookahead": 5,
+          "release": 100
+         }
+        }
+       ]
+      }
+     },
+     {
+      "name": "Blank value (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.limiter",
+         "params": {
+          "ceiling": -24,
+          "lookahead": 5,
+          "release": 100
+         }
+        }
+       ]
+      }
+     },
+     {
+      "name": "Exponent (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.limiter",
+         "params": {
+          "ceiling": -3,
+          "lookahead": 5,
+          "release": 100
+         }
+        }
+       ]
+      }
+     },
+     {
+      "name": "Infinity (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.limiter",
+         "params": {
+          "ceiling": -0.1,
+          "lookahead": 5,
+          "release": 100
+         }
+        }
+       ]
+      }
+     },
+     {
+      "name": "Hex (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.limiter",
+         "params": {
+          "ceiling": 0,
+          "lookahead": 5,
+          "release": 100
+         }
+        }
+       ]
+      }
+     }
+    ],
+    "missing": [],
+    "chains": 12
+   }
+  },
+  {
+   "name": "by name",
+   "xml": "<?xml version='1.0'?><prop.map version='4'><prop.list>\n<prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Presets</key><prop.list>\n<prop.pair><key>Names</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Phaser</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>vst:abc</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_2</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>phaser</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>vst:abc</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_3</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Other</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>vst:abc</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.map>",
+   "racks": [
+    {
+     "name": "Names",
+     "slots": [
+      {
+       "name": "Phaser",
+       "id": "vst:abc",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "phaser",
+       "id": "vst:abc",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Other",
+       "id": "vst:abc",
+       "on": true,
+       "values": null
+      }
+     ]
+    }
+   ],
+   "imported": {
+    "presets": [
+     {
+      "name": "Names (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.phaser",
+         "params": {}
+        }
+       ]
+      }
+     }
+    ],
+    "missing": [
+     {
+      "name": "phaser",
+      "count": 1
+     },
+     {
+      "name": "Other",
+      "count": 1
+     }
+    ],
+    "chains": 1
+   }
+  },
+  {
+   "name": "entities",
+   "xml": "<?xml version='1.0'?><prop.map version='4'><prop.list>\n<prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Presets</key><prop.list>\n<prop.pair><key>Fish &amp; Chips &lt;1&gt;</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>A &amp; B</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>7ea99d31-ca8f-454f-acd7-81a258efb336</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_2</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>x &quot;q&quot; &apos;s&apos;</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>7ea99d31-ca8f-454f-acd7-81a258efb336</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_3</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>&amp;lt;</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>7ea99d31-ca8f-454f-acd7-81a258efb336</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_4</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Noise</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>c6762838-e451-4d22-9c90-b0eaa734605a</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.map>",
+   "racks": [
+    {
+     "name": "Fish & Chips <1>",
+     "slots": [
+      {
+       "name": "A & B",
+       "id": "7ea99d31-ca8f-454f-acd7-81a258efb336",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "x \"q\" 's'",
+       "id": "7ea99d31-ca8f-454f-acd7-81a258efb336",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "&lt;",
+       "id": "7ea99d31-ca8f-454f-acd7-81a258efb336",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Noise",
+       "id": "c6762838-e451-4d22-9c90-b0eaa734605a",
+       "on": true,
+       "values": null
+      }
+     ]
+    }
+   ],
+   "imported": {
+    "presets": [
+     {
+      "name": "Fish & Chips <1> (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.noise_reducer",
+         "params": {
+          "reduction": 10,
+          "strength": 2,
+          "learn": 2,
+          "smoothing": 50
+         }
+        }
+       ]
+      }
+     }
+    ],
+    "missing": [
+     {
+      "name": "A & B",
+      "count": 1
+     },
+     {
+      "name": "x \"q\" 's'",
+      "count": 1
+     },
+     {
+      "name": "&lt;",
+      "count": 1
+     }
+    ],
+    "chains": 1
+   }
+  },
+  {
+   "name": "nested lists",
+   "xml": "<?xml version='1.0'?><prop.map version='4'><prop.list>\n<prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Presets</key><prop.list>\n<prop.pair><key>Deep</key><prop.list><prop.pair><key>Wrapper</key><prop.list><prop.pair><key>Inner</key><prop.list><prop.pair><key>More</key><prop.list>\n<prop.pair><key>SlotNumber_2</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Deep B</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f14fee7d-fe5f-4202-b790-f53209e56411</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Top A</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f76dad9c-77da-477a-9939-eefefc5c23bd</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.map>",
+   "racks": [
+    {
+     "name": "Deep",
+     "slots": [
+      {
+       "name": "Top A",
+       "id": "f76dad9c-77da-477a-9939-eefefc5c23bd",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Deep B",
+       "id": "f14fee7d-fe5f-4202-b790-f53209e56411",
+       "on": true,
+       "values": null
+      }
+     ]
+    }
+   ],
+   "imported": {
+    "presets": [
+     {
+      "name": "Deep (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.dynamics",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.gain",
+         "params": {}
+        }
+       ]
+      }
+     }
+    ],
+    "missing": [],
+    "chains": 1
+   }
+  },
+  {
+   "name": "slot quirks",
+   "xml": "<?xml version='1.0'?><prop.map version='4'><prop.list>\n<prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Presets</key><prop.list>\n<prop.pair><key>Quirks</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n\n<prop.pair><key>EffectID</key><ustring>57c2006b-d675-40bc-a1aa-f7764ef79959</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ParamList</key><array><array.type><float/></array.type><float>0.97</float></array></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_2</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>No power</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f14fee7d-fe5f-4202-b790-f53209e56411</ustring></prop.pair>\n\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_3</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Off</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f14fee7d-fe5f-4202-b790-f53209e56411</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><false/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_007</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Padded number</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f76dad9c-77da-477a-9939-eefefc5c23bd</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.map>",
+   "racks": [
+    {
+     "name": "Quirks",
+     "slots": [
+      {
+       "name": "No power",
+       "id": "f14fee7d-fe5f-4202-b790-f53209e56411",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Off",
+       "id": "f14fee7d-fe5f-4202-b790-f53209e56411",
+       "on": false,
+       "values": null
+      },
+      {
+       "name": "Padded number",
+       "id": "f76dad9c-77da-477a-9939-eefefc5c23bd",
+       "on": true,
+       "values": null
+      }
+     ]
+    }
+   ],
+   "imported": {
+    "presets": [
+     {
+      "name": "Quirks (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.gain",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.dynamics",
+         "params": {}
+        }
+       ]
+      }
+     }
+    ],
+    "missing": [],
+    "chains": 1
+   }
+  },
+  {
+   "name": "only off",
+   "xml": "<?xml version='1.0'?><prop.map version='4'><prop.list>\n<prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Presets</key><prop.list>\n<prop.pair><key>All off</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Off</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f14fee7d-fe5f-4202-b790-f53209e56411</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><false/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.map>",
+   "racks": [
+    {
+     "name": "All off",
+     "slots": [
+      {
+       "name": "Off",
+       "id": "f14fee7d-fe5f-4202-b790-f53209e56411",
+       "on": false,
+       "values": null
+      }
+     ]
+    }
+   ],
+   "imported": {
+    "presets": [],
+    "missing": [],
+    "chains": 0
+   }
+  },
+  {
+   "name": "declaration and comments",
+   "xml": "<?xml version='1.0' encoding='UTF-8'?><!-- made by hand -->\n<prop.map version='4'><prop.list>\n<prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Presets</key><prop.list>\n<prop.pair><key>Commented</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Gain</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f14fee7d-fe5f-4202-b790-f53209e56411</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.map>",
+   "racks": [
+    {
+     "name": "Commented",
+     "slots": [
+      {
+       "name": "Gain",
+       "id": "f14fee7d-fe5f-4202-b790-f53209e56411",
+       "on": true,
+       "values": null
+      }
+     ]
+    }
+   ],
+   "imported": {
+    "presets": [
+     {
+      "name": "Commented (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.gain",
+         "params": {}
+        }
+       ]
+      }
+     }
+    ],
+    "missing": [],
+    "chains": 1
+   }
+  },
+  {
+   "name": "empty",
+   "xml": "",
+   "racks": [],
+   "imported": {
+    "presets": [],
+    "missing": [],
+    "chains": 0
+   }
+  },
+  {
+   "name": "html",
+   "xml": "<html></html>",
+   "racks": [],
+   "imported": {
+    "presets": [],
+    "missing": [],
+    "chains": 0
+   }
+  },
+  {
+   "name": "plain text",
+   "xml": "not xml at all",
+   "racks": [],
+   "imported": {
+    "presets": [],
+    "missing": [],
+    "chains": 0
+   }
+  },
+  {
+   "name": "truncated",
+   "xml": "<prop.map><prop.list><prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Pre",
+   "racks": [],
+   "imported": {
+    "presets": [],
+    "missing": [],
+    "chains": 0
+   }
+  },
+  {
+   "name": "stray close tags",
+   "xml": "</a></b></c><prop.map></prop.map></x>",
+   "racks": [],
+   "imported": {
+    "presets": [],
+    "missing": [],
+    "chains": 0
+   }
+  },
+  {
+   "name": "no presets key",
+   "xml": "<prop.map><prop.list><prop.pair><key>Other</key><prop.list/></prop.pair></prop.list></prop.map>",
+   "racks": [],
+   "imported": {
+    "presets": [],
+    "missing": [],
+    "chains": 0
+   }
+  },
+  {
+   "name": "attributes",
+   "xml": "<?xml version='1.0'?><prop.map version='4'><prop.list>\n<prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Presets</key><prop.list>\n<prop.pair attr=\"a/b\" other='x'><key>Attr</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>A</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f14fee7d-fe5f-4202-b790-f53209e56411</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.map>",
+   "racks": [
+    {
+     "name": "Attr",
+     "slots": [
+      {
+       "name": "A",
+       "id": "f14fee7d-fe5f-4202-b790-f53209e56411",
+       "on": true,
+       "values": null
+      }
+     ]
+    }
+   ],
+   "imported": {
+    "presets": [
+     {
+      "name": "Attr (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.gain",
+         "params": {}
+        }
+       ]
+      }
+     }
+    ],
+    "missing": [],
+    "chains": 1
+   }
+  },
+  {
+   "name": "duplicate slot keys",
+   "xml": "<?xml version='1.0'?><prop.map version='4'><prop.list>\n<prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Presets</key><prop.list>\n<prop.pair><key>Dup</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>First</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f14fee7d-fe5f-4202-b790-f53209e56411</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Second</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f76dad9c-77da-477a-9939-eefefc5c23bd</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.map>",
+   "racks": [
+    {
+     "name": "Dup",
+     "slots": [
+      {
+       "name": "Second",
+       "id": "f76dad9c-77da-477a-9939-eefefc5c23bd",
+       "on": true,
+       "values": null
+      }
+     ]
+    }
+   ],
+   "imported": {
+    "presets": [
+     {
+      "name": "Dup (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.dynamics",
+         "params": {}
+        }
+       ]
+      }
+     }
+    ],
+    "missing": [],
+    "chains": 1
+   }
+  },
+  {
+   "name": "same slot number in two lists",
+   "xml": "<?xml version='1.0'?><prop.map version='4'><prop.list>\n<prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Presets</key><prop.list>\n<prop.pair><key>Ties</key><prop.list><prop.pair><key>CustomData</key><prop.list><prop.pair><key>A</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Tie one</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f14fee7d-fe5f-4202-b790-f53209e56411</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>B</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Tie two</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f76dad9c-77da-477a-9939-eefefc5c23bd</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.map>",
+   "racks": [
+    {
+     "name": "Ties",
+     "slots": [
+      {
+       "name": "Tie one",
+       "id": "f14fee7d-fe5f-4202-b790-f53209e56411",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Tie two",
+       "id": "f76dad9c-77da-477a-9939-eefefc5c23bd",
+       "on": true,
+       "values": null
+      }
+     ]
+    }
+   ],
+   "imported": {
+    "presets": [
+     {
+      "name": "Ties (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.gain",
+         "params": {}
+        },
+        {
+         "effect": "altaudio.dynamics",
+         "params": {}
+        }
+       ]
+      }
+     }
+    ],
+    "missing": [],
+    "chains": 1
+   }
+  },
+  {
+   "name": "same rack name twice",
+   "xml": "<?xml version='1.0'?><prop.map version='4'><prop.list>\n<prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Presets</key><prop.list>\n<prop.pair><key>Twin</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>First</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f14fee7d-fe5f-4202-b790-f53209e56411</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>Twin</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Second</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f76dad9c-77da-477a-9939-eefefc5c23bd</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>Last</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Tail</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f14fee7d-fe5f-4202-b790-f53209e56411</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.map>",
+   "racks": [
+    {
+     "name": "Twin",
+     "slots": [
+      {
+       "name": "Second",
+       "id": "f76dad9c-77da-477a-9939-eefefc5c23bd",
+       "on": true,
+       "values": null
+      }
+     ]
+    },
+    {
+     "name": "Last",
+     "slots": [
+      {
+       "name": "Tail",
+       "id": "f14fee7d-fe5f-4202-b790-f53209e56411",
+       "on": true,
+       "values": null
+      }
+     ]
+    }
+   ],
+   "imported": {
+    "presets": [
+     {
+      "name": "Twin (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.dynamics",
+         "params": {}
+        }
+       ]
+      }
+     },
+     {
+      "name": "Last (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.gain",
+         "params": {}
+        }
+       ]
+      }
+     }
+    ],
+    "missing": [],
+    "chains": 2
+   }
+  },
+  {
+   "name": "missing counts",
+   "xml": "<?xml version='1.0'?><prop.map version='4'><prop.list>\n<prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Presets</key><prop.list>\n<prop.pair><key>R1</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Alpha</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>7ea99d31-ca8f-454f-acd7-81a258efb336</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_2</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Beta</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>7ea99d31-ca8f-454f-acd7-81a258efb336</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_3</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Gamma</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>7ea99d31-ca8f-454f-acd7-81a258efb336</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>R2</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Beta</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>7ea99d31-ca8f-454f-acd7-81a258efb336</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_2</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Gamma</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>7ea99d31-ca8f-454f-acd7-81a258efb336</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair><prop.pair><key>R3</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Gamma</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>7ea99d31-ca8f-454f-acd7-81a258efb336</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_2</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Delta</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>7ea99d31-ca8f-454f-acd7-81a258efb336</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_3</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Noise</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>c6762838-e451-4d22-9c90-b0eaa734605a</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.map>",
+   "racks": [
+    {
+     "name": "R1",
+     "slots": [
+      {
+       "name": "Alpha",
+       "id": "7ea99d31-ca8f-454f-acd7-81a258efb336",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Beta",
+       "id": "7ea99d31-ca8f-454f-acd7-81a258efb336",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Gamma",
+       "id": "7ea99d31-ca8f-454f-acd7-81a258efb336",
+       "on": true,
+       "values": null
+      }
+     ]
+    },
+    {
+     "name": "R2",
+     "slots": [
+      {
+       "name": "Beta",
+       "id": "7ea99d31-ca8f-454f-acd7-81a258efb336",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Gamma",
+       "id": "7ea99d31-ca8f-454f-acd7-81a258efb336",
+       "on": true,
+       "values": null
+      }
+     ]
+    },
+    {
+     "name": "R3",
+     "slots": [
+      {
+       "name": "Gamma",
+       "id": "7ea99d31-ca8f-454f-acd7-81a258efb336",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Delta",
+       "id": "7ea99d31-ca8f-454f-acd7-81a258efb336",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Noise",
+       "id": "c6762838-e451-4d22-9c90-b0eaa734605a",
+       "on": true,
+       "values": null
+      }
+     ]
+    }
+   ],
+   "imported": {
+    "presets": [
+     {
+      "name": "R3 (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.noise_reducer",
+         "params": {
+          "reduction": 10,
+          "strength": 2,
+          "learn": 2,
+          "smoothing": 50
+         }
+        }
+       ]
+      }
+     }
+    ],
+    "missing": [
+     {
+      "name": "Gamma",
+      "count": 3
+     },
+     {
+      "name": "Beta",
+      "count": 2
+     },
+     {
+      "name": "Alpha",
+      "count": 1
+     },
+     {
+      "name": "Delta",
+      "count": 1
+     }
+    ],
+    "chains": 1
+   }
+  },
+  {
+   "name": "unicode",
+   "xml": "<?xml version='1.0'?><prop.map version='4'><prop.list>\n<prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Presets</key><prop.list>\n<prop.pair><key>Stimme für Café 🎙</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Räume ✓</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>7ea99d31-ca8f-454f-acd7-81a258efb336</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair>\n<prop.pair><key>SlotNumber_2</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>Gain</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>f14fee7d-fe5f-4202-b790-f53209e56411</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.map>",
+   "racks": [
+    {
+     "name": "Stimme für Café 🎙",
+     "slots": [
+      {
+       "name": "Räume ✓",
+       "id": "7ea99d31-ca8f-454f-acd7-81a258efb336",
+       "on": true,
+       "values": null
+      },
+      {
+       "name": "Gain",
+       "id": "f14fee7d-fe5f-4202-b790-f53209e56411",
+       "on": true,
+       "values": null
+      }
+     ]
+    }
+   ],
+   "imported": {
+    "presets": [
+     {
+      "name": "Stimme für Café 🎙 (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.gain",
+         "params": {}
+        }
+       ]
+      }
+     }
+    ],
+    "missing": [
+     {
+      "name": "Räume ✓",
+      "count": 1
+     }
+    ],
+    "chains": 1
+   }
+  },
+  {
+   "name": "whitespace names",
+   "xml": "<?xml version='1.0'?><prop.map version='4'><prop.list>\n<prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Presets</key><prop.list>\n<prop.pair><key>  Spaced  </key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>  Gain  </ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>  f14fee7d-fe5f-4202-b790-f53209e56411  </ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ChunkData</key><string>AAAA</string></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.map>",
+   "racks": [
+    {
+     "name": "Spaced",
+     "slots": [
+      {
+       "name": "Gain",
+       "id": "f14fee7d-fe5f-4202-b790-f53209e56411",
+       "on": true,
+       "values": null
+      }
+     ]
+    }
+   ],
+   "imported": {
+    "presets": [
+     {
+      "name": "Spaced (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.gain",
+         "params": {}
+        }
+       ]
+      }
+     }
+    ],
+    "missing": [],
+    "chains": 1
+   }
+  },
+  {
+   "name": "self closing value",
+   "xml": "<?xml version='1.0'?><prop.map version='4'><prop.list>\n<prop.pair><key>EffectsRackPresetID</key><prop.list><prop.pair><key>Presets</key><prop.list>\n<prop.pair><key>Selfclose</key><prop.list><prop.pair><key>CustomData</key><prop.list>\n<prop.pair><key>SlotNumber_1</key><prop.list>\n<prop.pair><key>DisplayName</key><ustring>L</ustring></prop.pair>\n<prop.pair><key>EffectID</key><ustring>57c2006b-d675-40bc-a1aa-f7764ef79959</ustring></prop.pair>\n<prop.pair><key>EffectPower</key><true/></prop.pair>\n<prop.pair><key>EffectSettings</key><prop.list><prop.pair><key>ParamList</key><array><float/><float>0.9</float></array></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.pair></prop.list></prop.pair>\n</prop.list></prop.map>",
+   "racks": [
+    {
+     "name": "Selfclose",
+     "slots": [
+      {
+       "name": "L",
+       "id": "57c2006b-d675-40bc-a1aa-f7764ef79959",
+       "on": true,
+       "values": [
+        0,
+        0.9
+       ]
+      }
+     ]
+    }
+   ],
+   "imported": {
+    "presets": [
+     {
+      "name": "Selfclose (Audition)",
+      "group": "Voice chains",
+      "chain": {
+       "enabled": true,
+       "input_gain_db": 0,
+       "output_gain_db": 0,
+       "mix": 1,
+       "slots": [
+        {
+         "effect": "altaudio.limiter",
+         "params": {
+          "ceiling": -24,
+          "lookahead": 5,
+          "release": 100
+         }
+        }
+       ]
+      }
+     }
+    ],
+    "missing": [],
+    "chains": 1
+   }
+  }
+ ]
+}

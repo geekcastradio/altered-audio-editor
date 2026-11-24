@@ -2386,3 +2386,7 @@ Export and Batch Convert get a FLAC compression level from 0 to 8, default 5. Al
 ## 2026-11-23: Import labels no longer name another product
 
 Three labels named another editor: the shortcut import button, the Voice Chain presets menu item and its "no chains found" notice. They now read "Import shortcuts...", "Import chains from a .xml file..." and a plain description of the file to pick. Naming rule from CLAUDE.md. Release notes 0.9.5 and 0.9.6 are published and stay as they are. Still open for the project lead: the welcome screen text "Shortcuts now follow Audition" and the Settings note "On, as in Audition" name the product too. Left alone because the shortcut match was approved on purpose and the welcome text may be deliberate.
+
+## 2026-11-24: effect chain import reader ported to Rust
+
+`src-tauri/src/rack_import.rs` reads the racks in another editor's effect presets file and builds Voice Chain presets, with the same results as `src/panels/voice-chain/audition-presets.ts`. The shared cases are in `shared-fixtures/rack-import.json` (23 cases: entities, nested lists, odd numbers, duplicate keys, broken input). Both sides test against it. The TypeScript stays until the Rust command replaces it. Part of the move to Rust for 1.0.
