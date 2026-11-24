@@ -124,7 +124,10 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={close}>
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="pm-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
-    <h1 id="pm-title">Plug-in Manager</h1>
+    <header>
+      <h1 id="pm-title">Plug-in Manager</h1>
+      <button type="button" class="dlg-x" aria-label="Close" title="Close" onclick={close}>×</button>
+    </header>
 
     <section>
       <h2>Folders searched</h2>

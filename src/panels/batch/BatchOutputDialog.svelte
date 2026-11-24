@@ -87,7 +87,10 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="backdrop" onclick={onClose}>
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="bo-title" tabindex="-1" onclick={(e) => e.stopPropagation()}>
-    <h1 id="bo-title">Output Settings</h1>
+    <header>
+      <h1 id="bo-title">Output Settings</h1>
+      <button type="button" class="dlg-x" aria-label="Close" title="Close" onclick={onClose}>×</button>
+    </header>
 
     <section>
       <div class="grid">

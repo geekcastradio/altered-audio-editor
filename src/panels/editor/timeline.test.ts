@@ -15,6 +15,7 @@ import {
   overviewWindow,
   peakRange,
   pickLevel,
+  exactSampleLimit,
   maxSppFor,
   rulerTicks,
   sampleAt,
@@ -77,6 +78,15 @@ describe("peaks", () => {
     expect(pickLevel([fine, coarse], 1000)?.block).toBe(256);
     expect(pickLevel([fine, coarse], 10)?.block).toBe(256);
     expect(pickLevel([], 10)).toBeNull();
+  });
+
+  it("draws exact samples wherever the finest peak block would show as steps", () => {
+    const b32 = { block: 32, data: new Int16Array(0) };
+    expect(exactSampleLimit([b32, fine, coarse])).toBe(32);
+    // Only coarse levels: capped, so no huge sample ranges are loaded.
+    expect(exactSampleLimit([fine, coarse])).toBe(64);
+    expect(exactSampleLimit([])).toBe(8);
+    expect(exactSampleLimit([{ block: 4, data: new Int16Array(0) }])).toBe(8);
   });
 
   it("reads min and max over a range of blocks", () => {

@@ -2391,6 +2391,10 @@ Three labels named another editor: the shortcut import button, the Voice Chain p
 
 `src-tauri/src/rack_import.rs` reads the racks in another editor's effect presets file and builds Voice Chain presets, with the same results as `src/panels/voice-chain/audition-presets.ts`. The shared cases are in `shared-fixtures/rack-import.json` (23 cases: entities, nested lists, odd numbers, duplicate keys, broken input). Both sides test against it. The TypeScript stays until the Rust command replaces it. Part of the move to Rust for 1.0.
 
+## 2026-11-24: Waveform editor, no step in detail while zooming in (from a tester's report)
+
+The Waveform editor drew exact samples only at 8 or fewer source frames per pixel and peaks above that. Peaks come from blocks of at least 32 frames, so between about 9 and 32 frames a pixel the blocks were wider than a pixel and the waveform looked choppy, then jumped to the sample line. The exact samples now take over wherever a pixel covers fewer frames than the finest peak block (`exactSampleLimit`, between 8 and 64). At that point peaks and samples draw the same picture, so there is no step. A file whose finest level is 256 frames keeps a step between 65 and 256 frames a pixel: closing that needs a finer peak level for long files, which costs cache size, so it is left for a later look. The Multitrack view is unchanged.
+
 ## 2026-11-24: side panels can be squished to a narrow strip
 
 Every side panel (Files, Voice Chain group, Audio FX, Libraries, Markers, Video and the rest) now has a 48 px minimum width instead of 260 to 320, so a column can be dragged to the window's edge and out of the way. The Editor, Mixer, Levels, Time Info and 3D Space keep their limits. The panel body is clipped, not reflowed, when narrow. Default sizes are unchanged (270). Reason: the user asked for it; a saved workspace (a copy of Default) had come back with wide side columns and the only fix was to resize by hand within the old limits. `data/docking.json` and the group cases in `shared-fixtures/docking.json` were written again from `registry.ts`.
@@ -2398,3 +2402,7 @@ Every side panel (Files, Voice Chain group, Audio FX, Libraries, Markers, Video 
 ## 2026-11-24: Follow Playhead in the Waveform editor
 
 The Follow Playhead setting (View menu, A key) only drove the Multitrack view; the Waveform editor always scrolled with playback. It now honors the setting too, and its toolbar has a Follow button (tooltip "Toggle Playback Auto-Scroll") next to Spectrum. Steve's call: waveform only, no ruler-corner button. No new shortcut: the button runs the existing action. Consequence: turning Follow off in either editor turns it off in both, since it is one setting.
+
+## 2026-11-24: Close button on the older dialogs
+
+Steve asked for every settings and pop-up dialog to share the title bar look. The nine dialogs that had their own markup (Analysis, Keyboard Shortcuts, Controllers, Plug-in Manager, Edit Notes, Isolated Clips, Output Settings, Sample Settings, Settings) now have a title bar with a close X at the right, styled once in `tokens.css`. The X does what Escape does and is disabled while work that must not be interrupted runs. Progress and choice dialogs have no X on purpose.
