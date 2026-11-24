@@ -909,7 +909,9 @@ mod sample_files {
     /// Runs against real projects when AUP_SAMPLES names a folder holding them. Skipped otherwise.
     #[test]
     fn real_projects_import_when_available() {
-        let Ok(dir) = std::env::var("AUP_SAMPLES") else { return };
+        let Ok(dir) = std::env::var("AUP_SAMPLES") else {
+            return;
+        };
         for ext in ["aup3", "aup4"] {
             let tmp = tempfile::tempdir().unwrap();
             let src = std::path::Path::new(&dir).join(format!("a.{ext}"));
