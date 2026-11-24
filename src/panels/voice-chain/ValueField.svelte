@@ -135,8 +135,8 @@
     padding: 0 3px;
     border: 1px solid var(--border-strong);
     border-radius: 2px;
-    background: rgba(0, 0, 0, 0.35);
-    color: var(--accent);
+    background: var(--surface-0);
+    color: var(--text);
     font: inherit;
     font-size: 11px;
     font-variant-numeric: tabular-nums;

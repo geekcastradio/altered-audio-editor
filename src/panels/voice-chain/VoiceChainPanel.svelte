@@ -1196,7 +1196,8 @@
   }
   .tabs button.on {
     background: var(--surface-3);
-    color: var(--accent);
+    color: var(--text);
+    font-weight: 600;
   }
   .top {
     display: grid;
