@@ -30,7 +30,7 @@ pub fn default_settings() -> Value {
         "backupCount": 5, "copyMedia": "always", "mediaFolder": "Audio", "collectOnSave": true,
         "leaveLibraryFiles": true, "countdownSec": 0, "markerName": "Marker", "timecodeFps": 30,
         "phaseWheel": { "size": 4096, "fps": 60, "a": "left", "b": "right" },
-        "musicMode": false, "returnOnStop": true, "takeLanes": true, "playbackSpeed": false,
+        "musicMode": false, "quickActionsBar": false, "favorites": [], "returnOnStop": true, "takeLanes": true, "playbackSpeed": false,
         "revealAfterExport": true, "scrubAudio": false, "ampModelAlways": false,
         "stopAtSelectionEnd": true, "updateCheck": false, "updateEvery": "week",
         "updateAutoInstall": false, "lastUpdateCheck": 0, "controllerPorts": [],
@@ -40,6 +40,26 @@ pub fn default_settings() -> Value {
             "accent": true, "subdivide": "none"
         }
     })
+}
+
+/// Commands pinned to Favorites: text ids with no repeats, none of the Favorites or Open Recent
+/// rows themselves, at most 24. Mirrors `sanitizeFavorites` in the interface.
+fn favorites(v: Option<&Value>) -> Value {
+    let mut out: Vec<Value> = Vec::new();
+    if let Some(Value::Array(items)) = v {
+        for it in items {
+            let Some(id) = it.as_str() else { continue };
+            let pinnable =
+                !id.is_empty() && !id.starts_with("favorites.") && !id.starts_with("file.recent.");
+            if pinnable && !out.iter().any(|x| x.as_str() == Some(id)) {
+                out.push(Value::String(id.to_string()));
+            }
+            if out.len() >= 24 {
+                break;
+            }
+        }
+    }
+    Value::Array(out)
 }
 
 fn num(v: Option<&Value>, lo: f64, hi: f64, def: f64) -> f64 {
@@ -303,6 +323,8 @@ pub fn sanitize_settings(raw: &Value) -> Value {
         "timecodeFps": g("timecodeFps").and_then(Value::as_f64).filter(|x| [24.0, 25.0, 30.0, 50.0, 60.0].contains(x)).unwrap_or(30.0),
         "phaseWheel": phase_prefs(g("phaseWheel")),
         "musicMode": boolean(g("musicMode"), false),
+        "quickActionsBar": boolean(g("quickActionsBar"), false),
+        "favorites": favorites(g("favorites")),
         "returnOnStop": boolean(g("returnOnStop"), true),
         "takeLanes": boolean(g("takeLanes"), true),
         "playbackSpeed": boolean(g("playbackSpeed"), false),

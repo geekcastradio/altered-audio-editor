@@ -46,7 +46,8 @@
   import { ActionRegistry } from "./actions";
   import { MENUS } from "./menus/model";
   import MenuBar, { type PopupList } from "./menus/MenuBar.svelte";
-  import type { ContextItem } from "./ContextMenu.svelte";
+  import ContextMenu, { type ContextItem } from "./ContextMenu.svelte";
+  import { FAVORITE_SLOT_PREFIX, MAX_FAVORITES, isPinnable, menuLabels, shortLabel, toggleFavorite } from "./favorites";
   import AboutDialog from "./AboutDialog.svelte";
   import GuideDialog from "./GuideDialog.svelte";
   import WelcomeDialog from "./WelcomeDialog.svelte";
@@ -4445,6 +4446,51 @@
   // File > New Session.
   let newSessionReq = $state<{ initial: NewSessionSettings; templates: TemplateEntry[]; error?: string } | null>(null);
   let newSessionCount = 0;
+  // Favorites: the commands a person pins. The Quick Actions bar and the Favorites menu show this one list.
+  let settingsView = $state(settings.current);
+  $effect(() =>
+    settings.subscribe((v) => {
+      settingsView = v;
+    }),
+  );
+  const favoriteLabels = menuLabels(MENUS);
+  const favoriteLabel = (id: string) => favoriteLabels.get(id) ?? id;
+  const favoriteTarget = (i: number): string | undefined => settings.current.favorites[i];
+  function setFavorites(next: string[]) {
+    settings.set({ ...settings.current, favorites: next });
+    actions.invalidate();
+  }
+  let favMenu = $state<{ x: number; y: number; items: ContextItem[] } | null>(null);
+  /** Right-click on a menu command or a pinned button: offers Add to or Remove from Favorites. */
+  function openFavoriteContext(id: string, x: number, y: number) {
+    const target = id.startsWith(FAVORITE_SLOT_PREFIX) ? favoriteTarget(Number(id.slice(FAVORITE_SLOT_PREFIX.length)) - 1) : id;
+    if (!target || !isPinnable(target)) return;
+    const pinned = settings.current.favorites.includes(target);
+    const full = !pinned && settings.current.favorites.length >= MAX_FAVORITES;
+    favMenu = {
+      x,
+      y,
+      items: [
+        {
+          kind: "item",
+          label: pinned ? "Remove from Favorites" : "Add to Favorites",
+          disabled: full,
+          reason: full ? `Favorites holds ${MAX_FAVORITES}. Remove one first.` : null,
+          run: () => setFavorites(toggleFavorite(settings.current.favorites, target)),
+        },
+      ],
+    };
+  }
+  async function clearFavorites() {
+    const n = settings.current.favorites.length;
+    if (n === 0) return;
+    const ok = await ask("Remove all favorites?", `This unpins ${n === 1 ? "the one command" : `all ${n} commands`}. The commands themselves stay in their menus.`, [
+      { label: "Remove All", value: "yes", primary: true },
+      { label: "Cancel", value: "no" },
+    ]);
+    if (ok === "yes") setFavorites([]);
+  }
+
   async function askNewSession() {
     // Each lookup on its own, so one failing never hides the other.
     const templates = await templateList().catch((e: unknown): TemplateEntry[] => (showError(e), []));
@@ -5395,6 +5441,53 @@
             actions.invalidate();
           },
           checked: () => settings.current.theme === t.id,
+        }),
+      ),
+      actions.register({
+        id: "view.quick-actions",
+        run: () => {
+          settings.set({ ...settings.current, quickActionsBar: !settings.current.quickActionsBar });
+          actions.invalidate();
+        },
+        checked: () => settings.current.quickActionsBar,
+      }),
+      actions.register({
+        id: "favorites.none",
+        run: () => {},
+        enabled: () => false,
+        visible: () => settings.current.favorites.length === 0,
+        reason: () => "Right-click any menu command and pick Add to Favorites.",
+      }),
+      actions.register({
+        id: "favorites.clear",
+        run: () => clearFavorites(),
+        enabled: () => settings.current.favorites.length > 0,
+        reason: () => "Nothing is pinned yet.",
+      }),
+      ...Array.from({ length: MAX_FAVORITES }, (_, i) =>
+        actions.register({
+          id: `${FAVORITE_SLOT_PREFIX}${i + 1}`,
+          run: async () => {
+            const t = favoriteTarget(i);
+            if (t) await actions.run(t);
+          },
+          visible: () => favoriteTarget(i) !== undefined,
+          enabled: () => {
+            const t = favoriteTarget(i);
+            return t !== undefined && actions.isEnabled(t);
+          },
+          reason: () => {
+            const t = favoriteTarget(i);
+            return t ? (actions.reason(t) ?? "Not available in this editor right now.") : null;
+          },
+          label: () => {
+            const t = favoriteTarget(i);
+            return t ? (actions.label(t) ?? favoriteLabel(t)) : null;
+          },
+          checked: () => {
+            const t = favoriteTarget(i);
+            return t ? actions.isChecked(t) : undefined;
+          },
         }),
       ),
       actions.register({
@@ -7221,7 +7314,7 @@
 
 <div class="shell">
   <header class="top">
-    <MenuBar menus={MENUS} {actions} {shortcutFor} onError={showError} onBlocked={showNotice} popups={{ "fx.vst3": vst3Popup }} searches={{ Effects: effectsMenuSearch }} />
+    <MenuBar menus={MENUS} {actions} {shortcutFor} onError={showError} onBlocked={showNotice} onItemContext={openFavoriteContext} popups={{ "fx.vst3": vst3Popup }} searches={{ Effects: effectsMenuSearch }} />
     <label class="wsswitch" title="Switch workspace">
       <span>Workspace</span>
       <select value={wsView.current} onchange={(e) => void dock.switchTo(e.currentTarget.value)}>
@@ -7229,7 +7322,10 @@
       </select>
     </label>
   </header>
-  <ToolStrip {actions} {shortcutFor} />
+  <ToolStrip {actions} {shortcutFor} favorites={settingsView.favorites} showFavorites={settingsView.quickActionsBar} labelFor={favoriteLabel} onFavoriteContext={openFavoriteContext} />
+  {#if favMenu}
+    <ContextMenu x={favMenu.x} y={favMenu.y} items={favMenu.items} onClose={() => (favMenu = null)} />
+  {/if}
 
   <main class="body" bind:this={body}>
     <DockShell {dock} />

@@ -16,7 +16,7 @@ export interface Action {
   /** Defaults to enabled. */
   enabled?: () => boolean;
   /** For toggle items. Undefined means not a toggle. */
-  checked?: () => boolean;
+  checked?: () => boolean | undefined;
   /** Overrides the menu label, for example "Undo Add Track". */
   label?: () => string | null;
   /** Tooltip while disabled, for example "Select files in the Files panel first." */
