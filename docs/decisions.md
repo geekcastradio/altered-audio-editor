@@ -2452,3 +2452,7 @@ Decision: File > Import is a submenu (Files, Folder, Session). Session opens one
 ## 2026-11-24: Codec options on Save Audio As
 
 Decision: in the Waveform editor, Save Audio As opens the same format dialog as Save Selection As (whole file scope): file name and folder, then format, bit depth or sample type, bitrate, constant or variable encoding, channels. `wave_save` takes an optional `OutputFormat`; without it the file name's extension decides, as before, so plain Save and the close-and-save prompts are unchanged. Reason: issue 294 asked for output settings on save; one dialog keeps both save paths the same. Reported on the issue after release.
+
+## 2026-11-25: Light theme without light blue, Waveform selection in light mode
+
+Light theme surfaces and borders are slightly darker for contrast, the pale blue lane and button fills are gone (the selected lane is a neutral gray, the on state of small buttons a deep blue), and accent and value colors darkened to keep the contrast tests passing. The dark theme is unchanged by decision. In the Waveform editor, grid lines and the selection wash turn dark in light mode, and a "Selected track lane" color set in Settings now also colors the selection wash in both themes. Clicking a marker clears the time selection (range markers still select their span), so Space plays from the marker (issue 294).
