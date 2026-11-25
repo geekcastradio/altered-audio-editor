@@ -30,7 +30,7 @@ pub fn default_settings() -> Value {
         "backupCount": 5, "copyMedia": "always", "mediaFolder": "Audio", "collectOnSave": true,
         "leaveLibraryFiles": true, "countdownSec": 0, "markerName": "Marker", "timecodeFps": 30,
         "phaseWheel": { "size": 4096, "fps": 60, "a": "left", "b": "right" },
-        "musicMode": false, "quickActionsBar": false, "favorites": [], "returnOnStop": true, "takeLanes": true, "playbackSpeed": false,
+        "musicMode": false, "askBeforeSave": false, "quickActionsBar": false, "favorites": [], "returnOnStop": true, "takeLanes": true, "playbackSpeed": false,
         "revealAfterExport": true, "scrubAudio": false, "ampModelAlways": false,
         "stopAtSelectionEnd": true, "updateCheck": false, "updateEvery": "week",
         "updateAutoInstall": false, "lastUpdateCheck": 0, "controllerPorts": [],
