@@ -172,6 +172,8 @@ describe("menu model", () => {
       "edit.repeat-last",
       "edit.repeat-last-dialog",
       "file.import-session",
+      "favorites.clear",
+      "view.quick-actions",
       "file.save-selection-as",
       "multitrack.play-pause",
       "multitrack.stop",
@@ -431,6 +433,7 @@ describe("menu model", () => {
           built.has(it.id) ||
           it.id.startsWith("window.panel.") ||
           it.id.startsWith("file.recent.") ||
+          it.id.startsWith("favorites.slot.") ||
           it.id.startsWith("window.workspace.")
         )
           continue;

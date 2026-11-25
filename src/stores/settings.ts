@@ -10,6 +10,7 @@
  */
 
 import { cleanBindings, type Binding } from "../app/controller/map";
+import { sanitizeFavorites } from "../app/favorites";
 
 /** A fade curve, as the session stores it. */
 export type FadeShape = "linear" | "logarithmic" | "cosine" | "exponential" | "equal_power";
@@ -105,6 +106,10 @@ export interface AppSettings {
   phaseWheel: PhaseWheelPrefs;
   /** View > Music Mode: offers the music tools (MIDI tracks, the Amp Model, the metronome). Off keeps them out of the way. */
   musicMode: boolean;
+  /** View > Quick Actions Bar: a row in the tool strip with the commands pinned to Favorites. Off draws nothing. */
+  quickActionsBar: boolean;
+  /** Commands pinned to Favorites, as action ids in the order pinned. Starts empty. */
+  favorites: string[];
   /** Transport > Return to Start on Stop: Stop (and Space while playing) puts the playhead back where playback began. Off leaves it where playback stopped. */
   returnOnStop: boolean;
   /** Take lanes and comping: the Takes panel and the Make Takes and Flatten Takes commands. Off hides them; sessions with takes still play the chosen takes. */
@@ -241,6 +246,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   timecodeFps: 30,
   phaseWheel: { size: 4096, fps: 60, a: "left", b: "right" },
   musicMode: false,
+  quickActionsBar: false,
+  favorites: [],
   returnOnStop: true,
   takeLanes: true,
   playbackSpeed: false,
@@ -359,6 +366,8 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       : d.timecodeFps,
     phaseWheel: phasePrefs(o.phaseWheel),
     musicMode: bool(o.musicMode, d.musicMode),
+    quickActionsBar: bool(o.quickActionsBar, d.quickActionsBar),
+    favorites: sanitizeFavorites(o.favorites),
     returnOnStop: bool(o.returnOnStop, d.returnOnStop),
     takeLanes: bool(o.takeLanes, d.takeLanes),
     playbackSpeed: bool(o.playbackSpeed, d.playbackSpeed),
