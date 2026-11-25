@@ -3458,14 +3458,64 @@
     }
   }
 
-  async function saveWave(as: boolean): Promise<boolean> {
+  /** Save Audio As: the same format dialog as Save Selection As, for the whole file. */
+  let waveAsReq = $state<{ initial: ExportSettings; scopes: ExportScopeInfo[]; source: { sampleRate: number; channels: number; bitDepth: number } } | null>(null);
+  function openSaveAs() {
+    const f = waveFile.current();
+    const doc = wave.current;
+    if (!f || !doc || exporting) return;
+    const saved = prefs.raw(KEY_EXPORT) as { format?: unknown; folder?: unknown } | null;
+    const cut = Math.max(f.path.lastIndexOf("/"), f.path.lastIndexOf("\\"));
+    const own = cut > 0 ? f.path.slice(0, cut) : "";
+    waveAsReq = {
+      initial: {
+        scope: "all",
+        name: fileSafe(waveName().replace(/\.[^.]+$/, "")),
+        folder: own || (typeof saved?.folder === "string" ? saved.folder : ""),
+        format: sanitizeFormat(saved?.format),
+        formats: sanitizeMemory((saved as { formats?: unknown } | null)?.formats),
+        addToFiles: false,
+        chapters: false,
+        markers: false,
+        verify: false,
+        normalize: "",
+      },
+      scopes: [{ scope: "all", label: "Whole file", seconds: sessionEnd(doc) / doc.sample_rate, reason: "" }],
+      source: { sampleRate: doc.sample_rate, channels: 2, bitDepth: doc.bit_depth },
+    };
+  }
+  async function finishSaveAs(v: ExportSettings | null) {
+    const req = waveAsReq;
+    waveAsReq = null;
+    if (!v || !req) return;
+    const was = prefs.raw(KEY_EXPORT) as Record<string, unknown> | null;
+    prefs.set(KEY_EXPORT, { ...(was ?? {}), format: v.format, formats: v.formats, folder: v.folder });
+    const sep = v.folder.includes("\\") ? "\\" : "/";
+    const path = `${v.folder.replace(/[\\/]+$/, "")}${sep}${fileSafe(v.name)}.${extensionOf(v.format.kind)}`;
+    const open = waveFile.current()?.path ?? "";
+    if (path.toLowerCase() !== open.toLowerCase()) {
+      const [exists] = await pathsExist([path]);
+      if (exists) {
+        const ok = await ask("Replace the file?", `${path.split(/[\\/]/).pop()} already exists in that folder.`, [
+          { label: "Replace", value: "yes", primary: true },
+          { label: "Cancel", value: "no" },
+        ]);
+        if (ok !== "yes") return;
+      }
+    }
+    await saveWave(true, { path, format: v.format });
+  }
+
+  async function saveWave(as: boolean, choice?: { path: string; format: OutputFormat }): Promise<boolean> {
     const f = waveFile.current();
     if (!f || exporting) return false;
     const cut = Math.max(f.path.lastIndexOf("/"), f.path.lastIndexOf("\\"));
     const folder = cut > 0 ? f.path.slice(0, cut) : null;
     const stemName = waveName().replace(/\.[^.]+$/, "");
     let path: string | null = null;
-    if (as || !savesInPlace(f)) {
+    if (choice) {
+      path = choice.path;
+    } else if (as || !savesInPlace(f)) {
       const why = !as && !savesInPlace(f) ? `Save ${f.format || "this file"} as WAV, FLAC, MP3 or AAC` : "Save Audio As";
       path = await exportPickPath(stemName, folder, why, kindOfPath(f.path) ?? "wav", true);
       if (!path) return false;
@@ -3519,7 +3569,7 @@
         if (exporting) exporting = { ...exporting, progress: e.payload.total > 0 ? e.payload.done / e.payload.total : 0 };
       });
       const markerCount = wave.current?.markers.length ?? 0;
-      await saveWaveFile(path);
+      await saveWaveFile(path, null, choice?.format ?? null);
       const saved = waveFile.current()?.path ?? f.path;
       // MP3, FLAC and M4A carry chapters inside the file (WAV keeps its markers as cue points). Written before the peaks and the
       // session read the file again, so they see the finished file.
@@ -4827,7 +4877,7 @@
         reason: () => "Show the spectrum and drag a rectangle on it first.",
       }),
       ov(waveIsOpen, { id: "file.save", run: () => saveWave(false).then(() => undefined), label: () => "Save Audio" }),
-      ov(waveIsOpen, { id: "file.save-as", run: () => saveWave(true).then(() => undefined), label: () => "Save Audio As..." }),
+      ov(waveIsOpen, { id: "file.save-as", run: () => { openSaveAs(); return Promise.resolve(); }, label: () => "Save Audio As..." }),
       // The same chord and the Export submenu entry save the selection while the Waveform editor is in front.
       ov(waveIsOpen, {
         id: "file.export.selection",
@@ -7564,6 +7614,18 @@
     markerCount={waveSelReq.markerCount}
     onBrowse={(from) => exportPickFolder(from || null, "Save To")}
     onDone={(v) => void finishSaveSelection(v)}
+  />
+{/if}
+
+{#if waveAsReq}
+  <ExportDialog
+    simple
+    doneLabel="Save"
+    initial={waveAsReq.initial}
+    scopes={waveAsReq.scopes}
+    source={waveAsReq.source}
+    onBrowse={(from) => exportPickFolder(from || null, "Save To")}
+    onDone={(v) => void finishSaveAs(v)}
   />
 {/if}
 
