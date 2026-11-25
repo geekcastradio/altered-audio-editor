@@ -2463,3 +2463,6 @@ Decided with the project lead after community requests. A Favorites menu sits in
 ## 2026-11-25: Full document review for 0.70.0
 
 Ran the full review in `docs/doc-review-0.70.0.md`: Rust and npm licence audits clean, a missing licence file added for the vendored `opus-decoder`, the guide and SECURITY scope brought up to date, THANKS extended. The other-editor-name cleanup (old release notes, `docs/audition-shortcuts.md`) stays open for Steve. Reviews for 0.55 and 0.60 were never recorded; this one covers everything since 0.50.
+## 2026-11-25: Ask before Save (issue 294)
+
+Optional setting `askBeforeSave`, off by default, on the Autosave page of Settings. With it on, Save in the Waveform editor asks before writing over the original audio file. Save Audio As is not asked (it picks a new file) and an MP3 re-encode keeps its own question. Mirrored in Rust and the shared fixtures.
