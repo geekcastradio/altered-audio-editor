@@ -323,6 +323,7 @@ pub fn sanitize_settings(raw: &Value) -> Value {
         "timecodeFps": g("timecodeFps").and_then(Value::as_f64).filter(|x| [24.0, 25.0, 30.0, 50.0, 60.0].contains(x)).unwrap_or(30.0),
         "phaseWheel": phase_prefs(g("phaseWheel")),
         "musicMode": boolean(g("musicMode"), false),
+        "askBeforeSave": boolean(g("askBeforeSave"), false),
         "quickActionsBar": boolean(g("quickActionsBar"), false),
         "favorites": favorites(g("favorites")),
         "returnOnStop": boolean(g("returnOnStop"), true),
