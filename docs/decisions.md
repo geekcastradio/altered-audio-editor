@@ -2466,3 +2466,7 @@ Ran the full review in `docs/doc-review-0.70.0.md`: Rust and npm licence audits 
 ## 2026-11-25: Ask before Save (issue 294)
 
 Optional setting `askBeforeSave`, off by default, on the Autosave page of Settings. With it on, Save in the Waveform editor asks before writing over the original audio file. Save Audio As is not asked (it picks a new file) and an MP3 re-encode keeps its own question. Mirrored in Rust and the shared fixtures.
+
+## 2026-11-25: Leaving the Music workspace turns Music Mode off
+
+Reported after 0.70.0: View showed Music Mode ticked with nothing visible. Cause: opening the Music workspace turned Music Mode on, but switching to another workspace through Window > Workspace never turned it off (only the View mode items did). Fix: leaving the Music workspace also turns Music Mode and the metronome off. Turning it on by hand in View still stays until you turn it off. A Music Mode left on by an earlier version stays on until you untick it once in View.
