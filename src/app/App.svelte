@@ -3513,6 +3513,14 @@
     const folder = cut > 0 ? f.path.slice(0, cut) : null;
     const stemName = waveName().replace(/\.[^.]+$/, "");
     let path: string | null = null;
+    // The optional guard: Save over the original file asks first (an MP3 re-encode has its own question below).
+    if (!choice && !as && savesInPlace(f) && settings.current.askBeforeSave && f.format.toUpperCase() !== "MP3") {
+      const ok = await ask("Save over the original?", `Saving writes your changes into ${waveName()}. Use Save Audio As to keep the original.`, [
+        { label: "Save", value: "yes", primary: true },
+        { label: "Cancel", value: "no" },
+      ]);
+      if (ok !== "yes") return false;
+    }
     if (choice) {
       path = choice.path;
     } else if (as || !savesInPlace(f)) {

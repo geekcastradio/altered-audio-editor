@@ -106,6 +106,8 @@ export interface AppSettings {
   phaseWheel: PhaseWheelPrefs;
   /** View > Music Mode: offers the music tools (MIDI tracks, the Amp Model, the metronome). Off keeps them out of the way. */
   musicMode: boolean;
+  /** Ask before Save writes over the original audio file in the Waveform editor. */
+  askBeforeSave: boolean;
   /** View > Quick Actions Bar: a row in the tool strip with the commands pinned to Favorites. Off draws nothing. */
   quickActionsBar: boolean;
   /** Commands pinned to Favorites, as action ids in the order pinned. Starts empty. */
@@ -246,6 +248,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   timecodeFps: 30,
   phaseWheel: { size: 4096, fps: 60, a: "left", b: "right" },
   musicMode: false,
+  askBeforeSave: false,
   quickActionsBar: false,
   favorites: [],
   returnOnStop: true,
@@ -366,6 +369,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
       : d.timecodeFps,
     phaseWheel: phasePrefs(o.phaseWheel),
     musicMode: bool(o.musicMode, d.musicMode),
+    askBeforeSave: bool(o.askBeforeSave, d.askBeforeSave),
     quickActionsBar: bool(o.quickActionsBar, d.quickActionsBar),
     favorites: sanitizeFavorites(o.favorites),
     returnOnStop: bool(o.returnOnStop, d.returnOnStop),

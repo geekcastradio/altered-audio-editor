@@ -330,6 +330,7 @@
             <label class="row" class:dim={!d.app.backups}>Keep the newest <input type="number" min="1" max="50" step="1" bind:value={d.app.backupCount} disabled={!d.app.backups} /> copies</label>
             <p class="note">Each save first copies the previous file into a Backups folder beside the session, named with the date and time.</p>
           </fieldset>
+          <label><input type="checkbox" bind:checked={d.app.askBeforeSave} /> Ask before Save writes over the original audio file</label>
         {:else if page === "Session Media"}
           <p class="note">A session can keep every audio file it uses in its own folder, so the folder can be moved, backed up or handed to someone else whole. Your original files are never moved or changed.</p>
           <fieldset>
