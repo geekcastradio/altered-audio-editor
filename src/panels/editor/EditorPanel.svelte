@@ -3791,6 +3791,16 @@
     font-weight: 600;
   }
 
+  /* Light theme: the selected header is pale, so its name stays dark. */
+  :global(:root[data-theme="light"]) .header.selected .name {
+    color: var(--text);
+  }
+
+  /* Light theme: calmer color strips on the track scrollbar. */
+  :global(:root[data-theme="light"]) .vseg {
+    opacity: 0.7;
+  }
+
   .line {
     display: flex;
     gap: 3px;
