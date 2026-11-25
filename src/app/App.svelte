@@ -4469,25 +4469,26 @@
     actions.invalidate();
   }
   let favMenu = $state<{ x: number; y: number; items: ContextItem[] } | null>(null);
-  /** Right-click on a menu command or a pinned button: offers Add to or Remove from Favorites. */
-  function openFavoriteContext(id: string, x: number, y: number) {
+  /** The Add to or Remove from Favorites entry for a menu command or a pinned button, or null when it cannot be pinned. */
+  function favoriteItems(id: string): ContextItem[] | null {
     const target = id.startsWith(FAVORITE_SLOT_PREFIX) ? favoriteTarget(Number(id.slice(FAVORITE_SLOT_PREFIX.length)) - 1) : id;
-    if (!target || !isPinnable(target)) return;
+    if (!target || !isPinnable(target)) return null;
     const pinned = settings.current.favorites.includes(target);
     const full = !pinned && settings.current.favorites.length >= MAX_FAVORITES;
-    favMenu = {
-      x,
-      y,
-      items: [
-        {
-          kind: "item",
-          label: pinned ? "Remove from Favorites" : "Add to Favorites",
-          disabled: full,
-          reason: full ? `Favorites holds ${MAX_FAVORITES}. Remove one first.` : null,
-          run: () => setFavorites(toggleFavorite(settings.current.favorites, target)),
-        },
-      ],
-    };
+    return [
+      {
+        kind: "item",
+        label: pinned ? "Remove from Favorites" : "Add to Favorites",
+        disabled: full,
+        reason: full ? `Favorites holds ${MAX_FAVORITES}. Remove one first.` : null,
+        run: () => setFavorites(toggleFavorite(settings.current.favorites, target)),
+      },
+    ];
+  }
+  /** Right-click on a pinned button: offers Remove from Favorites where the pointer is. */
+  function openFavoriteContext(id: string, x: number, y: number) {
+    const items = favoriteItems(id);
+    if (items) favMenu = { x, y, items };
   }
   async function clearFavorites() {
     const n = settings.current.favorites.length;
@@ -7327,7 +7328,7 @@
 
 <div class="shell">
   <header class="top">
-    <MenuBar menus={MENUS} {actions} {shortcutFor} onError={showError} onBlocked={showNotice} onItemContext={openFavoriteContext} popups={{ "fx.vst3": vst3Popup }} searches={{ Effects: effectsMenuSearch }} />
+    <MenuBar menus={MENUS} {actions} {shortcutFor} onError={showError} onBlocked={showNotice} onItemContext={favoriteItems} popups={{ "fx.vst3": vst3Popup }} searches={{ Effects: effectsMenuSearch }} />
     <label class="wsswitch" title="Switch workspace">
       <span>Workspace</span>
       <select value={wsView.current} onchange={(e) => void dock.switchTo(e.currentTarget.value)}>

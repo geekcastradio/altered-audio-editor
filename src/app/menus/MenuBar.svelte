@@ -33,8 +33,8 @@
     onError: (e: unknown) => void;
     /** Told why when someone picks an item that is greyed out, so a click is never silent. */
     onBlocked?: (reason: string) => void;
-    /** Right-click on a command row: told which command and where, so the app can offer Add to Favorites. */
-    onItemContext?: (id: string, x: number, y: number) => void;
+    /** Right-click on a command row: the entries to offer for that command (Add to Favorites), or null for none. The menu stays open behind them. */
+    onItemContext?: (id: string) => ContextItem[] | null;
     /** Builds each popup entry's list by id, when it opens. */
     popups?: Record<string, () => PopupList>;
     /** Menus with a search box at the top, by menu label: what each finds for the text typed. */
@@ -361,9 +361,9 @@
       oncontextmenu={(e) => {
         if (it.kind !== "item" || !onItemContext) return;
         e.preventDefault();
-        const { clientX: x, clientY: y } = e;
-        close();
-        onItemContext(it.id, x, y);
+        const items = onItemContext(it.id);
+        // The menu stays where it is; picking an entry, or clicking away, closes both.
+        popupOpen = items ? { id: it.id, x: e.clientX, y: e.clientY, items } : null;
       }}
     >
       <span class="check">{isChecked ? "✓" : ""}</span>
