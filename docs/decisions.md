@@ -2470,3 +2470,7 @@ Optional setting `askBeforeSave`, off by default, on the Autosave page of Settin
 ## 2026-11-25: Leaving the Music workspace turns Music Mode off
 
 Reported after 0.70.0: View showed Music Mode ticked with nothing visible. Cause: opening the Music workspace turned Music Mode on, but switching to another workspace through Window > Workspace never turned it off (only the View mode items did). Fix: leaving the Music workspace also turns Music Mode and the metronome off. Turning it on by hand in View still stays until you turn it off. A Music Mode left on by an earlier version stays on until you untick it once in View.
+
+## 2026-11-25: ResizeObserver message in the status bar
+
+Reported after 0.70.0: the status bar showed "ResizeObserver loop completed with undelivered notifications" in red on load. Cause: the Favorites bar measured which favorites fit inside its own resize observer callback, and the measure changes the layout. Fix: the measure waits for the next frame. The global error handler also ignores that one browser message when it carries no error object, because it is the browser's note about frame timing and not a fault. Every other error still shows.
