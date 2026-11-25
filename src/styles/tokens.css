@@ -100,32 +100,32 @@
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --surface-0: #f1f1f4;
-  --surface-1: #e7e7eb;
-  --surface-2: #dcdce1;
-  --surface-3: #d0d0d7;
-  --border: #bdbdc6;
-  --border-strong: #9d9da8;
+  --surface-0: #e9e9ed;
+  --surface-1: #dfdfe4;
+  --surface-2: #d3d3d9;
+  --surface-3: #c6c6ce;
+  --border: #b0b0ba;
+  --border-strong: #8f8f9b;
 
   --text: #1d1d22;
-  --text-dim: #45454e;
-  --text-faint: #75757f;
+  --text-dim: #3a3a43;
+  --text-faint: #62626c;
 
-  --accent: #1a6fb5;
-  --accent-dim: #8bbbe3;
+  --accent: #135c98;
+  --accent-dim: #2d5f8f;
   --playhead: #b57b00;
-  --value: #07508c;
-  --gutter: #c9c9d1;
+  --value: #053f75;
+  --gutter: #bcbcc5;
   --danger: #c8372f;
   --title-bar: #2d2f38;
   --title-bar-text: #f1f1f4;
 
-  --lane-a: #d9d9e0;
-  --lane-b: #cfcfd7;
-  --lane-selected: #bcd1e8;
-  --track-gap: #9b9ba7;
-  --header-a: #cbcbd3;
-  --header-b: #c3c3cc;
+  --lane-a: #d0d0d8;
+  --lane-b: #c6c6ce;
+  --lane-selected: #b9b9c6;
+  --track-gap: #8f8f9b;
+  --header-a: #c0c0c9;
+  --header-b: #b8b8c2;
 }
 
 *,

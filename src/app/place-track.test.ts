@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { ClipDoc, SessionDoc, TrackDoc } from "../stores/session";
-import { tracksWithRoom } from "./place-track";
+import { sideBySideTargets, tracksWithRoom } from "./place-track";
 
 const fade = () => ({ length: 0, shape: "linear" as const, curve: 0 });
 // One second at 48 kHz.
@@ -33,5 +33,28 @@ describe("tracksWithRoom", () => {
   it("never offers a MIDI track, and offers nothing when every track is busy", () => {
     const doc = session([track("m", [], "midi"), track("1", [clip("a", 0)])]);
     expect(tracksWithRoom(doc, 0, 10_000)).toEqual([]);
+  });
+});
+
+describe("sideBySideTargets", () => {
+  const L = 48_000;
+  it("gives each file its own track, starting at the track under the pointer", () => {
+    const doc = session(["1", "2", "3"].map((n) => track(n, [])));
+    expect(sideBySideTargets(doc, "2", 0, [L, L])).toEqual(["2", "3"]);
+  });
+
+  it("uses the first empty tracks when nothing is under the pointer", () => {
+    const doc = session(["1", "2", "3"].map((n) => track(n, [])));
+    expect(sideBySideTargets(doc, null, 0, [L, L, L])).toEqual(["1", "2", "3"]);
+  });
+
+  it("skips tracks that already have audio there, and asks for new tracks when it runs out", () => {
+    const doc = session([track("1", []), track("2", [clip("a", 0)]), track("3", [])]);
+    expect(sideBySideTargets(doc, "1", 0, [L, L, L, L])).toEqual(["1", "3", null, null]);
+  });
+
+  it("never lands a later file above an earlier one", () => {
+    const doc = session([track("1", []), track("2", []), track("3", [])]);
+    expect(sideBySideTargets(doc, "3", 0, [L, L])).toEqual(["3", null]);
   });
 });
