@@ -104,6 +104,7 @@ pub mod rows;
 pub mod rpp;
 pub mod rpp_import;
 pub mod selection;
+mod ses_import;
 pub mod session;
 pub mod session_rules;
 pub mod sesx;
