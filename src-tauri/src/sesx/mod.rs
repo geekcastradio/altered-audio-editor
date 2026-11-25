@@ -41,6 +41,8 @@ pub enum SesxError {
     Xml(String),
     #[error("This file has no multitrack session in it.")]
     NoSession,
+    #[error("{0}")]
+    Ses(String),
 }
 
 /// What came across, for the notice shown after import.
@@ -878,6 +880,13 @@ fn fade(node: Option<roxmltree::Node<'_, '_>>, fade_in: bool) -> Fade {
 /// Parses a `.sesx` file and builds a session. Media paths are tried
 /// relative to the `.sesx` file first, then as stored.
 pub fn import(path: &Path) -> Result<Imported, SesxError> {
+    // Older sessions use the .ses extension and a different, binary layout.
+    if path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("ses"))
+    {
+        return crate::ses_import::import(path);
+    }
     let text = std::fs::read_to_string(path)?;
     // Some files start with a byte order mark.
     let text = text.trim_start_matches('\u{feff}');

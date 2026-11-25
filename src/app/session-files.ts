@@ -277,7 +277,7 @@ export class SessionFiles {
     const target = path ?? (await this.d.backend.pickOpen());
     if (!target) return false;
     // A .sesx in Open Recent is imported again, as a new unsaved session.
-    if (/\.sesx$/i.test(target)) return this.importSesx(target);
+    if (/\.sesx?$/i.test(target)) return this.importSesx(target);
     if (/\.rpp$/i.test(target)) return this.importRpp(target);
     if (/\.aup[34]$/i.test(target)) return this.importAup(target);
     if (/\.otio$/i.test(target)) return this.importOtio(target);
@@ -516,7 +516,7 @@ const VIDEO_EXTENSIONS = new Set(["mp4", "m4v", "mov", "wmv", "avi", "mkv"]);
 const extOf = (p: string) => p.slice(p.lastIndexOf(".") + 1).toLowerCase();
 
 /** Whether this is a session or project from another editor (.sesx, .rpp, .aup3, .aup4, .otio). */
-export const isProjectFile = (p: string): boolean => /\.(sesx|rpp|aup[34]|otio)$/i.test(p);
+export const isProjectFile = (p: string): boolean => /\.(sesx?|rpp|aup[34]|otio)$/i.test(p);
 
 /** Whether the importer reads this file as audio. */
 export const isAudioFile = (p: string): boolean => AUDIO_EXTENSIONS.has(extOf(p));
