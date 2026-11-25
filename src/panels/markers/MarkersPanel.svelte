@@ -120,7 +120,8 @@
   async function goTo(m: MarkerDoc) {
     await tp.seek(m.position);
     const d = store.current;
-    if (d && m.duration > 0) store.setView({ ...d.view, selection: { start: m.position, end: markerEnd(m) } });
+    // A range marker selects its span; any other marker clears the selection so Space plays from the marker.
+    if (d) store.setView({ ...d.view, selection: m.duration > 0 ? { start: m.position, end: markerEnd(m) } : null });
     showTime(store, m.position);
   }
   /** The columns after the color swatch: name, start, end, duration, type and description. */

@@ -308,7 +308,7 @@
   import { chainEnv } from "./chain-env";
   import { clipById } from "../panels/editor/clip-lookup";
   import { revealScroll } from "../panels/editor/reveal";
-  import { tracksWithRoom } from "./place-track";
+  import { sideBySideTargets, tracksWithRoom } from "./place-track";
   import { moveTrack, type TrackSync } from "./sync-tracks";
   import SyncTracksDialog from "./SyncTracksDialog.svelte";
   import ReduceBleedDialog from "./ReduceBleedDialog.svelte";
@@ -476,16 +476,15 @@
     const start = Math.max(0, Math.round(at));
     const clips: { id: string }[] = [];
     if (items.length > 1 && settings.current.dropMany === "tracks") {
-      // Side by side: the first on the track under the pointer, the rest on
-      // the audio tracks below it, then on new tracks, all from the same time.
-      const widest = Math.max(...items.map((it) => Math.round((it!.info!.length * doc.sample_rate) / it!.info!.sampleRate)));
-      const roomy = new Set(tracksWithRoom(doc, start, widest));
-      const below = first ? audio.slice(audio.findIndex((t) => t.id === first)) : audio.filter((t) => roomy.has(t.id));
-      let target = first ?? "";
+      // Side by side: the first on the track under the pointer, the rest on the
+      // empty audio tracks below it, then on new tracks, all from the same time.
+      const lengths = items.map((it) => Math.round((it!.info!.length * doc.sample_rate) / it!.info!.sampleRate));
+      const picks = sideBySideTargets(doc, first, start, lengths);
+      let target = "";
       items.forEach((it, k) => {
         addMedia(it);
         const info = it!.info!;
-        const track = below[k]?.id ?? newTrack(it, true);
+        const track = picks[k] ?? newTrack(it, true);
         if (k === 0) target = track;
         const clip = { id: uuid(), name: stem(it!.name), media_id: it!.id, start, source_in: 0, source_out: info.length };
         ops.push({ op: "add_clips", track_id: track, clips: [clip] });

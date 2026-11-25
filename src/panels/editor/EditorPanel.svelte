@@ -1948,6 +1948,7 @@
         act("Time Selection in All Tracks", "edit.ripple.time-all"),
         act("Gap Between Clips", "edit.ripple.gap"),
       ]),
+      sep,
       sub("Select", [
         act("Select All", "edit.select-all"),
         act("Deselect All", "edit.deselect"),
@@ -1976,6 +1977,12 @@
         act("Remove Focus Clip from Group", "clip.group-remove-focus"),
         act("Ungroup Selected Clips", "clip.ungroup"),
       ]),
+      sub("Stretch", [
+        act("Time Stretch...", "clip.stretch"),
+        act("Stretch and Pitch...", "clip.properties"),
+        act("Remove Stretch", "clip.stretch-reset"),
+      ]),
+      sub("Fit to Length", [act("Fit Music to Length...", "clip.music-fit")]),
       sep,
       sub("Track", [
         act("Add Mono Audio Track", "multitrack.add.mono"),
@@ -2038,6 +2045,7 @@
         act("Selected Clips Only", "multitrack.bounce.clips"),
       ]),
       sep,
+      off("Clip Properties...", "Not built yet. Stretch and Pitch is under Stretch."),
       act("Session Properties...", "multitrack.properties"),
     ];
   }
@@ -3781,6 +3789,16 @@
   .header.selected .name {
     color: #fff;
     font-weight: 600;
+  }
+
+  /* Light theme: the selected header is pale, so its name stays dark. */
+  :global(:root[data-theme="light"]) .header.selected .name {
+    color: var(--text);
+  }
+
+  /* Light theme: calmer color strips on the track scrollbar. */
+  :global(:root[data-theme="light"]) .vseg {
+    opacity: 0.7;
   }
 
   .line {

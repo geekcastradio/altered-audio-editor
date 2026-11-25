@@ -304,6 +304,26 @@
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   }
 
+  /** Light theme: the white overlays and grid lines would vanish, so they turn dark. */
+  function isLight(): boolean {
+    return document.documentElement.dataset.theme === "light";
+  }
+
+  /** A grid or overlay ink at `a` strength: white on dark, near black on light. */
+  function ink(a: number): string {
+    return isLight() ? `rgba(20, 20, 28, ${Math.min(1, a * 2).toFixed(2)})` : `rgba(255, 255, 255, ${a})`;
+  }
+
+  /**
+   * The selection wash. A "Selected track lane" color set in Settings wins in both themes;
+   * otherwise dark keeps its soft white and light gets a dark wash.
+   */
+  function selectionFill(a: number): string {
+    const custom = document.documentElement.style.getPropertyValue("--lane-selected").trim();
+    if (custom) return `color-mix(in srgb, ${custom} ${Math.round(Math.min(1, a * 4) * 100)}%, transparent)`;
+    return isLight() ? `rgba(20, 20, 28, ${(a * 1.3).toFixed(2)})` : `rgba(255, 255, 255, ${a})`;
+  }
+
   /** dB marks on the level scale. */
   const MARKS = [0, -3, -6, -9, -12, -18, -24];
 
@@ -344,7 +364,7 @@
       const mid = top + laneH / 2;
       const half = laneH / 2 - 2;
       // Level grid.
-      g.strokeStyle = "rgba(255, 255, 255, 0.06)";
+      g.strokeStyle = ink(0.06);
       g.lineWidth = 1;
       for (const db of MARKS) {
         const a = 10 ** (db / 20) * ampZoom;
@@ -356,7 +376,7 @@
           g.stroke();
         }
       }
-      g.strokeStyle = "rgba(255, 255, 255, 0.18)";
+      g.strokeStyle = ink(0.18);
       g.beginPath();
       g.moveTo(0, Math.round(mid) + 0.5);
       g.lineTo(w, Math.round(mid) + 0.5);
@@ -368,7 +388,7 @@
     }
 
     // Time grid at the ruler's labeled ticks.
-    g.strokeStyle = "rgba(255, 255, 255, 0.05)";
+    g.strokeStyle = ink(0.05);
     g.lineWidth = 1;
     for (const t of ticksFor(view, w, rate, ed.timeFormat)) {
       if (!t.label) continue;
@@ -504,7 +524,7 @@
       const a = Math.max(0, xOf(selection.start, view));
       const b = Math.min(w, xOf(selection.end, view));
       if (b > a) {
-        g.fillStyle = "rgba(255, 255, 255, 0.14)";
+        g.fillStyle = selectionFill(0.14);
         g.fillRect(a, 0, b - a, h);
       }
     }
@@ -593,7 +613,7 @@
       const a = Math.max(0, xOf(selection.start, view));
       const b = Math.min(w, xOf(selection.end, view));
       if (b > a) {
-        g.fillStyle = "rgba(255, 255, 255, 0.16)";
+        g.fillStyle = selectionFill(0.16);
         g.fillRect(a, 0, b - a, RULER_H);
       }
     }
@@ -694,7 +714,11 @@
     const el = e.currentTarget as HTMLElement;
     // A click on a marker's flag also picks it in the Markers panel.
     const flag = markerAt(doc.markers, x, (s) => xOf(s, view));
-    if (flag) editor.selectMarkers([flag.id]);
+    if (flag) {
+      editor.selectMarkers([flag.id]);
+      // Clicking a marker leaves no old selection behind, so Space plays from the marker.
+      if (doc.view.selection) setView({ selection: null });
+    }
     const at = (ev: PointerEvent) => Math.max(0, Math.min(total, Math.round(sampleAt(Math.max(0, Math.min(width, xIn(ev, el))), view))));
     const wasPlaying = !!tp?.playing;
     // With Play audio while scrubbing on, the sound follows the drag; otherwise only the playhead does.
