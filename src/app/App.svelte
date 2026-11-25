@@ -7196,10 +7196,15 @@
     offs.push(editor.subscribe(() => actions.invalidate()));
     offs.push(
       dock.workspaces.subscribe((w) => {
+        const left = wsState.current;
         wsState = w;
         wsView = w;
-        // The Music workspace is the music tools' home: choosing it turns them on.
+        // The Music workspace is the music tools' home: choosing it turns them on, leaving it turns them off again.
         if (w.current === "music" && !settings.current.musicMode) settings.set({ ...settings.current, musicMode: true });
+        else if (left === "music" && w.current !== "music" && settings.current.musicMode) {
+          const cur = settings.current;
+          settings.set({ ...cur, musicMode: false, metronome: { ...cur.metronome, on: false } });
+        }
         actions.invalidate();
       }),
     );
