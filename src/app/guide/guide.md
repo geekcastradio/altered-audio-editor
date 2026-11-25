@@ -22,7 +22,9 @@ Save often with File > Save. While there are unsaved changes the program also ke
 Opening files: one audio file opens in the Waveform Editor as itself, and two or more build a Multitrack session.
 
 - A video file opens as a picture to cut against (see Video). With two or more sessions open, a tab for each runs along the top of the Multitrack.
-- File > Open Recent keeps sessions and audio files. Sessions saved by other editors open too: File > Import Session (.sesx) reads Audition's session files, and File > Import Session (.rpp) reads projects from another editor, bringing tracks, clips, fades, markers and regions (plug-ins, sends and automation are left out, and the notice says what was left behind).
+- File > Open Recent keeps sessions and audio files. File > Import > Session (also reachable from File > Open) opens sessions saved by other editors: pick the file type in the dialog (`.sesx`, `.rpp`, `.aup3`, `.aup4` or `.otio`). Tracks, clips, fades, markers and regions come across; plug-ins, sends and automation are left out, and the notice says what was left behind.
+- Favorites: right-click any menu item and choose Add to Favorites. Pinned commands show in the Favorites menu, and in a bar in the tool strip when View > Quick Actions Bar is on. The bar is off by default and not drawn at all when off. Commands that only work in the Waveform or Multitrack editor grey out in the other one.
+- Save Audio As in the Waveform editor asks for the format, bit depth or bitrate before saving. Edit > Settings > Autosave has an option to ask before Save writes over the original file.
 
 New sessions can start from a template. File > New Session offers Two-Host Show, Solo Voiceover and Audiobook, and File > Save as Session Template makes your own. Templates are ordinary: rename, change or delete them.
 

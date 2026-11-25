@@ -7,3 +7,5 @@ directly (O(n^2), a sine and cosine per term), which made a 7 minute mono
 file take over a minute to decode. It now uses `rustfft` for the same
 unscaled forward transform. Tests and benches were left out of this copy.
 Drop this folder and the `[patch.crates-io]` entry once upstream is fast.
+
+The crates.io package leaves out the licence files. `LICENSE-MIT` here is the upstream text (Copyright (c) 2026 Tadeusz Wójcik, from github.com/TadeuszWolfGang/Rusopus); we use the crate under its MIT option.
