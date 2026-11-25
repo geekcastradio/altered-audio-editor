@@ -2459,3 +2459,7 @@ Light theme surfaces and borders are slightly darker for contrast, the pale blue
 ## 2026-11-25: Favorites bar and Favorites menu
 
 Decided with the project lead after community requests. A Favorites menu sits in the menu bar, and an optional quick actions bar sits in the empty gap of the tool strip. View > Quick Actions Bar turns the bar on or off; when off it is not drawn at all. Both show one shared list that starts empty. Users pin a command from its right-click menu in any menu. Commands that only work in the Waveform or Multitrack editor grey out in the other view. No new keyboard shortcuts, no starter favorites, and recording a favorite macro is a separate later feature. Settings fields: `quickActionsBar` (default off) and `favorites` (unique command ids, at most 24), mirrored in Rust and the shared fixtures.
+
+## 2026-11-25: Full document review for 0.70.0
+
+Ran the full review in `docs/doc-review-0.70.0.md`: Rust and npm licence audits clean, a missing licence file added for the vendored `opus-decoder`, the guide and SECURITY scope brought up to date, THANKS extended. The other-editor-name cleanup (old release notes, `docs/audition-shortcuts.md`) stays open for Steve. Reviews for 0.55 and 0.60 were never recorded; this one covers everything since 0.50.
