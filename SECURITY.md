@@ -16,7 +16,7 @@ The app has no accounts and no telemetry. Its only network use is the update che
 
 Reports are most useful when they are about:
 
-- Opening crafted audio, video, session (`.altaudio`, `.sesx`, `.rpp`) or zip files.
+- Opening crafted audio, video, session (`.altaudio`, `.sesx`, `.rpp`, `.aup3`, `.aup4`, `.otio`) or zip files.
 - The installer and the update check.
 - The helper process that runs VST3 plug-ins, and how the app talks to it.
 - How the app opens links and files.
