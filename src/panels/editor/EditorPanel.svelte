@@ -544,9 +544,18 @@
     if (!lanesEl) return;
     return router.register({
       element: lanesEl,
-      onHover: (over) => (dropping = over),
+      onHover: (over) => {
+        dropping = over;
+        if (!over) {
+          ghostSeq++;
+          dropGhost = null;
+        }
+      },
       onMove: (paths, at) => showDropGhost(paths, at),
       onDrop: (paths, at, external) => {
+        ghostSeq++;
+        dropGhost = null;
+        dropping = false;
         if (external && onOpenSingle && paths.length === 1 && doc && doc.tracks.every((t) => t.clips.length === 0)) {
           onOpenSingle(paths[0]!);
           return;

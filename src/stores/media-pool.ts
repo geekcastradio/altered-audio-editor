@@ -143,6 +143,15 @@ export class MediaPool {
    * selected and measured in the background.
    */
   async importPaths(paths: readonly string[], runner: CommandRunner): Promise<ImportResult> {
+    // One import at a time: a second drop waits, then sees what the first added.
+    const turn = this.importTurn.then(() => this.importNow(paths, runner));
+    this.importTurn = turn.then(() => undefined, () => undefined);
+    return turn;
+  }
+
+  private importTurn: Promise<void> = Promise.resolve();
+
+  private async importNow(paths: readonly string[], runner: CommandRunner): Promise<ImportResult> {
     if (paths.length === 0) return { added: 0, duplicates: 0, ids: [] };
     let expanded = await this.deps.expand([...paths]);
     const present = new Map(this.order.map((id) => [pathKey(this.known.get(id)!.path, this.ignoreCase), id]));

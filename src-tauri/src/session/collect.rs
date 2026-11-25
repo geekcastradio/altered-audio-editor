@@ -11,8 +11,16 @@
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Mutex;
 
 use serde::Serialize;
+
+/// One copy job at a time. Two drops of the same file at once used to race
+/// for the same half-written file name, and Windows refused the second
+/// (os error 32). Now the second waits, then finds the first one's copy.
+static COPY_LOCK: Mutex<()> = Mutex::new(());
+static PART_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 /// What copying did, path for path.
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
@@ -51,6 +59,7 @@ pub fn is_inside(path: &Path, dir: &Path) -> bool {
 /// Copies each of `paths` into `dir` unless it is already inside `keep`
 /// (the session folder).
 pub fn copy_in(paths: &[PathBuf], dir: &Path, keep: &Path) -> CopyResult {
+    let _turn = COPY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut out = CopyResult::default();
     for src in paths {
         if is_inside(src, keep) {
@@ -107,7 +116,10 @@ fn copy_one(src: &Path, dir: &Path) -> std::io::Result<(PathBuf, bool)> {
         };
         if !to.exists() {
             // Copy beside it first, so a cut-short copy never looks finished.
-            let part = to.with_extension("altaudio-part");
+            let part = to.with_extension(format!(
+                "altaudio-part{}",
+                PART_COUNTER.fetch_add(1, Ordering::Relaxed)
+            ));
             fs::copy(src, &part)?;
             fs::rename(&part, &to)?;
             return Ok((to, true));
@@ -179,6 +191,28 @@ mod tests {
             vec![dir.join("vox.wav"), dir.join("vox (2).wav")]
         );
         assert!(r.failed.is_empty());
+    }
+
+    #[test]
+    fn two_drops_of_the_same_file_at_once_make_one_copy() {
+        let root = tempfile::tempdir().unwrap();
+        let session = root.path().join("S").join("S.altaudio");
+        let src = root.path().join("outside").join("big.flac");
+        fs::create_dir_all(src.parent().unwrap()).unwrap();
+        fs::write(&src, vec![7u8; 4 * 1024 * 1024]).unwrap();
+        let dir = media_dir(&session, "");
+        let keep = session.parent().unwrap().to_path_buf();
+        let run = || {
+            let (s, d, k) = (src.clone(), dir.clone(), keep.clone());
+            std::thread::spawn(move || copy_in(&[s], &d, &k))
+        };
+        let (a, b) = (run(), run());
+        let (a, b) = (a.join().unwrap(), b.join().unwrap());
+        assert!(a.failed.is_empty() && b.failed.is_empty());
+        assert_eq!(a.paths, b.paths);
+        assert_eq!(a.copied + b.copied, 1);
+        let names = fs::read_dir(&dir).unwrap().count();
+        assert_eq!(names, 1);
     }
 
     #[test]

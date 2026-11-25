@@ -2474,3 +2474,7 @@ Reported after 0.70.0: View showed Music Mode ticked with nothing visible. Cause
 ## 2026-11-25: ResizeObserver message in the status bar
 
 Reported after 0.70.0: the status bar showed "ResizeObserver loop completed with undelivered notifications" in red on load. Cause: the Favorites bar measured which favorites fit inside its own resize observer callback, and the measure changes the layout. Fix: the measure waits for the next frame. The global error handler also ignores that one browser message when it carries no error object, because it is the browser's note about frame timing and not a fault. Every other error still shows.
+
+## 2026-11-25: Dropping the same files twice no longer fails or duplicates
+
+Reported after 0.70.0: a drag and drop of two FLAC files into a session copied "could not be copied ... os error 32", then froze briefly, and a second drop left duplicate files in the Files panel. Cause: two imports overlapped. Both decided the files were new, both copied them into the session folder, and both wrote the same half-finished copy name, which Windows refuses to share. The loser fell back to the original path, so the same audio was listed twice. Fix: the Files panel runs one import at a time (the second drop waits and then sees what the first added), the copy step takes one job at a time with its own half-copy name per job, and the drop preview is cleared when a drop ends.
