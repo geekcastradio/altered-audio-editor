@@ -368,7 +368,15 @@
   // show in the status bar, so they can be seen and reported.
   setErrorSink((e) => showError(e));
   onMount(() => {
-    const onErr = (ev: ErrorEvent) => showError(ev.error ?? ev.message);
+    const onErr = (ev: ErrorEvent) => {
+      // The browser's own note that a resize observer had more work than one frame fits.
+      // It changes nothing on screen and is not a fault in the app.
+      if (!ev.error && /^ResizeObserver loop/.test(ev.message ?? "")) {
+        ev.stopImmediatePropagation();
+        return;
+      }
+      showError(ev.error ?? ev.message);
+    };
     const onRej = (ev: PromiseRejectionEvent) => showError(ev.reason);
     window.addEventListener("error", onErr);
     window.addEventListener("unhandledrejection", onRej);

@@ -54,10 +54,20 @@
     void showFavorites;
     void tick;
     if (!box) return;
-    const ro = new ResizeObserver(measure);
+    // Measuring changes which favorites show, which changes the layout again. Doing it
+    // inside the observer callback makes the browser report an undelivered-notifications
+    // loop, so the measure waits for the next frame.
+    let frame = 0;
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    });
     ro.observe(box);
     queueMicrotask(measure);
-    return () => ro.disconnect();
+    return () => {
+      cancelAnimationFrame(frame);
+      ro.disconnect();
+    };
   });
   const overflowItems = $derived<ContextItem[]>(
     hidden.map((id) => ({
