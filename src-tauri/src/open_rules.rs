@@ -37,7 +37,7 @@ pub fn is_video_file(p: &str) -> bool {
 /// A session file the app opens: our own or a .sesx.
 pub fn is_session_file(path: &str) -> bool {
     let lower = path.to_lowercase();
-    lower.ends_with(".altaudio") || lower.ends_with(".sesx")
+    lower.ends_with(".altaudio") || lower.ends_with(".sesx") || lower.ends_with(".ses")
 }
 
 /// Sorts files picked in File > Open by what happens to them.
@@ -49,7 +49,7 @@ pub fn plan_open(paths: &[String]) -> Value {
         let e = ext_of(p);
         if e == "altaudio" && session.is_none() {
             session = Some(p);
-        } else if e == "sesx" && sesx.is_none() {
+        } else if (e == "sesx" || e == "ses") && sesx.is_none() {
             sesx = Some(p);
         } else if VIDEO_EXTENSIONS.contains(&e.as_str()) {
             video.push(p);
