@@ -2459,4 +2459,4 @@ Decided with the project lead after community requests. A Favorites menu sits in
 
 ## 2026-11-25: Ask before Save (issue 294)
 
-Optional setting `askBeforeSave`, off by default, on the Session Files page of Settings. With it on, Save in the Waveform editor asks before writing over the original audio file. Save Audio As is not asked (it picks a new file) and an MP3 re-encode keeps its own question. Mirrored in Rust and the shared fixtures.
+Optional setting `askBeforeSave`, off by default, on the Autosave page of Settings. With it on, Save in the Waveform editor asks before writing over the original audio file. Save Audio As is not asked (it picks a new file) and an MP3 re-encode keeps its own question. Mirrored in Rust and the shared fixtures.
