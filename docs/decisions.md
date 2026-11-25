@@ -2452,3 +2452,7 @@ Decision: File > Import is a submenu (Files, Folder, Session). Session opens one
 ## 2026-11-24: Codec options on Save Audio As
 
 Decision: in the Waveform editor, Save Audio As opens the same format dialog as Save Selection As (whole file scope): file name and folder, then format, bit depth or sample type, bitrate, constant or variable encoding, channels. `wave_save` takes an optional `OutputFormat`; without it the file name's extension decides, as before, so plain Save and the close-and-save prompts are unchanged. Reason: issue 294 asked for output settings on save; one dialog keeps both save paths the same. Reported on the issue after release.
+
+## 2026-11-25: Favorites bar and Favorites menu
+
+Decided with the project lead after community requests. A Favorites menu sits in the menu bar, and an optional quick actions bar sits in the empty gap of the tool strip. View > Quick Actions Bar turns the bar on or off; when off it is not drawn at all. Both show one shared list that starts empty. Users pin a command from its right-click menu in any menu. Commands that only work in the Waveform or Multitrack editor grey out in the other view. No new keyboard shortcuts, no starter favorites, and recording a favorite macro is a separate later feature. Settings fields: `quickActionsBar` (default off) and `favorites` (unique command ids, at most 24), mirrored in Rust and the shared fixtures.

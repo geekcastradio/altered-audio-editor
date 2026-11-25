@@ -3,13 +3,14 @@
 // This file is part of Altered Audio Editor.
 
 /**
- * The menu bar as data: File, Edit, Multitrack, Clip, Effects, View,
+ * The menu bar as data: File, Edit, Multitrack, Clip, Effects, Favorites, View,
  * Window, Help. Item contents and grouping are our own. Every item names
  * an action id; items with no registered action show disabled with the
  * reason in `pending`. Shortcuts come from the keymap, not from here.
  */
 
 import { PANELS } from "../docking/registry";
+import { MAX_FAVORITES } from "../favorites";
 
 export type MenuItem =
   | {
@@ -535,9 +536,27 @@ export const MENUS: readonly Menu[] = [
     ],
   },
   {
+    // Starts empty. Right-click any menu command and pick Add to Favorites; the Quick Actions bar shows the same list.
+    label: "Favorites",
+    mnemonic: "O",
+    items: [
+      ...Array.from({ length: MAX_FAVORITES }, (_, i) =>
+        item(`favorites.slot.${i + 1}`, `Favorite ${i + 1}`, { placeholder: true }),
+      ),
+      item("favorites.none", "No favorites yet", {
+        pending: "Right-click any menu command and pick Add to Favorites.",
+        placeholder: true,
+      }),
+      sep,
+      item("favorites.clear", "Remove All Favorites"),
+    ],
+  },
+  {
     label: "View",
     mnemonic: "V",
     items: [
+      item("view.quick-actions", "Quick Actions Bar"),
+      sep,
       item("view.editor.toggle", "Switch Between Editors"),
       item("view.editor.multitrack", "Multitrack Editor"),
       item("view.editor.waveform", "Waveform Editor"),

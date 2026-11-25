@@ -13,13 +13,77 @@
   import { editor, type EditorState, type EditorTool } from "../stores/editor";
   import { settings } from "../stores/settings";
   import { THEME_CHOICES, type ThemeChoice } from "./theme";
+  import ContextMenu, { type ContextItem } from "./ContextMenu.svelte";
+  import { shortLabel } from "./favorites";
 
   interface Props {
     actions: ActionRegistry;
     shortcutFor?: (id: string) => string | undefined;
+    /** Quick Actions bar: the pinned commands (action ids), whether the bar shows, a label per command, and right-click on one. */
+    favorites?: readonly string[];
+    showFavorites?: boolean;
+    labelFor?: (id: string) => string;
+    onFavoriteContext?: (id: string, x: number, y: number) => void;
   }
 
-  const { actions, shortcutFor = () => undefined }: Props = $props();
+  const { actions, shortcutFor = () => undefined, favorites = [], showFavorites = false, labelFor = (id) => id, onFavoriteContext }: Props = $props();
+
+  // Re-read enabled and checked state when an action changes, so a pinned command greys out in the wrong editor.
+  let tick = $state(0);
+  $effect(() =>
+    actions.changed.subscribe((n) => {
+      tick = n;
+    }),
+  );
+
+  // The bar wraps to a second line that is clipped, so a button that does not fit sits lower than the first row.
+  // Those go in the » list instead.
+  let box = $state<HTMLElement | null>(null);
+  let hidden = $state<string[]>([]);
+  let overflowMenu = $state<{ x: number; y: number } | null>(null);
+  function measure() {
+    if (!box) return;
+    const lost: string[] = [];
+    for (const el of box.querySelectorAll<HTMLElement>("[data-fav]")) {
+      if (el.offsetTop > 6) lost.push(el.dataset.fav ?? "");
+    }
+    if (lost.join("|") !== hidden.join("|")) hidden = lost;
+  }
+  $effect(() => {
+    void favorites;
+    void showFavorites;
+    void tick;
+    if (!box) return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(box);
+    queueMicrotask(measure);
+    return () => ro.disconnect();
+  });
+  const overflowItems = $derived<ContextItem[]>(
+    hidden.map((id) => ({
+      kind: "item" as const,
+      label: shortLabel(actions.label(id) ?? labelFor(id)),
+      disabled: !actions.isEnabled(id),
+      reason: actions.reason(id),
+      run: () => void actions.run(id),
+    })),
+  );
+  const favDisabled = (id: string) => {
+    void tick;
+    return !actions.isEnabled(id);
+  };
+  const favLabel = (id: string) => {
+    void tick;
+    return shortLabel(actions.label(id) ?? labelFor(id));
+  };
+  const favChecked = (id: string) => {
+    void tick;
+    return actions.isChecked(id);
+  };
+  const favTip = (id: string) => {
+    void tick;
+    return actions.isEnabled(id) ? tip(favLabel(id), id, "Right-click to remove from Favorites") : (actions.reason(id) ?? "Not available in this editor right now.");
+  };
 
   let ed = $state<EditorState>(editor.current());
   $effect(() =>
@@ -167,6 +231,44 @@
     {/each}
   </div>
 
+  {#if showFavorites}
+    <span class="sep"></span>
+    <div class="favs" role="group" aria-label="Quick actions" bind:this={box}>
+      {#each favorites as id (id)}
+        {@const on = favChecked(id)}
+        <button
+          type="button"
+          class="fav"
+          class:on={on === true}
+          data-fav={id}
+          tabindex={hidden.includes(id) ? -1 : 0}
+          aria-pressed={on}
+          disabled={favDisabled(id)}
+          title={favTip(id)}
+          onclick={() => void actions.run(id)}
+          oncontextmenu={(e) => {
+            e.preventDefault();
+            onFavoriteContext?.(id, e.clientX, e.clientY);
+          }}
+        >{favLabel(id)}</button>
+      {:else}
+        <span class="favs-empty">Right-click a menu command and pick Add to Favorites.</span>
+      {/each}
+    </div>
+    {#if hidden.length > 0}
+      <button
+        type="button"
+        class="tool more"
+        aria-label="More quick actions"
+        title="More quick actions"
+        onclick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          overflowMenu = { x: r.left, y: r.bottom };
+        }}
+      >»</button>
+    {/if}
+  {/if}
+
   {#if spectral && (ed.spectralTool === "brush" || ed.spectralTool === "spot")}
     <label class="size" title="Brush size in pixels">
       <span>Size</span>
@@ -198,6 +300,10 @@
     {/each}
   </div>
 </div>
+
+{#if overflowMenu}
+  <ContextMenu x={overflowMenu.x} y={overflowMenu.y} items={overflowItems} onClose={() => (overflowMenu = null)} />
+{/if}
 
 <style>
   .strip {
@@ -262,6 +368,57 @@
   /* Only the theme switch sits at the right end. The tools stay on the left. */
   .themes {
     margin-left: auto;
+  }
+
+  /* The Quick Actions bar takes the free room in the strip. A button that does not fit wraps below and is clipped. */
+  .favs {
+    display: flex;
+    flex: 1 1 0;
+    flex-wrap: wrap;
+    gap: 2px;
+    align-items: center;
+    align-content: flex-start;
+    height: 24px;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .fav {
+    height: 22px;
+    padding: 0 8px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: none;
+    color: var(--text-dim);
+    font: inherit;
+    font-size: var(--font-size-small);
+    white-space: nowrap;
+  }
+
+  .fav:hover:not(:disabled) {
+    border-color: var(--border-strong);
+    color: var(--text);
+  }
+
+  .fav.on {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--text);
+  }
+
+  .fav:disabled {
+    opacity: 0.35;
+  }
+
+  .favs-empty {
+    color: var(--text-faint);
+    font-size: var(--font-size-small);
+    white-space: nowrap;
+  }
+
+  .more {
+    width: 24px;
+    font-size: 14px;
   }
 
   .sep.thin {
