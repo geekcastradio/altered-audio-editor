@@ -13,6 +13,7 @@ import { editor } from "./editor";
 import { writable, type Readable } from "svelte/store";
 import { UndoStack } from "../commands";
 import type { StashedHistory } from "../commands/undo-stack";
+import type { OutputFormat } from "../app/output-format";
 import { transportStatus, transportStop, waveApply, waveClose, waveForget, waveNew, waveNewFromClips, waveNewFromMix, type MixdownResult, waveOpen, wavePark, wavePlay, waveRenderCopy, waveResume, waveSave, waveSetView, type WaveDocRaw } from "../app/core";
 import { SessionStore, type ClipDoc, type MediaRefDoc, type Op, type SessionDoc, type ViewDoc } from "./session";
 import { TransportStore } from "./transport";
@@ -216,9 +217,9 @@ export const keepView = { once: false };
  * new file and the editor moves to it. Either way the edit list starts
  * fresh on the saved audio, so the history is cleared.
  */
-export async function saveWaveFile(path: string | null, bitDepth: number | null = null): Promise<void> {
+export async function saveWaveFile(path: string | null, bitDepth: number | null = null, format: OutputFormat | null = null): Promise<void> {
   await waveTransport.stop();
-  const doc = await waveSave<SessionDoc>(path, bitDepth);
+  const doc = await waveSave<SessionDoc>(path, bitDepth, format);
   // Saving hands back a fresh document. The view keeps the zoom and place the user had, instead of refitting as a newly opened file would.
   const view = wave.current?.view ?? null;
   keepView.once = view !== null;

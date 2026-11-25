@@ -2448,3 +2448,7 @@ Decision: direct import of old `.ses` sessions (Cool Edit, Cool Edit Pro, early 
 ## 2026-11-24: One Import Session item, Import submenu, more formats in Open
 
 Decision: File > Import is a submenu (Files, Folder, Session). Session opens one dialog whose file type list picks the format: all session and project files, .sesx, .rpp, .aup3/.aup4, .otio. The four separate import items are gone (`file.import-session` replaces them). File > Open also lists and opens .rpp, .aup3, .aup4 and .otio, one project at a time, like .sesx. Reason: the flat list had grown to four near-identical items, and the file dialog already has a type dropdown for this. Open Recent still re-imports foreign projects through the same routing. Requested by the project lead.
+
+## 2026-11-24: Codec options on Save Audio As
+
+Decision: in the Waveform editor, Save Audio As opens the same format dialog as Save Selection As (whole file scope): file name and folder, then format, bit depth or sample type, bitrate, constant or variable encoding, channels. `wave_save` takes an optional `OutputFormat`; without it the file name's extension decides, as before, so plain Save and the close-and-save prompts are unchanged. Reason: issue 294 asked for output settings on save; one dialog keeps both save paths the same. Reported on the issue after release.

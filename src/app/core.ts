@@ -400,8 +400,8 @@ export function wavePlay(from?: number, mode: PlayMode = "normal"): Promise<void
 }
 
 /** Saves the edited file: in place when `path` is null, else as a new file. Reopens the saved file. */
-export function waveSave<S>(path: string | null, bitDepth: number | null): Promise<WaveDocRaw<S>> {
-  return invoke<WaveDocRaw<S>>("wave_save", { path, bitDepth });
+export function waveSave<S>(path: string | null, bitDepth: number | null, format: OutputFormat | null = null): Promise<WaveDocRaw<S>> {
+  return invoke<WaveDocRaw<S>>("wave_save", { path, bitDepth, format });
 }
 
 /** Saves the selected part of the open file as a new file. The open file is left as it is. */
