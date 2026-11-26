@@ -1198,8 +1198,10 @@ export function batchConvert(
   copyTags = false,
   process: EffectChainDoc | null = null,
   shape: { normalizeDb: number | null; fadeInMs: number; fadeOutMs: number; loudnessLufs?: number | null; ceilingDb?: number; trimDb?: number | null; trimKeepMs?: number } | null = null,
+  /** A destination name that is taken gets a number instead of failing. */
+  numbered = false,
 ): Promise<BatchSummary> {
-  return invoke<BatchSummary>("batch_convert", { jobs, format, overwrite, copyTags, process, shape });
+  return invoke<BatchSummary>("batch_convert", { jobs, format, overwrite, copyTags, process, shape, numbered });
 }
 
 /** Stops Batch Convert; the file in progress is discarded. */
