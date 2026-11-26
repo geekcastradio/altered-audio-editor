@@ -24,7 +24,7 @@ Things to try on Windows. Each line says what to do and what should happen.
 2. Right-click a Quick Actions Bar button: same.
 
 ## Convert Sample Type
-1. Open a WAV in the Waveform editor. Edit > Convert Sample Type, pick a new rate and type. A notice says which file was saved ("name (converted).wav").
+1. Open a WAV in the Waveform editor. File > Convert Sample Type, pick a new rate and type. A notice says which file was saved ("name (converted).wav").
 2. Do the same again: it saves "name (converted) 2.wav" instead of failing.
 3. Open the new file: its rate and type are the ones you picked.
 
