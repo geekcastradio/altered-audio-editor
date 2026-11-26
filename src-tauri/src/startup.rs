@@ -93,6 +93,9 @@ pub fn set_folder(dir: &Path) {
 mod tests {
     use super::*;
 
+    /// Tests that point the log at a folder share one global, so they take turns.
+    static FOLDER_TESTS: Mutex<()> = Mutex::new(());
+
     #[test]
     fn text_has_the_header_and_the_stages_so_far() {
         mark("test stage for text");
@@ -114,6 +117,7 @@ mod tests {
 
     #[test]
     fn marks_are_written_once_a_folder_is_set() {
+        let _turn = FOLDER_TESTS.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("aae-startup-{}", std::process::id()));
         mark("before folder");
         set_folder(&dir);
@@ -126,6 +130,7 @@ mod tests {
 
     #[test]
     fn a_reader_never_sees_a_half_written_log() {
+        let _turn = FOLDER_TESTS.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("aae-startup-race-{}", std::process::id()));
         set_folder(&dir);
         let writer = std::thread::spawn(|| {
