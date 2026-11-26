@@ -2481,3 +2481,7 @@ Reported after 0.70.0: a drag and drop of two FLAC files into a session copied "
 ## 2026-11-25: Audition 3 .ses import (issue 311)
 
 Built the first direct reader for old `.ses` sessions, as a bug fix for 0.70.1. It reads the layout with a `TRKS` chunk and a `bk25` clip list, checked against one real sample (6 tracks, 2 clips): track names, clip start and length, and which track each clip sits on. A clip that plays only part of its file is placed whole, with a visible notice, because the source offset is not proven. The older layout (`trks`, `bk20`) is recognised and refused with a plain message: its clip records do not show which track a clip is on, so a guess could silently put clips on the wrong tracks. This corrects the 2026-11-24 entry, which assumed all `.ses` layouts could be read once samples arrived. Open, drop and the Import > Session picker all accept `.ses`. More samples (a second Audition 3 file, an older file with known track layout) would let the refused layout be added. Tracked in issue 311.
+
+## 2026-11-25: Startup log tests take turns
+
+The Linux job failed once on `marks_are_written_once_a_folder_is_set`. Two startup tests point the shared log at their own folder, so run in parallel one moved the log away from the other's folder. The tests now take a lock in turn. Test code only; no change to the program.
