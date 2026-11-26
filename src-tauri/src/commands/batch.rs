@@ -170,10 +170,12 @@ pub async fn batch_convert(
     copy_tags: Option<bool>,
     process: Option<EffectChain>,
     shape: Option<Shaping>,
+    numbered: Option<bool>,
 ) -> Result<BatchSummary, String> {
     let app = app.inner().clone();
     let shape = shape.unwrap_or_default();
     let copy = copy_tags.unwrap_or(false);
+    let numbered = numbered.unwrap_or(false);
     let flag = cancel.0.clone();
     flag.store(false, Ordering::Relaxed);
     spawn_blocking(move || {
@@ -182,7 +184,21 @@ pub async fn batch_convert(
             failed: 0,
             stopped: false,
         };
-        for job in jobs {
+        for mut job in jobs {
+            // A name that is taken gets a number ("name 2") instead of a refusal.
+            if numbered && !overwrite && job.dest.exists() {
+                if let (Some(dir), Some(stem), Some(ext)) = (
+                    job.dest.parent(),
+                    job.dest
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().into_owned()),
+                    job.dest
+                        .extension()
+                        .map(|e| e.to_string_lossy().into_owned()),
+                ) {
+                    job.dest = crate::export::mixdown::unique_path(dir, &stem, &ext);
+                }
+            }
             if flag.load(Ordering::Relaxed) {
                 summary.stopped = true;
                 break;

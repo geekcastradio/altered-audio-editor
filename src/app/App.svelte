@@ -2489,12 +2489,17 @@
     const dest = `${dir}${stem} (converted).${extensionOf(format.kind)}`;
     const id = crypto.randomUUID();
     exporting = { title: "Converting", progress: 0 };
+    let saved = dest;
+    let reason: string | null = null;
     const off = await listen<BatchProgress>("batch-progress", (e) => {
-      if (exporting && e.payload.id === id) exporting = { ...exporting, progress: e.payload.progress };
+      if (e.payload.id !== id) return;
+      if (exporting) exporting = { ...exporting, progress: e.payload.progress };
+      if (e.payload.status === "done") saved = e.payload.dest;
+      if (e.payload.status === "failed") reason = e.payload.error;
     });
     try {
-      const r = await batchConvert([{ id, source: req.source, dest }], $state.snapshot(format), false, true);
-      showNotice(r.done > 0 ? `Saved ${dest}.` : r.failed > 0 ? "The file could not be converted." : "Conversion stopped.");
+      const r = await batchConvert([{ id, source: req.source, dest }], $state.snapshot(format), false, true, null, null, true);
+      showNotice(r.done > 0 ? `Saved ${saved}.` : r.failed > 0 ? `The file could not be converted${reason ? `: ${reason}` : "."}` : "Conversion stopped.");
     } catch (e) {
       showError(e);
     } finally {
