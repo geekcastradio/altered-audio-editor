@@ -151,7 +151,14 @@ export class TransportStore {
   play(from?: number): Promise<void> {
     return this.serial(async () => {
       const v = this.session.current?.view;
-      const at = Math.max(0, Math.round(from ?? playStart(v?.playhead ?? 0, v?.selection, this.backend.skipsSelection?.() ?? false)));
+      let at = Math.max(0, Math.round(from ?? playStart(v?.playhead ?? 0, v?.selection, this.backend.skipsSelection?.() ?? false)));
+      // Space with the playhead at (or past) the end starts again from the top,
+      // instead of running on into silence with the clock still counting.
+      if (from === undefined && !this.holdAtEnd && this.backend.stopAtEnd?.()) {
+        const doc = this.session.current;
+        const end = doc ? sessionEnd(doc) : 0;
+        if (end > 0 && at >= end) at = 0;
+      }
       await this.session.flushView?.();
       await this.backend.play(at);
       if (!this.state.playing) this.startedAt = at;
