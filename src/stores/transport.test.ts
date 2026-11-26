@@ -210,3 +210,56 @@ describe("TransportStore stops at the end of the selection", () => {
     await t.pause();
   });
 });
+
+describe("TransportStore starts again from the top when the playhead is at the end", () => {
+  function endSetup(playhead: number) {
+    let position = 0;
+    const calls: string[] = [];
+    const d = doc(playhead);
+    d.media = [{ id: "m", path: "a.wav", relative_path: null, sample_rate: 48000, channels: 2, length: 100_000 }];
+    d.tracks = [
+      { id: "t", clips: [{ id: "c", media_id: "m", start: 0, source_in: 0, source_out: 100_000 }] },
+    ] as unknown as SessionDoc["tracks"];
+    const session = new SessionStore({
+      get: async () => ({ session: d, path: null }),
+      apply: async () => {
+        throw new Error("unused");
+      },
+      setView: async () => {},
+    });
+    session.set(d);
+    const t = new TransportStore(
+      {
+        play: async (from) => {
+          position = from;
+          calls.push(`play:${from}`);
+        },
+        stop: async () => position,
+        status: async () => ({ playing: true, position, trackIds: [], meters: [], master: [0, 0], underruns: 0 }),
+        stopAtEnd: () => true,
+      },
+      session,
+      () => {},
+      10_000,
+    );
+    return { t, calls };
+  }
+
+  it("plays from 0 when the playhead sits at the end", async () => {
+    const { t, calls } = endSetup(100_000);
+    await t.play();
+    expect(calls).toEqual(["play:0"]);
+  });
+
+  it("plays from the playhead when it is before the end", async () => {
+    const { t, calls } = endSetup(40_000);
+    await t.play();
+    expect(calls).toEqual(["play:40000"]);
+  });
+
+  it("keeps an explicit start position", async () => {
+    const { t, calls } = endSetup(100_000);
+    await t.play(100_000);
+    expect(calls).toEqual(["play:100000"]);
+  });
+});

@@ -2493,3 +2493,7 @@ Layout only: no new items, no new shortcuts, every action id kept (checked again
 ## 2026-11-26: Convert Sample Type keeps going when its file name is taken (issue 321)
 
 Reported: Convert Sample Type "mostly does nothing" or says "File could not be converted". Cause found in the code: the converted file is saved beside the original as "name (converted)", and the conversion refused to replace a file already there, so the second try on the same file always failed. The message also dropped the real reason. Now a taken name gets a number ("name (converted) 2"), the notice names the file that was saved, and a real failure shows its reason. Convert Sample Type still writes a new file and does not change the open file or its tab; that is by design, and the Waveform editor tab shows the file as saved. Not fixed here: showing the converted file in the open tab (a decision for the project lead).
+
+## 2026-11-26: Space at the end of the audio starts again from the top (issue 321)
+
+Reported on 0.70.1: with the playhead at the end of the audio and nothing selected, Space played on past the end into silence while the timer kept counting. Cause: playback only stops at the end when it started before the end, so starting at the end never stopped. Now Space with the playhead at or past the end starts from the beginning. An explicit start (a click on the ruler, recording) is left alone.
