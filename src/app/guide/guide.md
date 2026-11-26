@@ -44,10 +44,10 @@ There is no account, no sign-in, no tracking and no telemetry.
 
 Add a track with Multitrack > Add > Mono Track or Stereo Track, then arm it with the **R** button in its header.
 
-- Pick the input in the track header. Press Record (Multitrack > Record) and press Stop when you are done.
+- Pick the input in the track header. Press Record (Multitrack > Playback and Recording > Record) and press Stop when you are done.
 - The take lands on the armed track as a new clip at the playhead.
 
-Recording Options (Multitrack > Recording Options) holds pre-roll, punch-in and the recording offset.
+Recording Options (Multitrack > Playback and Recording > Recording Options) holds pre-roll, punch-in and the recording offset.
 
 - With a time selection, Record starts a pre-roll before it, stops by itself at the end and replaces what was there on the recorded tracks (punch-in).
 - The offset trims a few milliseconds from the start of each take so takes line up with what they were played against.
@@ -168,7 +168,7 @@ Select a clip and open the **Properties** panel.
 
 - Stretch changes a clip's speed and pitch, with a mode of Off, Real-time or Rendered (HQ), and can fit a clip to the time selection.
 - Remix is for music: set a target length and it finds up to three ways to cut or repeat the music where it lines up, shows the length you would get, and puts the one you pick on the track with short crossfades as one undo.
-- Source Channels sets how much of each channel of the file goes left and right. Clip > Time Stretch and Clip > Fit Music to Length open these sections.
+- Source Channels sets how much of each channel of the file goes left and right. Clip > Stretch > Time Stretch and Clip > Stretch > Fit Music to Length open these sections.
 - Remix applies once: change the length later and you find joins again.
 
 ## Soundboard
