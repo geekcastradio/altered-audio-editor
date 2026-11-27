@@ -62,6 +62,17 @@ pub fn mono_check() -> bool {
     MONO_CHECK.load(Ordering::Relaxed)
 }
 
+/// Listening mutes: silence the left or the right side of what plays, to
+/// hear one channel alone. Listening only: exports never see them.
+static MUTE_LEFT: AtomicBool = AtomicBool::new(false);
+static MUTE_RIGHT: AtomicBool = AtomicBool::new(false);
+
+/// Mutes the left and or the right side of the output, while playing or not.
+pub fn set_listen_mute(left: bool, right: bool) {
+    MUTE_LEFT.store(left, Ordering::Relaxed);
+    MUTE_RIGHT.store(right, Ordering::Relaxed);
+}
+
 /// Audio rendered ahead of the device, per track.
 const AHEAD_SECONDS: f64 = 0.5;
 /// Frames rendered per step on the render thread.
@@ -1078,6 +1089,8 @@ fn mix<T>(
     }
     let master = bits_f32(shared.master.load(Ordering::Relaxed));
     let mono = MONO_CHECK.load(Ordering::Relaxed);
+    let mute_l = MUTE_LEFT.load(Ordering::Relaxed);
+    let mute_r = MUTE_RIGHT.load(Ordering::Relaxed);
     let mut mpeak = [0f32; 2];
     for f in 0..n {
         let mut l = 0f32;
@@ -1092,8 +1105,19 @@ fn mix<T>(
         }
         l *= master;
         r *= master;
+        if mute_l {
+            l = 0.0;
+        }
+        if mute_r {
+            r = 0.0;
+        }
         if mono {
-            let m = (l + r) * 0.5;
+            // With one side muted, the side that is left is heard on both.
+            let m = if mute_l != mute_r {
+                l + r
+            } else {
+                (l + r) * 0.5
+            };
             l = m;
             r = m;
         }
@@ -1168,6 +1192,7 @@ fn mix<T>(
 #[cfg(test)]
 mod tests {
     use super::Jump;
+    static MUTE_TEST: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
     fn position_follows_loops_and_skips() {
@@ -1202,6 +1227,7 @@ mod tests {
 
     #[test]
     fn mix_applies_gains_meters_and_counts_frames() {
+        let _guard = MUTE_TEST.lock().unwrap_or_else(|e| e.into_inner());
         let shared = Shared::new(2, &[[1.0, 0.5], [0.0, 0.0]], 1.0);
         let (mut p0, c0) = RingBuffer::<f32>::new(16);
         let (mut p1, c1) = RingBuffer::<f32>::new(16);
@@ -1250,6 +1276,7 @@ mod tests {
 
     #[test]
     fn the_click_plays_after_the_master_fader_and_meters() {
+        let _guard = MUTE_TEST.lock().unwrap_or_else(|e| e.into_inner());
         let shared = Shared::new(1, &[[1.0, 1.0]], 0.5);
         let (mut p, c) = RingBuffer::<f32>::new(4);
         p.push(0.4).unwrap();
@@ -1277,6 +1304,7 @@ mod tests {
 
     #[test]
     fn gain_updates_apply_without_restart() {
+        let _guard = MUTE_TEST.lock().unwrap_or_else(|e| e.into_inner());
         let shared = Shared::new(1, &[[1.0, 1.0]], 1.0);
         shared.set_gains(&[[0.25, 0.0]], 2.0);
         let (mut p, c) = RingBuffer::<f32>::new(4);
@@ -1299,6 +1327,7 @@ mod tests {
 
     #[test]
     fn mono_check_folds_what_plays() {
+        let _guard = MUTE_TEST.lock().unwrap_or_else(|e| e.into_inner());
         let shared = Shared::new(1, &[[1.0, 1.0]], 1.0);
         let (mut p, c) = RingBuffer::<f32>::new(4);
         p.push(1.0).unwrap();
@@ -1321,7 +1350,42 @@ mod tests {
     }
 
     #[test]
+    fn muting_one_side_leaves_the_other() {
+        // Tests share the global switches, so each case sets them itself.
+        let run = |left: bool, right: bool, mono: bool| {
+            let shared = Shared::new(1, &[[1.0, 1.0]], 1.0);
+            let (mut p, c) = RingBuffer::<f32>::new(4);
+            p.push(1.0).unwrap();
+            p.push(-0.5).unwrap();
+            let mut consumers = vec![c];
+            let mut out = [0f32; 2];
+            set_listen_mute(left, right);
+            set_mono_check(mono);
+            mix(
+                &mut out,
+                2,
+                &mut consumers,
+                &mut quiet(),
+                &shared,
+                &mut [[0.0; 2]],
+                &mut [[0.0; 2]],
+                &mut Routing::stereo(),
+            );
+            set_listen_mute(false, false);
+            set_mono_check(false);
+            out
+        };
+        let _guard = MUTE_TEST.lock().unwrap_or_else(|e| e.into_inner());
+        assert_eq!(run(true, false, false), [0.0, -0.5]);
+        assert_eq!(run(false, true, false), [1.0, 0.0]);
+        assert_eq!(run(true, true, false), [0.0, 0.0]);
+        // Mono with the left muted plays the right on both sides.
+        assert_eq!(run(true, false, true), [-0.5, -0.5]);
+    }
+
+    #[test]
     fn speakers_play_on_their_mapped_outputs() {
+        let _guard = MUTE_TEST.lock().unwrap_or_else(|e| e.into_inner());
         let shared = Shared::new(1, &[[1.0, 1.0]], 1.0);
         let (mut p, c) = RingBuffer::<f32>::new(4);
         p.push(0.9).unwrap();
@@ -1352,6 +1416,7 @@ mod tests {
 
     #[test]
     fn stereo_plays_on_the_picked_pair() {
+        let _guard = MUTE_TEST.lock().unwrap_or_else(|e| e.into_inner());
         let shared = Shared::new(1, &[[1.0, 1.0]], 1.0);
         let (mut p, c) = RingBuffer::<f32>::new(4);
         p.push(0.3).unwrap();
@@ -1376,6 +1441,7 @@ mod tests {
 
     #[test]
     fn a_mono_pair_sends_both_sides_to_one_output() {
+        let _guard = MUTE_TEST.lock().unwrap_or_else(|e| e.into_inner());
         let shared = Shared::new(1, &[[1.0, 1.0]], 1.0);
         let (mut p, c) = RingBuffer::<f32>::new(4);
         p.push(0.25).unwrap();
@@ -1400,6 +1466,7 @@ mod tests {
 
     #[test]
     fn a_one_output_device_plays_both_sides_together() {
+        let _guard = MUTE_TEST.lock().unwrap_or_else(|e| e.into_inner());
         let shared = Shared::new(1, &[[1.0, 1.0]], 1.0);
         let (mut p, c) = RingBuffer::<f32>::new(4);
         p.push(0.25).unwrap();
@@ -1420,6 +1487,7 @@ mod tests {
 
     #[test]
     fn extra_device_channels_stay_silent() {
+        let _guard = MUTE_TEST.lock().unwrap_or_else(|e| e.into_inner());
         let shared = Shared::new(1, &[[1.0, 1.0]], 1.0);
         let (mut p, c) = RingBuffer::<f32>::new(4);
         p.push(0.3).unwrap();
