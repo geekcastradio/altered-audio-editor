@@ -58,6 +58,8 @@ To record a call, each output device is also offered as an input named "System a
 
 **Convert Sample Type.** File > Convert Sample Type (Shift+T) writes a converted copy of the open audio file next to it, named with "(converted)", and opens that copy in the Waveform editor. The original file is never changed, and it stays open in the background with any edits you had. The copy is made from the file on disk, so save first if you want unsaved edits included.
 
+**Interface size.** Settings > Appearance has Interface size, from 90% to 200%. It makes all text, numbers and controls larger or smaller together, so Time Info grows with the rest. 100% is the standard size.
+
 **Scrubbing.** Settings > Playback and Recording has Play audio while scrubbing. With it on, dragging the playhead along the ruler plays what is under it. It is approximate: playback restarts at the pointer every moment. It is off by default.
 
 **Playback speed.** Settings > Playback and Recording has Playback speed (experimental). With it on, Transport > Playback Speed plays the mix from 0.5x to 2x with the pitch kept, which is handy for reviewing speech. It is for listening only: recording, exports and saved files are not affected. At 0.5x and 2x the sound is smeared, the metronome is silent whenever the speed is not Normal, and it does not apply to 3D Space sessions heard on speakers. Recording puts it back to Normal, and so does starting the program again.

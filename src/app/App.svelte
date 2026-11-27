@@ -241,6 +241,7 @@
     waveSpectralEdit,
     waveSpectralPlay,
     previewPlay,
+    setInterfaceSize,
     previewStop,
     waveApplyChain,
     phaseAlign,
@@ -4097,6 +4098,7 @@
   function applyAppSettings(s: AppSettings, autosave: boolean) {
     if (!s.playbackSpeed && speedNow !== 100) void chooseSpeed(100).catch(() => {});
     document.documentElement.dataset.surface = s.surface;
+    void setInterfaceSize(s.textSize);
     const shown = effectiveTheme(s.theme, systemIsLight());
     if (document.documentElement.dataset.theme !== shown) {
       document.documentElement.dataset.theme = shown;

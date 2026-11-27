@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Permissions for the main window. Add plugin permissions here only when a task needs them.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:webview:allow-set-webview-zoom"]
 }

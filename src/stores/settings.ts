@@ -33,6 +33,9 @@ export interface AppColors {
   phaseHigh: string;
 }
 
+/** Interface sizes offered in Settings > Appearance, in percent. */
+export const TEXT_SIZES = [90, 100, 110, 125, 150, 175, 200] as const;
+
 export interface AppSettings {
   /** How much one Ctrl+wheel step zooms, in percent. */
   zoomStep: number;
@@ -49,6 +52,8 @@ export interface AppSettings {
   surface: "standard" | "classic";
   /** The color theme: dark for long sessions, light, or whichever the computer is set to. */
   theme: "dark" | "light" | "system";
+  /** How large the whole interface is, in percent: one of TEXT_SIZES. Text, numbers and controls scale together. */
+  textSize: number;
   /** System name of the output; null is the system default. */
   output: string | null;
   /** Device outputs (from 0) the stereo mix plays on: left, right. */
@@ -217,6 +222,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   colors: { ...NO_COLORS },
   surface: "standard",
   theme: "dark",
+  textSize: 100,
   output: null,
   outputPair: [0, 1],
   speakerOutputs: {},
@@ -301,6 +307,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
         : "cosine",
     surface: o.surface === "classic" ? "classic" : "standard",
     theme: o.theme === "light" ? "light" : o.theme === "system" ? "system" : "dark",
+    textSize: (TEXT_SIZES as readonly number[]).includes(o.textSize as number) ? (o.textSize as number) : 100,
     colors: {
       wave: color(c.wave),
       playhead: color(c.playhead),
