@@ -2497,3 +2497,7 @@ Reported: Convert Sample Type "mostly does nothing" or says "File could not be c
 ## 2026-11-26: Space at the end of the audio starts again from the top (issue 321)
 
 Reported on 0.70.1: with the playhead at the end of the audio and nothing selected, Space played on past the end into silence while the timer kept counting. Cause: playback only stops at the end when it started before the end, so starting at the end never stopped. Now Space with the playhead at or past the end starts from the beginning. An explicit start (a click on the ruler, recording) is left alone.
+
+## 2026-11-26: HE-AAC files import at the right speed (issue 321)
+
+Reported: a 48 kHz AAC file played at double speed. Cause: the file is HE-AAC, which stores a half-rate core plus a band replication layer. Our decoder (symphonia) does not apply that layer, so it returned half the samples each packet while the file said 48 kHz. Now the first packet is checked: when it decodes to half what its timestamps promise, the file is read at the core rate (24 kHz here), the length is halved to match, and the codec label says "AAC (HE, without high band)". Speed and length are right; sound above about 12 kHz is missing. Not done: a real band replication decoder, which is a large job. The test fixture is the 5 second clip the user sent (`src-tauri/tests/fixtures/he-aac-48k.m4a`); no HE-AAC encoder is available here to make our own.

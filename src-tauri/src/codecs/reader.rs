@@ -28,6 +28,8 @@ use super::probe::ProbeError;
 const RESAMPLE_CHUNK: usize = 1024;
 
 pub struct AudioReader {
+    time_base: Option<symphonia::core::units::TimeBase>,
+    check_core: bool,
     format: Box<dyn FormatReader>,
     decoder: Box<dyn AudioDecoder>,
     track_id: u32,
@@ -106,7 +108,11 @@ impl AudioReader {
             .make_audio_decoder(&params, &AudioDecoderOptions::default())
             .map_err(|e| ProbeError::UnsupportedCodec(e.to_string()))?;
 
+        let is_aac = params.codec == symphonia::core::codecs::audio::well_known::CODEC_ID_AAC;
+        let time_base = track.time_base;
         let mut reader = Self {
+            time_base,
+            check_core: is_aac,
             format,
             decoder,
             track_id,
@@ -124,7 +130,9 @@ impl AudioReader {
             skip_src: 0,
         };
         // Some formats only reveal rate and channels after the first decode.
-        if reader.src_rate == 0 || reader.src_channels == 0 {
+        // AAC is decoded once up front to spot an HE-AAC core (see
+        // `is_core_only`).
+        if reader.src_rate == 0 || reader.src_channels == 0 || is_aac {
             reader.decode_next()?;
         }
         if reader.src_rate == 0 || reader.src_channels == 0 {
@@ -284,6 +292,17 @@ impl AudioReader {
             let spec = buf.spec();
             if self.src_rate == 0 {
                 self.src_rate = spec.rate();
+            }
+            if self.check_core {
+                self.check_core = false;
+                if super::probe::is_core_only(
+                    buf.frames(),
+                    packet.dur.get(),
+                    self.time_base,
+                    self.src_rate,
+                ) {
+                    self.src_rate /= 2;
+                }
             }
             let channels = spec.channels().count();
             if self.src_channels == 0 {

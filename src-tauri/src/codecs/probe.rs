@@ -142,6 +142,7 @@ pub fn probe(path: &Path) -> Result<AudioInfo, ProbeError> {
     let mut channels = params.channels.as_ref().map(|c| c.count());
     let mut scanned: u64 = 0;
     let mut first_pts: Option<i64> = None;
+    let mut he_core = false;
     loop {
         let packet = match format.next_packet() {
             Ok(Some(p)) => p,
@@ -157,6 +158,12 @@ pub fn probe(path: &Path) -> Result<AudioInfo, ProbeError> {
             Ok(buf) => {
                 let spec = buf.spec();
                 sample_rate = sample_rate.or(Some(spec.rate()));
+                if codec_name.eq_ignore_ascii_case("aac") {
+                    if let Some(rate) = sample_rate {
+                        he_core =
+                            is_core_only(buf.frames(), packet.dur.get(), track.time_base, rate);
+                    }
+                }
                 channels = channels.or(Some(spec.channels().count()));
                 break;
             }
@@ -171,11 +178,15 @@ pub fn probe(path: &Path) -> Result<AudioInfo, ProbeError> {
         }
     }
 
-    let sample_rate = sample_rate.filter(|r| *r > 0).ok_or(ProbeError::NoAudio)?;
+    let mut sample_rate = sample_rate.filter(|r| *r > 0).ok_or(ProbeError::NoAudio)?;
+    if he_core {
+        sample_rate /= 2;
+    }
     let channels = channels.filter(|c| *c > 0).ok_or(ProbeError::NoAudio)?;
     let time_base = track.time_base;
 
     let length = match (long.map(|l| l.0).or(track.num_frames), track.duration) {
+        (Some(n), _) if he_core => n / 2,
         (Some(n), _) => n,
         (None, Some(d)) => to_frames(d.get(), time_base, sample_rate),
         (None, None) => {
@@ -191,7 +202,11 @@ pub fn probe(path: &Path) -> Result<AudioInfo, ProbeError> {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default(),
         format: container,
-        codec: codec_label(codec_name, params.bits_per_sample),
+        codec: if he_core {
+            "AAC (HE, without high band)".into()
+        } else {
+            codec_label(codec_name, params.bits_per_sample)
+        },
         sample_rate,
         channels: u16::try_from(channels).unwrap_or(u16::MAX),
         length,
@@ -241,6 +256,25 @@ fn count_remaining(
         }
     }
     Ok(ticks)
+}
+
+/// True when an AAC packet decodes to half the samples its timestamps
+/// promise. That is HE-AAC: the file stores a half-rate core plus a
+/// spectral band replication layer that this decoder does not apply.
+/// Reading the core at the file's stated rate would play it at double speed,
+/// so the caller halves the rate instead and the highs are missing.
+pub(crate) fn is_core_only(
+    decoded_frames: usize,
+    packet_ticks: u64,
+    time_base: Option<TimeBase>,
+    rate: u32,
+) -> bool {
+    if decoded_frames == 0 {
+        return false;
+    }
+    let expected = to_frames(packet_ticks, time_base, rate);
+    let ratio = expected * 10 / decoded_frames as u64;
+    (19..=21).contains(&ratio)
 }
 
 fn to_frames(ticks: u64, time_base: Option<TimeBase>, sample_rate: u32) -> u64 {
