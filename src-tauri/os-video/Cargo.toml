@@ -10,6 +10,8 @@ description = "Video frames for Altered Audio Editor through the operating syste
 windows = { version = "0.62", features = ["Win32_Media_MediaFoundation", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant"] }
 
 [features]
+# Decode H.264 inside the program (experimental, off by default). Falls back to the system decoder on any error.
+pure-video = ["dep:craft-video", "dep:symphonia"]
 # The macOS decoder (AVFoundation). Off until it has been built and tried on a Mac.
 apple = ["dep:objc2", "dep:objc2-foundation", "dep:objc2-av-foundation", "dep:objc2-core-media", "dep:objc2-core-video"]
 
@@ -19,3 +21,8 @@ objc2-foundation = { version = "0.3", optional = true }
 objc2-av-foundation = { version = "0.3", optional = true, features = ["objc2-core-media", "objc2-core-video"] }
 objc2-core-media = { version = "0.3", optional = true }
 objc2-core-video = { version = "0.3", optional = true }
+
+[dependencies]
+# ArtCraft's clean-room pure-Rust codecs (MIT OR Apache-2.0), pinned to one commit.
+craft-video = { version = "0.1.0", git = "https://github.com/storytold/craft-libs", rev = "0ebc5915b0aeef571ccc68531056e49a67d13bb5", default-features = false, features = ["h264-decode"], optional = true }
+symphonia = { version = "0.6.1", default-features = false, features = ["isomp4"], optional = true }
