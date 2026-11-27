@@ -1498,6 +1498,16 @@ export function videoSetHardware(on: boolean): Promise<void> {
   return invoke<void>("video_set_hardware", { on });
 }
 
+/** Whether videos opened from now on try the built-in decoder first. */
+export function videoSetBuiltIn(on: boolean): Promise<void> {
+  return invoke<void>("video_set_built_in", { on });
+}
+
+/** Whether this build has the built-in video decoder. */
+export function videoBuiltInAvailable(): Promise<boolean> {
+  return invoke<boolean>("video_built_in_available");
+}
+
 /** Sends short MIDI messages back to a device (fader positions, lights); resolves false when it has no output. */
 export function controllerSend(port: string, messages: number[][]): Promise<boolean> {
   return invoke<boolean>("controller_send", { port, messages });

@@ -54,6 +54,8 @@ export interface AppSettings {
   theme: "dark" | "light" | "system";
   /** How large the whole interface is, in percent: one of TEXT_SIZES. Text, numbers and controls scale together. */
   textSize: number;
+  /** Try the decoder built into the app before the system's for video pictures. Off by default. */
+  videoBuiltIn: boolean;
   /** System name of the output; null is the system default. */
   output: string | null;
   /** Device outputs (from 0) the stereo mix plays on: left, right. */
@@ -223,6 +225,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   surface: "standard",
   theme: "dark",
   textSize: 100,
+  videoBuiltIn: false,
   output: null,
   outputPair: [0, 1],
   speakerOutputs: {},
@@ -308,6 +311,7 @@ export function sanitizeSettings(raw: unknown): AppSettings {
     surface: o.surface === "classic" ? "classic" : "standard",
     theme: o.theme === "light" ? "light" : o.theme === "system" ? "system" : "dark",
     textSize: (TEXT_SIZES as readonly number[]).includes(o.textSize as number) ? (o.textSize as number) : 100,
+    videoBuiltIn: o.videoBuiltIn === true,
     colors: {
       wave: color(c.wave),
       playhead: color(c.playhead),

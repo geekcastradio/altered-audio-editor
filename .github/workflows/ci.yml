@@ -99,7 +99,7 @@ jobs:
 
       - name: cargo clippy with ASIO
         working-directory: src-tauri
-        run: cargo clippy --all-targets --features asio -- -D warnings
+        run: cargo clippy --all-targets --features asio,pure-video -- -D warnings
 
   linux:
     name: Linux
@@ -186,6 +186,16 @@ jobs:
         env:
           AAE_REQUIRE_TOOLS: "1"
         run: cargo test --lib --features pure-aac
+
+      # The built-in H.264 video decoder (on in release builds, tried first only when Settings
+      # turns it on).
+      - name: cargo clippy with pure-video
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --features pure-video -- -D warnings
+
+      - name: cargo test with pure-video
+        working-directory: src-tauri
+        run: cargo test -p altered-os-video --features pure-video
 
   security:
     name: Security and privacy

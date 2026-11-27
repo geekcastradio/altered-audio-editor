@@ -428,3 +428,5 @@ Keyboard shortcuts are listed in Help > Keyboard Shortcuts, and you can change t
 - If the program closed unexpectedly, it offers to recover your unsaved work the next time it starts.
 
 Help > Altered Audio Editor Github has the source code. Help > Support Altered Audio Editor shows ways to support the project.
+
+**Built-in video decoder.** Edit > Settings > Playback and Recording has "Use the built-in video decoder first". It is off by default. When it is on, H.264 pictures in MP4 and MOV files are decoded inside the app, so they do not depend on what your system has installed. A file it cannot read opens with the system decoder instead. The open picture reloads when you press OK.
