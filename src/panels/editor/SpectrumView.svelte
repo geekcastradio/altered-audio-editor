@@ -19,6 +19,7 @@
   import { spectralSelection } from "../../stores/wave";
   import { sampleAt, xOf, type Viewport } from "./timeline";
   import { freqAt, fracOf, freqTicks, FULL_VIEW, rowEdges, SPECTRUM_LUT, viewFrac, viewFreq, viewRange, zoomFreq, type SpectralShape } from "./spectrum";
+  import { adjustBox, bandBox, boxFromValues, boxValues, cursorFor, hitBox, rangeText, type BoxHit, type BoxShape } from "./spectrum-box";
   import { ROSEUS_LUT } from "./roseus-lut";
   import { FFT_SIZES, spectrumView, type SpectrumViewState } from "../../stores/spectrum-view";
   import { noteName } from "./midi";
@@ -72,8 +73,24 @@
   let drawing = $state<SpectralShape | null>(null);
   let hover = $state<{ x: number; y: number } | null>(null);
 
+  /** The one committed box, when the selection is exactly one box: the one that can be adjusted and typed in. */
+  const oneBox = $derived<BoxShape | null>(shapes && shapes.length === 1 && shapes[0]!.kind === "box" ? (shapes[0] as BoxShape) : null);
+  const boxPixels = (b: BoxShape) => ({ left: xOf(b.start, view), right: xOf(b.end, view), top: yOfFrac(b.top), bottom: yOfFrac(b.bottom) });
+  /** What the pointer is on of the adjustable box, for the cursor and for taking hold. */
+  const overBox = $derived<BoxHit | null>(tool === "box" && oneBox && hover && hover.x <= width ? hitBox(boxPixels(oneBox), hover.x, hover.y) : null);
+
   const rate = $derived(doc.sample_rate);
   const nyquist = $derived(rate / 2);
+  const values = $derived(oneBox ? boxValues(oneBox, rate, nyquist) : null);
+  /** A number typed in one of the box fields. Anything that is not a number leaves the box as it was. */
+  function typed(field: "start" | "end" | "low" | "high", e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    if (!values) return;
+    const n = Number(input.value.replace(",", ".").trim());
+    const next = boxFromValues({ ...values, [field]: n }, rate, total, nyquist);
+    if (next) spectralSelection.set([next]);
+    else input.value = String(field === "start" || field === "end" ? values[field].toFixed(3) : +values[field].toFixed(1));
+  }
   const range = $derived({
     start: Math.max(0, Math.round(view.scroll)),
     end: Math.min(total, Math.round(view.scroll + width * view.spp)),
@@ -391,18 +408,60 @@
     g.fillText(sv.notes ? "Note" : "Hz", width + 7, 7);
   });
 
-  const cursor = $derived(tool === "time" ? "text" : tool === "brush" || tool === "spot" ? "none" : "crosshair");
+  const cursor = $derived(tool === "time" ? "text" : (cursorFor(overBox) ?? (tool === "brush" || tool === "spot" ? "none" : "crosshair")));
 
   function onPointer(e: PointerEvent) {
     if (e.button !== 0) return;
     const el = e.currentTarget as HTMLElement;
     const box = el.getBoundingClientRect();
     const x0 = e.clientX - box.left;
-    if (x0 > width) return;
-    e.preventDefault();
     const v = view;
     const sAt = (cx: number) => Math.max(0, Math.min(total, Math.round(sampleAt(cx - box.left, v))));
     const fAt = (cy: number) => Math.max(0, Math.min(1, fracAtY(cy - box.top)));
+    if (x0 > width) {
+      // Dragging on the frequency scale selects a band across the time selection, or the whole file.
+      if (tool === "time" || tool === "spot") return;
+      e.preventDefault();
+      const fa = fAt(e.clientY);
+      const add = e.shiftKey;
+      let moved = false;
+      const mv = (ev: PointerEvent) => {
+        if (!moved && Math.abs(ev.clientY - e.clientY) < 3) return;
+        moved = true;
+        drawing = bandBox(fa, fAt(ev.clientY), selection, total);
+      };
+      const upBand = () => {
+        window.removeEventListener("pointermove", mv, true);
+        window.removeEventListener("pointerup", upBand, true);
+        const shape = drawing;
+        drawing = null;
+        if (!moved || !shape) return;
+        spectralSelection.set(add && shapes ? [...shapes, shape] : [shape]);
+      };
+      window.addEventListener("pointermove", mv, true);
+      window.addEventListener("pointerup", upBand, true);
+      return;
+    }
+    e.preventDefault();
+    // A drag that starts on the edit box moves or resizes it.
+    const grabbed = tool === "box" && oneBox && !e.shiftKey ? hitBox(boxPixels(oneBox), x0, e.clientY - box.top) : null;
+    if (grabbed && oneBox) {
+      const base = oneBox;
+      const sa = sampleAt(x0, v);
+      const fa0 = fracAtY(e.clientY - box.top);
+      const mvBox = (ev: PointerEvent) => {
+        const ds = sampleAt(ev.clientX - box.left, v) - sa;
+        const df = fracAtY(ev.clientY - box.top) - fa0;
+        spectralSelection.set([adjustBox(base, grabbed, ds, df, total)]);
+      };
+      const upBox = () => {
+        window.removeEventListener("pointermove", mvBox, true);
+        window.removeEventListener("pointerup", upBox, true);
+      };
+      window.addEventListener("pointermove", mvBox, true);
+      window.addEventListener("pointerup", upBox, true);
+      return;
+    }
     const s0 = sAt(e.clientX);
     const f0 = fAt(e.clientY);
     const add = e.shiftKey;
@@ -472,7 +531,7 @@
         }
       }
     }
-    return { x: Math.max(4, Math.min(width - 390, left)), y: Math.max(4, top - 30) };
+    return { x: Math.max(4, Math.min(width - 390, left)), y: Math.max(4, top - (oneBox ? 58 : 30)) };
   });
 
   // The palette: the built-in one, or the quiet and loud colors picked in Settings or the right-click menu.
@@ -505,12 +564,22 @@
   {/if}
   {#if bar}
     <div class="bar" style:left="{bar.x}px" style:top="{bar.y}px" role="toolbar" aria-label="Spectral edit">
+      {#if oneBox && values}
+        <div class="fields" title={rangeText(values)}>
+          <label>From <input type="text" inputmode="decimal" aria-label="Start time in seconds" value={values.start.toFixed(3)} onchange={(e) => typed("start", e)} /> s</label>
+          <label>to <input type="text" inputmode="decimal" aria-label="End time in seconds" value={values.end.toFixed(3)} onchange={(e) => typed("end", e)} /> s</label>
+          <label>Low <input type="text" inputmode="decimal" aria-label="Low frequency in hertz" value={+values.low.toFixed(1)} onchange={(e) => typed("low", e)} /> Hz</label>
+          <label>High <input type="text" inputmode="decimal" aria-label="High frequency in hertz" value={+values.high.toFixed(1)} onchange={(e) => typed("high", e)} /> Hz</label>
+        </div>
+      {/if}
+      <div class="row">
       <button type="button" title={tip("Hear only the selected area. The file is not changed.", "fx.spectrum.play")} onclick={() => run("fx.spectrum.play")}>Play</button>
       <button type="button" title={tip("Reduce the selected area by 12 dB", "fx.spectrum.reduce-12")} onclick={() => run("fx.spectrum.reduce-12")}>-12 dB</button>
       <button type="button" title={tip("Reduce the selected area by 24 dB", "fx.spectrum.reduce-24")} onclick={() => run("fx.spectrum.reduce-24")}>-24 dB</button>
       <button type="button" title={tip("Remove the selected area", "fx.spectrum.remove")} onclick={() => run("fx.spectrum.remove")}>Remove</button>
       <button type="button" title={tip("Fill the selected area from the audio around it", "fx.spectrum.repair")} onclick={() => run("fx.spectrum.repair")}>Repair</button>
       <button type="button" class="x" title="Clear the spectral selection" aria-label="Clear" onclick={() => spectralSelection.set(null)}>&times;</button>
+      </div>
     </div>
   {/if}
 </div>
@@ -544,13 +613,44 @@
   .bar {
     position: absolute;
     display: flex;
-    gap: 4px;
-    align-items: center;
+    flex-direction: column;
+    gap: 3px;
+    align-items: stretch;
     padding: 2px 4px;
     border: 1px solid var(--border-strong);
     border-radius: 3px;
     background: color-mix(in srgb, var(--surface-2) 92%, transparent);
     font-size: var(--font-size-small);
+  }
+
+  .bar .row {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+
+  .fields {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    color: var(--text-dim);
+  }
+
+  .fields input {
+    width: 58px;
+    height: 18px;
+    padding: 0 3px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--surface-3);
+    color: var(--text);
+    font: inherit;
+    text-align: right;
+  }
+
+  .fields input:focus {
+    border-color: var(--accent);
+    outline: none;
   }
 
   .bar button {
