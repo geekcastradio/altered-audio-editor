@@ -16,7 +16,7 @@
   import { wavePitch, waveSpectrogram } from "../../app/core";
   import type { SpectralTool } from "../../stores/editor";
   import type { SessionDoc } from "../../stores/session";
-  import { spectralSelection } from "../../stores/wave";
+  import { spectralAudition, spectralSelection } from "../../stores/wave";
   import { sampleAt, xOf, type Viewport } from "./timeline";
   import { freqAt, fracOf, freqTicks, FULL_VIEW, rowEdges, SPECTRUM_LUT, viewFrac, viewFreq, viewRange, zoomFreq, type SpectralShape } from "./spectrum";
   import { adjustBox, bandBox, boxFromValues, boxValues, cursorFor, hitBox, rangeText, type BoxHit, type BoxShape } from "./spectrum-box";
@@ -67,6 +67,13 @@
   $effect(() =>
     spectralSelection.subscribe((r) => {
       shapes = r;
+    }),
+  );
+  /** Where Play Selected Area is now, in samples. Null when it is not playing. */
+  let audition = $state<number | null>(null);
+  $effect(() =>
+    spectralAudition.subscribe((a) => {
+      audition = a;
     }),
   );
   /** The shape being drawn now, before it joins the selection. */
@@ -391,6 +398,15 @@
     if (px >= 0 && px <= width) {
       g.fillStyle = css("--playhead");
       g.fillRect(Math.round(px), 0, 1, h);
+    }
+
+    // Where Play Selected Area is now.
+    if (audition !== null) {
+      const ax = xOf(audition, view);
+      if (ax >= 0 && ax <= width) {
+        g.fillStyle = css("--playhead");
+        g.fillRect(Math.round(ax) - 1, 0, 3, h);
+      }
     }
 
     // Frequency scale.

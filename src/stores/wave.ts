@@ -231,3 +231,6 @@ export async function saveWaveFile(path: string | null, bitDepth: number | null 
 
 /** The current spectral selection in the Waveform editor: boxes, lassos and brush strokes. Null when none. */
 export const spectralSelection = writable<readonly SpectralShape[] | null>(null);
+
+/** While Play Selected Area plays: where it is now, in samples of the open file. Null when it is not playing. */
+export const spectralAudition = writable<number | null>(null);
