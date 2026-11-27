@@ -224,6 +224,47 @@ function inPolygon(x: number, y: number, pts: readonly [number, number][]): bool
   return inside;
 }
 
+/**
+ * Marks every cell whose centre is inside the polygon (even-odd, like
+ * `inPolygon`), a row at a time: find where the outline crosses the row,
+ * then fill between the crossings. A freehand lasso has hundreds of
+ * points, so testing every cell against every edge took seconds.
+ */
+export function fillPolygon(
+  data: number[],
+  cols: number,
+  rows: number,
+  pts: readonly [number, number][],
+  tAt: (c: number) => number,
+  fAt: (r: number) => number,
+): void {
+  const n = pts.length;
+  const xs: number[] = [];
+  for (let r = 0; r < rows; r++) {
+    const y = fAt(r);
+    xs.length = 0;
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+      const [xi, yi] = pts[i]!;
+      const [xj, yj] = pts[j]!;
+      if (yi > y !== yj > y) xs.push(((xj - xi) * (y - yi)) / (yj - yi) + xi);
+    }
+    xs.sort((a, b) => a - b);
+    for (let k = 0; k + 1 < xs.length; k += 2) {
+      // Cells whose centre x lies in [xs[k], xs[k + 1]).
+      const x0 = xs[k]!;
+      const x1 = xs[k + 1]!;
+      let c = 0;
+      // Walk from the first cell at or after x0 using the column spacing.
+      const t0 = tAt(0);
+      const step = cols > 1 ? tAt(1) - t0 : 1;
+      c = Math.max(0, Math.ceil((x0 - t0) / step));
+      while (c < cols && tAt(c) < x0) c++;
+      while (c > 0 && tAt(c - 1) >= x0) c--;
+      for (; c < cols && tAt(c) < x1; c++) data[r * cols + c] = 255;
+    }
+  }
+}
+
 /** Turns shapes into a weight grid for the core. Null when nothing is selected. */
 export function rasterize(shapes: readonly SpectralShape[], maxCols = 800, maxRows = 300): SpectralMask | null {
   const b = shapesBounds(shapes);
@@ -244,7 +285,7 @@ export function rasterize(shapes: readonly SpectralShape[], maxCols = 800, maxRo
       for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) data[r * cols + c] = 255;
     } else if (s.kind === "lasso") {
       if (s.points.length < 3) continue;
-      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (inPolygon(tAt(c), fAt(r), s.points)) data[r * cols + c] = 255;
+      fillPolygon(data, cols, rows, s.points, tAt, fAt);
     } else {
       // Brush: an ellipse swept along each segment.
       const pts = s.points.length === 1 ? [s.points[0]!, s.points[0]!] : s.points;

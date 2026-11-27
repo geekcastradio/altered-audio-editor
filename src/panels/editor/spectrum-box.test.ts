@@ -93,3 +93,17 @@ describe("bandBox", () => {
     expect(b.top).toBeGreaterThan(b.bottom);
   });
 });
+
+describe("box on the axis floor", () => {
+  it("reads as 0 Hz at the bottom and as itself above it", () => {
+    const base: BoxShape = { kind: "box", start: 0, end: 48_000, bottom: 0, top: 0.5 };
+    expect(boxValues(base, 48_000, 24_000).low).toBe(0);
+    expect(boxValues({ ...base, bottom: 0.2 }, 48_000, 24_000).low).toBeGreaterThan(30);
+  });
+
+  it("typing 0 or 30 puts the bottom on the floor", () => {
+    expect(boxFromValues({ start: 0, end: 1, low: 0, high: 1000 }, 48_000, 96_000, 24_000)!.bottom).toBe(0);
+    expect(boxFromValues({ start: 0, end: 1, low: 30, high: 1000 }, 48_000, 96_000, 24_000)!.bottom).toBe(0);
+  });
+});
+

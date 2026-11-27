@@ -210,7 +210,13 @@ impl Mask {
             return 0.0;
         }
         let c = ((t - self.start) / self.spc).floor();
-        let r = ((self.frac_top - frac) / self.frac_per_row).floor();
+        let mut r = ((self.frac_top - frac) / self.frac_per_row).floor();
+        // The axis starts at MIN_HZ. A mask that reaches that floor also takes
+        // everything below it, down to 0 Hz.
+        let bottom = self.frac_top - self.frac_per_row * self.rows as f32;
+        if frac <= 0.0 && bottom <= 1e-4 {
+            r = self.rows as f32 - 1.0;
+        }
         if c < 0.0 || r < 0.0 || c >= self.cols as f64 || r >= self.rows as f32 {
             return 0.0;
         }
@@ -708,6 +714,16 @@ mod tests {
         let whistle = sine(6_000.0, rate, 44_100, 0.5);
         let w = pitch_track(&whistle, 0, rate, 5_000, 40_000, 8);
         assert!(w.iter().all(|v| *v == 0.0), "{w:?}");
+    }
+
+    #[test]
+    fn a_mask_on_the_axis_floor_takes_everything_below_it() {
+        // A box from 30 Hz up reaches the floor: sound below 30 Hz is inside it too.
+        let floor = Mask::rect(0.0, 100.0, MIN_HZ, 1_000.0, 24_000.0);
+        assert_eq!(floor.weight(50.0, 0.0), 1.0);
+        // A box that starts above the floor leaves it alone.
+        let above = Mask::rect(0.0, 100.0, 200.0, 1_000.0, 24_000.0);
+        assert_eq!(above.weight(50.0, 0.0), 0.0);
     }
 
     #[test]

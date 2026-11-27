@@ -273,7 +273,12 @@
       const top = yOfFrac(s.top);
       const bottom = yOfFrac(s.bottom);
       g.fillRect(a, top, b - a, bottom - top);
-      g.strokeRect(Math.round(a) + 0.5, Math.round(top) + 0.5, Math.round(b - a), Math.round(bottom - top));
+      // Keep the outline inside the picture, so a box on the bottom or right edge keeps its border.
+      const x0 = Math.min(width - 0.5, Math.max(0.5, Math.round(a) + 0.5));
+      const y0 = Math.min(height - 0.5, Math.max(0.5, Math.round(top) + 0.5));
+      const x1 = Math.min(width - 0.5, Math.max(0.5, Math.round(b) + 0.5));
+      const y1 = Math.min(height - 0.5, Math.max(0.5, Math.round(bottom) + 0.5));
+      g.strokeRect(x0, y0, x1 - x0, y1 - y0);
     } else if (s.kind === "lasso") {
       if (s.points.length > 1) {
         g.beginPath();
@@ -428,7 +433,8 @@
     g.textBaseline = "middle";
     for (const [hz, text] of scaleMarks(h)) {
       const y = yOf(hz);
-      if (y < 8 || y > h - 6) continue;
+      // Keep clear of the "Hz" heading at the top.
+      if (y < 17 || y > h - 6) continue;
       g.fillRect(width, Math.round(y), 4, 1);
       g.fillText(text, width + 7, y);
     }

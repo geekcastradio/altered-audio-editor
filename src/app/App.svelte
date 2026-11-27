@@ -4010,7 +4010,17 @@
 
   /** Stops Play Selected Area and hides its playhead. */
   let auditionTimer: ReturnType<typeof setInterval> | null = null;
+  /** Whether two paths are the same file, whatever slashes or prefix each one uses. */
+  function sameFile(a: string | null | undefined, b: string): boolean {
+    const name = (p: string) => p.replace(/\\/g, "/").split("/").pop() ?? p;
+    return !!a && name(a) === name(b);
+  }
+  /** Counts plays, so a late answer from an earlier one cannot stop a newer one. */
+  let auditionRun = 0;
+  /** True while the sound for a play is being made, so a repeated Space waits for it. */
+  let auditionMaking = false;
   function stopAudition(stopPlayer: boolean) {
+    auditionRun++;
     if (auditionTimer) clearInterval(auditionTimer);
     auditionTimer = null;
     spectralAudition.set(null);
@@ -4019,29 +4029,44 @@
 
   /** Effects > Spectrum > Play Selected Area: hear only the sound inside the spectral selection. */
   async function waveSpectralPlayArea() {
+    // Holding Space, or pressing it again while a long selection is still being made, must not start a second play.
+    if (auditionMaking) return;
     const shapes = get(spectralSelection);
     const mask = shapes ? rasterize(shapes) : null;
     const bounds = shapes ? shapesBounds(shapes) : null;
     if (!mask || !bounds || !wave.current) return;
+    auditionMaking = true;
     try {
       const r = await waveSpectralPlay(mask, get(waveChannels));
       stopAudition(false);
+      const run = auditionRun;
       await previewPlay(r.path, 0);
       const rate = wave.current?.sample_rate ?? 48000;
       const first = Math.max(0, Math.floor(bounds.t0));
       spectralAudition.set(first);
-      // The preview player reports its position; the Spectrum view draws the line from it.
+      // The preview player reports its position; the Spectrum view draws the line from it. A few
+      // missed or failed answers in a row are ignored, so the line does not drop out mid-play.
+      let missed = 0;
       auditionTimer = setInterval(() => {
         void previewStatus()
           .then((st) => {
-            if (!st.playing || st.path !== r.path) stopAudition(false);
-            else spectralAudition.set(first + Math.round(st.position * rate));
+            if (run !== auditionRun) return;
+            if (st.playing && sameFile(st.path, r.path)) {
+              missed = 0;
+              spectralAudition.set(first + Math.round(st.position * rate));
+            } else if (++missed >= 4) {
+              stopAudition(false);
+            }
           })
-          .catch(() => stopAudition(false));
+          .catch(() => {
+            if (run === auditionRun && ++missed >= 4) stopAudition(false);
+          });
       }, 33);
       showNotice(`Playing only the selected area (${r.seconds.toFixed(1)} s). The file is not changed.`);
     } catch (e) {
       showError(e);
+    } finally {
+      auditionMaking = false;
     }
   }
   /** Space in the Waveform editor: with the spectrum shown and an area selected it plays that area. */
