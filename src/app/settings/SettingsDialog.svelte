@@ -15,7 +15,7 @@
   import BackupPage from "./BackupPage.svelte";
   import InfoTip from "../InfoTip.svelte";
   import { BROADCAST_REGIONS, targetsFor } from "../loudness";
-  import { DEFAULT_SETTINGS, METER_RANGES, NO_COLORS, TIMECODE_RATES, type AppColors } from "../../stores/settings";
+  import { DEFAULT_SETTINGS, METER_RANGES, NO_COLORS, TEXT_SIZES, TIMECODE_RATES, type AppColors } from "../../stores/settings";
   import { cleanDraft, LATER_PAGES, PAGES, sizeText, type Page, type SettingsDraft } from "./pages";
 
   interface Props {
@@ -135,7 +135,7 @@
   function resetPage() {
     const def = DEFAULT_SETTINGS;
     if (page === "General") Object.assign(d.app, { zoomStep: def.zoomStep, wheelAnchor: def.wheelAnchor, wheelZooms: def.wheelZooms, fadeShape: def.fadeShape, dropMany: def.dropMany });
-    else if (page === "Appearance") Object.assign(d.app, { colors: { ...NO_COLORS }, surface: def.surface, theme: def.theme });
+    else if (page === "Appearance") Object.assign(d.app, { colors: { ...NO_COLORS }, surface: def.surface, theme: def.theme, textSize: def.textSize });
     else if (page === "Autosave") Object.assign(d.app, { autosave: def.autosave, autosaveMinutes: def.autosaveMinutes, backups: def.backups, backupCount: def.backupCount });
     else if (page === "Session Media") Object.assign(d.app, { copyMedia: def.copyMedia, mediaFolder: def.mediaFolder, collectOnSave: def.collectOnSave, leaveLibraryFiles: def.leaveLibraryFiles });
     else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb, meterSpeed: def.meterSpeed, meterRangeDb: def.meterRangeDb, autoThinPercent: def.autoThinPercent, playbackSpeed: def.playbackSpeed, stopAtSelectionEnd: def.stopAtSelectionEnd });
@@ -202,6 +202,7 @@
             {/each}
           </div>
           <label><select bind:value={d.app.theme}><option value="light">Light</option><option value="system">Sync with System</option><option value="dark">Dark</option></select> Theme <span class="why">Dark is tuned for long sessions. Light is for bright rooms. Sync with System follows your computer's light or dark setting. You can also switch from View > Theme or the icons at the right of the tool strip.</span></label>
+          <label><select bind:value={d.app.textSize}>{#each TEXT_SIZES as t}<option value={t}>{t}%</option>{/each}</select> Interface size <span class="why">Makes all text, numbers and controls larger or smaller. 100% is the standard size. The change applies as soon as you press OK.</span></label>
           <label><select bind:value={d.app.surface}><option value="standard">Standard</option><option value="classic">Classic (darker)</option></select> Panel brightness <span class="why">Standard is a mid charcoal. Classic is the darker look of earlier versions. Used by the dark theme only.</span></label>
         {:else if page === "Audio Devices"}
           <label class="row">

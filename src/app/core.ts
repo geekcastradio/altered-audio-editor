@@ -1724,3 +1724,12 @@ export interface InterchangeResult {
 export function exportInterchange(folder: string, request: InterchangeRequest): Promise<InterchangeResult> {
   return invoke<InterchangeResult>("export_interchange", { folder, request });
 }
+/** Scales the whole interface (text, numbers, controls) to `percent`. Does nothing outside the app window. */
+export async function setInterfaceSize(percent: number): Promise<void> {
+  try {
+    const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+    await getCurrentWebview().setZoom(Math.min(2, Math.max(0.5, percent / 100)));
+  } catch {
+    // Not in the app window (tests, a plain browser): nothing to scale.
+  }
+}
