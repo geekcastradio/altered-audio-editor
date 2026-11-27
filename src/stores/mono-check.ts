@@ -9,7 +9,7 @@
  */
 
 import { writable, type Readable } from "svelte/store";
-import { setMonoCheck } from "../app/core";
+import { setListenMute, setMonoCheck } from "../app/core";
 
 const state = writable(false);
 let on = false;
@@ -21,5 +21,24 @@ export const monoCheck: Readable<boolean> & { toggle(): Promise<void> } = {
     await setMonoCheck(next);
     on = next;
     state.set(next);
+  },
+};
+
+/** Which sides are muted while listening. Not saved, and exports never see it. */
+export interface ListenMute {
+  left: boolean;
+  right: boolean;
+}
+
+const muteState = writable<ListenMute>({ left: false, right: false });
+let muted: ListenMute = { left: false, right: false };
+
+export const listenMute: Readable<ListenMute> & { toggle(side: "left" | "right"): Promise<void> } = {
+  subscribe: muteState.subscribe,
+  async toggle(side) {
+    const next = { ...muted, [side]: !muted[side] };
+    await setListenMute(next.left, next.right);
+    muted = next;
+    muteState.set(next);
   },
 };

@@ -724,6 +724,11 @@ export function setMonoCheck(on: boolean): Promise<void> {
   return invoke<void>("transport_set_mono_check", { on });
 }
 
+/** Mute the left or right side of what plays. Listening only. */
+export function setListenMute(left: boolean, right: boolean): Promise<void> {
+  return invoke<void>("transport_set_listen_mute", { left, right });
+}
+
 /** Playback speed, 0.5 to 2 with the pitch kept. Playback that is running starts over from where it is. Listening only. */
 export function setPlaybackSpeed(speed: number): Promise<void> {
   return invoke<void>("transport_set_speed", { speed });

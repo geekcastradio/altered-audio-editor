@@ -15,6 +15,7 @@
   import { editor, type EditorState } from "../../stores/editor";
   import type { TransportState, TransportStore } from "../../stores/transport";
   import { formatIn } from "./timeline";
+  import { listenMute, monoCheck } from "../../stores/mono-check";
   import { recordControl, recording, type RecordingState } from "../../stores/record";
 
   interface Props {
@@ -172,6 +173,10 @@
     >
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5v9M10 3.5v9" stroke="currentColor" stroke-width="1" stroke-dasharray="1.5 1.5" /><path d="M2 11c1.5-6 10.5-6 12 0" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M14 11l-2.2-.6M14 11l.5-2.2" stroke="currentColor" stroke-width="1.3" /></svg>
     </button>
+    <span class="sep"></span>
+    <button type="button" class="tool lr" class:on={$listenMute.left} title="Mute the left side while listening. Listening only: the file and exports are not changed." aria-label="Mute left" aria-pressed={$listenMute.left} onclick={() => void listenMute.toggle("left").catch(() => {})}>L</button>
+    <button type="button" class="tool lr" class:on={$listenMute.right} title="Mute the right side while listening. Listening only: the file and exports are not changed." aria-label="Mute right" aria-pressed={$listenMute.right} onclick={() => void listenMute.toggle("right").catch(() => {})}>R</button>
+    <button type="button" class="tool lr" class:on={$monoCheck} title="Mono: hear the mix folded to mono. Listening only: the file and exports are not changed." aria-label="Mono" aria-pressed={$monoCheck} onclick={() => void monoCheck.toggle().catch(() => {})}>M</button>
   </div>
 
   <div class="zoom" role="group" aria-label="Zoom">
@@ -298,6 +303,10 @@
     color: var(--text);
   }
 
+  .tool.lr {
+    font-size: 11px;
+    font-weight: 600;
+  }
   .tool.rec {
     color: var(--danger);
   }
