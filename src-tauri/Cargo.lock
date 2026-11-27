@@ -111,11 +111,13 @@ dependencies = [
 name = "altered-os-video"
 version = "0.1.0"
 dependencies = [
+ "craft-video",
  "objc2",
  "objc2-av-foundation",
  "objc2-core-media",
  "objc2-core-video",
  "objc2-foundation",
+ "symphonia",
  "windows",
 ]
 
@@ -939,6 +941,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5ca28b0ae3115b884660db4118d803791fd6756b6e88f39c0f3f7859060d7566"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "craft-media"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=0ebc5915b0aeef571ccc68531056e49a67d13bb5#0ebc5915b0aeef571ccc68531056e49a67d13bb5"
+
+[[package]]
+name = "craft-video"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=0ebc5915b0aeef571ccc68531056e49a67d13bb5#0ebc5915b0aeef571ccc68531056e49a67d13bb5"
+dependencies = [
+ "craft-media",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

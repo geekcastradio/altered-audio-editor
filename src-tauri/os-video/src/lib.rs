@@ -23,7 +23,9 @@ use std::thread::{self, JoinHandle};
 use std::time::Instant;
 
 /// True where this build can show video.
-pub const AVAILABLE: bool = cfg!(windows) || cfg!(all(target_os = "macos", feature = "apple"));
+pub const AVAILABLE: bool = cfg!(windows)
+    || cfg!(all(target_os = "macos", feature = "apple"))
+    || cfg!(feature = "pure-video");
 
 /// Why video is not available here, for the error message.
 pub const UNAVAILABLE: &str =
@@ -249,28 +251,95 @@ trait Backend: Sized {
 #[cfg(windows)]
 mod windows_impl;
 #[cfg(windows)]
-use windows_impl::Decoder;
+use windows_impl::Decoder as SysDecoder;
 
 #[cfg(all(target_os = "macos", feature = "apple"))]
 mod mac_impl;
 #[cfg(all(target_os = "macos", feature = "apple"))]
-use mac_impl::Decoder;
+use mac_impl::Decoder as SysDecoder;
 
-#[cfg(not(any(windows, all(target_os = "macos", feature = "apple"))))]
-struct Decoder;
+#[cfg(feature = "pure-video")]
+mod pure_impl;
 
-#[cfg(not(any(windows, all(target_os = "macos", feature = "apple"))))]
+/// Whether videos opened from now on try the built-in decoder first. Off by
+/// default. With it on, any file the built-in decoder cannot read opens with
+/// the system decoder instead.
+static PREFER_BUILT_IN: AtomicBool = AtomicBool::new(false);
+
+/// Sets whether videos opened from now on try the built-in decoder first.
+pub fn set_prefer_built_in(on: bool) {
+    PREFER_BUILT_IN.store(on, Ordering::Relaxed);
+}
+
+/// True when this build has the built-in decoder.
+pub const BUILT_IN: bool = cfg!(feature = "pure-video");
+
+/// The decoder in use for one open video: the built-in one or the system's.
+enum Decoder {
+    #[cfg(any(windows, all(target_os = "macos", feature = "apple")))]
+    System(SysDecoder),
+    #[cfg(feature = "pure-video")]
+    BuiltIn(Box<pure_impl::PureDecoder>),
+    /// Never made: keeps the enum valid in a build with no decoder at all.
+    #[allow(dead_code)]
+    None(std::convert::Infallible),
+}
+
 impl Backend for Decoder {
-    fn open(_path: &Path, _hardware: bool) -> Result<(Self, VideoInfo), String> {
-        Err(UNAVAILABLE.into())
+    fn open(path: &Path, hardware: bool) -> Result<(Self, VideoInfo), String> {
+        #[cfg(feature = "pure-video")]
+        {
+            if PREFER_BUILT_IN.load(Ordering::Relaxed) || !SYSTEM {
+                match pure_impl::PureDecoder::open(path, hardware) {
+                    Ok((d, info)) => return Ok((Decoder::BuiltIn(Box::new(d)), info)),
+                    Err(e) if !SYSTEM => return Err(e),
+                    Err(_) => {}
+                }
+            }
+        }
+        #[cfg(any(windows, all(target_os = "macos", feature = "apple")))]
+        {
+            SysDecoder::open(path, hardware).map(|(d, info)| (Decoder::System(d), info))
+        }
+        #[cfg(not(any(windows, all(target_os = "macos", feature = "apple"))))]
+        {
+            let _ = (path, hardware);
+            Err(UNAVAILABLE.into())
+        }
     }
-    fn frame_at(&mut self, _seconds: f64) -> Result<RawFrame, String> {
-        Err(UNAVAILABLE.into())
+    fn frame_at(&mut self, seconds: f64) -> Result<RawFrame, String> {
+        let _ = seconds;
+        match self {
+            #[cfg(any(windows, all(target_os = "macos", feature = "apple")))]
+            Decoder::System(d) => d.frame_at(seconds),
+            #[cfg(feature = "pure-video")]
+            Decoder::BuiltIn(d) => d.frame_at(seconds),
+            Decoder::None(n) => match *n {},
+        }
     }
     fn next_frame(&mut self) -> Result<Option<RawFrame>, String> {
-        Err(UNAVAILABLE.into())
+        match self {
+            #[cfg(any(windows, all(target_os = "macos", feature = "apple")))]
+            Decoder::System(d) => d.next_frame(),
+            #[cfg(feature = "pure-video")]
+            Decoder::BuiltIn(d) => d.next_frame(),
+            Decoder::None(n) => match *n {},
+        }
+    }
+    fn quarter_turns(&self) -> u32 {
+        match self {
+            #[cfg(any(windows, all(target_os = "macos", feature = "apple")))]
+            Decoder::System(d) => d.quarter_turns(),
+            #[cfg(feature = "pure-video")]
+            Decoder::BuiltIn(_) => 0,
+            Decoder::None(n) => match *n {},
+        }
     }
 }
+
+/// True where a system decoder exists in this build.
+#[cfg(feature = "pure-video")]
+const SYSTEM: bool = cfg!(windows) || cfg!(all(target_os = "macos", feature = "apple"));
 
 enum Cmd {
     At {

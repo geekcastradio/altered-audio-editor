@@ -242,6 +242,7 @@
     waveSpectralPlay,
     previewPlay,
     setInterfaceSize,
+    previewStop,
     waveApplyChain,
     phaseAlign,
     syncTracks,
@@ -330,14 +331,14 @@
   import { effectiveTheme, notifyThemeChanged, systemIsLight, THEME_CHOICES, watchSystemTheme } from "./theme";
   import NewAudioFileDialog, { type NewAudioSettings } from "./NewAudioFileDialog.svelte";
   import NewSessionDialog, { type NewSessionSettings } from "./NewSessionDialog.svelte";
-  import { closeWaveFile, discardParked, forgetParked, parkedFiles, waveParkedChanged, newEmptyWaveFile, parkedUnsaved, newWaveFromClips, newWaveFromMix, openWaveFile, saveWaveFile, savesInPlace, spectralSelection, wave, waveFile, waveHistory, waveTransport, waveZoom } from "../stores/wave";
+  import { closeWaveFile, discardParked, forgetParked, parkedFiles, waveParkedChanged, newEmptyWaveFile, parkedUnsaved, newWaveFromClips, newWaveFromMix, openWaveFile, saveWaveFile, savesInPlace, spectralAudition, spectralSelection, wave, waveFile, waveHistory, waveTransport, waveZoom } from "../stores/wave";
   import { get, writable } from "svelte/store";
   import { startScreen } from "../stores/start";
   import type { SessionRow } from "../panels/files/session-row";
   import { bugInfoText, recordError } from "./bug-info";
   import { reportUrl } from "./bug-report-link";
   import { waveRows, type WaveRow } from "../panels/files/wave-rows";
-  import { rasterize } from "../panels/editor/spectrum";
+  import { rasterize, shapesBounds } from "../panels/editor/spectrum";
   import { inputLevels, liveTakes, LiveWave, meterInputAll, recordControl, recording } from "../stores/record";
   import { stretchRange, amplifyRange, clampRange, copyRange, crossfadeSeams, cropTo, deleteRange, fadeRange, insertFile, mixPasteAt, pasteAt, replaceRange, silenceRange, type WaveBoard } from "../panels/editor/wave-edit";
 
@@ -4005,18 +4006,50 @@
     }
   }
 
+  /** Stops Play Selected Area and hides its playhead. */
+  let auditionTimer: ReturnType<typeof setInterval> | null = null;
+  function stopAudition(stopPlayer: boolean) {
+    if (auditionTimer) clearInterval(auditionTimer);
+    auditionTimer = null;
+    spectralAudition.set(null);
+    if (stopPlayer) void previewStop().catch(() => {});
+  }
+
   /** Effects > Spectrum > Play Selected Area: hear only the sound inside the spectral selection. */
   async function waveSpectralPlayArea() {
     const shapes = get(spectralSelection);
     const mask = shapes ? rasterize(shapes) : null;
-    if (!mask || !wave.current) return;
+    const bounds = shapes ? shapesBounds(shapes) : null;
+    if (!mask || !bounds || !wave.current) return;
     try {
       const r = await waveSpectralPlay(mask);
+      stopAudition(false);
       await previewPlay(r.path, 0);
+      const rate = wave.current?.sample_rate ?? 48000;
+      const first = Math.max(0, Math.floor(bounds.t0));
+      spectralAudition.set(first);
+      // The preview player reports its position; the Spectrum view draws the line from it.
+      auditionTimer = setInterval(() => {
+        void previewStatus()
+          .then((st) => {
+            if (!st.playing || st.path !== r.path) stopAudition(false);
+            else spectralAudition.set(first + Math.round(st.position * rate));
+          })
+          .catch(() => stopAudition(false));
+      }, 33);
       showNotice(`Playing only the selected area (${r.seconds.toFixed(1)} s). The file is not changed.`);
     } catch (e) {
       showError(e);
     }
+  }
+  /** Space in the Waveform editor: with the spectrum shown and an area selected it plays that area. */
+  function waveSpace(): Promise<void> {
+    if (get(spectralAudition) !== null) {
+      stopAudition(true);
+      return Promise.resolve();
+    }
+    if (editor.current().showSpectrum && get(spectralSelection) !== null && !waveTransport.current.playing) return waveSpectralPlayArea();
+    return spaceToggle(waveTransport);
   }
 
   // Edit > Settings.
@@ -5072,8 +5105,8 @@
         enabled: () => waveSel() !== null,
         reason: () => NEED_WAVE_SEL,
       }),
-      ov(waveIsOpen, { id: "multitrack.play-pause", run: () => spaceToggle(waveTransport) }),
-      ov(waveIsOpen, { id: "multitrack.stop", run: () => (take ? finishRecord() : stopTransport(waveTransport)) }),
+      ov(waveIsOpen, { id: "multitrack.play-pause", run: () => waveSpace() }),
+      ov(waveIsOpen, { id: "multitrack.stop", run: () => { stopAudition(true); return take ? finishRecord() : stopTransport(waveTransport); } }),
       ov(waveIsOpen, { id: "transport.play", run: () => playOnly(waveTransport) }),
       ov(waveIsOpen, {
         id: "transport.toggle-loop",
