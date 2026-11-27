@@ -288,6 +288,7 @@ pub fn run() {
             commands::transport::transport_stop,
             commands::transport::transport_status,
             commands::transport::transport_set_mono_check,
+            commands::transport::transport_set_listen_mute,
             commands::transport::transport_set_speed,
             commands::transport::transport_set_metronome,
             commands::amp::amp_pick,

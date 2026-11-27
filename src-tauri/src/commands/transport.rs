@@ -78,6 +78,12 @@ pub fn transport_set_mono_check(on: bool) {
     crate::engine::transport::set_mono_check(on);
 }
 
+/// Mute the left or right side of what plays (listening only).
+#[tauri::command]
+pub fn transport_set_listen_mute(left: bool, right: bool) {
+    crate::engine::transport::set_listen_mute(left, right);
+}
+
 /// Playback speed (0.5 to 2, pitch kept). Playback that is running starts
 /// over from where it is, at the new speed. Listening only.
 #[tauri::command]
