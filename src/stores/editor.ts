@@ -69,6 +69,8 @@ export interface EditorState {
   spectralTool: SpectralTool;
   /** Brush Select and Spot Repair size, in pixels. */
   brushSize: number;
+  /** How far Repair moves a selection toward the fill, in percent (100 fills completely). Not saved: it starts at 100. */
+  repairStrength: number;
   /** Clips show stretch handles in their top corners; dragging one stretches the clip. */
   stretchHandles: boolean;
 }
@@ -114,6 +116,7 @@ const initial: EditorState = {
   showPitch: false,
   spectralTool: "time",
   brushSize: 16,
+  repairStrength: 100,
   stretchHandles: false,
 };
 const state = writable<EditorState>(initial);
@@ -147,6 +150,7 @@ export const editor: Readable<EditorState> & {
   setShowHud(on: boolean): void;
   setSpectralTool(tool: SpectralTool): void;
   setBrushSize(px: number): void;
+  setRepairStrength(pct: number): void;
   setStretchHandles(on: boolean): void;
 } = {
   subscribe: state.subscribe,
@@ -168,6 +172,7 @@ export const editor: Readable<EditorState> & {
   togglePlayMode: (mode) => state.update((s) => ({ ...s, playMode: s.playMode === mode ? "normal" : mode })),
   setShowPitch: (on) => state.update((s) => ({ ...s, showPitch: on })),
   setSpectralTool: (tool) => state.update((s) => ({ ...s, spectralTool: tool })),
+  setRepairStrength: (pct) => state.update((s) => ({ ...s, repairStrength: Math.max(5, Math.min(100, Math.round(pct))) })),
   setBrushSize: (px) => state.update((s) => ({ ...s, brushSize: Math.max(2, Math.min(80, Math.round(px))) })),
   setShowSpectrum: (on) => state.update((s) => ({ ...s, showSpectrum: on })),
   setShowHud: (on) => state.update((s) => ({ ...s, showHud: on })),

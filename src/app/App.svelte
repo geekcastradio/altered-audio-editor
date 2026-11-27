@@ -4001,7 +4001,7 @@
     if (editor.current().spectralTool === "spot") spectralSelection.set(null);
     if (!mask || !d) return;
     try {
-      const r = await waveSpectralEdit(mask, mode, db);
+      const r = await waveSpectralEdit(mask, mode, db, mode === "repair" ? editor.current().repairStrength / 100 : undefined);
       await waveEdit(label, replaceRange(wave.current ?? d, r.start, r.end, r.media, label, uuid), [r.start, r.end]);
     } catch (e) {
       showError(e);
@@ -4024,7 +4024,7 @@
     const bounds = shapes ? shapesBounds(shapes) : null;
     if (!mask || !bounds || !wave.current) return;
     try {
-      const r = await waveSpectralPlay(mask);
+      const r = await waveSpectralPlay(mask, get(waveChannels));
       stopAudition(false);
       await previewPlay(r.path, 0);
       const rate = wave.current?.sample_rate ?? 48000;

@@ -225,9 +225,28 @@ pub(crate) fn is_mono(session: &Session) -> bool {
         || session.media.first().is_some_and(|m| m.channels == 1)
 }
 
+/// Which sides of a stereo file are on, from the editor's channel switches.
+/// No flags, or too few, mean both.
+fn sides(channels: Option<&[bool]>) -> (bool, bool) {
+    match channels {
+        Some([l, r, ..]) if *l || *r => (*l, *r),
+        _ => (true, true),
+    }
+}
+
+/// One sample of the sides that are on: the left, the right, or their average.
+fn side_mix(frame: &[f32; 2], use_l: bool, use_r: bool) -> f32 {
+    match (use_l, use_r) {
+        (true, false) => frame[0],
+        (false, true) => frame[1],
+        _ => (frame[0] + frame[1]) * 0.5,
+    }
+}
+
 /// The spectrogram of `start..end`: `rows` rows of `columns` bytes, top
 /// row the highest frequency, each 0 (silent) to 255 (full scale).
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn wave_spectrogram(
     wave: State<'_, OpenWave>,
     start: u64,
@@ -236,6 +255,7 @@ pub async fn wave_spectrogram(
     rows: u32,
     hz: Option<Vec<f32>>,
     fft: Option<u32>,
+    channels: Option<Vec<bool>>,
 ) -> Result<Response, String> {
     let session = snapshot(&wave)?;
     let rate = session.sample_rate;
@@ -263,11 +283,12 @@ pub async fn wave_spectrogram(
         let pad = n as i64;
         let from = start as i64 - pad;
         let stereo = render(&session, from, end as i64 + pad);
+        let (use_l, use_r) = sides(channels.as_deref());
         let mono: Vec<f32> = stereo
             .as_chunks::<2>()
             .0
             .iter()
-            .map(|f| (f[0] + f[1]) * 0.5)
+            .map(|f| side_mix(f, use_l, use_r))
             .collect();
         spectral::spectrogram_rows(&mono, from, rate, start, end, columns, &hz, n)
     })
@@ -306,6 +327,7 @@ pub async fn wave_spectral_edit(
     mask: Mask,
     mode: SpectralMode,
     gain_db: Option<f32>,
+    strength: Option<f32>,
 ) -> Result<SpectralResult, String> {
     let session = snapshot(&wave)?;
     let (m0, m1) = mask.span();
@@ -327,7 +349,7 @@ pub async fn wave_spectral_edit(
         let to = b as i64 + n as i64;
         let (audio, n) = render_n(&session, from, to);
         let action = match mode {
-            SpectralMode::Repair => Action::Repair,
+            SpectralMode::Repair => Action::Repair(strength.unwrap_or(1.0)),
             SpectralMode::Gain => {
                 let db = gain_db.unwrap_or(-120.0);
                 Action::Gain(if db <= -120.0 {
@@ -378,6 +400,7 @@ pub async fn wave_spectral_play(
     app: State<'_, AppCore>,
     wave: State<'_, OpenWave>,
     mask: Mask,
+    channels: Option<Vec<bool>>,
 ) -> Result<SpectralPlay, String> {
     let session = snapshot(&wave)?;
     let (m0, m1) = mask.span();
@@ -404,6 +427,18 @@ pub async fn wave_spectral_play(
             let kept = spectral::keep_inside(&chan, rate, from as f64, &mask);
             for (i, v) in kept.into_iter().enumerate().take(frames) {
                 out[i * ch + c] = v;
+            }
+        }
+        // With one side of a stereo file switched off, that side stays silent.
+        if ch == 2 {
+            let (use_l, use_r) = sides(channels.as_deref());
+            for frame in out.as_chunks_mut::<2>().0.iter_mut() {
+                if !use_l {
+                    frame[0] = 0.0;
+                }
+                if !use_r {
+                    frame[1] = 0.0;
+                }
             }
         }
         let skip = (start as i64 - from) as usize;
@@ -447,4 +482,27 @@ pub async fn wave_pitch(
     })
     .await
     .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod channel_tests {
+    use super::*;
+
+    #[test]
+    fn sides_follow_the_switches() {
+        assert_eq!(sides(None), (true, true));
+        assert_eq!(sides(Some(&[true, false])), (true, false));
+        assert_eq!(sides(Some(&[false, true])), (false, true));
+        // Never both off.
+        assert_eq!(sides(Some(&[false, false])), (true, true));
+        assert_eq!(sides(Some(&[true])), (true, true));
+    }
+
+    #[test]
+    fn side_mix_picks_the_side() {
+        let f = [1.0, -0.5];
+        assert_eq!(side_mix(&f, true, false), 1.0);
+        assert_eq!(side_mix(&f, false, true), -0.5);
+        assert_eq!(side_mix(&f, true, true), 0.25);
+    }
 }
