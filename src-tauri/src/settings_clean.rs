@@ -21,7 +21,7 @@ pub fn default_settings() -> Value {
             "wave": "", "playhead": "", "accent": "", "laneSelected": "", "spectrumLow": "",
             "spectrumHigh": "", "spectrumScheme": "", "phaseLow": "", "phaseHigh": ""
         },
-        "surface": "standard", "theme": "dark", "output": null, "outputPair": [0, 1],
+        "surface": "standard", "theme": "dark", "textSize": 100, "output": null, "outputPair": [0, 1],
         "speakerOutputs": {}, "waveInput": null, "waveMonitor": false, "driver": "system",
         "bufferFrames": 0, "meterSpeed": "fast", "meterRangeDb": 60, "customLufs": -18, "customPeak": -1,
         "autosave": true, "autosaveMinutes": 2, "openChainOnAdd": true,
@@ -280,6 +280,10 @@ pub fn sanitize_settings(raw: &Value) -> Value {
             Some("light") => "light",
             Some("system") => "system",
             _ => "dark",
+        },
+        "textSize": match g("textSize").and_then(Value::as_i64) {
+            Some(v) if [90, 100, 110, 125, 150, 175, 200].contains(&v) => v,
+            _ => 100,
         },
         "colors": {
             "wave": color(c.get("wave")),

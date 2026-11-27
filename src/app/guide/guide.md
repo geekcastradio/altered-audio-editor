@@ -56,6 +56,8 @@ To record a call, each output device is also offered as an input named "System a
 
 **Marking while you record.** Three quick marks drop a numbered marker at the playhead: Add Retake Marker (F6), Add Cut This Marker (Shift+F6) and Add Great Bit Marker (Ctrl+F6). They work in the Multitrack and in the Waveform Editor, and every key can be changed in Keyboard Shortcuts. Window > Review lists your Cut this, Retake and Great bit marks in time order, with Previous and Next to step through them and a filter to show one kind.
 
+**Interface size.** Settings > Appearance has Interface size, from 90% to 200%. It makes all text, numbers and controls larger or smaller together, so Time Info grows with the rest. 100% is the standard size.
+
 **Scrubbing.** Settings > Playback and Recording has Play audio while scrubbing. With it on, dragging the playhead along the ruler plays what is under it. It is approximate: playback restarts at the pointer every moment. It is off by default.
 
 **Playback speed.** Settings > Playback and Recording has Playback speed (experimental). With it on, Transport > Playback Speed plays the mix from 0.5x to 2x with the pitch kept, which is handy for reviewing speech. It is for listening only: recording, exports and saved files are not affected. At 0.5x and 2x the sound is smeared, the metronome is silent whenever the speed is not Normal, and it does not apply to 3D Space sessions heard on speakers. Recording puts it back to Normal, and so does starting the program again.
