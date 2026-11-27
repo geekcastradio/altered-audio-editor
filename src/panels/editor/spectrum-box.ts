@@ -122,7 +122,8 @@ export function boxValues(box: BoxShape, rate: number, nyquist: number): BoxValu
   return {
     start: box.start / rate,
     end: box.end / rate,
-    low: freqAt(box.bottom, nyquist),
+    // The axis starts at its lowest mark; a box on the floor reaches down to 0 Hz.
+    low: box.bottom <= 1e-4 ? 0 : freqAt(box.bottom, nyquist),
     high: freqAt(box.top, nyquist),
   };
 }

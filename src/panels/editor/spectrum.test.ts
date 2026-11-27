@@ -87,3 +87,60 @@ describe("the spectrum view's frequency axis", () => {
     expect(freqTicks({ lo: 400, hi: 600, log: 0 }, ny, 300).every((f) => f >= 400 && f <= 600)).toBe(true);
   });
 });
+
+describe("lasso fill", () => {
+  // The old way: test every cell against the outline. Kept here as the reference.
+  function slow(shapes: Parameters<typeof rasterize>[0]): number[] | null {
+    const r = rasterize(shapes);
+    if (!r) return null;
+    const lasso = shapes[0]!;
+    if (lasso.kind !== "lasso") return null;
+    const pts = lasso.points;
+    const b = shapesBounds(shapes)!;
+    const out = new Array<number>(r.cols * r.rows).fill(0);
+    for (let row = 0; row < r.rows; row++) {
+      for (let c = 0; c < r.cols; c++) {
+        const x = b.t0 + (c + 0.5) * r.spc;
+        const y = b.f1 - (row + 0.5) * r.frac_per_row;
+        let inside = false;
+        for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+          const [xi, yi] = pts[i]!;
+          const [xj, yj] = pts[j]!;
+          if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+        }
+        if (inside) out[row * r.cols + c] = 255;
+      }
+    }
+    return out;
+  }
+
+  it("matches testing every cell, on a wobbly freehand outline", () => {
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296);
+    const points: [number, number][] = [];
+    for (let i = 0; i < 400; i++) {
+      const a = (i / 400) * Math.PI * 2;
+      const rad = 0.3 + 0.12 * Math.sin(a * 5) + 0.02 * rnd();
+      points.push([100_000 + 60_000 * Math.cos(a) * (rad / 0.3), 0.5 + rad * Math.sin(a)]);
+    }
+    const shapes = [{ kind: "lasso", points }] as Parameters<typeof rasterize>[0];
+    const fast = rasterize(shapes)!;
+    const ref = slow(shapes)!;
+    let diff = 0;
+    for (let i = 0; i < ref.length; i++) if (fast.data[i] !== ref[i]) diff++;
+    // Cells sitting exactly on an edge can differ; nothing else may.
+    expect(diff).toBeLessThanOrEqual(ref.length * 0.0005);
+    expect(fast.data.some((v) => v > 0)).toBe(true);
+  });
+
+  it("is quick for a large outline", () => {
+    const points: [number, number][] = [];
+    for (let i = 0; i < 2000; i++) {
+      const a = (i / 2000) * Math.PI * 2;
+      points.push([200_000 + 150_000 * Math.cos(a), 0.5 + 0.4 * Math.sin(a)]);
+    }
+    const t0 = performance.now();
+    rasterize([{ kind: "lasso", points }] as Parameters<typeof rasterize>[0]);
+    expect(performance.now() - t0).toBeLessThan(250);
+  });
+});
