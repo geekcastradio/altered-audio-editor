@@ -2500,7 +2500,9 @@
     });
     try {
       const r = await batchConvert([{ id, source: req.source, dest }], $state.snapshot(format), false, true, null, null, true);
-      showNotice(r.done > 0 ? `Saved ${saved}.` : r.failed > 0 ? `The file could not be converted${reason ? `: ${reason}` : "."}` : "Conversion stopped.");
+      showNotice(r.done > 0 ? `Saved ${saved}. It is open now; the original is untouched.` : r.failed > 0 ? `The file could not be converted${reason ? `: ${reason}` : "."}` : "Conversion stopped.");
+      // The converted copy opens in the Waveform editor; the original stays set aside as it was.
+      if (r.done > 0) await openInWaveform(saved);
     } catch (e) {
       showError(e);
     } finally {
