@@ -432,7 +432,7 @@ pub async fn wave_spectral_play(
         // With one side of a stereo file switched off, that side stays silent.
         if ch == 2 {
             let (use_l, use_r) = sides(channels.as_deref());
-            for frame in out.chunks_exact_mut(2) {
+            for frame in out.as_chunks_mut::<2>().0.iter_mut() {
                 if !use_l {
                     frame[0] = 0.0;
                 }
