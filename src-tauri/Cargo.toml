@@ -90,6 +90,9 @@ apple-video = ["altered-os-video/apple"]
 # AAC (M4A and .aac) written by a pure-Rust encoder on every system, instead of the
 # Windows-only system encoder. Off by default: nothing changes unless it is turned on.
 pure-aac = ["dep:filmcraft-aac"]
+# Video pictures decoded by ArtCraft's pure-Rust H.264 decoder (MP4 and MOV). The decoder is
+# only tried first when Settings > Playback and Recording turns it on; release builds include it.
+pure-video = ["altered-os-video/pure-video"]
 
 # Dev builds: the audio crates (decoders, resampler, FFT, audio I/O)
 # are optimized and our own code lightly, so playback and mixdowns run

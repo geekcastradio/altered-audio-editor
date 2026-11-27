@@ -10,7 +10,7 @@
 -->
 <script lang="ts">
   import { cacheInfo, cacheClearPeaks, cacheSetFolder, libraryPickFolder, openSoundSettings, type CacheInfo } from "../core";
-  import { audioDriver, audioInputs, audioOutputs, outputChannels, type AudioDriver, type AudioInput } from "../core";
+  import { audioDriver, audioInputs, audioOutputs, outputChannels, videoBuiltInAvailable, type AudioDriver, type AudioInput } from "../core";
   import { keepLast } from "./device-cache";
   import BackupPage from "./BackupPage.svelte";
   import InfoTip from "../InfoTip.svelte";
@@ -40,6 +40,8 @@
   let cache = $state<CacheInfo | null>(null);
   // Channel Routing: the device's outputs, and every speaker name a 3D Space layout uses.
   let outCount = $state<number | null>(null);
+  // Whether this build has the built-in video decoder; null until asked.
+  let videoBuiltIn = $state<boolean | null>(null);
   /** Both sides of the stereo mix go to one output. */
   const monoOut = $derived(d.app.outputPair[0] === d.app.outputPair[1]);
   const outs = $derived(Array.from({ length: Math.max(outCount ?? 0, 2, d.app.outputPair[0] + 1, d.app.outputPair[1] + 1, ...Object.values(d.app.speakerOutputs).map((v) => v + 1)) }, (_, i) => i));
@@ -81,6 +83,7 @@
   $effect(() => {
     if (page === "Audio Devices" && (outputs === null || inputs === null || driver === null)) void loadDevices();
     if (page === "Cache and Files" && cache === null) void refreshCache();
+    if (page === "Playback and Recording" && videoBuiltIn === null) void videoBuiltInAvailable().then((v) => (videoBuiltIn = v), () => (videoBuiltIn = false));
     if (page === "Channel Routing" && outCount === null) void outputChannels().then((n) => (outCount = n), () => (outCount = 0));
   });
   async function refreshCache() {
@@ -138,7 +141,7 @@
     else if (page === "Appearance") Object.assign(d.app, { colors: { ...NO_COLORS }, surface: def.surface, theme: def.theme, textSize: def.textSize });
     else if (page === "Autosave") Object.assign(d.app, { autosave: def.autosave, autosaveMinutes: def.autosaveMinutes, backups: def.backups, backupCount: def.backupCount });
     else if (page === "Session Media") Object.assign(d.app, { copyMedia: def.copyMedia, mediaFolder: def.mediaFolder, collectOnSave: def.collectOnSave, leaveLibraryFiles: def.leaveLibraryFiles });
-    else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb, meterSpeed: def.meterSpeed, meterRangeDb: def.meterRangeDb, autoThinPercent: def.autoThinPercent, playbackSpeed: def.playbackSpeed, stopAtSelectionEnd: def.stopAtSelectionEnd });
+    else if (page === "Playback and Recording") Object.assign(d.app, { meterYellowDb: def.meterYellowDb, meterRedDb: def.meterRedDb, meterSpeed: def.meterSpeed, meterRangeDb: def.meterRangeDb, autoThinPercent: def.autoThinPercent, playbackSpeed: def.playbackSpeed, stopAtSelectionEnd: def.stopAtSelectionEnd, videoBuiltIn: def.videoBuiltIn });
   }
   const resettable = $derived(["General", "Appearance", "Autosave", "Session Media", "Playback and Recording"].includes(page));
 </script>
@@ -438,6 +441,20 @@
                 <option value="3">3 seconds</option>
                 <option value="5">5 seconds</option>
               </select>
+            </label>
+          </fieldset>
+          <fieldset>
+            <legend>Video</legend>
+            <label>
+              <input type="checkbox" bind:checked={d.app.videoBuiltIn} disabled={videoBuiltIn === false} />
+              Use the built-in video decoder first
+              <span class="why">
+                {#if videoBuiltIn === false}
+                  This build does not include it.
+                {:else}
+                  Decodes H.264 pictures in MP4 and MOV files inside the app, so the picture does not depend on what your system has installed. Any file it cannot read opens with the system decoder instead. Off by default; the open picture reloads when you press OK.
+                {/if}
+              </span>
             </label>
           </fieldset>
         {:else if page === "Time Display"}

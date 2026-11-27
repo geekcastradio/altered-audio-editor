@@ -112,11 +112,11 @@ jobs:
         continue-on-error: true
         env:
           LIBCLANG_PATH: C:\Program Files\LLVM\bin
-        run: npm run tauri build -- --features asio
+        run: npm run tauri build -- --features asio,pure-video
 
       - name: Build installer (without ASIO)
         if: steps.asio.outcome != 'success'
-        run: npm run tauri build
+        run: npm run tauri build -- --features pure-video
 
       - name: Package
         shell: pwsh
@@ -149,8 +149,8 @@ jobs:
         run: |
           $tag = "${{ env.TAG }}"
           $out = Join-Path $env:RUNNER_TEMP "release"
-          $more = @()
-          if ("${{ steps.asio.outcome }}" -eq "success") { $more = @("--features", "asio") }
+          $more = @("--features", "pure-video")
+          if ("${{ steps.asio.outcome }}" -eq "success") { $more = @("--features", "asio,pure-video") }
           $env:LIBCLANG_PATH = "C:\Program Files\LLVM\bin"
           npm run tauri build -- --bundles msi @more
           if ($LASTEXITCODE -ne 0) { throw "The MSI build failed." }
@@ -222,7 +222,7 @@ jobs:
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
           NO_STRIP: true
-        run: npm run tauri build -- --bundles appimage,deb --features pure-aac
+        run: npm run tauri build -- --bundles appimage,deb --features pure-aac,pure-video
 
       - name: Package
         run: |
@@ -271,7 +271,7 @@ jobs:
       - name: Build
         env:
           APPLE_SIGNING_IDENTITY: "-"
-        run: bash scripts/build-mac.sh --features pure-aac
+        run: bash scripts/build-mac.sh --features pure-aac,pure-video
 
       - name: Package
         run: |
@@ -325,7 +325,7 @@ jobs:
       - name: Build
         env:
           APPLE_SIGNING_IDENTITY: "-"
-        run: bash scripts/build-mac.sh --target x86_64-apple-darwin --features pure-aac
+        run: bash scripts/build-mac.sh --target x86_64-apple-darwin --features pure-aac,pure-video
 
       - name: Package
         run: |

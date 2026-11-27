@@ -21,7 +21,7 @@ pub fn default_settings() -> Value {
             "wave": "", "playhead": "", "accent": "", "laneSelected": "", "spectrumLow": "",
             "spectrumHigh": "", "spectrumScheme": "", "phaseLow": "", "phaseHigh": ""
         },
-        "surface": "standard", "theme": "dark", "textSize": 100, "output": null, "outputPair": [0, 1],
+        "surface": "standard", "theme": "dark", "textSize": 100, "videoBuiltIn": false, "output": null, "outputPair": [0, 1],
         "speakerOutputs": {}, "waveInput": null, "waveMonitor": false, "driver": "system",
         "bufferFrames": 0, "meterSpeed": "fast", "meterRangeDb": 60, "customLufs": -18, "customPeak": -1,
         "autosave": true, "autosaveMinutes": 2, "openChainOnAdd": true,
@@ -285,6 +285,7 @@ pub fn sanitize_settings(raw: &Value) -> Value {
             Some(v) if [90, 100, 110, 125, 150, 175, 200].contains(&v) => v,
             _ => 100,
         },
+        "videoBuiltIn": g("videoBuiltIn").and_then(Value::as_bool) == Some(true),
         "colors": {
             "wave": color(c.get("wave")),
             "playhead": color(c.get("playhead")),

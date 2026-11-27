@@ -181,6 +181,19 @@ pub fn video_set_hardware(on: bool) {
     altered_os_video::set_prefer_hardware(on);
 }
 
+/// Whether videos opened from now on try the built-in decoder first. Off unless Settings turns it
+/// on; a file it cannot read still opens with the system decoder.
+#[tauri::command]
+pub fn video_set_built_in(on: bool) {
+    altered_os_video::set_prefer_built_in(on);
+}
+
+/// Whether this build has the built-in video decoder at all.
+#[tauri::command]
+pub fn video_built_in_available() -> bool {
+    altered_os_video::BUILT_IN
+}
+
 /// Lets go of a video.
 #[tauri::command]
 pub fn video_close(id: u32, app: AppHandle) {

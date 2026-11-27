@@ -12,7 +12,8 @@
   import type { CommandRunner } from "../../stores/media-pool";
   import type { SessionDoc, SessionStore, VideoRefDoc } from "../../stores/session";
   import type { TransportState, TransportStore } from "../../stores/transport";
-  import { videoClose, videoFrame, videoOpen, videoPick, videoSetHardware, videoStats, videoSupport } from "../../app/core";
+  import { videoClose, videoFrame, videoOpen, videoPick, videoSetBuiltIn, videoSetHardware, videoStats, videoSupport } from "../../app/core";
+  import { settings } from "../../stores/settings";
   import {
     askWidth,
     decodePicture,
@@ -65,7 +66,25 @@
   const savedHardware = storedHardware();
   let hardware = $state(savedHardware);
   // Videos wait for this, so the saved choice applies to the first one opened.
-  const ready: Promise<unknown> = videoSetHardware(savedHardware).catch(() => undefined);
+  const ready: Promise<unknown> = Promise.all([
+    videoSetHardware(savedHardware),
+    videoSetBuiltIn(settings.current.videoBuiltIn),
+  ]).catch(() => undefined);
+  // Settings > Playback and Recording picks the built-in decoder. A change reopens the picture.
+  let builtIn = settings.current.videoBuiltIn;
+  $effect(() =>
+    settings.subscribe((s) => {
+      if (s.videoBuiltIn === builtIn) return;
+      builtIn = s.videoBuiltIn;
+      void videoSetBuiltIn(builtIn)
+        .then(() => {
+          const old = open;
+          open = null;
+          if (old) void videoClose(old.id).catch(() => undefined);
+        })
+        .catch(() => undefined);
+    }),
+  );
 
   const video = $derived<VideoRefDoc | null>(doc?.video ?? null);
   const rate = $derived(doc?.sample_rate ?? 48000);
