@@ -17,6 +17,8 @@
   import type { SpectralTool } from "../../stores/editor";
   import type { SessionDoc } from "../../stores/session";
   import { spectralAudition, spectralSelection } from "../../stores/wave";
+  import { waveChannels } from "./wave-channels";
+  import { editor } from "../../stores/editor";
   import { sampleAt, xOf, type Viewport } from "./timeline";
   import { freqAt, fracOf, freqTicks, FULL_VIEW, rowEdges, SPECTRUM_LUT, viewFrac, viewFreq, viewRange, zoomFreq, type SpectralShape } from "./spectrum";
   import { adjustBox, bandBox, boxFromValues, boxValues, cursorFor, hitBox, rangeText, type BoxHit, type BoxShape } from "./spectrum-box";
@@ -103,6 +105,14 @@
     end: Math.min(total, Math.round(view.scroll + width * view.spp)),
   });
 
+  // Which channels are on: the spectrum shows only those, so a left or right fix can be seen where it is.
+  let channels = $state<boolean[]>([true, true]);
+  $effect(() =>
+    waveChannels.subscribe((c) => {
+      channels = c;
+    }),
+  );
+
   // Fetch the spectrogram for what is in view, a moment after it settles.
   let seq = 0;
   $effect(() => {
@@ -111,6 +121,7 @@
     const rows = Math.max(16, Math.min(512, Math.round(height)));
     const edges = rowEdges(rows, sv, nyquist);
     const fft = sv.fft;
+    const on = [...channels];
     void doc;
     const my = ++seq;
     if (end <= start || width <= 0) {
@@ -118,7 +129,7 @@
       return;
     }
     const t = setTimeout(() => {
-      waveSpectrogram(start, end, columns, rows, edges, fft)
+      waveSpectrogram(start, end, columns, rows, edges, fft, on)
         .then((data) => {
           if (my !== seq) return;
           image = { data, columns, rows, start, end };
@@ -594,6 +605,10 @@
       <button type="button" title={tip("Reduce the selected area by 24 dB", "fx.spectrum.reduce-24")} onclick={() => run("fx.spectrum.reduce-24")}>-24 dB</button>
       <button type="button" title={tip("Remove the selected area", "fx.spectrum.remove")} onclick={() => run("fx.spectrum.remove")}>Remove</button>
       <button type="button" title={tip("Fill the selected area from the audio around it", "fx.spectrum.repair")} onclick={() => run("fx.spectrum.repair")}>Repair</button>
+      <label class="strength" title="How far Repair moves the selected area toward the fill: 100% fills it completely, less keeps some of the original. Applies to the next Repair.">
+        <input type="range" min="5" max="100" step="5" value={$editor.repairStrength} aria-label="Repair strength" oninput={(e) => editor.setRepairStrength(Number(e.currentTarget.value))} />
+        <span>{$editor.repairStrength}%</span>
+      </label>
       <button type="button" class="x" title="Clear the spectral selection" aria-label="Clear" onclick={() => spectralSelection.set(null)}>&times;</button>
       </div>
     </div>
@@ -645,6 +660,17 @@
     align-items: center;
   }
 
+  .strength {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 4px;
+    color: var(--text-dim);
+    font-size: 11px;
+  }
+  .strength input {
+    width: 70px;
+  }
   .fields {
     display: flex;
     gap: 8px;

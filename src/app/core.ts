@@ -962,8 +962,8 @@ export async function audioInputs(asio?: boolean): Promise<AudioInput[]> {
  * from the top down, one more than `rows`, for a zoomed or linear axis;
  * `fft` the analysis frame length (resolution).
  */
-export async function waveSpectrogram(start: number, end: number, columns: number, rows: number, hz?: number[], fft?: number): Promise<Uint8Array> {
-  const buf = await invoke<ArrayBuffer>("wave_spectrogram", { start, end, columns, rows, hz: hz ?? null, fft: fft ?? null });
+export async function waveSpectrogram(start: number, end: number, columns: number, rows: number, hz?: number[], fft?: number, channels?: boolean[]): Promise<Uint8Array> {
+  const buf = await invoke<ArrayBuffer>("wave_spectrogram", { start, end, columns, rows, hz: hz ?? null, fft: fft ?? null, channels: channels ?? null });
   return rawBytes(buf);
 }
 
@@ -979,16 +979,16 @@ export interface SpectralResult {
 }
 
 /** Spectral edit inside `mask`: "gain" turns it down by `gainDb` (-120 or lower removes it), "repair" fills it from the audio around it. */
-export function waveSpectralEdit(mask: SpectralMask, mode: "gain" | "repair", gainDb?: number): Promise<SpectralResult> {
-  return invoke<SpectralResult>("wave_spectral_edit", { mask, mode, gainDb: gainDb ?? null });
+export function waveSpectralEdit(mask: SpectralMask, mode: "gain" | "repair", gainDb?: number, strength?: number): Promise<SpectralResult> {
+  return invoke<SpectralResult>("wave_spectral_edit", { mask, mode, gainDb: gainDb ?? null, strength: strength ?? null });
 }
 
 /** Renders `start..end` of the Waveform editor's file through `chain` into a new file, for replaceRange. */
 /** Waveform editor Stretch: `start..end` made `frames` long, pitch kept. */
 /** Reverse or invert `start..end` of the Waveform editor's file; the result swaps in with replaceRange. */
 /** Builds a file that holds only the sound inside `mask`, for the preview player. */
-export function waveSpectralPlay(mask: SpectralMask): Promise<{ path: string; seconds: number }> {
-  return invoke<{ path: string; seconds: number }>("wave_spectral_play", { mask });
+export function waveSpectralPlay(mask: SpectralMask, channels?: boolean[]): Promise<{ path: string; seconds: number }> {
+  return invoke<{ path: string; seconds: number }>("wave_spectral_play", { mask, channels: channels ?? null });
 }
 
 export function waveReverseInvert(start: number, end: number, mode: "reverse" | "invert"): Promise<SpectralResult> {

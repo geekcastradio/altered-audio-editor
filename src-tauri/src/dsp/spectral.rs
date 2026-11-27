@@ -237,8 +237,9 @@ pub fn frac_of(hz: f32, nyquist: f32) -> f32 {
 pub enum Action {
     /// Scale by a linear gain: 0 removes, 0.25 is -12 dB.
     Gain(f32),
-    /// Fill from the audio just before and after, bin by bin.
-    Repair,
+    /// Fill from the audio just before and after, bin by bin. The number
+    /// is the strength, 0 (leave as is) to 1 (fill completely).
+    Repair(f32),
 }
 
 /// Three-tap smoothing along one axis of a frames x bins grid, so mask
@@ -326,7 +327,7 @@ pub fn process_channel(samples: &mut [f32], rate: u32, origin: f64, mask: &Mask,
                 }
             }
         }
-        Action::Repair => repair(&mut specs, &w),
+        Action::Repair(strength) => repair(&mut specs, &w, strength.clamp(0.0, 1.0)),
     }
 
     // Synthesis.
@@ -359,7 +360,8 @@ pub fn process_channel(samples: &mut [f32], rate: u32, origin: f64, mask: &Mask,
 /// Fills masked cells from the frames around them: for each bin, the
 /// level runs in a straight line (in dB) from the last clean frame
 /// before to the first clean frame after, keeping each cell's phase.
-fn repair(specs: &mut [Vec<Complex32>], w: &[Vec<f32>]) {
+/// `strength` scales how far each cell moves toward that fill.
+fn repair(specs: &mut [Vec<Complex32>], w: &[Vec<f32>], strength: f32) {
     let frames = specs.len();
     if frames == 0 {
         return;
@@ -403,7 +405,7 @@ fn repair(specs: &mut [Vec<Complex32>], w: &[Vec<f32>]) {
                 } else {
                     Complex32::new(1.0, 0.0)
                 };
-                let wb = w[j][b];
+                let wb = w[j][b] * strength;
                 specs[j][b] = s * (1.0 - wb) + unit * target * wb;
             }
         }
@@ -655,7 +657,7 @@ mod tests {
             *v += if i % 2 == 0 { 0.9 } else { -0.9 };
         }
         let m = Mask::rect(23_500.0, 24_540.0, MIN_HZ, 24_000.0, 24_000.0);
-        process_channel(&mut x, rate, 0.0, &m, Action::Repair);
+        process_channel(&mut x, rate, 0.0, &m, Action::Repair(1.0));
         let around = 23_000..25_000;
         let residual: Vec<f32> = x[around.clone()]
             .iter()
@@ -663,6 +665,33 @@ mod tests {
             .map(|(a, b)| a - b)
             .collect();
         assert!(rms(&residual) < 0.03, "residual {}", rms(&residual));
+    }
+
+    #[test]
+    fn repair_strength_scales_the_fix() {
+        let rate = 48_000;
+        let len = 48_000;
+        let tone = sine(500.0, rate, len, 0.3);
+        let mut clicked = tone.clone();
+        for (i, v) in clicked[24_000..24_040].iter_mut().enumerate() {
+            *v += if i % 2 == 0 { 0.9 } else { -0.9 };
+        }
+        let m = Mask::rect(23_500.0, 24_540.0, MIN_HZ, 24_000.0, 24_000.0);
+        let around = 23_000..25_000;
+        let error = |strength: f32| {
+            let mut x = clicked.clone();
+            process_channel(&mut x, rate, 0.0, &m, Action::Repair(strength));
+            let r: Vec<f32> = x[around.clone()]
+                .iter()
+                .zip(&tone[around.clone()])
+                .map(|(a, b)| a - b)
+                .collect();
+            rms(&r)
+        };
+        let (none, half, full) = (error(0.0), error(0.5), error(1.0));
+        // No strength leaves the click; half fixes part of it; full fixes it.
+        assert!(none > half && half > full, "{none} {half} {full}");
+        assert!(full < 0.03, "full {full}");
     }
 
     #[test]
